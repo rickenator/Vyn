@@ -1,4 +1,4 @@
-**Vyn Programming Guide**
+## Vyn Programming Guide
 
 ---
 
