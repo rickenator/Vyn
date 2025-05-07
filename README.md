@@ -1,3 +1,5 @@
+<img src="vyn.png" alt="Vyn Image" width="300">
+
 ## Vyn Programming Guide
 
 ---
