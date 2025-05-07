@@ -257,21 +257,42 @@ This section dives into Vyn’s advanced features, from compile-time templates t
 Vyn’s template system lets you write polymorphic code without runtime cost. Templates are resolved and monomorphized at compile time, producing efficient specialized functions and types.
 
 ```vyn
-// Define a generic Pair of T and U
-template Pair<T, U> {
+// Define a homogeneous Pair of T
+template Pair<T> {
   var first: T
-  var second: U
-  fn swap(self: &mut Pair<T, U>) {
+  var second: T
+
+  // `swap` mutates both fields; requires `&mut` for exclusive mutable access
+  fn swap(self: &mut Pair<T>) {
     let tmp = self.first
     self.first = self.second
     self.second = tmp
   }
 }
 
-// Instantiate and use
-fn main() {
-  let p = Pair<Int, String>(first=1, second="one")
-  dbg(p.second)  // "one"
+// Example usage
+fn example_swap() {
+  let mut p = Pair<Int>(first=1, second=2)
+  p.swap()
+  dbg((p.first, p.second))  // prints (2, 1)
+}
+
+// Define a heterogeneous pair with a method to return a new flipped copy
+template HPair<T, U> {
+  var first: T
+  var second: U
+
+  // `swapped` returns a fresh HPair<U, T> without mutating the original
+  fn swapped(self) -> HPair<U, T> {
+    HPair<U, T>(first = self.second, second = self.first)
+  }
+}
+
+// Example usage of HPair
+fn example_hswap() {
+  let q = HPair<Int, String>(first=42, second="answer")
+  let r = q.swapped()            // r: HPair<String, Int>
+  dbg((r.first, r.second))       // prints ("answer", 42)
 }
 ```
 
