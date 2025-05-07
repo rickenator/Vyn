@@ -903,3 +903,9 @@ Runtime engine interpreting bytecode and hosting JITed code.
 
 
 *Spec version 0.1 — feedback welcome.* — feedback welcome.\*
+
+
+## License
+
+MIT License
+
