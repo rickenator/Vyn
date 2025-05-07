@@ -17,6 +17,21 @@ This guide is intended for systems programmers, language designers, and develope
 
 Whether you’re coming from C/C++, Rust, D, or other modern systems languages, you’ll find Vyn’s template-driven approach familiar yet uniquely powerful.
 
+
+Here’s a comparison of Vyn against several modern systems languages, showing key similarities and differences:
+
+| Language | Templates / Generics               | Memory Model                                                       | Concurrency                            | Syntax Style                      | Unique Feature                                     | Comment                                                      |
+| -------- | ---------------------------------- | ------------------------------------------------------------------ | -------------------------------------- | --------------------------------- | -------------------------------------------------- | ------------------------------------------------------------ |
+| **Vyn**  | Monomorphized templates everywhere | Hybrid GC (lazy, scoped) + manual free + RC                        | Async/await, actors, threads, channels | Indentation-based, tersely styled | Self-hosting compiler; dual VM/JIT backend         | Combines zero-cost templates with flexible memory management |
+| **Rust** | Monomorphized generics             | Ownership/borrow checker; optional `Arc`/`Rc`                      | `async`/`await`, threads, channels     | C-style braces, macros            | Zero-cost abstractions; strong compile-time safety | No global GC; all memory safety enforced at compile time     |
+| **D**    | Runtime & compile-time templates   | GC by default; `@nogc` for manual alloc/free                       | `std.concurrency` fibers, threads      | C-style; mixins                   | Compile-time function execution (CTFE)             | Blend of high-level features with systems control            |
+| **C++**  | Templates & concepts (20+)         | Manual `new`/`delete`; smart pointers (`unique_ptr`, `shared_ptr`) | Threads, coroutines (`co_await`)       | C-style braces                    | Metaprogramming via templates & concepts           | Extensive ecosystem; highest portability                     |
+| **Nim**  | Generics + macros                  | GC by default; optional manual `alloc`                             | Async (`async`/`await`), threads       | Python-like indentation           | Hygienic macros; optional GC or ARC                | Very concise syntax; strong metaprogramming support          |
+| **Go**   | No generics (until 1.18)           | GC only                                                            | Goroutines, channels                   | C-style, minimal                  | CSP-style concurrency                              | Simple, fast compile; built-in tooling                       |
+
+*Note:* Each language offers a different balance of safety, performance, and ergonomics. Vyn’s strength lies in unifying template metaprogramming, flexible memory management, and a hybrid VM/JIT in a terse, self-hosted package.
+
+
 ### 1.2 What is Vyn?
 
 Vyn is a statically typed, template-metaprogramming language that compiles to native code via a hybrid bytecode VM and tiered JIT. Its key differentiators:
