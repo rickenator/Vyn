@@ -9,13 +9,23 @@ template Comparable {
 
 // B-tree template parameterized by key type K, value type V, and order M
 template BTree<K: Comparable, V, M: UInt> {
-  // Node structure for both internal and leaf nodes
-  struct Node {
+  // Node class for both internal and leaf nodes
+  class Node {
     var keys: [K; M-1]           // Up to M-1 keys
     var values: [V; M-1]         // Values for leaf nodes
     var children: [ref<Node>; M] // Up to M child pointers (null for leaves)
     var num_keys: UInt           // Current number of keys
     var is_leaf: Bool            // True for leaf nodes, false for internal
+
+    fn new(is_leaf: Bool) -> Node {
+      Node {
+        keys = [K; M-1](),
+        values = [V; M-1](),
+        children = [ref<Node>; M](),
+        num_keys = 0,
+        is_leaf
+      }
+    }
   }
 
   var root: ref<Node>            // Root node of the tree
@@ -23,13 +33,7 @@ template BTree<K: Comparable, V, M: UInt> {
 
   // Initialize an empty B-tree
   fn new() -> BTree<K, V, M> {
-    let root = ref<Node>(
-      keys = [K; M-1](),        // Zero-initialized array
-      values = [V; M-1](),
-      children = [ref<Node>; M](),
-      num_keys = 0,
-      is_leaf = true
-    )
+    let root = ref<Node>::new(true)
     BTree { root, size: 0 }
   }
 
@@ -69,13 +73,7 @@ template BTree<K: Comparable, V, M: UInt> {
       // Check if root is full
       if self.root.num_keys == M-1 {
         // Split root: create new root and redistribute
-        let new_root = ref<Node>(
-          keys = [K; M-1](),
-          values = [V; M-1](),
-          children = [ref<Node>; M](),
-          num_keys = 0,
-          is_leaf = false
-        )
+        let new_root = ref<Node>::new(false)
         new_root.children[0] = self.root
         split_node(new_root, 0)
         self.root = new_root
@@ -120,13 +118,7 @@ template BTree<K: Comparable, V, M: UInt> {
     let mid = (M-1) / 2
 
     // Create new sibling node
-    let sibling = ref<Node>(
-      keys = [K; M-1](),
-      values = [V; M-1](),
-      children = [ref<Node>; M](),
-      num_keys = 0,
-      is_leaf = full_child.is_leaf
-    )
+    let sibling = ref<Node>::new(full_child.is_leaf)
 
     // Move second half of keys/values/children to sibling
     for i in 0..(M-1-mid) {
