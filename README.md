@@ -38,7 +38,7 @@ Here’s a comparison of Vyn against several modern systems languages, showing k
 
 Vyn is a statically typed, template-metaprogramming language that compiles to native code via a hybrid bytecode VM and tiered JIT. Its key differentiators:
 
-* **Terse Syntax**: Indentation-based blocks, optional semicolons, clear constructs.
+* **Terse Syntax**: Indentation-based or bracket-based blocks or both, optional semicolons, clear constructs.
 * **Templates Everywhere**: Monomorphized generics for types and functions.
 * **Hybrid Memory Model**: Default GC, optional manual free, reference counting, and scoped cleanup.
 * **Concurrency Built In**: Async/await, actors, threads, and typed channels.
