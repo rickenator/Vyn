@@ -727,6 +727,7 @@ int main(int argc, char* argv[]) {
 }
 
 // Test cases
+// run: vyn_parser --test --success
 TEST_CASE("Lexer tokenizes indentation-based function", "[lexer]") {
     std::string code = "\nfn main()\n  let x = 1\n";
     Lexer lexer(code);
