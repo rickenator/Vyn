@@ -25,11 +25,5 @@ target_link_libraries(vyn_parser PRIVATE Catch2::Catch2WithMain)
 enable_testing()
 add_test(NAME ParserTests COMMAND vyn_parser --test)
 
-# Diagnostic: Print Catch2 version
-find_package(Catch2 3)
-if(Catch2_FOUND)
-    message(STATUS "Found Catch2 version: ${Catch2_VERSION}")
-endif()
-
 # Optional: Installation
 # install(TARGETS vyn_parser DESTINATION bin)
