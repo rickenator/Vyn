@@ -13,15 +13,18 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_message.hpp>
 
+// Enable verbose debugging
+#define VERBOSE_DEBUG
+
 // Token types for Vyn lexer
 enum class TokenType {
     KEYWORD_FN, KEYWORD_IF, KEYWORD_ELSE, KEYWORD_LET, KEYWORD_TEMPLATE, 
     KEYWORD_CLASS, KEYWORD_VAR, KEYWORD_RETURN, KEYWORD_FOR, KEYWORD_MUT,
     KEYWORD_MATCH, KEYWORD_IN, KEYWORD_SCOPED, IDENTIFIER, INT_LITERAL, 
     STRING_LITERAL, LBRACE, RBRACE, LPAREN, RPAREN, LBRACKET, RBRACKET, 
-    SEMICOLON, COLON, COMMA, EQ, EQEQ, LT, GT, PLUS, MINUS, DIVIDE, DOT, 
-    ARROW, AMPERSAND, BANG, AND, FAT_ARROW, DOTDOT, COMMENT, INDENT, DEDENT, 
-    EOF_TOKEN
+    SEMICOLON, COLON, COLONCOLON, COMMA, EQ, EQEQ, LT, GT, PLUS, MINUS, 
+    DIVIDE, DOT, ARROW, AMPERSAND, BANG, AND, FAT_ARROW, DOTDOT, COMMENT, 
+    INDENT, DEDENT, EOF_TOKEN
 };
 
 // Token structure
@@ -32,7 +35,58 @@ struct Token {
     int column;
 };
 
-// Lexer class with corrected handle_whitespace
+// Utility function for converting TokenType to string
+std::string token_type_to_string(TokenType type) {
+    switch (type) {
+        case TokenType::KEYWORD_FN: return "KEYWORD_FN";
+        case TokenType::KEYWORD_IF: return "KEYWORD_IF";
+        case TokenType::KEYWORD_ELSE: return "KEYWORD_ELSE";
+        case TokenType::KEYWORD_LET: return "KEYWORD_LET";
+        case TokenType::KEYWORD_TEMPLATE: return "KEYWORD_TEMPLATE";
+        case TokenType::KEYWORD_CLASS: return "KEYWORD_CLASS";
+        case TokenType::KEYWORD_VAR: return "KEYWORD_VAR";
+        case TokenType::KEYWORD_RETURN: return "KEYWORD_RETURN";
+        case TokenType::KEYWORD_FOR: return "KEYWORD_FOR";
+        case TokenType::KEYWORD_MUT: return "KEYWORD_MUT";
+        case TokenType::KEYWORD_MATCH: return "KEYWORD_MATCH";
+        case TokenType::KEYWORD_IN: return "KEYWORD_IN";
+        case TokenType::KEYWORD_SCOPED: return "KEYWORD_SCOPED";
+        case TokenType::IDENTIFIER: return "IDENTIFIER";
+        case TokenType::INT_LITERAL: return "INT_LITERAL";
+        case TokenType::STRING_LITERAL: return "STRING_LITERAL";
+        case TokenType::LBRACE: return "LBRACE";
+        case TokenType::RBRACE: return "RBRACE";
+        case TokenType::LPAREN: return "LPAREN";
+        case TokenType::RPAREN: return "RPAREN";
+        case TokenType::LBRACKET: return "LBRACKET";
+        case TokenType::RBRACKET: return "RBRACKET";
+        case TokenType::SEMICOLON: return "SEMICOLON";
+        case TokenType::COLON: return "COLON";
+        case TokenType::COLONCOLON: return "COLONCOLON";
+        case TokenType::COMMA: return "COMMA";
+        case TokenType::EQ: return "EQ";
+        case TokenType::EQEQ: return "EQEQ";
+        case TokenType::LT: return "LT";
+        case TokenType::GT: return "GT";
+        case TokenType::PLUS: return "PLUS";
+        case TokenType::MINUS: return "MINUS";
+        case TokenType::DIVIDE: return "DIVIDE";
+        case TokenType::DOT: return "DOT";
+        case TokenType::ARROW: return "ARROW";
+        case TokenType::AMPERSAND: return "AMPERSAND";
+        case TokenType::BANG: return "BANG";
+        case TokenType::AND: return "AND";
+        case TokenType::FAT_ARROW: return "FAT_ARROW";
+        case TokenType::DOTDOT: return "DOTDOT";
+        case TokenType::COMMENT: return "COMMENT";
+        case TokenType::INDENT: return "INDENT";
+        case TokenType::DEDENT: return "DEDENT";
+        case TokenType::EOF_TOKEN: return "EOF_TOKEN";
+        default: return "UNKNOWN";
+    }
+}
+
+// Lexer class
 class Lexer {
 public:
     Lexer(const std::string& source) : source_(source), pos_(0), line_(1), column_(1), brace_depth_(0) {
@@ -92,8 +146,14 @@ public:
                     tokens.push_back({TokenType::SEMICOLON, ";", line_, column_++});
                     pos_++;
                 } else if (c == ':') {
-                    tokens.push_back({TokenType::COLON, ":", line_, column_++});
-                    pos_++;
+                    if (pos_ + 1 < source_.size() && source_[pos_ + 1] == ':') {
+                        tokens.push_back({TokenType::COLONCOLON, "::", line_, column_});
+                        column_ += 2;
+                        pos_ += 2;
+                    } else {
+                        tokens.push_back({TokenType::COLON, ":", line_, column_++});
+                        pos_++;
+                    }
                 } else if (c == ',') {
                     tokens.push_back({TokenType::COMMA, ",", line_, column_++});
                     pos_++;
@@ -311,13 +371,19 @@ private:
     std::stack<int> indent_stack_;
 };
 
-// Parser class (unchanged)
+// Parser class
 class Parser {
 public:
     Parser(const std::vector<Token>& tokens) : tokens_(tokens), pos_(0) {}
 
     void parse_module() {
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: Entering parse_module\n";
+#endif
         while (pos_ < tokens_.size() && tokens_[pos_].type != TokenType::EOF_TOKEN) {
+#ifdef VERBOSE_DEBUG
+            std::cout << "DEBUG: parse_module: token=" << token_type_to_string(peek().type) << ", value=" << peek().value << ", line=" << peek().line << ", column=" << peek().column << "\n";
+#endif
             if (tokens_[pos_].type == TokenType::COMMENT) {
                 pos_++;
                 continue;
@@ -332,64 +398,24 @@ public:
                 throw std::runtime_error("Unexpected token at line " + std::to_string(peek().line) + ", column " + std::to_string(peek().column));
             }
         }
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: Exiting parse_module\n";
+#endif
     }
 
 private:
-    std::string token_type_to_string(TokenType type) {
-        switch (type) {
-            case TokenType::KEYWORD_FN: return "KEYWORD_FN";
-            case TokenType::KEYWORD_IF: return "KEYWORD_IF";
-            case TokenType::KEYWORD_ELSE: return "KEYWORD_ELSE";
-            case TokenType::KEYWORD_LET: return "KEYWORD_LET";
-            case TokenType::KEYWORD_TEMPLATE: return "KEYWORD_TEMPLATE";
-            case TokenType::KEYWORD_CLASS: return "KEYWORD_CLASS";
-            case TokenType::KEYWORD_VAR: return "KEYWORD_VAR";
-            case TokenType::KEYWORD_RETURN: return "KEYWORD_RETURN";
-            case TokenType::KEYWORD_FOR: return "KEYWORD_FOR";
-            case TokenType::KEYWORD_MUT: return "KEYWORD_MUT";
-            case TokenType::KEYWORD_MATCH: return "KEYWORD_MATCH";
-            case TokenType::KEYWORD_IN: return "KEYWORD_IN";
-            case TokenType::KEYWORD_SCOPED: return "KEYWORD_SCOPED";
-            case TokenType::IDENTIFIER: return "IDENTIFIER";
-            case TokenType::INT_LITERAL: return "INT_LITERAL";
-            case TokenType::STRING_LITERAL: return "STRING_LITERAL";
-            case TokenType::LBRACE: return "LBRACE";
-            case TokenType::RBRACE: return "RBRACE";
-            case TokenType::LPAREN: return "LPAREN";
-            case TokenType::RPAREN: return "RPAREN";
-            case TokenType::LBRACKET: return "LBRACKET";
-            case TokenType::RBRACKET: return "RBRACKET";
-            case TokenType::SEMICOLON: return "SEMICOLON";
-            case TokenType::COLON: return "COLON";
-            case TokenType::COMMA: return "COMMA";
-            case TokenType::EQ: return "EQ";
-            case TokenType::EQEQ: return "EQEQ";
-            case TokenType::LT: return "LT";
-            case TokenType::GT: return "GT";
-            case TokenType::PLUS: return "PLUS";
-            case TokenType::MINUS: return "MINUS";
-            case TokenType::DIVIDE: return "DIVIDE";
-            case TokenType::DOT: return "DOT";
-            case TokenType::ARROW: return "ARROW";
-            case TokenType::AMPERSAND: return "AMPERSAND";
-            case TokenType::BANG: return "BANG";
-            case TokenType::AND: return "AND";
-            case TokenType::FAT_ARROW: return "FAT_ARROW";
-            case TokenType::DOTDOT: return "DOTDOT";
-            case TokenType::COMMENT: return "COMMENT";
-            case TokenType::INDENT: return "INDENT";
-            case TokenType::DEDENT: return "DEDENT";
-            case TokenType::EOF_TOKEN: return "EOF_TOKEN";
-            default: return "UNKNOWN";
-        }
-    }
-
     void parse_template() {
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: Entering parse_template\n";
+#endif
         expect(TokenType::KEYWORD_TEMPLATE);
         expect(TokenType::IDENTIFIER);
         if (peek().type == TokenType::LT) {
             expect(TokenType::LT);
             while (peek().type != TokenType::GT && peek().type != TokenType::EOF_TOKEN) {
+#ifdef VERBOSE_DEBUG
+                std::cout << "DEBUG: parse_template: generic param, token=" << token_type_to_string(peek().type) << ", value=" << peek().value << "\n";
+#endif
                 if (peek().type == TokenType::IDENTIFIER) {
                     expect(TokenType::IDENTIFIER);
                     if (peek().type == TokenType::COLON) {
@@ -405,19 +431,34 @@ private:
             expect(TokenType::GT);
         }
         parse_block();
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: Exiting parse_template\n";
+#endif
     }
 
     void parse_class() {
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: Entering parse_class\n";
+#endif
         expect(TokenType::KEYWORD_CLASS);
         expect(TokenType::IDENTIFIER);
         parse_block();
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: Exiting parse_class\n";
+#endif
     }
 
     void parse_function() {
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: Entering parse_function\n";
+#endif
         expect(TokenType::KEYWORD_FN);
         expect(TokenType::IDENTIFIER);
         expect(TokenType::LPAREN);
         while (peek().type != TokenType::RPAREN && peek().type != TokenType::EOF_TOKEN) {
+#ifdef VERBOSE_DEBUG
+            std::cout << "DEBUG: parse_function: param, token=" << token_type_to_string(peek().type) << ", value=" << peek().value << "\n";
+#endif
             if (peek().type == TokenType::AMPERSAND) {
                 expect(TokenType::AMPERSAND);
                 if (peek().type == TokenType::KEYWORD_MUT) {
@@ -441,12 +482,21 @@ private:
         if (peek().type == TokenType::LBRACE || peek().type == TokenType::INDENT) {
             parse_block();
         }
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: Exiting parse_function\n";
+#endif
     }
 
     void parse_block() {
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: Entering parse_block\n";
+#endif
         if (peek().type == TokenType::LBRACE) {
             expect(TokenType::LBRACE);
             while (peek().type != TokenType::RBRACE && peek().type != TokenType::EOF_TOKEN) {
+#ifdef VERBOSE_DEBUG
+                std::cout << "DEBUG: parse_block: statement, token=" << token_type_to_string(peek().type) << ", value=" << peek().value << "\n";
+#endif
                 if (peek().type == TokenType::COMMENT) {
                     pos_++;
                     continue;
@@ -457,6 +507,9 @@ private:
         } else {
             expect(TokenType::INDENT);
             while (peek().type != TokenType::DEDENT && peek().type != TokenType::EOF_TOKEN) {
+#ifdef VERBOSE_DEBUG
+                std::cout << "DEBUG: parse_block: statement, token=" << token_type_to_string(peek().type) << ", value=" << peek().value << "\n";
+#endif
                 if (peek().type == TokenType::COMMENT) {
                     pos_++;
                     continue;
@@ -467,9 +520,15 @@ private:
                 expect(TokenType::DEDENT);
             }
         }
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: Exiting parse_block\n";
+#endif
     }
 
     void parse_statement() {
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: Entering parse_statement, token=" << token_type_to_string(peek().type) << ", value=" << peek().value << ", line=" << peek().line << ", column=" << peek().column << "\n";
+#endif
         if (peek().type == TokenType::KEYWORD_LET) {
             expect(TokenType::KEYWORD_LET);
             expect(TokenType::IDENTIFIER);
@@ -512,6 +571,8 @@ private:
             }
         } else if (peek().type == TokenType::KEYWORD_FN) {
             parse_function();
+        } else if (peek().type == TokenType::KEYWORD_CLASS) {
+            parse_class();
         } else if (peek().type == TokenType::KEYWORD_MATCH) {
             parse_match();
         } else {
@@ -520,21 +581,105 @@ private:
                 expect(TokenType::SEMICOLON);
             }
         }
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: Exiting parse_statement\n";
+#endif
+    }
+
+    void parse_pattern() {
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: Entering parse_pattern, token=" << token_type_to_string(peek().type) << ", value=" << peek().value << ", line=" << peek().line << ", column=" << peek().column << "\n";
+#endif
+        if (peek().type == TokenType::IDENTIFIER) {
+            expect(TokenType::IDENTIFIER);  // e.g., Some, None
+            if (peek().type == TokenType::LPAREN) {
+                expect(TokenType::LPAREN);
+                expect(TokenType::IDENTIFIER);  // e.g., v in Some(v)
+                expect(TokenType::RPAREN);
+            }
+        } else {
+            throw std::runtime_error("Expected pattern at line " + std::to_string(peek().line) + ", column " + std::to_string(peek().column));
+        }
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: Exiting parse_pattern\n";
+#endif
     }
 
     void parse_match() {
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: Entering parse_match, token=" << token_type_to_string(peek().type) << ", value=" << peek().value << ", line=" << peek().line << ", column=" << peek().column << "\n";
+#endif
         expect(TokenType::KEYWORD_MATCH);
-        parse_expression();
-        parse_block();
+        parse_expression();  // Parse the matched expression (e.g., x)
+        if (peek().type == TokenType::LBRACE) {
+            expect(TokenType::LBRACE);
+            while (peek().type != TokenType::RBRACE && peek().type != TokenType::EOF_TOKEN) {
+#ifdef VERBOSE_DEBUG
+                std::cout << "DEBUG: parse_match: arm, token=" << token_type_to_string(peek().type) << ", value=" << peek().value << ", line=" << peek().line << ", column=" << peek().column << "\n";
+#endif
+                parse_pattern();  // Parse pattern (e.g., Some(v), None)
+                expect(TokenType::FAT_ARROW);  // =>
+                parse_expression();  // Parse arm expression
+                if (peek().type == TokenType::COMMA || peek().type == TokenType::SEMICOLON) {
+                    expect(peek().type);  // Optional comma or semicolon
+                }
+            }
+            expect(TokenType::RBRACE);
+        } else {
+            expect(TokenType::INDENT);
+            while (peek().type != TokenType::DEDENT && peek().type != TokenType::EOF_TOKEN) {
+#ifdef VERBOSE_DEBUG
+                std::cout << "DEBUG: parse_match: arm, token=" << token_type_to_string(peek().type) << ", value=" << peek().value << ", line=" << peek().line << ", column=" << peek().column << "\n";
+#endif
+                parse_pattern();  // Parse pattern (e.g., Some(v), None)
+                expect(TokenType::FAT_ARROW);  // =>
+                parse_expression();  // Parse arm expression
+                if (peek().type == TokenType::COMMA || peek().type == TokenType::SEMICOLON) {
+                    expect(peek().type);  // Optional comma or semicolon
+                }
+            }
+            expect(TokenType::DEDENT);
+        }
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: Exiting parse_match\n";
+#endif
     }
 
     void parse_expression() {
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: Entering parse_expression, token=" << token_type_to_string(peek().type) << ", value=" << peek().value << ", line=" << peek().line << ", column=" << peek().column << "\n";
+#endif
+        parse_primary_expression();
+        while (peek().type == TokenType::LT || peek().type == TokenType::GT || 
+               peek().type == TokenType::EQEQ || peek().type == TokenType::PLUS || 
+               peek().type == TokenType::MINUS || peek().type == TokenType::DIVIDE || 
+               peek().type == TokenType::AND) {
+#ifdef VERBOSE_DEBUG
+            std::cout << "DEBUG: parse_expression: operator, token=" << token_type_to_string(peek().type) << ", value=" << peek().value << "\n";
+#endif
+            TokenType op = peek().type;
+            expect(op);
+            parse_primary_expression(); // Allow full primary expression, including field access
+        }
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: Exiting parse_expression\n";
+#endif
+    }
+
+    void parse_primary_expression() {
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: Entering parse_primary_expression, token=" << token_type_to_string(peek().type) << ", value=" << peek().value << ", line=" << peek().line << ", column=" << peek().column << "\n";
+#endif
         if (peek().type == TokenType::BANG) {
             expect(TokenType::BANG);
-        }
-        if (peek().type == TokenType::IDENTIFIER) {
+            parse_primary_expression();
+        } else if (peek().type == TokenType::IDENTIFIER) {
             expect(TokenType::IDENTIFIER);
-            while (peek().type == TokenType::DOT || peek().type == TokenType::LPAREN) {
+            // Handle field access, method calls, or array indexing
+            while (peek().type == TokenType::DOT || peek().type == TokenType::LPAREN || peek().type == TokenType::LBRACKET) {
+#ifdef VERBOSE_DEBUG
+                std::cout << "DEBUG: parse_primary_expression: access, token=" << token_type_to_string(peek().type) << ", value=" << peek().value << "\n";
+#endif
                 if (peek().type == TokenType::DOT) {
                     expect(TokenType::DOT);
                     expect(TokenType::IDENTIFIER);
@@ -547,47 +692,106 @@ private:
                         }
                     }
                     expect(TokenType::RPAREN);
+                } else if (peek().type == TokenType::LBRACKET) {
+                    expect(TokenType::LBRACKET);
+                    parse_expression();
+                    expect(TokenType::RBRACKET);
+                }
+            }
+            // Handle struct initialization or generic method calls
+            if (pos_ < tokens_.size() && tokens_[pos_].type == TokenType::LBRACE) {
+                // Struct initialization: IDENTIFIER LBRACE (IDENTIFIER (EQ | COLON expr)? (COMMA | SEMICOLON)?)* RBRACE
+                expect(TokenType::LBRACE);
+                while (peek().type != TokenType::RBRACE && peek().type != TokenType::EOF_TOKEN) {
+#ifdef VERBOSE_DEBUG
+                    std::cout << "DEBUG: parse_primary_expression: struct field, token=" << token_type_to_string(peek().type) << ", value=" << peek().value << "\n";
+#endif
+                    expect(TokenType::IDENTIFIER); // Field name, e.g., "root"
+                    if (peek().type == TokenType::EQ || peek().type == TokenType::COLON) {
+                        expect(peek().type); // EQ or COLON
+                        parse_expression(); // Field value, e.g., "0"
+                    } // Else, shorthand: field name implies same-named variable
+                    if (peek().type == TokenType::COMMA || peek().type == TokenType::SEMICOLON) {
+                        expect(peek().type); // Optional comma or semicolon separator
+                    }
+                }
+                expect(TokenType::RBRACE);
+            } else if (pos_ < tokens_.size() && tokens_[pos_].type == TokenType::LT) {
+                // Generic type method call: IDENTIFIER LT IDENTIFIER GT COLONCOLON IDENTIFIER
+                expect(TokenType::LT);
+                expect(TokenType::IDENTIFIER);
+                expect(TokenType::GT);
+                if (peek().type == TokenType::COLONCOLON) {
+                    expect(TokenType::COLONCOLON);
+                    expect(TokenType::IDENTIFIER); // Method name, e.g., "new"
+                    if (peek().type == TokenType::LPAREN) {
+                        expect(TokenType::LPAREN);
+                        while (peek().type != TokenType::RPAREN && peek().type != TokenType::EOF_TOKEN) {
+                            parse_expression();
+                            if (peek().type == TokenType::COMMA) {
+                                expect(TokenType::COMMA);
+                            }
+                        }
+                        expect(TokenType::RPAREN);
+                    }
                 }
             }
         } else if (peek().type == TokenType::INT_LITERAL) {
             expect(TokenType::INT_LITERAL);
         } else if (peek().type == TokenType::STRING_LITERAL) {
             expect(TokenType::STRING_LITERAL);
+        } else if (peek().type == TokenType::LBRACKET) {
+            expect(TokenType::LBRACKET);
+            parse_type(); // Type, e.g., "K"
+            expect(TokenType::SEMICOLON);
+            parse_expression(); // Size expression, e.g., "M-1"
+            expect(TokenType::RBRACKET);
+            if (peek().type == TokenType::LPAREN) {
+                expect(TokenType::LPAREN);
+                expect(TokenType::RPAREN);
+            }
         } else {
-            throw std::runtime_error("Expected expression at line " + std::to_string(peek().line) + ", column " + std::to_string(peek().column));
+            throw std::runtime_error("Expected primary expression at line " + std::to_string(peek().line) + ", column " + std::to_string(peek().column));
         }
-        if (peek().type == TokenType::LT || peek().type == TokenType::GT || 
-            peek().type == TokenType::EQEQ || peek().type == TokenType::PLUS || 
-            peek().type == TokenType::MINUS || peek().type == TokenType::DIVIDE || 
-            peek().type == TokenType::AND) {
-            TokenType op = peek().type;
-            expect(op);
-            parse_expression();
-        }
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: Exiting parse_primary_expression\n";
+#endif
     }
 
     void parse_type() {
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: Entering parse_type, token=" << token_type_to_string(peek().type) << ", value=" << peek().value << ", line=" << peek().line << ", column=" << peek().column << "\n";
+#endif
         if (peek().type == TokenType::LBRACKET) {
             expect(TokenType::LBRACKET);
-            parse_type();  // Parse the inner type (e.g., Int in [Int; 2])
+            parse_type();  // Parse the inner type (e.g., K in [K; M-1])
             if (peek().type == TokenType::SEMICOLON) {
                 expect(TokenType::SEMICOLON);
-                expect(TokenType::INT_LITERAL);  // Parse the array size (e.g., 2 in [Int; 2])
+#ifdef VERBOSE_DEBUG
+                std::cout << "DEBUG: parse_type: parsing array size expression\n";
+#endif
+                parse_expression();  // Parse the array size as an expression (e.g., M-1)
             }
             expect(TokenType::RBRACKET);
-        } else {
-            if (peek().type == TokenType::AMPERSAND) {
-                expect(TokenType::AMPERSAND);
-                if (peek().type == TokenType::KEYWORD_MUT) {
-                    expect(TokenType::KEYWORD_MUT);
-                }
+        } else if (peek().type == TokenType::AMPERSAND) {
+            expect(TokenType::AMPERSAND);
+            if (peek().type == TokenType::KEYWORD_MUT) {
+                expect(TokenType::KEYWORD_MUT);
             }
+            parse_type();  // Parse the type after & or &mut
+        } else {
             expect(TokenType::IDENTIFIER);
             while (peek().type == TokenType::LBRACKET || peek().type == TokenType::LT) {
+#ifdef VERBOSE_DEBUG
+                std::cout << "DEBUG: parse_type: array/generic, token=" << token_type_to_string(peek().type) << ", value=" << peek().value << "\n";
+#endif
                 if (peek().type == TokenType::LBRACKET) {
                     expect(TokenType::LBRACKET);
-                    if (peek().type == TokenType::INT_LITERAL) {
-                        expect(TokenType::INT_LITERAL);
+                    if (peek().type == TokenType::SEMICOLON) {
+                        expect(TokenType::SEMICOLON);
+                        parse_expression();  // Parse the array size as an expression
+                    } else if (peek().type == TokenType::INT_LITERAL || peek().type == TokenType::IDENTIFIER) {
+                        parse_expression();  // Allow expression for size
                     }
                     expect(TokenType::RBRACKET);
                 } else if (peek().type == TokenType::LT) {
@@ -602,9 +806,15 @@ private:
                 }
             }
         }
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: Exiting parse_type\n";
+#endif
     }
 
     void expect(TokenType type) {
+#ifdef VERBOSE_DEBUG
+        std::cout << "DEBUG: expect: expecting=" << token_type_to_string(type) << ", found=" << token_type_to_string(peek().type) << ", value=" << peek().value << ", line=" << peek().line << ", column=" << peek().column << "\n";
+#endif
         if (pos_ >= tokens_.size() || tokens_[pos_].type != type) {
             std::string found = pos_ < tokens_.size() ? token_type_to_string(tokens_[pos_].type) : "EOF";
             throw std::runtime_error("Expected " + token_type_to_string(type) + " but found " + found + 
@@ -624,54 +834,7 @@ private:
 // Print tokens for debugging
 void print_tokens(const std::vector<Token>& tokens) {
     for (const auto& token : tokens) {
-        std::string type_str;
-        switch (token.type) {
-            case TokenType::KEYWORD_FN: type_str = "KEYWORD_FN"; break;
-            case TokenType::KEYWORD_IF: type_str = "KEYWORD_IF"; break;
-            case TokenType::KEYWORD_ELSE: type_str = "KEYWORD_ELSE"; break;
-            case TokenType::KEYWORD_LET: type_str = "KEYWORD_LET"; break;
-            case TokenType::KEYWORD_TEMPLATE: type_str = "KEYWORD_TEMPLATE"; break;
-            case TokenType::KEYWORD_CLASS: type_str = "KEYWORD_CLASS"; break;
-            case TokenType::KEYWORD_VAR: type_str = "KEYWORD_VAR"; break;
-            case TokenType::KEYWORD_RETURN: type_str = "KEYWORD_RETURN"; break;
-            case TokenType::KEYWORD_FOR: type_str = "KEYWORD_FOR"; break;
-            case TokenType::KEYWORD_MUT: type_str = "KEYWORD_MUT"; break;
-            case TokenType::KEYWORD_MATCH: type_str = "KEYWORD_MATCH"; break;
-            case TokenType::KEYWORD_IN: type_str = "KEYWORD_IN"; break;
-            case TokenType::KEYWORD_SCOPED: type_str = "KEYWORD_SCOPED"; break;
-            case TokenType::IDENTIFIER: type_str = "IDENTIFIER"; break;
-            case TokenType::INT_LITERAL: type_str = "INT_LITERAL"; break;
-            case TokenType::STRING_LITERAL: type_str = "STRING_LITERAL"; break;
-            case TokenType::LBRACE: type_str = "LBRACE"; break;
-            case TokenType::RBRACE: type_str = "RBRACE"; break;
-            case TokenType::LPAREN: type_str = "LPAREN"; break;
-            case TokenType::RPAREN: type_str = "RPAREN"; break;
-            case TokenType::LBRACKET: type_str = "LBRACKET"; break;
-            case TokenType::RBRACKET: type_str = "RBRACKET"; break;
-            case TokenType::SEMICOLON: type_str = "SEMICOLON"; break;
-            case TokenType::COLON: type_str = "COLON"; break;
-            case TokenType::COMMA: type_str = "COMMA"; break;
-            case TokenType::EQ: type_str = "EQ"; break;
-            case TokenType::EQEQ: type_str = "EQEQ"; break;
-            case TokenType::LT: type_str = "LT"; break;
-            case TokenType::GT: type_str = "GT"; break;
-            case TokenType::PLUS: type_str = "PLUS"; break;
-            case TokenType::MINUS: type_str = "MINUS"; break;
-            case TokenType::DIVIDE: type_str = "DIVIDE"; break;
-            case TokenType::DOT: type_str = "DOT"; break;
-            case TokenType::ARROW: type_str = "ARROW"; break;
-            case TokenType::AMPERSAND: type_str = "AMPERSAND"; break;
-            case TokenType::BANG: type_str = "BANG"; break;
-            case TokenType::AND: type_str = "AND"; break;
-            case TokenType::FAT_ARROW: type_str = "FAT_ARROW"; break;
-            case TokenType::DOTDOT: type_str = "DOTDOT"; break;
-            case TokenType::COMMENT: type_str = "COMMENT"; break;
-            case TokenType::INDENT: type_str = "INDENT"; break;
-            case TokenType::DEDENT: type_str = "DEDENT"; break;
-            case TokenType::EOF_TOKEN: type_str = "EOF_TOKEN"; break;
-            default: type_str = "UNKNOWN"; break;
-        }
-        std::cout << "Token(type: " << type_str << ", value: \"" << token.value
+        std::cout << "Token(type: " << token_type_to_string(token.type) << ", value: \"" << token.value
                   << "\", line: " << token.line << ", column " << token.column << ")\n";
     }
 }
@@ -727,6 +890,10 @@ int main(int argc, char* argv[]) {
 }
 
 // Test cases
+TEST_CASE("Print parser version", "[parser]") {
+    std::cout << "Version: 0.1.7\n";
+}
+
 TEST_CASE("Lexer tokenizes indentation-based function", "[lexer]") {
     std::string code = "\nfn main()\n  let x = 1\n";
     Lexer lexer(code);
@@ -810,6 +977,45 @@ TEST_CASE("Parser handles template with function", "[parser]") {
 template Comparable
   fn lt(&self, other: &Self) -> Bool
   fn eq(&self, other: &Self) -> Bool
+)";
+    Lexer lexer(code);
+    auto tokens = lexer.tokenize();
+    Parser parser(tokens);
+    REQUIRE_NOTHROW(parser.parse_module());
+}
+
+TEST_CASE("Parser handles array type with expression", "[parser]") {
+    std::string code = "class Test { var keys: [K; M-1]; }";
+    Lexer lexer(code);
+    auto tokens = lexer.tokenize();
+    Parser parser(tokens);
+    REQUIRE_NOTHROW(parser.parse_module());
+}
+
+TEST_CASE("Parser handles struct initialization with array initializer", "[parser]") {
+    std::string code = R"(
+template BTree<K, V, M>
+  class Node {
+    var keys: [K; M-1];
+    fn new() -> Node {
+      Node { keys = [K; M-1]() }
+    }
+  }
+)";
+    Lexer lexer(code);
+    auto tokens = lexer.tokenize();
+    Parser parser(tokens);
+    REQUIRE_NOTHROW(parser.parse_module());
+}
+
+TEST_CASE("Parser handles match expression", "[parser]") {
+    std::string code = R"(
+fn main() {
+  match x {
+    Some(v) => v;
+    None => 0;
+  }
+}
 )";
     Lexer lexer(code);
     auto tokens = lexer.tokenize();
