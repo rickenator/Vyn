@@ -141,3 +141,17 @@ TEST_CASE("Parser handles updated btree.vyn subset", "[parser]") {
     ModuleParser parser(tokens, pos);
     REQUIRE_NOTHROW(parser.parse());
 }
+
+TEST_CASE("Parser handles array type with expression size", "[parser]") {
+    std::string source = R"(
+        template BTree<K, V, M: UInt>
+            class Node {
+                var keys: [K; M-1]
+            }
+    )";
+    Lexer lexer(source);
+    auto tokens = lexer.tokenize();
+    size_t pos = 0;
+    ModuleParser parser(tokens, pos);
+    REQUIRE_NOTHROW(parser.parse());
+}

@@ -46,26 +46,33 @@ std::unique_ptr<ASTNode> ExpressionParser::parse() {
     std::cout << "DEBUG: ExpressionParser::parse at token " << token_type_to_string(peek().type) 
               << " at line " << peek().line << ", column " << peek().column 
               << ", pos_ = " << pos_ << std::endl;
+    return parse_expression();
+}
+
+std::unique_ptr<ASTNode> ExpressionParser::parse_expression() {
     std::unique_ptr<ASTNode> node;
+    std::cout << "DEBUG: ExpressionParser::parse_expression at token " << token_type_to_string(peek().type) 
+              << ", value = " << peek().value << ", line = " << peek().line << std::endl;
     if (peek().type == TokenType::KEYWORD_IF) {
         node = std::make_unique<ASTNode>(ASTNode::Kind::Expression, peek());
         expect(TokenType::KEYWORD_IF);
-        node->children.push_back(parse());
+        node->children.push_back(parse_expression());
         StatementParser stmt_parser(tokens_, pos_);
         node->children.push_back(stmt_parser.parse_block());
         if (peek().type == TokenType::KEYWORD_ELSE) {
             expect(TokenType::KEYWORD_ELSE);
+            std::cout << "DEBUG: Parsing ELSE clause at line " << peek().line << ", column " << peek().column << std::endl;
             if (peek().type == TokenType::LBRACE || peek().type == TokenType::INDENT) {
                 node->children.push_back(stmt_parser.parse_block());
             } else {
-                node->children.push_back(parse());
+                node->children.push_back(parse_expression());
             }
         }
     } else if (peek().type == TokenType::LBRACKET) {
         node = std::make_unique<ASTNode>(ASTNode::Kind::Expression);
         expect(TokenType::LBRACKET);
         if (peek().type != TokenType::RBRACKET) {
-            node->children.push_back(parse());
+            node->children.push_back(parse_expression()); // Parse full expression (e.g., x * x)
         }
         if (peek().type == TokenType::KEYWORD_FOR) {
             expect(TokenType::KEYWORD_FOR);
@@ -75,30 +82,33 @@ std::unique_ptr<ASTNode> ExpressionParser::parse() {
             node->children.push_back(std::move(var_node));
             expect(TokenType::KEYWORD_IN);
             auto range_node = std::make_unique<ASTNode>(ASTNode::Kind::Expression);
-            range_node->children.push_back(parse());
+            range_node->children.push_back(parse_expression()); // Parse range start (e.g., 0)
             if (peek().type == TokenType::DOTDOT) {
                 range_node->token = peek();
                 expect(TokenType::DOTDOT);
-                range_node->children.push_back(parse());
+                range_node->children.push_back(parse_expression()); // Parse range end (e.g., 10)
             }
             node->children.push_back(std::move(range_node));
+            expect(TokenType::RBRACKET); // Ensure RBRACKET closes comprehension
         } else {
             while (peek().type != TokenType::RBRACKET && peek().type != TokenType::EOF_TOKEN) {
                 if (peek().type == TokenType::COMMA) {
                     expect(TokenType::COMMA);
-                    if (peek().type != TokenType::RBRACKET) node->children.push_back(parse());
+                    if (peek().type != TokenType::RBRACKET) node->children.push_back(parse_expression());
                 } else if (!node->children.empty()) {
-                    node->children.push_back(parse());
+                    node->children.push_back(parse_expression());
                 }
             }
+            expect(TokenType::RBRACKET);
         }
-        expect(TokenType::RBRACKET);
     } else {
         node = parse_primary();
         while (peek().type == TokenType::LT || peek().type == TokenType::GT ||
                peek().type == TokenType::EQEQ || peek().type == TokenType::PLUS ||
                peek().type == TokenType::MINUS || peek().type == TokenType::DIVIDE ||
-               peek().type == TokenType::AND) {
+               peek().type == TokenType::MULTIPLY || peek().type == TokenType::AND) {
+            std::cout << "DEBUG: Parsing binary operator " << token_type_to_string(peek().type) 
+                      << " at line " << peek().line << std::endl;
             auto op_node = std::make_unique<ASTNode>(ASTNode::Kind::Expression, peek());
             expect(peek().type);
             op_node->children.push_back(std::move(node));
@@ -125,12 +135,19 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_primary() {
     } else if (peek().type == TokenType::IDENTIFIER) {
         node->token = peek();
         expect(TokenType::IDENTIFIER);
-        while (peek().type == TokenType::DOT || peek().type == TokenType::LPAREN || peek().type == TokenType::LBRACKET) {
+        while (peek().type == TokenType::DOT || peek().type == TokenType::LPAREN || 
+               peek().type == TokenType::LBRACKET || peek().type == TokenType::COLONCOLON) {
             if (peek().type == TokenType::DOT) {
+                std::cout << "DEBUG: Parsing DOT access at line " << peek().line << ", column " << peek().column << std::endl;
                 expect(TokenType::DOT);
                 auto field_node = std::make_unique<ASTNode>(ASTNode::Kind::Expression, peek());
                 expect(TokenType::IDENTIFIER);
                 node->children.push_back(std::move(field_node));
+            } else if (peek().type == TokenType::COLONCOLON) {
+                expect(TokenType::COLONCOLON);
+                auto module_node = std::make_unique<ASTNode>(ASTNode::Kind::Expression, peek());
+                expect(TokenType::IDENTIFIER);
+                node->children.push_back(std::move(module_node));
             } else if (peek().type == TokenType::LPAREN) {
                 expect(TokenType::LPAREN);
                 while (peek().type != TokenType::RPAREN && peek().type != TokenType::EOF_TOKEN) {
@@ -179,6 +196,9 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_primary() {
     } else if (peek().type == TokenType::INT_LITERAL) {
         node->token = peek();
         expect(TokenType::INT_LITERAL);
+    } else if (peek().type == TokenType::FLOAT_LITERAL) {
+        node->token = peek();
+        expect(TokenType::FLOAT_LITERAL);
     } else if (peek().type == TokenType::STRING_LITERAL) {
         node->token = peek();
         expect(TokenType::STRING_LITERAL);
@@ -206,6 +226,8 @@ TypeParser::TypeParser(const std::vector<Token>& tokens, size_t& pos) : BasePars
 
 std::unique_ptr<ASTNode> TypeParser::parse() {
     auto node = std::make_unique<ASTNode>(ASTNode::Kind::Type);
+    std::cout << "DEBUG: TypeParser::parse at token " << token_type_to_string(peek().type) 
+              << ", value = " << peek().value << ", line = " << peek().line << std::endl;
     if (peek().type == TokenType::IDENTIFIER && peek().value == "ref") {
         node->token = peek();
         expect(TokenType::IDENTIFIER);
@@ -214,11 +236,11 @@ std::unique_ptr<ASTNode> TypeParser::parse() {
         expect(TokenType::GT);
     } else if (peek().type == TokenType::LBRACKET) {
         expect(TokenType::LBRACKET);
-        node->children.push_back(parse());
+        node->children.push_back(parse()); // Parse element type (e.g., K)
         if (peek().type == TokenType::SEMICOLON) {
             expect(TokenType::SEMICOLON);
             ExpressionParser expr_parser(tokens_, pos_);
-            node->children.push_back(expr_parser.parse());
+            node->children.push_back(expr_parser.parse()); // Parse size expression (e.g., M-1)
         }
         expect(TokenType::RBRACKET);
     } else if (peek().type == TokenType::AMPERSAND) {
@@ -239,7 +261,8 @@ std::unique_ptr<ASTNode> TypeParser::parse() {
                     expect(TokenType::SEMICOLON);
                     ExpressionParser expr_parser(tokens_, pos_);
                     node->children.push_back(expr_parser.parse());
-                } else if (peek().type == TokenType::INT_LITERAL || peek().type == TokenType::IDENTIFIER) {
+                } else {
+                    // Handle size expressions like M-1
                     ExpressionParser expr_parser(tokens_, pos_);
                     node->children.push_back(expr_parser.parse());
                 }
@@ -372,7 +395,7 @@ std::unique_ptr<ASTNode> StatementParser::parse() {
         }
         if (peek().type == TokenType::SEMICOLON) expect(TokenType::SEMICOLON);
     } else if (peek().type == TokenType::IDENTIFIER || peek().type == TokenType::INT_LITERAL ||
-               peek().type == TokenType::STRING_LITERAL) {
+               peek().type == TokenType::FLOAT_LITERAL || peek().type == TokenType::STRING_LITERAL) {
         ExpressionParser expr_parser(tokens_, pos_);
         node->children.push_back(expr_parser.parse());
         if (peek().type == TokenType::SEMICOLON) expect(TokenType::SEMICOLON);
@@ -402,6 +425,9 @@ std::unique_ptr<ASTNode> StatementParser::parse_block() {
             if (peek().type == TokenType::KEYWORD_FN) {
                 DeclarationParser decl_parser(tokens_, pos_);
                 node->children.push_back(decl_parser.parse_function());
+            } else if (peek().type == TokenType::KEYWORD_CLASS) {
+                DeclarationParser decl_parser(tokens_, pos_);
+                node->children.push_back(decl_parser.parse_class());
             } else {
                 node->children.push_back(parse());
             }
@@ -423,6 +449,9 @@ std::unique_ptr<ASTNode> StatementParser::parse_block() {
             if (peek().type == TokenType::KEYWORD_FN) {
                 DeclarationParser decl_parser(tokens_, pos_);
                 node->children.push_back(decl_parser.parse_function());
+            } else if (peek().type == TokenType::KEYWORD_CLASS) {
+                DeclarationParser decl_parser(tokens_, pos_);
+                node->children.push_back(decl_parser.parse_class());
             } else {
                 node->children.push_back(parse());
             }
@@ -435,7 +464,6 @@ std::unique_ptr<ASTNode> StatementParser::parse_block() {
                       << indent_levels_.back() << ", pos_ = " << pos_ << std::endl;
         }
     } else if (peek().type == TokenType::DEDENT || peek().type == TokenType::EOF_TOKEN) {
-        // Handle empty block
         std::cout << "DEBUG: Empty block detected at token " << token_type_to_string(peek().type) 
                   << " at line " << peek().line << ", column " << peek().column 
                   << ", pos_ = " << pos_ << ", indent_level = " << indent_levels_.back() << std::endl;
@@ -491,6 +519,8 @@ void StatementParser::parse_match(std::unique_ptr<ASTNode>& node) {
 }
 
 void StatementParser::parse_pattern(std::unique_ptr<ASTNode>& node) {
+    std::cout << "DEBUG: Parsing pattern at token " << token_type_to_string(peek().type) 
+              << ", value = " << peek().value << ", line = " << peek().line << std::endl;
     node->children.push_back(std::make_unique<ASTNode>(ASTNode::Kind::Expression, peek()));
     expect(TokenType::IDENTIFIER);
     if (peek().type == TokenType::LPAREN) {
@@ -506,12 +536,14 @@ DeclarationParser::DeclarationParser(const std::vector<Token>& tokens, size_t& p
 std::unique_ptr<ASTNode> DeclarationParser::parse_template() {
     auto node = std::make_unique<ASTNode>(ASTNode::Kind::Template);
     expect(TokenType::KEYWORD_TEMPLATE);
+    std::cout << "DEBUG: Parsing template at line " << peek().line << ", column " << peek().column << std::endl;
     node->children.push_back(std::make_unique<ASTNode>(ASTNode::Kind::Expression, peek()));
     expect(TokenType::IDENTIFIER);
     if (peek().type == TokenType::LT) {
         expect(TokenType::LT);
         while (peek().type != TokenType::GT && peek().type != TokenType::EOF_TOKEN) {
             if (peek().type == TokenType::IDENTIFIER) {
+                std::cout << "DEBUG: Parsing template param " << peek().value << " at line " << peek().line << std::endl;
                 node->children.push_back(std::make_unique<ASTNode>(ASTNode::Kind::Expression, peek()));
                 expect(TokenType::IDENTIFIER);
                 if (peek().type == TokenType::COLON) {
@@ -528,6 +560,7 @@ std::unique_ptr<ASTNode> DeclarationParser::parse_template() {
         expect(TokenType::GT);
     }
     StatementParser stmt_parser(tokens_, pos_);
+    std::cout << "DEBUG: Parsing template body at line " << peek().line << std::endl;
     node->children.push_back(stmt_parser.parse_block());
     return node;
 }
@@ -559,11 +592,10 @@ std::unique_ptr<ASTNode> DeclarationParser::parse_function() {
     expect(TokenType::KEYWORD_FN);
     node->children.push_back(std::make_unique<ASTNode>(ASTNode::Kind::Expression, peek()));
     expect(TokenType::IDENTIFIER);
-    // Handle operator overloading (e.g., operator+)
     if (peek().type == TokenType::PLUS || peek().type == TokenType::MINUS ||
-        peek().type == TokenType::DIVIDE) {
-        node->children.back()->token = peek(); // Update function name to include operator
-        pos_++; // Consume operator token
+        peek().type == TokenType::DIVIDE || peek().type == TokenType::MULTIPLY) {
+        node->children.back()->token = peek();
+        pos_++;
     }
     expect(TokenType::LPAREN);
     while (peek().type != TokenType::RPAREN && peek().type != TokenType::EOF_TOKEN) {

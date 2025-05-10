@@ -2,6 +2,9 @@
 
 std::string token_type_to_string(TokenType type) {
     switch (type) {
+        case TokenType::EOF_TOKEN: return "EOF_TOKEN";
+        case TokenType::INDENT: return "INDENT";
+        case TokenType::DEDENT: return "DEDENT";
         case TokenType::KEYWORD_FN: return "KEYWORD_FN";
         case TokenType::KEYWORD_IF: return "KEYWORD_IF";
         case TokenType::KEYWORD_ELSE: return "KEYWORD_ELSE";
@@ -24,7 +27,9 @@ std::string token_type_to_string(TokenType type) {
         case TokenType::KEYWORD_MATCH: return "KEYWORD_MATCH";
         case TokenType::IDENTIFIER: return "IDENTIFIER";
         case TokenType::INT_LITERAL: return "INT_LITERAL";
+        case TokenType::FLOAT_LITERAL: return "FLOAT_LITERAL";
         case TokenType::STRING_LITERAL: return "STRING_LITERAL";
+        case TokenType::COMMENT: return "COMMENT";
         case TokenType::LBRACE: return "LBRACE";
         case TokenType::RBRACE: return "RBRACE";
         case TokenType::LPAREN: return "LPAREN";
@@ -37,23 +42,20 @@ std::string token_type_to_string(TokenType type) {
         case TokenType::COMMA: return "COMMA";
         case TokenType::EQ: return "EQ";
         case TokenType::EQEQ: return "EQEQ";
+        case TokenType::FAT_ARROW: return "FAT_ARROW";
         case TokenType::LT: return "LT";
         case TokenType::GT: return "GT";
         case TokenType::PLUS: return "PLUS";
         case TokenType::MINUS: return "MINUS";
         case TokenType::DIVIDE: return "DIVIDE";
-        case TokenType::DOT: return "DOT";
+        case TokenType::MULTIPLY: return "MULTIPLY";
         case TokenType::ARROW: return "ARROW";
+        case TokenType::DOT: return "DOT";
+        case TokenType::DOTDOT: return "DOTDOT";
+        case TokenType::AND: return "AND";
         case TokenType::AMPERSAND: return "AMPERSAND";
         case TokenType::BANG: return "BANG";
-        case TokenType::AND: return "AND";
-        case TokenType::FAT_ARROW: return "FAT_ARROW";
-        case TokenType::DOTDOT: return "DOTDOT";
         case TokenType::AT: return "AT";
-        case TokenType::COMMENT: return "COMMENT";
-        case TokenType::INDENT: return "INDENT";
-        case TokenType::DEDENT: return "DEDENT";
-        case TokenType::EOF_TOKEN: return "EOF_TOKEN";
         default: return "UNKNOWN";
     }
 }

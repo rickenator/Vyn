@@ -1,6 +1,7 @@
 #include "vyn/lexer.hpp"
 #include <stdexcept>
 #include <cctype>
+#include <iostream>
 
 Lexer::Lexer(const std::string& source) : source_(source), pos_(0), line_(1), column_(1), brace_depth_(0) {
     indent_stack_.push(0);
@@ -19,7 +20,7 @@ std::vector<Token> Lexer::tokenize() {
             was_newline = false;
             if (std::isalpha(c) || c == '_') {
                 tokens.push_back(read_identifier_or_keyword());
-            } else if (std::isdigit(c)) {
+            } else if (std::isdigit(c) || (c == '-' && pos_ + 1 < source_.size() && std::isdigit(source_[pos_ + 1]))) {
                 tokens.push_back(read_number());
             } else if (c == '"') {
                 tokens.push_back(read_string());
@@ -29,6 +30,9 @@ std::vector<Token> Lexer::tokenize() {
                 tokens.push_back(read_hash_comment());
             } else if (c == '/') {
                 tokens.push_back({TokenType::DIVIDE, "/", line_, column_++});
+                pos_++;
+            } else if (c == '*') {
+                tokens.push_back({TokenType::MULTIPLY, "*", line_, column_++});
                 pos_++;
             } else if (c == '{') {
                 tokens.push_back({TokenType::LBRACE, "{", line_, column_++});
@@ -130,7 +134,7 @@ std::vector<Token> Lexer::tokenize() {
                 tokens.push_back({TokenType::AT, "@", line_, column_++});
                 pos_++;
             } else {
-                throw std::runtime_error("Unexpected character at line " + std::to_string(line_) + ", column " + std::to_string(column_));
+                throw std::runtime_error("Unexpected character '" + std::string(1, c) + "' at line " + std::to_string(line_) + ", column " + std::to_string(column_));
             }
         }
     }
@@ -156,14 +160,16 @@ void Lexer::handle_whitespace(std::vector<Token>& tokens) {
         line_++;
         column_ = 1;
         pos_++;
+        std::cout << "DEBUG: Handling newline at line " << line_ << ", pos_ = " << pos_ << std::endl;
         int spaces = 0;
         size_t temp_pos = pos_;
         bool is_blank = false;
         while (temp_pos < source_.size() && source_[temp_pos] == '\n') {
+            line_++; // Increment line_ for each newline
             temp_pos++;
-            line_++;
-            column_ = 1;
+            std::cout << "DEBUG: Skipping additional newline at line " << line_ << ", pos_ = " << temp_pos << std::endl;
         }
+        pos_ = temp_pos; // Advance pos_ to skip all newlines
         while (temp_pos < source_.size() && source_[temp_pos] == ' ') {
             spaces++;
             temp_pos++;
@@ -228,18 +234,48 @@ Token Lexer::read_identifier_or_keyword() {
     if (value == "match") return {TokenType::KEYWORD_MATCH, value, line_, start_column};
     if (value == "operator") return {TokenType::IDENTIFIER, value, line_, start_column};
     if (value == "while") return {TokenType::IDENTIFIER, value, line_, start_column};
+    if (value == "throws") return {TokenType::IDENTIFIER, value, line_, start_column};
     return {TokenType::IDENTIFIER, value, line_, start_column};
 }
 
 Token Lexer::read_number() {
     std::string value;
     int start_column = column_;
+    bool is_float = false;
+    
+    // Handle optional minus sign
+    if (pos_ < source_.size() && source_[pos_] == '-') {
+        value += source_[pos_];
+        pos_++;
+        column_++;
+    }
+    
+    // Read integer part
     while (pos_ < source_.size() && std::isdigit(source_[pos_])) {
         value += source_[pos_];
         pos_++;
         column_++;
     }
-    return {TokenType::INT_LITERAL, value, line_, start_column};
+    
+    // Check for decimal point and fractional part
+    if (pos_ < source_.size() && source_[pos_] == '.' && 
+        pos_ + 1 < source_.size() && std::isdigit(source_[pos_ + 1])) {
+        is_float = true;
+        value += source_[pos_];
+        pos_++;
+        column_++;
+        while (pos_ < source_.size() && std::isdigit(source_[pos_])) {
+            value += source_[pos_];
+            pos_++;
+            column_++;
+        }
+    }
+    
+    if (value.empty() || (value == "-" && !is_float)) {
+        throw std::runtime_error("Invalid number at line " + std::to_string(line_) + ", column " + std::to_string(start_column));
+    }
+    
+    return {is_float ? TokenType::FLOAT_LITERAL : TokenType::INT_LITERAL, value, line_, start_column};
 }
 
 Token Lexer::read_string() {
@@ -267,6 +303,11 @@ Token Lexer::read_comment() {
         pos_++;
         column_++;
     }
+    if (pos_ < source_.size() && source_[pos_] == '\n') {
+        pos_++; // Consume newline
+        line_++; // Increment line
+        column_ = 1;
+    }
     return {TokenType::COMMENT, value, line_, start_column};
 }
 
@@ -278,6 +319,11 @@ Token Lexer::read_hash_comment() {
         value += source_[pos_];
         pos_++;
         column_++;
+    }
+    if (pos_ < source_.size() && source_[pos_] == '\n') {
+        pos_++; // Consume newline
+        line_++; // Increment line
+        column_ = 1;
     }
     return {TokenType::COMMENT, value, line_, start_column};
 }
