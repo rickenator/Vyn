@@ -9,6 +9,12 @@ find_package(Catch2 REQUIRED)
 add_executable(vyn_parser
     src/token.cpp
     src/lexer.cpp
+    src/base_parser.cpp
+    src/expression_parser.cpp
+    src/type_parser.cpp
+    src/statement_parser.cpp
+    src/declaration_parser.cpp
+    src/module_parser.cpp
     src/parser.cpp
     src/main.cpp
     src/tests.cpp

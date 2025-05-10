@@ -7,6 +7,10 @@
 #include <memory>
 #include <string>
 
+// Forward declarations to break circular dependencies
+class StatementParser;
+class TypeParser;
+
 class BaseParser {
 protected:
     const std::vector<Token>& tokens_;
