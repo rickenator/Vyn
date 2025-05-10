@@ -1,0 +1,36 @@
+import vyn::fs
+smuggle http::client
+
+class Vector
+  var x: Float
+  var y: Float
+  fn operator+(other: Vector) -> Vector
+    Vector { x: self.x + other.x, y: self.y + other.y }
+  fn new(x: Float, y: Float) -> Vector
+    Vector { x, y }
+
+async fn fetch_data(url: String) throws NetworkError -> String
+  const conn = http::client::connect(url)
+  const resp = await conn.get("/")
+  if resp.status != 200
+    throw NetworkError("Failed to fetch: " + resp.status.to_string())
+  resp.text()
+
+fn main()
+  try
+    var squares = [x * x for x in 0..10]
+    const v1 = Vector::new(1.0, 2.0)
+    const v2 = Vector::new(3.0, 4.0)
+    const sum = v1 + v2
+    println("Sum: x={}, y={}", sum.x, sum.y)
+    var f = fs::open("output.txt")
+    defer f.close()
+    f.write("Squares: " + squares.to_string())
+    const data = await fetch_data("https://api.example.com")
+    println("Fetched: {}", data)
+  catch (e: NetworkError)
+    println("Network error: {}", e.message)
+  catch (e: IOError)
+    println("IO error: {}", e.message)
+  finally
+    println("Cleanup complete")

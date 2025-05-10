@@ -8,21 +8,20 @@ template Comparable
 
 // B-tree template parameterized by key type K, value type V, and order M
 template BTree<K: Comparable, V, M: UInt>
-  // Node class for both internal and leaf nodes
   class Node {
-    var keys: [K; M-1];           // Up to M-1 keys
-    var values: [V; M-1];         // Values for leaf nodes
-    var children: [ref<Node>; M]; // Up to M child pointers (null for leaves)
-    var num_keys: UInt;           // Current number of keys
-    var is_leaf: Bool;            // True for leaf nodes, false for internal
+    var keys: [K; M-1]           // Up to M-1 keys
+    var values: [V; M-1]         // Values for leaf nodes
+    var children: [ref<Node>; M] // Up to M child pointers (null for leaves)
+    var num_keys: UInt           // Current number of keys
+    var is_leaf: Bool            // True for leaf nodes, false for internal
 
     fn new(is_leaf: Bool) -> Node {
       Node {
-        keys = [K; M-1]();
-        values = [V; M-1]();
-        children = [ref<Node>; M]();
-        num_keys = 0;
-        is_leaf = is_leaf;
+        keys = [K; M-1]()
+        values = [V; M-1]()
+        children = [ref<Node>; M]()
+        num_keys = 0
+        is_leaf = is_leaf
       }
     }
   }
@@ -32,87 +31,64 @@ template BTree<K: Comparable, V, M: UInt>
 
   // Initialize an empty B-tree
   fn new() -> BTree<K, V, M>
-    let root = ref<Node>::new(true)
+    const root = ref<Node>::new(true)
     BTree { root, size: 0 }
 
-  // Search for a key, return Option<V> (Some(value) if found, None if not)
-  fn search(&self, key: K) -> Option<V> {
-    search_node(self.root, key);
+  // Search for a key, return Maybe<V>
+  fn search(&self, key: K) -> Maybe<V> {
+    search_node(self.root, key)
   }
 
   // Helper: recursive search in a node
-  fn search_node(node: ref<Node>, key: K) -> Option<V>
+  fn search_node(node: ref<Node>, key: K) -> Maybe<V>
     if node.num_keys == 0
       return None
-    else {
-      let idx = find_key_index(node, key);
-      if idx < node.num_keys && node.keys[idx].eq(&key) {
-        // Key found in this node
-        if node.is_leaf {
-          return Some(node.values[idx]);
-        } else {
-          // Key exists but node is internal; recurse to child
-          return if node.children[idx].is_null() { None } else { search_node(node.children[idx], key) };
-        }
-      } else {
-        // Key not found; recurse to appropriate child if not leaf
-        if node.is_leaf {
-          return None;
-        }
-        let child_idx = if idx < node.num_keys { idx } else { idx - 1 };
-        return if node.children[child_idx].is_null() { None } else { search_node(node.children[child_idx], key) };
-      }
-    }
+    const idx = find_key_index(node, key)
+    if idx < node.num_keys && node.keys[idx].eq(&key)
+      if node.is_leaf
+        return Some(node.values[idx])
+      return if node.children[idx].is_null() { None } else { search_node(node.children[idx], key) }
+    if node.is_leaf
+      return None
+    const child_idx = if idx < node.num_keys { idx } else { idx - 1 }
+    return if node.children[child_idx].is_null() { None } else { search_node(node.children[child_idx], key) }
 
   // Insert a key-value pair
   fn insert(&mut self, key: K, value: V)
     scoped {
-      // Check if root is full
-      if self.root.num_keys == M-1 {
-        // Split root: create new root and redistribute
-        let new_root = ref<Node>::new(false);
-        new_root.children[0] = self.root;
-        split_node(new_root, 0);
-        self.root = new_root;
-      }
-      // Insert into non-full root
-      insert_non_full(self.root, key, value);
+      if self.root.num_keys == M-1
+        const new_root = ref<Node>::new(false)
+        new_root.children[0] = self.root
+        split_node(new_root, 0)
+        self.root = new_root
+      insert_non_full(self.root, key, value)
     }
     self.size += 1
 
   // Helper: insert into a non-full node
   fn insert_non_full(node: ref<Node>, key: K, value: V)
-    let idx = find_key_index(node, key)
-    if node.is_leaf {
-      // Shift keys and values to make room
-      for i in (idx..node.num_keys).rev() {
-        node.keys[i] = node.keys[i-1];
-        node.values[i] = node.values[i-1];
-      }
-      node.keys[idx] = key;
-      node.values[idx] = value;
-      node.num_keys += 1;
-    } else {
-      // Internal node: recurse to child
-      let child = node.children[idx];
-      if child.num_keys == M-1 {
-        // Child is full; split it
-        split_node(node, idx);
-        // Recompute index after split
-        let new_idx = find_key_index(node, key);
-        insert_non_full(node.children[new_idx], key, value);
-      } else {
-        insert_non_full(child, key, value);
-      }
-    }
+    const idx = find_key_index(node, key)
+    if node.is_leaf
+      for i in (idx..node.num_keys).rev()
+        node.keys[i] = node.keys[i-1]
+        node.values[i] = node.values[i-1]
+      node.keys[idx] = key
+      node.values[idx] = value
+      node.num_keys += 1
+    else
+      const child = node.children[idx]
+      if child.num_keys == M-1
+        split_node(node, idx)
+        const new_idx = find_key_index(node, key)
+        insert_non_full(node.children[new_idx], key, value)
+      else
+        insert_non_full(child, key, value)
 
   // Helper: split a full child node at index child_idx
   fn split_node(parent: ref<Node>, child_idx: UInt)
-    let full_child = parent.children[child_idx]
-    let mid = (M-1) / 2
-    // Create new sibling node
-    let sibling = ref<Node>::new(full_child.is_leaf)
-    // Move second half of keys/values/children to sibling
+    const full_child = parent.children[child_idx]
+    const mid = (M-1) / 2
+    const sibling = ref<Node>::new(full_child.is_leaf)
     for i in 0..(M-1-mid)
       sibling.keys[i] = full_child.keys[mid+1+i]
       sibling.values[i] = full_child.values[mid+1+i]
@@ -121,38 +97,19 @@ template BTree<K: Comparable, V, M: UInt>
       sibling.children[M-1-mid] = full_child.children[M]
     sibling.num_keys = M-1-mid
     full_child.num_keys = mid
-    // Shift parent's keys/children to make room
     for i in (child_idx+1..parent.num_keys+1).rev()
       parent.children[i] = parent.children[i-1]
     for i in (child_idx..parent.num_keys).rev()
       parent.keys[i] = parent.keys[i-1]
       parent.values[i] = parent.values[i-1]
-    // Promote middle key to parent
     parent.keys[child_idx] = full_child.keys[mid]
     parent.values[child_idx] = full_child.values[mid]
     parent.children[child_idx+1] = sibling
     parent.num_keys += 1
 
   // Helper: find the index where key should be inserted
-  fn find_key_index(node: ref<Node>, key: K) -> UInt {
-    let mut idx = 0;
-    while idx < node.num_keys && node.keys[idx].lt(&key) {
-      idx += 1;
-    }
+  fn find_key_index(node: ref<Node>, key: K) -> UInt
+    var idx = 0
+    while idx < node.num_keys && node.keys[idx].lt(&key)
+      idx += 1
     idx
-  }
-
-// Example usage
-fn main()
-  let mut tree = BTree<Int, String, 3>::new()
-  tree.insert(10, "ten")
-  tree.insert(20, "twenty")
-  tree.insert(5, "five")
-  tree.insert(15, "fifteen")
-  match tree.search(10)
-    Some(v) => println("Found: {}", v)
-    None => println("Not found")
-  match tree.search(99) {
-    Some(v) => println("Found: {}", v);
-    None => println("Not found");
-  }
