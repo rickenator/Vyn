@@ -1,29 +1,30 @@
-cmake_minimum_required(VERSION 3.16)
-project(vyn_parser LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.10)
+project(VynParser)
 
-# Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Find Catch2
-find_package(Catch2 3 REQUIRED)
-if(NOT Catch2_FOUND)
-    message(FATAL_ERROR "Catch2 not found. Please install Catch2 v3.8.1 (e.g., via vcpkg, apt, or brew).")
-endif()
+find_package(Catch2 REQUIRED)
 
-# Add include directories
-include_directories(${CMAKE_SOURCE_DIR}/src)
+add_executable(vyn_parser
+    src/token.cpp
+    src/lexer.cpp
+    src/parser.cpp
+    src/main.cpp
+    src/tests.cpp
+)
 
-# Add executable
-add_executable(vyn_parser src/vyn_parser.cpp)
+target_include_directories(vyn_parser PRIVATE include)
 
-# Link libraries
 target_link_libraries(vyn_parser PRIVATE Catch2::Catch2WithMain)
 
-# Enable testing
-enable_testing()
-add_test(NAME ParserTests COMMAND vyn_parser --test)
+target_sources(vyn_parser PRIVATE
+    ${CMAKE_SOURCE_DIR}/include/vyn/token.hpp
+    ${CMAKE_SOURCE_DIR}/include/vyn/ast.hpp
+    ${CMAKE_SOURCE_DIR}/include/vyn/lexer.hpp
+    ${CMAKE_SOURCE_DIR}/include/vyn/parser.hpp
+    ${CMAKE_SOURCE_DIR}/include/vyn/vyn.hpp
+)
 
-# Optional: Installation
-# install(TARGETS vyn_parser DESTINATION bin)
+# Add debug flags for tests.cpp
+set_source_files_properties(src/tests.cpp PROPERTIES COMPILE_FLAGS "-Wall -Wextra -DDEBUG_TESTS")
