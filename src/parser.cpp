@@ -2,7 +2,7 @@
 #include <stdexcept>
 #include <iostream>
 
-BaseParser::BaseParser(const std::vector<Token>& tokens) : tokens_(tokens), pos_(0) {}
+BaseParser::BaseParser(const std::vector<Token>& tokens, size_t& pos) : tokens_(tokens), pos_(pos), indent_levels_({0}) {}
 
 Token BaseParser::peek() const {
     return pos_ < tokens_.size() ? tokens_[pos_] : Token{TokenType::EOF_TOKEN, "", 0, 0};
@@ -18,21 +18,40 @@ void BaseParser::expect(TokenType type) {
 }
 
 void BaseParser::skip_comments() {
-    while (pos_ < tokens_.size() && tokens_[pos_].type == TokenType::COMMENT) pos_++;
+    while (pos_ < tokens_.size() && tokens_[pos_].type == TokenType::COMMENT) {
+        std::cout << "DEBUG: Skipping comment at line " << tokens_[pos_].line 
+                  << ", column " << tokens_[pos_].column << ", pos_ = " << pos_ << std::endl;
+        pos_++;
+    }
 }
 
 void BaseParser::skip_indents() {
-    while (pos_ < tokens_.size() && (tokens_[pos_].type == TokenType::INDENT || tokens_[pos_].type == TokenType::DEDENT)) pos_++;
+    while (pos_ < tokens_.size() && (tokens_[pos_].type == TokenType::INDENT || tokens_[pos_].type == TokenType::DEDENT)) {
+        if (tokens_[pos_].type == TokenType::INDENT) {
+            indent_levels_.push_back(indent_levels_.back() + 1);
+            std::cout << "DEBUG: Pushed indent level " << indent_levels_.back() << " at line " 
+                      << tokens_[pos_].line << ", column " << tokens_[pos_].column << std::endl;
+        } else if (tokens_[pos_].type == TokenType::DEDENT && indent_levels_.size() > 1) {
+            indent_levels_.pop_back();
+            std::cout << "DEBUG: Popped indent level to " << indent_levels_.back() << " at line " 
+                      << tokens_[pos_].line << ", column " << tokens_[pos_].column << std::endl;
+        }
+        pos_++;
+    }
 }
 
-ExpressionParser::ExpressionParser(const std::vector<Token>& tokens, size_t& pos) : BaseParser(tokens), shared_pos_(pos) {}
+ExpressionParser::ExpressionParser(const std::vector<Token>& tokens, size_t& pos) : BaseParser(tokens, pos) {}
 
 std::unique_ptr<ASTNode> ExpressionParser::parse() {
+    std::cout << "DEBUG: ExpressionParser::parse at token " << token_type_to_string(peek().type) 
+              << " at line " << peek().line << ", column " << peek().column 
+              << ", pos_ = " << pos_ << std::endl;
+    std::unique_ptr<ASTNode> node;
     if (peek().type == TokenType::KEYWORD_IF) {
-        auto node = std::make_unique<ASTNode>(ASTNode::Kind::Expression, peek());
+        node = std::make_unique<ASTNode>(ASTNode::Kind::Expression, peek());
         expect(TokenType::KEYWORD_IF);
         node->children.push_back(parse());
-        StatementParser stmt_parser(tokens_, shared_pos_);
+        StatementParser stmt_parser(tokens_, pos_);
         node->children.push_back(stmt_parser.parse_block());
         if (peek().type == TokenType::KEYWORD_ELSE) {
             expect(TokenType::KEYWORD_ELSE);
@@ -42,9 +61,8 @@ std::unique_ptr<ASTNode> ExpressionParser::parse() {
                 node->children.push_back(parse());
             }
         }
-        return node;
     } else if (peek().type == TokenType::LBRACKET) {
-        auto node = std::make_unique<ASTNode>(ASTNode::Kind::Expression);
+        node = std::make_unique<ASTNode>(ASTNode::Kind::Expression);
         expect(TokenType::LBRACKET);
         if (peek().type != TokenType::RBRACKET) {
             node->children.push_back(parse());
@@ -75,24 +93,27 @@ std::unique_ptr<ASTNode> ExpressionParser::parse() {
             }
         }
         expect(TokenType::RBRACKET);
-        return node;
-    }
-    auto node = parse_primary();
-    while (peek().type == TokenType::LT || peek().type == TokenType::GT ||
-           peek().type == TokenType::EQEQ || peek().type == TokenType::PLUS ||
-           peek().type == TokenType::MINUS || peek().type == TokenType::DIVIDE ||
-           peek().type == TokenType::AND) {
-        auto op_node = std::make_unique<ASTNode>(ASTNode::Kind::Expression, peek());
-        expect(peek().type);
-        op_node->children.push_back(std::move(node));
-        op_node->children.push_back(parse_primary());
-        node = std::move(op_node);
+    } else {
+        node = parse_primary();
+        while (peek().type == TokenType::LT || peek().type == TokenType::GT ||
+               peek().type == TokenType::EQEQ || peek().type == TokenType::PLUS ||
+               peek().type == TokenType::MINUS || peek().type == TokenType::DIVIDE ||
+               peek().type == TokenType::AND) {
+            auto op_node = std::make_unique<ASTNode>(ASTNode::Kind::Expression, peek());
+            expect(peek().type);
+            op_node->children.push_back(std::move(node));
+            op_node->children.push_back(parse_primary());
+            node = std::move(op_node);
+        }
     }
     return node;
 }
 
 std::unique_ptr<ASTNode> ExpressionParser::parse_primary() {
     auto node = std::make_unique<ASTNode>(ASTNode::Kind::Expression);
+    std::cout << "DEBUG: parse_primary at token " << token_type_to_string(peek().type) 
+              << " at line " << peek().line << ", column " << peek().column 
+              << ", pos_ = " << pos_ << std::endl;
     if (peek().type == TokenType::BANG) {
         node->token = peek();
         expect(TokenType::BANG);
@@ -138,7 +159,7 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_primary() {
             expect(TokenType::RBRACE);
         } else if (peek().type == TokenType::LT) {
             expect(TokenType::LT);
-            TypeParser type_parser(tokens_, shared_pos_);
+            TypeParser type_parser(tokens_, pos_);
             node->children.push_back(type_parser.parse());
             expect(TokenType::GT);
             if (peek().type == TokenType::COLONCOLON) {
@@ -163,7 +184,7 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_primary() {
         expect(TokenType::STRING_LITERAL);
     } else if (peek().type == TokenType::LBRACKET) {
         expect(TokenType::LBRACKET);
-        TypeParser type_parser(tokens_, shared_pos_);
+        TypeParser type_parser(tokens_, pos_);
         node->children.push_back(type_parser.parse());
         expect(TokenType::SEMICOLON);
         node->children.push_back(parse());
@@ -173,12 +194,15 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_primary() {
             expect(TokenType::RPAREN);
         }
     } else {
+        std::cout << "DEBUG: Unexpected token in parse_primary: " << token_type_to_string(peek().type) 
+                  << " at line " << peek().line << ", column " << peek().column 
+                  << ", pos_ = " << pos_ << std::endl;
         throw std::runtime_error("Expected primary expression at line " + std::to_string(peek().line) + ", column " + std::to_string(peek().column));
     }
     return node;
 }
 
-TypeParser::TypeParser(const std::vector<Token>& tokens, size_t& pos) : BaseParser(tokens), shared_pos_(pos) {}
+TypeParser::TypeParser(const std::vector<Token>& tokens, size_t& pos) : BaseParser(tokens, pos) {}
 
 std::unique_ptr<ASTNode> TypeParser::parse() {
     auto node = std::make_unique<ASTNode>(ASTNode::Kind::Type);
@@ -193,7 +217,7 @@ std::unique_ptr<ASTNode> TypeParser::parse() {
         node->children.push_back(parse());
         if (peek().type == TokenType::SEMICOLON) {
             expect(TokenType::SEMICOLON);
-            ExpressionParser expr_parser(tokens_, shared_pos_);
+            ExpressionParser expr_parser(tokens_, pos_);
             node->children.push_back(expr_parser.parse());
         }
         expect(TokenType::RBRACKET);
@@ -213,10 +237,10 @@ std::unique_ptr<ASTNode> TypeParser::parse() {
                 expect(TokenType::LBRACKET);
                 if (peek().type == TokenType::SEMICOLON) {
                     expect(TokenType::SEMICOLON);
-                    ExpressionParser expr_parser(tokens_, shared_pos_);
+                    ExpressionParser expr_parser(tokens_, pos_);
                     node->children.push_back(expr_parser.parse());
                 } else if (peek().type == TokenType::INT_LITERAL || peek().type == TokenType::IDENTIFIER) {
-                    ExpressionParser expr_parser(tokens_, shared_pos_);
+                    ExpressionParser expr_parser(tokens_, pos_);
                     node->children.push_back(expr_parser.parse());
                 }
                 expect(TokenType::RBRACKET);
@@ -233,23 +257,29 @@ std::unique_ptr<ASTNode> TypeParser::parse() {
     return node;
 }
 
-StatementParser::StatementParser(const std::vector<Token>& tokens, size_t& pos) : BaseParser(tokens), shared_pos_(pos) {}
+StatementParser::StatementParser(const std::vector<Token>& tokens, size_t& pos) : BaseParser(tokens, pos) {}
 
 std::unique_ptr<ASTNode> StatementParser::parse() {
     skip_comments();
     auto node = std::make_unique<ASTNode>(ASTNode::Kind::Statement);
-    if (peek().type == TokenType::KEYWORD_CONST) {
+    std::cout << "DEBUG: StatementParser::parse at token " << token_type_to_string(peek().type) 
+              << " at line " << peek().line << ", column " << peek().column 
+              << ", pos_ = " << pos_ << ", indent_level = " << indent_levels_.back() << std::endl;
+    if (peek().type == TokenType::INDENT) {
+        std::cout << "DEBUG: Handling INDENT in StatementParser::parse, delegating to parse_block" << std::endl;
+        return parse_block();
+    } else if (peek().type == TokenType::KEYWORD_CONST) {
         node->token = peek();
         expect(TokenType::KEYWORD_CONST);
         node->children.push_back(std::make_unique<ASTNode>(ASTNode::Kind::Expression, peek()));
         expect(TokenType::IDENTIFIER);
         if (peek().type == TokenType::COLON) {
             expect(TokenType::COLON);
-            TypeParser type_parser(tokens_, shared_pos_);
+            TypeParser type_parser(tokens_, pos_);
             node->children.push_back(type_parser.parse());
         }
         expect(TokenType::EQ);
-        ExpressionParser expr_parser(tokens_, shared_pos_);
+        ExpressionParser expr_parser(tokens_, pos_);
         node->children.push_back(expr_parser.parse());
         if (peek().type == TokenType::SEMICOLON) expect(TokenType::SEMICOLON);
     } else if (peek().type == TokenType::KEYWORD_VAR) {
@@ -259,19 +289,19 @@ std::unique_ptr<ASTNode> StatementParser::parse() {
         expect(TokenType::IDENTIFIER);
         if (peek().type == TokenType::COLON) {
             expect(TokenType::COLON);
-            TypeParser type_parser(tokens_, shared_pos_);
+            TypeParser type_parser(tokens_, pos_);
             node->children.push_back(type_parser.parse());
         }
         if (peek().type == TokenType::EQ) {
             expect(TokenType::EQ);
-            ExpressionParser expr_parser(tokens_, shared_pos_);
+            ExpressionParser expr_parser(tokens_, pos_);
             node->children.push_back(expr_parser.parse());
         }
         if (peek().type == TokenType::SEMICOLON) expect(TokenType::SEMICOLON);
     } else if (peek().type == TokenType::KEYWORD_IF) {
         node->token = peek();
         expect(TokenType::KEYWORD_IF);
-        ExpressionParser expr_parser(tokens_, shared_pos_);
+        ExpressionParser expr_parser(tokens_, pos_);
         node->children.push_back(expr_parser.parse());
         node->children.push_back(parse_block());
         if (peek().type == TokenType::KEYWORD_ELSE) {
@@ -284,21 +314,27 @@ std::unique_ptr<ASTNode> StatementParser::parse() {
         node->children.push_back(std::make_unique<ASTNode>(ASTNode::Kind::Expression, peek()));
         expect(TokenType::IDENTIFIER);
         expect(TokenType::KEYWORD_IN);
-        ExpressionParser expr_parser(tokens_, shared_pos_);
+        ExpressionParser expr_parser(tokens_, pos_);
         node->children.push_back(expr_parser.parse());
         node->children.push_back(parse_block());
     } else if (peek().type == TokenType::KEYWORD_RETURN) {
         node->token = peek();
         expect(TokenType::KEYWORD_RETURN);
         if (peek().type != TokenType::SEMICOLON && peek().type != TokenType::DEDENT && peek().type != TokenType::RBRACE) {
-            ExpressionParser expr_parser(tokens_, shared_pos_);
+            ExpressionParser expr_parser(tokens_, pos_);
             node->children.push_back(expr_parser.parse());
         }
         if (peek().type == TokenType::SEMICOLON) expect(TokenType::SEMICOLON);
     } else if (peek().type == TokenType::KEYWORD_DEFER) {
         node->token = peek();
         expect(TokenType::KEYWORD_DEFER);
-        ExpressionParser expr_parser(tokens_, shared_pos_);
+        ExpressionParser expr_parser(tokens_, pos_);
+        node->children.push_back(expr_parser.parse());
+        if (peek().type == TokenType::SEMICOLON) expect(TokenType::SEMICOLON);
+    } else if (peek().type == TokenType::KEYWORD_AWAIT) {
+        node->token = peek();
+        expect(TokenType::KEYWORD_AWAIT);
+        ExpressionParser expr_parser(tokens_, pos_);
         node->children.push_back(expr_parser.parse());
         if (peek().type == TokenType::SEMICOLON) expect(TokenType::SEMICOLON);
     } else if (peek().type == TokenType::KEYWORD_TRY) {
@@ -312,7 +348,7 @@ std::unique_ptr<ASTNode> StatementParser::parse() {
             catch_node->children.push_back(std::make_unique<ASTNode>(ASTNode::Kind::Expression, peek()));
             expect(TokenType::IDENTIFIER);
             expect(TokenType::COLON);
-            TypeParser type_parser(tokens_, shared_pos_);
+            TypeParser type_parser(tokens_, pos_);
             catch_node->children.push_back(type_parser.parse());
             expect(TokenType::RPAREN);
             catch_node->children.push_back(parse_block());
@@ -324,32 +360,88 @@ std::unique_ptr<ASTNode> StatementParser::parse() {
         }
     } else if (peek().type == TokenType::KEYWORD_MATCH) {
         parse_match(node);
-    } else {
-        ExpressionParser expr_parser(tokens_, shared_pos_);
+    } else if (peek().type == TokenType::KEYWORD_IMPORT || peek().type == TokenType::KEYWORD_SMUGGLE) {
+        node->token = peek();
+        expect(peek().type);
+        node->children.push_back(std::make_unique<ASTNode>(ASTNode::Kind::Expression, peek()));
+        expect(TokenType::IDENTIFIER);
+        while (peek().type == TokenType::COLONCOLON) {
+            expect(TokenType::COLONCOLON);
+            node->children.push_back(std::make_unique<ASTNode>(ASTNode::Kind::Expression, peek()));
+            expect(TokenType::IDENTIFIER);
+        }
+        if (peek().type == TokenType::SEMICOLON) expect(TokenType::SEMICOLON);
+    } else if (peek().type == TokenType::IDENTIFIER || peek().type == TokenType::INT_LITERAL ||
+               peek().type == TokenType::STRING_LITERAL) {
+        ExpressionParser expr_parser(tokens_, pos_);
         node->children.push_back(expr_parser.parse());
         if (peek().type == TokenType::SEMICOLON) expect(TokenType::SEMICOLON);
+    } else {
+        std::cout << "DEBUG: Unexpected token in StatementParser::parse: " 
+                  << token_type_to_string(peek().type) << " at line " << peek().line 
+                  << ", column " << peek().column << ", pos_ = " << pos_ << std::endl;
+        throw std::runtime_error("Unexpected statement token at line " + 
+                                std::to_string(peek().line) + ", column " + 
+                                std::to_string(peek().column));
     }
     return node;
 }
 
 std::unique_ptr<ASTNode> StatementParser::parse_block() {
     auto node = std::make_unique<ASTNode>(ASTNode::Kind::Statement);
+    std::cout << "DEBUG: parse_block at token " << token_type_to_string(peek().type) 
+              << " at line " << peek().line << ", column " << peek().column 
+              << ", pos_ = " << pos_ << ", indent_level = " << indent_levels_.back() << std::endl;
     if (peek().type == TokenType::LBRACE) {
+        indent_levels_.push_back(indent_levels_.back() + 1);
+        std::cout << "DEBUG: Pushed brace level " << indent_levels_.back() << " at line " 
+                  << peek().line << ", column " << peek().column << std::endl;
         expect(TokenType::LBRACE);
         while (peek().type != TokenType::RBRACE && peek().type != TokenType::EOF_TOKEN) {
             skip_comments();
-            node->children.push_back(parse());
+            if (peek().type == TokenType::KEYWORD_FN) {
+                DeclarationParser decl_parser(tokens_, pos_);
+                node->children.push_back(decl_parser.parse_function());
+            } else {
+                node->children.push_back(parse());
+            }
         }
         expect(TokenType::RBRACE);
-    } else {
-        if (peek().type == TokenType::INDENT) expect(TokenType::INDENT);
+        indent_levels_.pop_back();
+        std::cout << "DEBUG: Popped brace level to " << indent_levels_.back() << " at line " 
+                  << peek().line << ", column " << peek().column << std::endl;
+    } else if (peek().type == TokenType::INDENT) {
+        expect(TokenType::INDENT);
+        indent_levels_.push_back(indent_levels_.back() + 1);
+        std::cout << "DEBUG: Consumed INDENT at line " << tokens_[pos_ - 1].line 
+                  << ", column " << tokens_[pos_ - 1].column << ", pushed indent level " 
+                  << indent_levels_.back() << ", pos_ = " << pos_ << std::endl;
         while (peek().type != TokenType::DEDENT && peek().type != TokenType::EOF_TOKEN &&
                peek().type != TokenType::KEYWORD_ELSE && peek().type != TokenType::KEYWORD_CATCH &&
                peek().type != TokenType::KEYWORD_FINALLY) {
             skip_comments();
-            node->children.push_back(parse());
+            if (peek().type == TokenType::KEYWORD_FN) {
+                DeclarationParser decl_parser(tokens_, pos_);
+                node->children.push_back(decl_parser.parse_function());
+            } else {
+                node->children.push_back(parse());
+            }
         }
-        if (peek().type == TokenType::DEDENT) expect(TokenType::DEDENT);
+        if (peek().type == TokenType::DEDENT) {
+            expect(TokenType::DEDENT);
+            indent_levels_.pop_back();
+            std::cout << "DEBUG: Consumed DEDENT at line " << tokens_[pos_ - 1].line 
+                      << ", column " << tokens_[pos_ - 1].column << ", popped indent level to " 
+                      << indent_levels_.back() << ", pos_ = " << pos_ << std::endl;
+        }
+    } else if (peek().type == TokenType::DEDENT || peek().type == TokenType::EOF_TOKEN) {
+        // Handle empty block
+        std::cout << "DEBUG: Empty block detected at token " << token_type_to_string(peek().type) 
+                  << " at line " << peek().line << ", column " << peek().column 
+                  << ", pos_ = " << pos_ << ", indent_level = " << indent_levels_.back() << std::endl;
+        return node; // Return empty block node
+    } else {
+        node->children.push_back(parse());
     }
     return node;
 }
@@ -357,9 +449,12 @@ std::unique_ptr<ASTNode> StatementParser::parse_block() {
 void StatementParser::parse_match(std::unique_ptr<ASTNode>& node) {
     node->token = peek();
     expect(TokenType::KEYWORD_MATCH);
-    ExpressionParser expr_parser(tokens_, shared_pos_);
+    ExpressionParser expr_parser(tokens_, pos_);
     node->children.push_back(expr_parser.parse());
     if (peek().type == TokenType::LBRACE) {
+        indent_levels_.push_back(indent_levels_.back() + 1);
+        std::cout << "DEBUG: Pushed brace level " << indent_levels_.back() << " at line " 
+                  << peek().line << ", column " << peek().column << std::endl;
         expect(TokenType::LBRACE);
         while (peek().type != TokenType::RBRACE && peek().type != TokenType::EOF_TOKEN) {
             auto arm_node = std::make_unique<ASTNode>(ASTNode::Kind::Statement);
@@ -370,8 +465,14 @@ void StatementParser::parse_match(std::unique_ptr<ASTNode>& node) {
             if (peek().type == TokenType::COMMA || peek().type == TokenType::SEMICOLON) expect(peek().type);
         }
         expect(TokenType::RBRACE);
-    } else {
-        if (peek().type == TokenType::INDENT) expect(TokenType::INDENT);
+        indent_levels_.pop_back();
+        std::cout << "DEBUG: Popped brace level to " << indent_levels_.back() << " at line " 
+                  << peek().line << ", column " << peek().column << std::endl;
+    } else if (peek().type == TokenType::INDENT) {
+        expect(TokenType::INDENT);
+        indent_levels_.push_back(indent_levels_.back() + 1);
+        std::cout << "DEBUG: Pushed indent level " << indent_levels_.back() << " at line " 
+                  << peek().line << ", column " << peek().column << std::endl;
         while (peek().type != TokenType::DEDENT && peek().type != TokenType::EOF_TOKEN) {
             auto arm_node = std::make_unique<ASTNode>(ASTNode::Kind::Statement);
             parse_pattern(arm_node);
@@ -380,7 +481,12 @@ void StatementParser::parse_match(std::unique_ptr<ASTNode>& node) {
             node->children.push_back(std::move(arm_node));
             if (peek().type == TokenType::COMMA || peek().type == TokenType::SEMICOLON) expect(peek().type);
         }
-        if (peek().type == TokenType::DEDENT) expect(TokenType::DEDENT);
+        if (peek().type == TokenType::DEDENT) {
+            expect(TokenType::DEDENT);
+            indent_levels_.pop_back();
+            std::cout << "DEBUG: Popped indent level to " << indent_levels_.back() << " at line " 
+                      << peek().line << ", column " << peek().column << std::endl;
+        }
     }
 }
 
@@ -395,7 +501,7 @@ void StatementParser::parse_pattern(std::unique_ptr<ASTNode>& node) {
     }
 }
 
-DeclarationParser::DeclarationParser(const std::vector<Token>& tokens, size_t& pos) : BaseParser(tokens), shared_pos_(pos) {}
+DeclarationParser::DeclarationParser(const std::vector<Token>& tokens, size_t& pos) : BaseParser(tokens, pos) {}
 
 std::unique_ptr<ASTNode> DeclarationParser::parse_template() {
     auto node = std::make_unique<ASTNode>(ASTNode::Kind::Template);
@@ -421,7 +527,7 @@ std::unique_ptr<ASTNode> DeclarationParser::parse_template() {
         }
         expect(TokenType::GT);
     }
-    StatementParser stmt_parser(tokens_, shared_pos_);
+    StatementParser stmt_parser(tokens_, pos_);
     node->children.push_back(stmt_parser.parse_block());
     return node;
 }
@@ -431,13 +537,16 @@ std::unique_ptr<ASTNode> DeclarationParser::parse_class() {
     expect(TokenType::KEYWORD_CLASS);
     node->children.push_back(std::make_unique<ASTNode>(ASTNode::Kind::Expression, peek()));
     expect(TokenType::IDENTIFIER);
-    StatementParser stmt_parser(tokens_, shared_pos_);
+    StatementParser stmt_parser(tokens_, pos_);
     node->children.push_back(stmt_parser.parse_block());
     return node;
 }
 
 std::unique_ptr<ASTNode> DeclarationParser::parse_function() {
     auto node = std::make_unique<ASTNode>(ASTNode::Kind::Function);
+    std::cout << "DEBUG: Entering parse_function at token " << token_type_to_string(peek().type) 
+              << " at line " << peek().line << ", column " << peek().column 
+              << ", pos_ = " << pos_ << ", indent_level = " << indent_levels_.back() << std::endl;
     while (peek().type == TokenType::AT) {
         expect(TokenType::AT);
         node->children.push_back(std::make_unique<ASTNode>(ASTNode::Kind::Expression, peek()));
@@ -450,6 +559,12 @@ std::unique_ptr<ASTNode> DeclarationParser::parse_function() {
     expect(TokenType::KEYWORD_FN);
     node->children.push_back(std::make_unique<ASTNode>(ASTNode::Kind::Expression, peek()));
     expect(TokenType::IDENTIFIER);
+    // Handle operator overloading (e.g., operator+)
+    if (peek().type == TokenType::PLUS || peek().type == TokenType::MINUS ||
+        peek().type == TokenType::DIVIDE) {
+        node->children.back()->token = peek(); // Update function name to include operator
+        pos_++; // Consume operator token
+    }
     expect(TokenType::LPAREN);
     while (peek().type != TokenType::RPAREN && peek().type != TokenType::EOF_TOKEN) {
         if (peek().type == TokenType::AMPERSAND) {
@@ -460,7 +575,7 @@ std::unique_ptr<ASTNode> DeclarationParser::parse_function() {
         expect(TokenType::IDENTIFIER);
         if (peek().type == TokenType::COLON) {
             expect(TokenType::COLON);
-            TypeParser type_parser(tokens_, shared_pos_);
+            TypeParser type_parser(tokens_, pos_);
             node->children.push_back(type_parser.parse());
         }
         if (peek().type == TokenType::COMMA) expect(TokenType::COMMA);
@@ -468,17 +583,23 @@ std::unique_ptr<ASTNode> DeclarationParser::parse_function() {
     expect(TokenType::RPAREN);
     if (peek().type == TokenType::ARROW) {
         expect(TokenType::ARROW);
-        TypeParser type_parser(tokens_, shared_pos_);
+        TypeParser type_parser(tokens_, pos_);
         node->children.push_back(type_parser.parse());
     }
     if (peek().type == TokenType::LBRACE || peek().type == TokenType::INDENT) {
-        StatementParser stmt_parser(tokens_, shared_pos_);
+        std::cout << "DEBUG: Parsing function body at token " << token_type_to_string(peek().type) 
+                  << " at line " << peek().line << ", column " << peek().column 
+                  << ", pos_ = " << pos_ << ", indent_level = " << indent_levels_.back() << std::endl;
+        StatementParser stmt_parser(tokens_, pos_);
         node->children.push_back(stmt_parser.parse_block());
     }
+    std::cout << "DEBUG: Exiting parse_function, next token " << token_type_to_string(peek().type) 
+              << " at line " << peek().line << ", column " << peek().column 
+              << ", pos_ = " << pos_ << ", indent_level = " << indent_levels_.back() << std::endl;
     return node;
 }
 
-ModuleParser::ModuleParser(const std::vector<Token>& tokens) : BaseParser(tokens) {}
+ModuleParser::ModuleParser(const std::vector<Token>& tokens, size_t& pos) : BaseParser(tokens, pos) {}
 
 std::unique_ptr<ASTNode> ModuleParser::parse() {
     auto node = std::make_unique<ASTNode>(ASTNode::Kind::Module);
@@ -487,19 +608,11 @@ std::unique_ptr<ASTNode> ModuleParser::parse() {
         skip_indents();
         if (peek().type == TokenType::EOF_TOKEN) break;
         std::cout << "DEBUG: Processing token " << token_type_to_string(peek().type) 
-                  << " at line " << peek().line << ", column " << peek().column << std::endl;
+                  << " at line " << peek().line << ", column " << peek().column 
+                  << ", pos_ = " << pos_ << ", indent_level = " << indent_levels_.back() << std::endl;
         if (peek().type == TokenType::KEYWORD_IMPORT || peek().type == TokenType::KEYWORD_SMUGGLE) {
-            auto import_node = std::make_unique<ASTNode>(ASTNode::Kind::Statement, peek());
-            expect(peek().type);
-            import_node->children.push_back(std::make_unique<ASTNode>(ASTNode::Kind::Expression, peek()));
-            expect(TokenType::IDENTIFIER);
-            while (peek().type == TokenType::COLONCOLON) {
-                expect(TokenType::COLONCOLON);
-                import_node->children.push_back(std::make_unique<ASTNode>(ASTNode::Kind::Expression, peek()));
-                expect(TokenType::IDENTIFIER);
-            }
-            if (peek().type == TokenType::SEMICOLON) expect(TokenType::SEMICOLON);
-            node->children.push_back(std::move(import_node));
+            StatementParser stmt_parser(tokens_, pos_);
+            node->children.push_back(stmt_parser.parse());
         } else if (peek().type == TokenType::KEYWORD_TEMPLATE) {
             DeclarationParser decl_parser(tokens_, pos_);
             node->children.push_back(decl_parser.parse_template());
@@ -512,11 +625,16 @@ std::unique_ptr<ASTNode> ModuleParser::parse() {
         } else if (peek().type == TokenType::KEYWORD_VAR || peek().type == TokenType::KEYWORD_CONST) {
             StatementParser stmt_parser(tokens_, pos_);
             node->children.push_back(stmt_parser.parse());
+        } else if (peek().type == TokenType::INDENT) {
+            std::cout << "DEBUG: Handling INDENT token at line " << peek().line 
+                      << ", column " << peek().column << ", pos_ = " << pos_ << std::endl;
+            StatementParser stmt_parser(tokens_, pos_);
+            node->children.push_back(stmt_parser.parse_block());
         } else {
             std::cout << "DEBUG: Skipping unexpected token " << token_type_to_string(peek().type) 
-                      << " at line " << peek().line << ", column " << peek().column << std::endl;
+                      << " at line " << peek().line << ", column " << peek().column 
+                      << ", pos_ = " << pos_ << std::endl;
             pos_++;
-            continue;
         }
     }
     return node;

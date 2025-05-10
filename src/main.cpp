@@ -1,60 +1,89 @@
 #include "vyn/vyn.hpp"
-#include <catch2/catch_session.hpp> // Include Catch2 for test runner
-#include <iostream>
+#include <catch2/catch_session.hpp>
 #include <fstream>
+#include <iostream>
 #include <sstream>
+#include <vector>
+#include <string>
 
-void print_tokens(const std::vector<Token>& tokens) {
-    for (const auto& token : tokens) {
-        std::cout << "Token(type: " << token_type_to_string(token.type) << ", value: \"" << token.value
-                  << "\", line: " << token.line << ", column " << token.column << ")\n";
+int main(int argc, char** argv) {
+    std::cout << "./vyn_parser: Version: 0.2.8\n" << std::endl;
+
+    bool run_tests = false;
+    bool show_success = false;
+    std::string filename;
+
+    // Parse command-line arguments
+    std::vector<std::string> catch_args = {"vyn_parser"}; // Program name as argv[0]
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--test") {
+            run_tests = true;
+            // Skip adding --test to catch_args
+        } else if (arg == "--success") {
+            show_success = true;
+            catch_args.push_back("-s"); // Map --success to Catch2's -s (show successes)
+        } else if (arg[0] != '-') {
+            filename = arg;
+        } else {
+            catch_args.push_back(arg); // Pass other args to Catch2 (e.g., test filters)
+        }
     }
-}
 
-int main(int argc, char* argv[]) {
-    std::cout << argv[0] << ": Version: 0.2.7\n" << std::endl;
+    if (run_tests) {
+        // Convert string vector to char* array for Catch2
+        std::vector<char*> catch_argv;
+        for (auto& arg : catch_args) {
+            catch_argv.push_back(const_cast<char*>(arg.c_str()));
+        }
 
-    if (argc >= 2 && std::string(argv[1]) == "--test") {
+        // Run Catch2 tests
+        std::cout << "Running tests...\n";
         Catch::Session session;
-        int test_argc = 1;
-        char* test_argv[] = { argv[0], nullptr };
-        if (argc > 2) {
-            test_argc = argc - 1;
-            test_argv[0] = argv[0];
-            for (int i = 2; i < argc; ++i) test_argv[i - 1] = argv[i];
-            test_argv[test_argc] = nullptr;
-        }
-        return session.run(test_argc, test_argv);
+        int result = session.run(catch_argv.size(), catch_argv.data());
+        return result;
     }
 
-    std::string source;
-    if (argc == 2) {
-        std::ifstream file(argv[1]);
-        if (!file.is_open()) {
-            std::cerr << "Error: Could not open file " << argv[1] << std::endl;
-            return 1;
-        }
-        std::stringstream buffer;
-        buffer << file.rdbuf();
-        source = buffer.str();
-        file.close();
-    } else {
-        std::stringstream buffer;
-        buffer << std::cin.rdbuf();
-        source = buffer.str();
-    }
-
-    try {
-        Lexer lexer(source);
-        auto tokens = lexer.tokenize();
-        std::cout << "Tokens:\n";
-        print_tokens(tokens);
-        ModuleParser parser(tokens);
-        auto ast = parser.parse();
-        std::cout << "Parsing successful. AST generated.\n";
-    } catch (const std::runtime_error& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+    if (filename.empty()) {
+        std::cerr << "Error: No input file specified.\n";
         return 1;
+    }
+
+    // Read input file
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Error: Could not open file " << filename << ".\n";
+        return 1;
+    }
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string source = buffer.str();
+
+    // Tokenize
+    Lexer lexer(source);
+    std::vector<Token> tokens;
+    try {
+        tokens = lexer.tokenize();
+    } catch (const std::runtime_error& e) {
+        std::cerr << "Lexing error: " << e.what() << "\n";
+        return 1;
+    }
+
+    // Parse
+    size_t pos = 0;
+    ModuleParser parser(tokens, pos);
+    std::unique_ptr<ASTNode> ast;
+    try {
+        ast = parser.parse();
+    } catch (const std::runtime_error& e) {
+        std::cerr << "Parsing error: " << e.what() << "\n";
+        return 1;
+    }
+
+    // Print success if requested
+    if (show_success) {
+        std::cout << "Parsing successful.\n";
     }
 
     return 0;

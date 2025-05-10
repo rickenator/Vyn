@@ -8,14 +8,15 @@
 
 class BaseParser {
 protected:
-    BaseParser(const std::vector<Token>& tokens);
+    BaseParser(const std::vector<Token>& tokens, size_t& pos);
     Token peek() const;
     void expect(TokenType type);
     void skip_comments();
     void skip_indents();
 
-    std::vector<Token> tokens_;
-    size_t pos_;
+    const std::vector<Token>& tokens_;
+    size_t& pos_;
+    std::vector<int> indent_levels_; // Stack to track indentation levels
 };
 
 class ExpressionParser : public BaseParser {
@@ -25,16 +26,12 @@ public:
 
 private:
     std::unique_ptr<ASTNode> parse_primary();
-    size_t& shared_pos_;
 };
 
 class TypeParser : public BaseParser {
 public:
     TypeParser(const std::vector<Token>& tokens, size_t& pos);
     std::unique_ptr<ASTNode> parse();
-
-private:
-    size_t& shared_pos_;
 };
 
 class StatementParser : public BaseParser {
@@ -46,7 +43,6 @@ public:
 private:
     void parse_match(std::unique_ptr<ASTNode>& node);
     void parse_pattern(std::unique_ptr<ASTNode>& node);
-    size_t& shared_pos_;
 };
 
 class DeclarationParser : public BaseParser {
@@ -55,14 +51,11 @@ public:
     std::unique_ptr<ASTNode> parse_template();
     std::unique_ptr<ASTNode> parse_class();
     std::unique_ptr<ASTNode> parse_function();
-
-private:
-    size_t& shared_pos_;
 };
 
 class ModuleParser : public BaseParser {
 public:
-    ModuleParser(const std::vector<Token>& tokens);
+    ModuleParser(const std::vector<Token>& tokens, size_t& pos);
     std::unique_ptr<ASTNode> parse();
 };
 

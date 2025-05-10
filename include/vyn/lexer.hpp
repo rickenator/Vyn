@@ -17,6 +17,7 @@ private:
     Token read_number();
     Token read_string();
     Token read_comment();
+    Token read_hash_comment();
 
     std::string source_;
     size_t pos_;

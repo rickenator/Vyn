@@ -25,6 +25,8 @@ std::vector<Token> Lexer::tokenize() {
                 tokens.push_back(read_string());
             } else if (c == '/' && pos_ + 1 < source_.size() && source_[pos_ + 1] == '/') {
                 tokens.push_back(read_comment());
+            } else if (c == '#') {
+                tokens.push_back(read_hash_comment());
             } else if (c == '/') {
                 tokens.push_back({TokenType::DIVIDE, "/", line_, column_++});
                 pos_++;
@@ -260,6 +262,18 @@ Token Lexer::read_comment() {
     std::string value;
     int start_column = column_;
     pos_ += 2; column_ += 2; // Skip //
+    while (pos_ < source_.size() && source_[pos_] != '\n') {
+        value += source_[pos_];
+        pos_++;
+        column_++;
+    }
+    return {TokenType::COMMENT, value, line_, start_column};
+}
+
+Token Lexer::read_hash_comment() {
+    std::string value;
+    int start_column = column_;
+    pos_++; column_++; // Skip #
     while (pos_ < source_.size() && source_[pos_] != '\n') {
         value += source_[pos_];
         pos_++;
