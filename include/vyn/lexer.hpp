@@ -3,28 +3,28 @@
 
 #include <string>
 #include <vector>
-#include <stack>
-#include "token.hpp"
+#include <functional>
+#include <unordered_map>
+#include "token.hpp" // Added include for token.hpp
 
 class Lexer {
 public:
-    Lexer(const std::string& source);
-    std::vector<Token> tokenize();
+  explicit Lexer(const std::string& source);
+  std::vector<Token> tokenize();
 
 private:
-    void handle_whitespace(std::vector<Token>& tokens);
-    Token read_identifier_or_keyword();
-    Token read_number();
-    Token read_string();
-    Token read_comment();
-    Token read_hash_comment();
+  std::string consume_while(std::function<bool(char)> pred);
+  bool is_letter(char c);
+  bool is_digit(char c);
+  TokenType get_keyword_type(const std::string& word);
+  std::string token_type_to_string(TokenType type);
+  void handle_newline(std::vector<Token>& tokens);
 
-    std::string source_;
-    size_t pos_;
-    int line_;
-    int column_;
-    int brace_depth_;
-    std::stack<int> indent_stack_;
+  std::string source_;
+  size_t pos_;
+  int line_;
+  int column_;
+  std::vector<int> indent_levels_;
 };
 
-#endif // VYN_LEXER_HPP
+#endif

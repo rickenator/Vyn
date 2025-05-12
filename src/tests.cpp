@@ -116,7 +116,7 @@ TEST_CASE("Parser handles async/await", "[parser]") {
 }
 
 TEST_CASE("Parser handles list comprehension", "[parser]") {
-    std::string source = "[x for x in 1..10]";
+    std::string source = "[x * x for x in 0..10]";
     Lexer lexer(source);
     auto tokens = lexer.tokenize();
     size_t pos = 0;
@@ -154,4 +154,246 @@ TEST_CASE("Parser handles array type with expression size", "[parser]") {
     size_t pos = 0;
     ModuleParser parser(tokens, pos);
     REQUIRE_NOTHROW(parser.parse());
+}
+
+TEST_CASE("Parser handles full btree.vyn", "[parser]") {
+    std::string source = R"(
+        template Comparable
+            fn lt(&self, other: &Self) -> Bool
+            fn eq(&self, other: &Self) -> Bool
+        template BTree<K: Comparable, V, M: UInt>
+            class Node {
+                var keys: [K; M-1]
+                var values: [V; M-1]
+                var children: [ref<Node>; M]
+                var num_keys: UInt
+                var is_leaf: Bool
+                fn new(is_leaf: Bool) -> Node {
+                    Node { keys = [K; M-1](), values = [V; M-1](), children = [ref<Node>; M](), num_keys = 0, is_leaf = is_leaf }
+                }
+            }
+            fn search(&self, key: K) -> Maybe<V> {
+                search_node(self.root, key)
+            }
+    )";
+    Lexer lexer(source);
+    auto tokens = lexer.tokenize();
+    size_t pos = 0;
+    ModuleParser parser(tokens, pos);
+    REQUIRE_NOTHROW(parser.parse());
+}
+
+TEST_CASE("Parser handles dot access in expression", "[parser]") {
+    std::string source = "fn test() { if x.y < 5 { } }";
+    Lexer lexer(source);
+    auto tokens = lexer.tokenize();
+    size_t pos = 0;
+    ModuleParser parser(tokens, pos);
+    REQUIRE_NOTHROW(parser.parse());
+}
+
+TEST_CASE("Parser handles VarDecl with generic type", "[parser]") {
+    std::string source = "var x: ref<T>\nfn test() { if a < b.c { } }";
+    Lexer lexer(source);
+    auto tokens = lexer.tokenize();
+    size_t pos = 0;
+    ModuleParser parser(tokens, pos);
+    REQUIRE_NOTHROW(parser.parse());
+}
+
+TEST_CASE("Parser handles declaration node kinds", "[parser]") {
+    std::string source = "template T class C { fn f(x: ref<T>) { } }";
+    Lexer lexer(source);
+    auto tokens = lexer.tokenize();
+    size_t pos = 0;
+    ModuleParser parser(tokens, pos);
+    REQUIRE_NOTHROW(parser.parse());
+}
+
+TEST_CASE("Parser handles main.vyn imports", "[parser]") {
+    std::string source = "import vyn::fs\nsmuggle http::client";
+    Lexer lexer(source);
+    auto tokens = lexer.tokenize();
+    size_t pos = 0;
+    ModuleParser parser(tokens, pos);
+    REQUIRE_NOTHROW(parser.parse());
+}
+
+TEST_CASE("Parser handles main.vyn class and operator", "[parser]") {
+    std::string source = R"(
+        class Vector
+            var x: Float
+            var y: Float
+            fn operator+(other: Vector) -> Vector
+                Vector { x: self.x + other.x, y: self.y + other.y }
+    )";
+    Lexer lexer(source);
+    auto tokens = lexer.tokenize();
+    size_t pos = 0;
+    ModuleParser parser(tokens, pos);
+    REQUIRE_NOTHROW(parser.parse());
+}
+
+TEST_CASE("Parser handles main.vyn async function", "[parser]") {
+    std::string source = R"(
+        async fn fetch_data(url: String) throws NetworkError -> String
+            const conn = http::client::connect(url)
+            const resp = await conn.get("/")
+            if resp.status != 200
+                throw NetworkError("Failed to fetch: " + resp.status.to_string())
+            resp.text()
+    )";
+    Lexer lexer(source);
+    auto tokens = lexer.tokenize();
+    size_t pos = 0;
+    ModuleParser parser(tokens, pos);
+    REQUIRE_NOTHROW(parser.parse());
+}
+
+TEST_CASE("Parser handles main.vyn try/catch/finally", "[parser]") {
+    std::string source = R"(
+        fn main()
+            try
+                var squares = [x * x for x in 0..10]
+                const v1 = Vector::new(1.0, 2.0)
+                const v2 = Vector::new(3.0, 4.0)
+                const sum = v1 + v2
+            catch (e: NetworkError)
+                println("Network error: {}", e.message)
+            catch (e: IOError)
+                println("IO error: {}", e.message)
+            finally
+                println("Cleanup complete")
+    )";
+    Lexer lexer(source);
+    auto tokens = lexer.tokenize();
+    size_t pos = 0;
+    ModuleParser parser(tokens, pos);
+    REQUIRE_NOTHROW(parser.parse());
+}
+
+TEST_CASE("Parser handles binary expression in array size", "[parser]") {
+    std::string source = "var arr: [Int; N-1]";
+    Lexer lexer(source);
+    auto tokens = lexer.tokenize();
+    size_t pos = 0;
+    ModuleParser parser(tokens, pos);
+    REQUIRE_NOTHROW(parser.parse());
+}
+
+TEST_CASE("Parser handles expression statements", "[parser]") {
+    std::string source = "fn test() { x.y.z; [1, 2, 3]; }";
+    Lexer lexer(source);
+    auto tokens = lexer.tokenize();
+    size_t pos = 0;
+    ModuleParser parser(tokens, pos);
+    REQUIRE_NOTHROW(parser.parse());
+}
+
+TEST_CASE("Parser handles nested binary expressions", "[parser]") {
+    std::string source = "var x: [Int; N-1+2*3]";
+    Lexer lexer(source);
+    auto tokens = lexer.tokenize();
+    size_t pos = 0;
+    ModuleParser parser(tokens, pos);
+    REQUIRE_NOTHROW(parser.parse());
+}
+
+TEST_CASE("Parser handles expression statements in blocks", "[parser]") {
+    std::string source = "fn test() { [x * x for x in 0..10]; x.y; }";
+    Lexer lexer(source);
+    auto tokens = lexer.tokenize();
+    size_t pos = 0;
+    ModuleParser parser(tokens, pos);
+    REQUIRE_NOTHROW(parser.parse());
+}
+
+TEST_CASE("Parser handles complex class methods", "[parser]") {
+    std::string source = "class Foo\n    fn operator+(other) { const x = 10 }\n    fn bar()";
+    Lexer lexer(source);
+    auto tokens = lexer.tokenize();
+    size_t pos = 0;
+    ModuleParser parser(tokens, pos);
+    REQUIRE_NOTHROW(parser.parse());
+}
+
+TEST_CASE("Parser handles nested range expressions", "[parser]") {
+    std::string source = "[x for x in 0..(5..10)[0]]";
+    Lexer lexer(source);
+    auto tokens = lexer.tokenize();
+    size_t pos = 0;
+    ModuleParser parser(tokens, pos);
+    REQUIRE_NOTHROW(parser.parse());
+}
+
+TEST_CASE("Parser handles complex list comprehension", "[parser]") {
+    std::string source = "[x * x + 1 for x in 0..10]";
+    Lexer lexer(source);
+    auto tokens = lexer.tokenize();
+    size_t pos = 0;
+    ModuleParser parser(tokens, pos);
+    REQUIRE_NOTHROW(parser.parse());
+}
+
+TEST_CASE("Parser handles nested binary expressions in list comprehension", "[parser]") {
+    std::string source = "[x * x + y for x in 0..10]";
+    Lexer lexer(source);
+    auto tokens = lexer.tokenize();
+    size_t pos = 0;
+    ModuleParser parser(tokens, pos);
+    REQUIRE_NOTHROW(parser.parse());
+}
+
+TEST_CASE("Parser handles single-line comments", "[parser]") {
+    std::string source = "// This is a comment\nfn test()";
+    Lexer lexer(source);
+    auto tokens = lexer.tokenize();
+    size_t pos = 0;
+    ModuleParser parser(tokens, pos);
+    REQUIRE_NOTHROW(parser.parse());
+}
+
+TEST_CASE("Parser handles negative numbers", "[parser]") {
+    std::string source = "var x = -42";
+    Lexer lexer(source);
+    auto tokens = lexer.tokenize();
+    size_t pos = 0;
+    ModuleParser parser(tokens, pos);
+    REQUIRE_NOTHROW(parser.parse());
+}
+
+TEST_CASE("Parser handles new operators and keywords", "[parser]") {
+    std::string source = "scoped var x = a && b; match => @decorator";
+    Lexer lexer(source);
+    auto tokens = lexer.tokenize();
+    size_t pos = 0;
+    ModuleParser parser(tokens, pos);
+    REQUIRE_NOTHROW(parser.parse());
+}
+
+TEST_CASE("Lexer handles // comments", "[lexer]") {
+    std::string source = "// Comment\nfn test()";
+    Lexer lexer(source);
+    auto tokens = lexer.tokenize();
+    bool found_comment = false;
+    for (const auto& token : tokens) {
+        if (token.type == TokenType::COMMENT && token.value.find("//") == 0) {
+            found_comment = true;
+            break;
+        }
+    }
+    REQUIRE(found_comment);
+}
+
+TEST_CASE("Lexer handles ref and underscore", "[lexer]") {
+    std::string source = "ref x = _";
+    Lexer lexer(source);
+    auto tokens = lexer.tokenize();
+    bool found_ref = false, found_underscore = false;
+    for (const auto& token : tokens) {
+        if (token.type == TokenType::KEYWORD_REF && token.value == "ref") found_ref = true;
+        if (token.type == TokenType::UNDERSCORE && token.value == "_") found_underscore = true;
+    }
+    REQUIRE(found_ref);
+    REQUIRE(found_underscore);
 }

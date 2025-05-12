@@ -110,6 +110,22 @@ template BTree<K: Comparable, V, M: UInt>
   // Helper: find the index where key should be inserted
   fn find_key_index(node: ref<Node>, key: K) -> UInt
     var idx = 0
-    while idx < node.num_keys && node.keys[idx].lt(&key)
+    while idx < node.num_keys && node.keys[idx].lt(&key) {
       idx += 1
-    idx
+    }
+    
+
+// Example usage
+fn main()
+  let mut tree = BTree<Int, String, 3>::new()
+  tree.insert(10, "ten")
+  tree.insert(20, "twenty")
+  tree.insert(5, "five")
+  tree.insert(15, "fifteen")
+  match tree.search(10)
+    Some(v) => println("Found: {}", v)
+    None => println("Not found")
+  match tree.search(99) {
+    Some(v) => println("Found: {}", v);
+    None => println("Not found");
+  }

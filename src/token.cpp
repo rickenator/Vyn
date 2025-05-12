@@ -1,61 +1,72 @@
 #include "vyn/token.hpp"
 
 std::string token_type_to_string(TokenType type) {
-    switch (type) {
-        case TokenType::EOF_TOKEN: return "EOF_TOKEN";
-        case TokenType::INDENT: return "INDENT";
-        case TokenType::DEDENT: return "DEDENT";
-        case TokenType::KEYWORD_FN: return "KEYWORD_FN";
-        case TokenType::KEYWORD_IF: return "KEYWORD_IF";
-        case TokenType::KEYWORD_ELSE: return "KEYWORD_ELSE";
-        case TokenType::KEYWORD_VAR: return "KEYWORD_VAR";
-        case TokenType::KEYWORD_CONST: return "KEYWORD_CONST";
-        case TokenType::KEYWORD_TEMPLATE: return "KEYWORD_TEMPLATE";
-        case TokenType::KEYWORD_CLASS: return "KEYWORD_CLASS";
-        case TokenType::KEYWORD_RETURN: return "KEYWORD_RETURN";
-        case TokenType::KEYWORD_FOR: return "KEYWORD_FOR";
-        case TokenType::KEYWORD_IN: return "KEYWORD_IN";
-        case TokenType::KEYWORD_SCOPED: return "KEYWORD_SCOPED";
-        case TokenType::KEYWORD_IMPORT: return "KEYWORD_IMPORT";
-        case TokenType::KEYWORD_SMUGGLE: return "KEYWORD_SMUGGLE";
-        case TokenType::KEYWORD_TRY: return "KEYWORD_TRY";
-        case TokenType::KEYWORD_CATCH: return "KEYWORD_CATCH";
-        case TokenType::KEYWORD_FINALLY: return "KEYWORD_FINALLY";
-        case TokenType::KEYWORD_DEFER: return "KEYWORD_DEFER";
-        case TokenType::KEYWORD_ASYNC: return "KEYWORD_ASYNC";
-        case TokenType::KEYWORD_AWAIT: return "KEYWORD_AWAIT";
-        case TokenType::KEYWORD_MATCH: return "KEYWORD_MATCH";
-        case TokenType::IDENTIFIER: return "IDENTIFIER";
-        case TokenType::INT_LITERAL: return "INT_LITERAL";
-        case TokenType::FLOAT_LITERAL: return "FLOAT_LITERAL";
-        case TokenType::STRING_LITERAL: return "STRING_LITERAL";
-        case TokenType::COMMENT: return "COMMENT";
-        case TokenType::LBRACE: return "LBRACE";
-        case TokenType::RBRACE: return "RBRACE";
-        case TokenType::LPAREN: return "LPAREN";
-        case TokenType::RPAREN: return "RPAREN";
-        case TokenType::LBRACKET: return "LBRACKET";
-        case TokenType::RBRACKET: return "RBRACKET";
-        case TokenType::SEMICOLON: return "SEMICOLON";
-        case TokenType::COLON: return "COLON";
-        case TokenType::COLONCOLON: return "COLONCOLON";
-        case TokenType::COMMA: return "COMMA";
-        case TokenType::EQ: return "EQ";
-        case TokenType::EQEQ: return "EQEQ";
-        case TokenType::FAT_ARROW: return "FAT_ARROW";
-        case TokenType::LT: return "LT";
-        case TokenType::GT: return "GT";
-        case TokenType::PLUS: return "PLUS";
-        case TokenType::MINUS: return "MINUS";
-        case TokenType::DIVIDE: return "DIVIDE";
-        case TokenType::MULTIPLY: return "MULTIPLY";
-        case TokenType::ARROW: return "ARROW";
-        case TokenType::DOT: return "DOT";
-        case TokenType::DOTDOT: return "DOTDOT";
-        case TokenType::AND: return "AND";
-        case TokenType::AMPERSAND: return "AMPERSAND";
-        case TokenType::BANG: return "BANG";
-        case TokenType::AT: return "AT";
-        default: return "UNKNOWN";
-    }
+    static const std::unordered_map<TokenType, std::string> token_map = {
+        {TokenType::EOF_TOKEN, "EOF_TOKEN"},
+        {TokenType::IDENTIFIER, "IDENTIFIER"},
+        {TokenType::INT_LITERAL, "INT_LITERAL"},
+        {TokenType::FLOAT_LITERAL, "FLOAT_LITERAL"},
+        {TokenType::STRING_LITERAL, "STRING_LITERAL"},
+        {TokenType::PLUS, "PLUS"},
+        {TokenType::MINUS, "MINUS"},
+        {TokenType::MULTIPLY, "MULTIPLY"},
+        {TokenType::DIVIDE, "DIVIDE"},
+        {TokenType::EQ, "EQ"},
+        {TokenType::EQEQ, "EQEQ"},
+        {TokenType::NOTEQ, "NOTEQ"},
+        {TokenType::LT, "LT"},
+        {TokenType::GT, "GT"},
+        {TokenType::LTEQ, "LTEQ"},
+        {TokenType::GTEQ, "GTEQ"},
+        {TokenType::AND, "AND"},
+        {TokenType::BANG, "BANG"},
+        {TokenType::LPAREN, "LPAREN"},
+        {TokenType::RPAREN, "RPAREN"},
+        {TokenType::LBRACE, "LBRACE"},
+        {TokenType::RBRACE, "RBRACE"},
+        {TokenType::LBRACKET, "LBRACKET"},
+        {TokenType::RBRACKET, "RBRACKET"},
+        {TokenType::COLON, "COLON"},
+        {TokenType::SEMICOLON, "SEMICOLON"},
+        {TokenType::COMMA, "COMMA"},
+        {TokenType::DOT, "DOT"},
+        {TokenType::COLONCOLON, "COLONCOLON"},
+        {TokenType::ARROW, "ARROW"},
+        {TokenType::FAT_ARROW, "FAT_ARROW"},
+        {TokenType::DOTDOT, "DOTDOT"},
+        {TokenType::AMPERSAND, "AMPERSAND"},
+        {TokenType::AT, "AT"},
+        {TokenType::KEYWORD_IF, "KEYWORD_IF"},
+        {TokenType::KEYWORD_ELSE, "KEYWORD_ELSE"},
+        {TokenType::KEYWORD_WHILE, "KEYWORD_WHILE"},
+        {TokenType::KEYWORD_FOR, "KEYWORD_FOR"},
+        {TokenType::KEYWORD_IN, "KEYWORD_IN"},
+        {TokenType::KEYWORD_RETURN, "KEYWORD_RETURN"},
+        {TokenType::KEYWORD_BREAK, "KEYWORD_BREAK"},
+        {TokenType::KEYWORD_CONTINUE, "KEYWORD_CONTINUE"},
+        {TokenType::KEYWORD_VAR, "KEYWORD_VAR"},
+        {TokenType::KEYWORD_CONST, "KEYWORD_CONST"},
+        {TokenType::KEYWORD_FN, "KEYWORD_FN"},
+        {TokenType::KEYWORD_CLASS, "KEYWORD_CLASS"},
+        {TokenType::KEYWORD_TEMPLATE, "KEYWORD_TEMPLATE"},
+        {TokenType::KEYWORD_IMPORT, "KEYWORD_IMPORT"},
+        {TokenType::KEYWORD_SMUGGLE, "KEYWORD_SMUGGLE"},
+        {TokenType::KEYWORD_OPERATOR, "KEYWORD_OPERATOR"},
+        {TokenType::KEYWORD_ASYNC, "KEYWORD_ASYNC"},
+        {TokenType::KEYWORD_AWAIT, "KEYWORD_AWAIT"},
+        {TokenType::KEYWORD_TRY, "KEYWORD_TRY"},
+        {TokenType::KEYWORD_CATCH, "KEYWORD_CATCH"},
+        {TokenType::KEYWORD_FINALLY, "KEYWORD_FINALLY"},
+        {TokenType::KEYWORD_DEFER, "KEYWORD_DEFER"},
+        {TokenType::KEYWORD_MATCH, "KEYWORD_MATCH"},
+        {TokenType::KEYWORD_SCOPED, "KEYWORD_SCOPED"},
+        {TokenType::KEYWORD_REF, "KEYWORD_REF"},
+        {TokenType::UNDERSCORE, "UNDERSCORE"},
+        {TokenType::INDENT, "INDENT"},
+        {TokenType::DEDENT, "DEDENT"},
+        {TokenType::COMMENT, "COMMENT"},
+        {TokenType::NEWLINE, "NEWLINE"}
+    };
+    auto it = token_map.find(type);
+    return it != token_map.end() ? it->second : "UNKNOWN";
 }
