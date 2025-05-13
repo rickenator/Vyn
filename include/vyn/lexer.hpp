@@ -25,6 +25,7 @@ private:
   int line_;
   int column_;
   std::vector<int> indent_levels_;
+  int nesting_level_; // Renamed from brace_depth_
 };
 
 #endif

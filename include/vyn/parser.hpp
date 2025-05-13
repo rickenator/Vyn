@@ -22,6 +22,8 @@ protected:
     bool match(TokenType type);        // Uses peek, then consumes if type matches, returns bool
 
     void skip_indents_dedents(); // Handles INDENT/DEDENT, may call skip_comments_and_newlines
+public: // Added public accessor for pos_
+    size_t get_current_pos() const;
 };
 
 class ExpressionParser : public BaseParser {

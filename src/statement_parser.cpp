@@ -159,10 +159,29 @@ std::unique_ptr<ASTNode> StatementParser::parse_const() {
 }
 
 std::unique_ptr<ASTNode> StatementParser::parse_scoped() {
-  auto node = std::make_unique<ASTNode>(ASTNode::Kind::ScopedStmt, peek());
+  auto scoped_token = peek();
   expect(TokenType::KEYWORD_SCOPED);
-  node->children.push_back(parse_block());
-  return node;
+
+  if (peek().type == TokenType::KEYWORD_VAR) {
+    auto var_decl_node = parse_var(); // parse_var itself consumes KEYWORD_VAR
+    expect(TokenType::SEMICOLON);
+    // Create a ScopedStmt node that wraps the VarDecl
+    auto scoped_node = std::make_unique<ASTNode>(ASTNode::Kind::ScopedStmt, scoped_token);
+    scoped_node->children.push_back(std::move(var_decl_node));
+    return scoped_node;
+  } else if (peek().type == TokenType::KEYWORD_CONST) {
+    auto const_decl_node = parse_const(); // parse_const itself consumes KEYWORD_CONST
+    expect(TokenType::SEMICOLON);
+    // Create a ScopedStmt node that wraps the ConstDecl
+    auto scoped_node = std::make_unique<ASTNode>(ASTNode::Kind::ScopedStmt, scoped_token);
+    scoped_node->children.push_back(std::move(const_decl_node));
+    return scoped_node;
+  } else {
+    // Original behavior: parse a block
+    auto node = std::make_unique<ASTNode>(ASTNode::Kind::ScopedStmt, scoped_token);
+    node->children.push_back(parse_block());
+    return node;
+  }
 }
 
 std::unique_ptr<ASTNode> StatementParser::parse_await() {

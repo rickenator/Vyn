@@ -4,6 +4,27 @@
 DeclarationParser::DeclarationParser(const std::vector<Token>& tokens, size_t& pos)
     : BaseParser(tokens, pos) {}
 
+// Helper function to identify overloadable operator tokens
+bool is_operator_token(TokenType type) {
+    switch (type) {
+        case TokenType::PLUS:
+        case TokenType::MINUS:
+        case TokenType::MULTIPLY:
+        case TokenType::DIVIDE:
+        case TokenType::MODULO:
+        case TokenType::EQEQ:
+        case TokenType::NOTEQ:
+        case TokenType::LT:
+        case TokenType::GT:
+        case TokenType::LTEQ:
+        case TokenType::GTEQ:
+        // TODO: Add other overloadable operators like LBRACKET (for []), LPAREN (for ()), etc.
+            return true;
+        default:
+            return false;
+    }
+}
+
 std::unique_ptr<ASTNode> DeclarationParser::parse() {
   if (peek().type == TokenType::KEYWORD_TEMPLATE) {
     return parse_template();
@@ -54,21 +75,39 @@ std::unique_ptr<ASTNode> DeclarationParser::parse_template() {
 }
 
 std::unique_ptr<ASTNode> DeclarationParser::parse_function() {
-  Token func_decl_token = peek(); // This will be 'async' or 'fn'
-  auto node = std::make_unique<ASTNode>(ASTNode::Kind::FunctionDecl, func_decl_token);
-  
-  bool is_async = match(TokenType::KEYWORD_ASYNC);
-  expect(TokenType::KEYWORD_FN); // 'fn' must follow 'async' or be present itself
-  
-  if (is_async) {
-    // If 'async' was matched, func_decl_token is already the 'async' token.
-    // The original code re-assigned node->token here.
-    // node->token = Token(TokenType::KEYWORD_ASYNC, "async", func_decl_token.line, func_decl_token.column);
-    // This is fine, ensures the primary token is 'async' if present.
-  }
+    bool is_async = false;
+    if (peek().type == TokenType::KEYWORD_ASYNC) {
+        consume(); // consume 'async'
+        is_async = true;
+    }
 
-  Token func_name_token = expect(TokenType::IDENTIFIER); // Consume and get function name
-  node->children.push_back(std::make_unique<ASTNode>(ASTNode::Kind::Identifier, func_name_token));
+    Token func_keyword_token = expect(TokenType::KEYWORD_FN); // Consume 'fn'
+    
+    std::unique_ptr<ASTNode> node;
+    Token func_name_or_operator_token = peek();
+
+    if (func_name_or_operator_token.type == TokenType::KEYWORD_OPERATOR) {
+        consume(); // Consume KEYWORD_OPERATOR
+        Token operator_actual_token = peek();
+        if (is_operator_token(operator_actual_token.type)) {
+            consume(); // Consume the actual operator token (e.g., PLUS, MINUS)
+            // Use the operator token itself (e.g. PLUS) for the FunctionDecl node's primary token information
+            node = std::make_unique<ASTNode>(ASTNode::Kind::FunctionDecl, operator_actual_token);
+            // Store "operator" keyword token or a flag if needed, e.g., in attributes or as a child.
+            // For now, the name/identity is the operator symbol itself.
+        } else {
+            throw std::runtime_error("Expected an operator symbol (e.g., '+', '==') after 'operator' keyword at line " + 
+                                     std::to_string(operator_actual_token.line) + ", column " + std::to_string(operator_actual_token.column));
+        }
+    } else {
+        // If not KEYWORD_OPERATOR, it must be an IDENTIFIER (or it's an error that expect() will handle)
+        Token actual_func_name_token = expect(TokenType::IDENTIFIER); 
+        node = std::make_unique<ASTNode>(ASTNode::Kind::FunctionDecl, actual_func_name_token);
+    }
+
+    if (is_async) {
+      node->is_async = true;
+    }
   
   expect(TokenType::LPAREN);
   if (peek().type != TokenType::RPAREN) {
@@ -111,20 +150,35 @@ std::unique_ptr<ASTNode> DeclarationParser::parse_function() {
     } while (match(TokenType::COMMA)); // Continue if comma is found
     node->children.push_back(std::move(params_node));
   }
-  expect(TokenType::RPAREN);
+  expect(TokenType::RPAREN); // Ensures closing parenthesis of parameters is consumed.
   
-  if (match(TokenType::ARROW)) { // Optional return type
-    TypeParser type_parser(tokens_, pos_);
-    node->children.push_back(type_parser.parse());
+  // Optional: throws clause (e.g., "throws NetworkError")
+  // Assumes "throws" is lexed as an IDENTIFIER token with the value "throws".
+  if (peek().type == TokenType::IDENTIFIER && peek().value == "throws") {
+    consume(); // Consume the "throws" keyword token.
+    
+    // Expect an identifier for the error type.
+    if (peek().type == TokenType::IDENTIFIER) {
+        Token error_type_token = consume(); // Consume the error type token.
+        // Add the error type as a child to the function node.
+        // A more structured AST might use a specific ASTNode::Kind for the throws clause or error type.
+        node->children.push_back(std::make_unique<ASTNode>(ASTNode::Kind::Identifier, error_type_token));
+    } else {
+        // "throws" keyword was present, but no error type identifier followed.
+        throw std::runtime_error("Expected error type identifier after 'throws' at line " + std::to_string(peek().line));
+    }
+  }
+
+  // Optional: return type (e.g., "-> String")
+  if (match(TokenType::ARROW)) {
+    TypeParser type_parser(tokens_, pos_); // pos_ is current position after ARROW
+    std::unique_ptr<ASTNode> return_type_node = type_parser.parse();
+    pos_ = type_parser.get_current_pos(); // Explicitly update DeclarationParser's position
+    node->children.push_back(std::move(return_type_node));
   }
   
-  Token throws_peek = peek();
-  if (throws_peek.type == TokenType::IDENTIFIER && throws_peek.value == "throws") {
-    expect(TokenType::IDENTIFIER); // Consume "throws"
-    Token error_type_token = expect(TokenType::IDENTIFIER); // Consume and get error type
-    node->children.push_back(std::make_unique<ASTNode>(ASTNode::Kind::Identifier, error_type_token));
-  }
-  
+  // Parse the function body (block of statements).
+  // pos_ should now be at the start of the function body (e.g., '{' or INDENT).
   node->children.push_back(parse_block()); // Parse function body
   return node;
 }

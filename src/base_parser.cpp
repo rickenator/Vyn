@@ -86,5 +86,10 @@ void BaseParser::skip_indents_dedents() {
     }
 }
 
+// Added implementation for get_current_pos
+size_t BaseParser::get_current_pos() const {
+    return pos_;
+}
+
 // Removed old skip_raw_comments_and_newlines, skip_comments, skip_indents definitions.
 // Their logic is now integrated into the above methods or handled by skip_comments_and_newlines.

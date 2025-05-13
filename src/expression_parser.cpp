@@ -100,29 +100,21 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_primary() {
         node = std::make_unique<ASTNode>(ASTNode::Kind::Identifier, consume());
     } else if (current_token.type == TokenType::INT_LITERAL) {
         node = std::make_unique<ASTNode>(ASTNode::Kind::IntLiteral, consume());
+    } else if (current_token.type == TokenType::FLOAT_LITERAL) { // Added FLOAT_LITERAL
+        node = std::make_unique<ASTNode>(ASTNode::Kind::FloatLiteral, consume());
     } else if (current_token.type == TokenType::STRING_LITERAL) {
         node = std::make_unique<ASTNode>(ASTNode::Kind::StringLiteral, consume());
     } else if (current_token.type == TokenType::LPAREN) {
-        consume(); // Consume '('
+        consume(); // Consume \'(\'
         node = parse(); // Parse expression inside parentheses
-        expect(TokenType::RPAREN); // Consume ')'
-        // The 'node' is the expression itself, no separate grouping node needed unless specified
+        expect(TokenType::RPAREN); // Consume \')\'
     } else if (current_token.type == TokenType::LBRACKET) {
-        // Could be ArrayExpr [Type; Size](), simple array literal [a,b,c], or start of list comprehension
-        // For now, let's assume parse_array_expr handles the [Type;Size]() and simple literals
-        // List comprehensions might need a different starting point or more lookahead.
-        // The EBNF for ArrayExpr is specific. If it's a list literal, parse_array_expr should handle it.
+        // parse_array_expr will handle empty, sized, literal, or comprehension
         node = parse_array_expr();
-    } else if (current_token.type == TokenType::DOTDOT) { // Standalone range like ..10 or ..
-         // This case needs to be handled carefully. A .. might be preceded by an expression.
-         // The current parse_range expects to parse the start expression itself.
-         // This indicates a leading .. which is not typical for `expr .. expr`
-         // For now, let's assume parse_range is called when `expr DOTDOT` is seen.
-         // This path might be an error or a specific feature (e.g. open-ended range start).
-         // For now, let's throw, as parse_range should be called after a primary usually.
+    } else if (current_token.type == TokenType::DOTDOT) {
         throw std::runtime_error("Unexpected token DOTDOT at start of primary expression at line " + std::to_string(current_token.line));
     }
-    // ... other primary expressions like 'true', 'false', 'null', 'this'
+    // ... other primary expressions like \'true\', \'false\', \'null\', \'this\'
     else {
         throw std::runtime_error("Unexpected token in primary expression at line " + std::to_string(current_token.line) + ": '" + current_token.value + "'");
     }
@@ -133,6 +125,21 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_primary() {
             node = parse_call_expr(std::move(node));
         } else if (peek().type == TokenType::DOT) { // Member access
             node = parse_member_expr(std::move(node));
+        } else if (peek().type == TokenType::COLONCOLON) { // Scope resolution access
+            Token colon_colon_tok = consume(); // Consume \'::\'
+            if (peek().type != TokenType::IDENTIFIER) {
+                throw std::runtime_error("Expected identifier after \'::\' at line " + std::to_string(peek().line));
+            }
+            auto name_node = std::make_unique<ASTNode>(ASTNode::Kind::Identifier, consume());
+
+            // Create a new ASTNode for scope resolution, e.g., ScopeResolutionExpr
+            // For now, let\'s reuse MemberExpr or a generic Expression node if ScopeResolutionExpr is not defined.
+            // Assuming a generic ASTNode::Kind::Expression or similar for now.
+            // A dedicated ASTNode::Kind::ScopeResolutionExpr would be better.
+            auto access_node = std::make_unique<ASTNode>(ASTNode::Kind::Expression, colon_colon_tok);
+            access_node->children.push_back(std::move(node));
+            access_node->children.push_back(std::move(name_node));
+            node = std::move(access_node);
         } else if (peek().type == TokenType::LBRACKET) { // Subscript access
             Token lbracket_tok = consume(); // LBRACKET
             auto index_expr = parse();
@@ -231,76 +238,82 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_member_expr(std::unique_ptr<AST
 
 
 std::unique_ptr<ASTNode> ExpressionParser::parse_array_expr() {
-    // Handles:
-    // 1. [Type; Size]()  (from vyn.hpp EBNF)
-    // 2. [elem1, elem2, ...] (common array literal)
-
     Token lbracket_tok = expect(TokenType::LBRACKET);
 
-    // Check for empty array literal: []
-    if (peek().type == TokenType::RBRACKET) {
+    if (peek().type == TokenType::RBRACKET) { // Empty array []
         consume(); // RBRACKET
-        auto array_node = std::make_unique<ASTNode>(ASTNode::Kind::ArrayExpr, lbracket_tok);
-        // No children for empty array, or could add a special marker if needed
-        return array_node;
+        return std::make_unique<ASTNode>(ASTNode::Kind::ArrayExpr, lbracket_tok);
     }
 
-    // Try to parse as [Type; Size]()
-    // This requires lookahead for SEMICOLON after a Type.
-    // A simple heuristic: if next is IDENTIFIER and next+1 is SEMICOLON
-    // This is tricky without full type parsing.
-    // For now, let's assume if it's not a list of expressions, it might be [Type;Size]
-    // A more robust way is to try parsing a Type, then check for SEMICOLON.
-
-    // Attempt to distinguish [Type; Size] from [expr, expr]
-    // A simple check: if the token after LBRACKET is an IDENTIFIER,
-    // and the token after that is a SEMICOLON, assume [Type; Size] form.
-    // This is a weak check. A proper TypeParser is needed.
+    // Heuristic for [Type; Size] form:
+    // Check if current token is IDENTIFIER and next is SEMICOLON
+    // This is a simplified check. A full TypeParser might be needed for robustness.
     bool is_type_size_form = false;
-    if (tokens_[pos_].type == TokenType::IDENTIFIER && (pos_ + 1 < tokens_.size()) && tokens_[pos_ + 1].type == TokenType::SEMICOLON) {
-       is_type_size_form = true;
+    if (pos_ + 1 < tokens_.size() && tokens_[pos_].type == TokenType::IDENTIFIER && tokens_[pos_ + 1].type == TokenType::SEMICOLON) {
+       // Further check: ensure the identifier is a plausible type name (e.g., starts with uppercase)
+       // or that a TypeParser could successfully parse it. For now, this heuristic is used.
+       is_type_size_form = true; // Tentatively assume it's Type;Size
+       // This doesn't consume tokens yet, just peeks.
     }
-
 
     if (is_type_size_form) {
-        // Parse as [Type; Size]()
-        TypeParser type_parser(tokens_, pos_); // Create TypeParser
-        auto type_node = type_parser.parse(); // This should parse a Type
+        // Try to parse as [Type; Size]()
+        // This path assumes the heuristic correctly identified the form.
+        TypeParser type_parser(tokens_, pos_); 
+        auto type_node = type_parser.parse(); 
 
         expect(TokenType::SEMICOLON);
         auto size_expr_node = parse(); 
         expect(TokenType::RBRACKET);
 
-        auto array_expr_node = std::make_unique<ASTNode>(ASTNode::Kind::ArrayExpr, lbracket_tok);
+        // Create a specific ASTNode kind if available, e.g., SizedArrayExpr
+        auto array_expr_node = std::make_unique<ASTNode>(ASTNode::Kind::ArrayExpr, lbracket_tok); 
         array_expr_node->children.push_back(std::move(type_node));
         array_expr_node->children.push_back(std::move(size_expr_node));
 
-        if (match(TokenType::LPAREN)) { // Optional ()
+        if (match(TokenType::LPAREN)) { 
             expect(TokenType::RPAREN);
-            // Optionally mark the node if () was present, e.g. for "default initialization"
-            // array_expr_node->token.value += "()"; // Or a boolean flag
         }
         return array_expr_node;
     } else {
-        // Parse as simple array literal: [elem1, elem2, ...]
-        auto array_node = std::make_unique<ASTNode>(ASTNode::Kind::ArrayExpr, lbracket_tok);
-        if (peek().type != TokenType::RBRACKET) { // Check if not empty, already handled if it was just []
-            while (true) {
-                array_node->children.push_back(parse());
-                if (match(TokenType::COMMA)) {
-                    if (peek().type == TokenType::RBRACKET) { // Trailing comma case: [a, b,]
-                        break;
-                    }
-                    // continue to next element
-                } else if (peek().type == TokenType::RBRACKET) {
-                    break;
-                } else {
-                    throw std::runtime_error("Expected ',' or ']' in array literal at line " + std::to_string(peek().line));
-                }
+        // Not [Type; Size], so it's either a list literal [elem, elem] or a list comprehension [expr for x in y]
+        auto first_expr = parse(); // Parse the first expression (for comprehension: output expr; for literal: first element)
+
+        if (peek().type == TokenType::KEYWORD_FOR) {
+            // List Comprehension: [output_expr for loop_var in iterable_expr (if condition_expr)?]
+            consume(); // Consume FOR keyword
+
+            // Ensure you have ASTNode::Kind::ListComprehensionExpr defined in your ast.hpp
+            auto comprehension_node = std::make_unique<ASTNode>(ASTNode::Kind::ListComprehensionExpr, lbracket_tok);
+            comprehension_node->children.push_back(std::move(first_expr)); // Output expression
+
+            Token loop_var_token = expect(TokenType::IDENTIFIER);
+            comprehension_node->children.push_back(std::make_unique<ASTNode>(ASTNode::Kind::Identifier, loop_var_token)); // Loop variable
+
+            expect(TokenType::KEYWORD_IN);
+            comprehension_node->children.push_back(parse()); // Iterable expression
+
+            if (peek().type == TokenType::KEYWORD_IF) {
+                consume(); // Consume IF keyword
+                comprehension_node->children.push_back(parse()); // Condition expression
             }
+            expect(TokenType::RBRACKET);
+            return comprehension_node;
+        } else {
+            // Simple array literal: [elem1, elem2, ...]
+            auto array_node = std::make_unique<ASTNode>(ASTNode::Kind::ArrayExpr, lbracket_tok);
+            array_node->children.push_back(std::move(first_expr)); // Add the first parsed expression
+
+            while (peek().type == TokenType::COMMA) {
+                consume(); // Consume COMMA
+                if (peek().type == TokenType::RBRACKET) { // Trailing comma: [a, b,]
+                    break;
+                }
+                array_node->children.push_back(parse()); // Parse next element
+            }
+            expect(TokenType::RBRACKET);
+            return array_node;
         }
-        expect(TokenType::RBRACKET);
-        return array_node;
     }
 }
 
