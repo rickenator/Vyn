@@ -250,20 +250,20 @@ Derived from `DeclNode : Node`.
 -   **`ParamNode : DeclNode`**: Represents a parameter in a function declaration.
     -   `std::unique_ptr<IdentifierNode> name;`
     -   `std::unique_ptr<TypeNode> type;`
-    -   `// bool isMutable; // Potentially for 'mut name: Type'`
-    -   `// bool isRef; // For reference parameters`
+    -   `bool isMut;` // True if the parameter is mutable (e.g., `mut name: Type`)
+    -   `bool isRef;` // True if the parameter is a reference
 -   **`FuncDeclNode : DeclNode`**: Represents a function declaration.
     -   `std::unique_ptr<IdentifierNode> name;`
-    -   `std::vector<std::unique_ptr<GenericParamNode>> generic_params;`
+    -   `std::vector<std::unique_ptr<GenericParamNode>> genericParams;`
     -   `std::vector<std::unique_ptr<ParamNode>> params;`
-    -   `std::unique_ptr<TypeNode> return_type;` // Optional
+    -   `std::unique_ptr<TypeNode> returnType;` // Optional, return_type to returnType
     -   `std::unique_ptr<BlockStmtNode> body;` // Optional (for external/interface functions)
     -   `// bool is_async;`
     -   `// bool is_extern;`
 -   **`StructDeclNode : DeclNode`**: Represents a struct declaration.
     -   `std::unique_ptr<IdentifierNode> name;`
-    -   `std::vector<std::unique_ptr<GenericParamNode>> generic_params;`
-    -   `std::vector<std::pair<std::unique_ptr<IdentifierNode>, std::unique_ptr<TypeNode>>> fields;` // Corrected to match ast.hpp
+    -   `std::vector<std::unique_ptr<GenericParamNode>> genericParams;`
+    -   `std::vector<std::unique_ptr<FieldDeclNode>> fields;`
 -   **`FieldDeclNode : DeclNode`**: Represents a field declaration within a class (or potentially struct in the future).
     -   `std::unique_ptr<IdentifierNode> name;`
     -   `std::unique_ptr<TypeNode> type_annotation;` // Mandatory for fields
@@ -303,14 +303,24 @@ Derived from `TypeNode : Node`.
 
 -   **`IdentifierTypeNode : TypeNode`**: Represents a named type, possibly qualified, e.g., `MyType`, `collections::List`.
     -   `std::unique_ptr<PathNode> path;`
--   **`ArrayTypeNode : TypeNode`**: Represents an array type, e.g., `[int; 5]` or `[string]`. (Assumed structure based on `NodeType::ARRAY_TYPE` and Visitor)
-    -   `std::unique_ptr<TypeNode> element_type;`
+-   **`ArrayTypeNode : TypeNode`**: Represents an array type, e.g., `[int; 5]` or `[string]`.
+    -   `std::unique_ptr<TypeNode> elementType;`
     -   `std::unique_ptr<ExprNode> size;` // Optional
--   **`PointerTypeNode : TypeNode`**: Represents a pointer type, e.g., `*int`, `*mut string`. (Assumed structure based on `NodeType::POINTER_TYPE` and Visitor)
-    -   `std::unique_ptr<TypeNode> element_type;`
-    -   `bool is_mutable;`
--   **`OptionalTypeNode : TypeNode`**: Represents an optional type, e.g., `?int`. (Assumed structure based on `NodeType::OPTIONAL_TYPE` and Visitor)
-    -   `std::unique_ptr<TypeNode> element_type;`
+-   **`PointerTypeNode : TypeNode`**: Represents a pointer type, e.g., `*int`, `*mut string`.
+    -   `std::unique_ptr<TypeNode> pointedToType;`
+    -   `bool isMutable;`
+-   **`OptionalTypeNode : TypeNode`**: Represents an optional type, e.g., `?int`.
+    -   `std::unique_ptr<TypeNode> wrappedType;`
+-   **`ReferenceTypeNode : TypeNode`**: Represents a reference type, e.g., `&int`, `&mut string`.
+    -   `std::unique_ptr<TypeNode> referencedType;`
+    -   `bool isMutable;`
+-   **`FunctionTypeNode : TypeNode`**: Represents a function type, e.g., `fn(int, bool) -> string`.
+    -   `std::vector<std::unique_ptr<TypeNode>> parameterTypes;`
+    -   `std::unique_ptr<TypeNode> returnType;`
+    -   `bool isVariadic;` // True if the function is variadic (e.g. C-style varargs)
+-   **`GenericInstanceTypeNode : TypeNode`**: Represents an instantiation of a generic type, e.g., `List<MyType>`.
+    -   `std::unique_ptr<TypeNode> genericType;` // The base generic type (e.g., `List`)
+    -   `std::vector<std::unique_ptr<TypeNode>> typeArguments;` // The type arguments (e.g., `MyType`)
 
 ## 8. Pattern Nodes
 
@@ -328,21 +338,21 @@ Derived from `PatternNode : Node`. Used in `VarDeclStmtNode`, `ForStmtNode`, and
     -   `std::unique_ptr<PathNode> path;` (For `Option::Some`)
     -   `std::vector<std::unique_ptr<PatternNode>> arguments;` (For `x`)
 -   **`StructPatternNode : PatternNode`**: Matches and destructures a struct, e.g., `Point { x: 0, y }`.
-    -   `std::unique_ptr<PathNode> struct_path;` // Updated: Name/path of the struct (e.g., "Point" or "my::Point").
+    -   `std::unique_ptr<PathNode> struct_path;` // Name/path of the struct (e.g., "Point" or "my::Point").
     -   `std::vector<StructPatternField> fields;`
     -   `// bool has_rest_pattern; // For .. syntax`
     -   **`StructPatternField`** (Helper struct, not an AST `Node`):
         -   `SourceLocation location;`
-        -   `std::unique_ptr<IdentifierNode> name;` // Changed from std::string field_name
-        -   `std::unique_ptr<PatternNode> pattern;` // Optional: if null, shorthand for field_name: field_name
+        -   `std::string fieldName;`
+        -   `std::unique_ptr<PatternNode> pattern;` // Optional: if null, shorthand for fieldName: fieldName
 
 ## 9. Module Node
 
 The root of the AST for a single source file.
 
--   **`ModuleNode : Node`**: (Assumed structure based on `NodeType::MODULE` and Visitor)
-    -   `std::string file_path;`
-    -   `std::vector<std::unique_ptr<DeclNode>> declarations;`
+-   **`ModuleNode : Node`**:
+    -   `std::string filePath;`
+    -   `std::vector<std::unique_ptr<DeclNode>> body;`
     -   `// Potentially other module-level items like imports`
 
 ## 10. AST Traversal and Manipulation (Visitor)
@@ -446,6 +456,6 @@ The parser components (`BaseParser`, `DeclarationParser`, `ExpressionParser`, `S
 -   **Completeness of `ast.hpp` Snippet**: The provided `ast.hpp` in context primarily shows forward declarations and visitor methods for many nodes. This document assumes their member structures based on common practices and their `NodeType`. Full definitions in `ast.hpp` would be beneficial for precise documentation.
 -   **Struct Field Mutability**: `StructDeclNode` fields currently only store name and type. Mutability of struct fields is typically handled by the mutability of the struct instance itself (e.g. `let s = MyStruct(); s.field = ...` would be an error if fields are not inherently mutable or `s` is not `var`). This might need further clarification in the language design.
 -   **Enum Declarations**: Full support for `enum Name { Variant1(Type), ... }` declarations is still pending. -> **Implemented.**
--   **`ParamNode` details**: `ParamNode` in `ast.hpp` has `isRef` and `isMut` which are not yet fully reflected in this document's `ParamNode` description.
+-   **`ParamNode` details**: `ParamNode` in `ast.hpp` has `isRef` and `isMut` which are now reflected in this document's `ParamNode` description.
 
 This document reflects the AST structure as per the latest understanding of `ast.hpp` and `ast.cpp` implementations. It should be updated as the language and its AST evolve.
