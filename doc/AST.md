@@ -35,8 +35,8 @@ enum class NodeType {
     FLOAT_LITERAL,
     STRING_LITERAL,
     BOOL_LITERAL,
-    CHAR_LITERAL, // Added
-    NULL_LITERAL, // Added
+    CHAR_LITERAL,
+    NULL_LITERAL,
 
     // Expressions
     UNARY_OP,
@@ -48,6 +48,10 @@ enum class NodeType {
     TUPLE_LITERAL,
     STRUCT_LITERAL,
     ENUM_LITERAL,
+    AWAIT_EXPR,             // Added
+    IF_EXPR,                // Added
+    LIST_COMPREHENSION_EXPR, // Added
+    MACRO_INVOCATION_EXPR,  // Added
 
     // Statements
     EXPRESSION_STMT,
@@ -59,19 +63,28 @@ enum class NodeType {
     RETURN_STMT,
     BREAK_STMT,
     CONTINUE_STMT,
+    MATCH_STMT,             // Added
+    THROW_STMT,             // Added
+    TRY_STMT,               // Added
+    DEFER_STMT,             // Added
+    SCOPED_BLOCK_STMT,      // Added
+    // MACRO_INVOCATION_STMT, // Consider if distinct from EXPR
 
     // Declarations
     FUNC_DECL,
     PARAM,
     STRUCT_DECL,
-    CLASS_DECL, // Added
-    FIELD_DECL, // Added (for class/struct members)
+    CLASS_DECL,
+    FIELD_DECL,
     IMPL_DECL,
     GENERIC_PARAM,
-    ENUM_DECL,      // Added
-    ENUM_VARIANT,   // Added
-    TYPE_ALIAS_DECL, // Added
-    GLOBAL_VAR_DECL, // Added
+    ENUM_DECL,
+    ENUM_VARIANT,
+    TYPE_ALIAS_DECL,
+    GLOBAL_VAR_DECL,
+    IMPORT_DECL,            // Added
+    SMUGGLE_DECL,           // Added
+    // CONST_GENERIC_PARAM_DECL, // Added via GenericParamNode kind
 
     // Types
     TYPE_NAME, // Conceptual type, IdentifierTypeNode is a concrete usage
@@ -96,7 +109,8 @@ enum class NodeType {
     STMT_NODE,
     DECL_NODE,
     TYPE_NODE,
-    PATTERN_NODE
+    PATTERN_NODE,
+    MATCH_CASE_NODE // Helper for MatchStmtNode
 };
 
 class Node {
@@ -211,6 +225,24 @@ Derived from `ExprNode : Node`.
     -   `std::unique_ptr<ExprNode> left;` (L-value expression)
     -   `std::unique_ptr<ExprNode> right;` (R-value expression)
 
+-   **`AwaitExprNode : ExprNode`**: Represents an await operation, e.g., `await my_future;`.
+    -   `std::unique_ptr<ExprNode> expression;` (The expression being awaited)
+
+-   **`IfExprNode : ExprNode`**: Represents an if-else expression, e.g., `let x = if cond { val1 } else { val2 };`.
+    -   `std::unique_ptr<ExprNode> condition;`
+    -   `std::unique_ptr<BlockStmtNode> thenBlock;` // Or an ExprNode if blocks are not required
+    -   `std::unique_ptr<ExprNode> elseExpression;` // Mandatory for if-expression
+
+-   **`ListComprehensionNode : ExprNode`**: Represents a list comprehension, e.g., `[x * x for x in 0..10 if x % 2 == 0]`.
+    -   `std::unique_ptr<ExprNode> outputExpression;` (e.g., `x * x`)
+    -   `std::unique_ptr<PatternNode> variablePattern;` (e.g., `x`)
+    -   `std::unique_ptr<ExprNode> iterableExpression;` (e.g., `0..10`)
+    -   `std::unique_ptr<ExprNode> filterCondition;` // Optional (e.g., `x % 2 == 0`)
+
+-   **`MacroInvocationNode : ExprNode`**: Represents a macro invocation, e.g., `println!("Hello")`.
+    -   `std::unique_ptr<PathNode> path;` (Path to the macro, e.g., `println`)
+    -   `std::vector<std::unique_ptr<ExprNode>> arguments;` // Or a more flexible token stream
+
 ## 5. Statement Nodes
 
 Derived from `StmtNode : Node`.
@@ -240,12 +272,42 @@ Derived from `StmtNode : Node`.
 -   **`BreakStmtNode : StmtNode`**: Represents a break statement. (Assumed structure based on `NodeType::BREAK_STMT` and Visitor)
 -   **`ContinueStmtNode : StmtNode`**: Represents a continue statement. (Assumed structure based on `NodeType::CONTINUE_STMT` and Visitor)
 
+-   **`MatchStmtNode : StmtNode`**: Represents a match statement, e.g., `match expr { pattern1 => body1, ... }`.
+    -   `std::unique_ptr<ExprNode> expression;` (The expression being matched)
+    -   `std::vector<std::unique_ptr<MatchCaseNode>> cases;`
+    -   **`MatchCaseNode : Node`** (Helper, not inheriting StmtNode/ExprNode directly unless it makes sense):
+        -   `std::unique_ptr<PatternNode> pattern;`
+        -   `std::unique_ptr<ExprNode> guard;` // Optional "if condition"
+        -   `std::unique_ptr<BlockStmtNode> body;` // Or an ExprNode if match can be an expression
+
+-   **`ThrowStmtNode : StmtNode`**: Represents a throw statement, e.g., `throw MyError("Something went wrong");`.
+    -   `std::unique_ptr<ExprNode> expression;` (The error object/value being thrown)
+
+-   **`TryStmtNode : StmtNode`**: Represents a try-catch-finally statement.
+    -   `std::unique_ptr<BlockStmtNode> tryBlock;`
+    -   `std::vector<CatchClauseNode> catchClauses;`
+    -   `std::unique_ptr<BlockStmtNode> finallyBlock;` // Optional
+    -   **`CatchClauseNode : Node`** (Helper):
+        -   `std::unique_ptr<IdentifierNode> variableName;` // Optional (e.g., `e`)
+        -   `std::unique_ptr<TypeNode> exceptionType;` // (e.g., `NetworkError`)
+        -   `std::unique_ptr<BlockStmtNode> body;`
+
+-   **`DeferStmtNode : StmtNode`**: Represents a defer statement, e.g., `defer file.close();`.
+    -   `std::unique_ptr<ExprNode> expression;` (The expression to be deferred, typically a call)
+
+-   **`ScopedBlockStmtNode : StmtNode`**: Represents a special `scoped` block, if its semantics differ from a standard `BlockStmtNode`.
+    -   `std::vector<std::unique_ptr<StmtNode>> statements;`
+    -   `// Potentially additional metadata about the scope's purpose or behavior.`
+
 ## 6. Declaration Nodes
 
 Derived from `DeclNode : Node`.
 
--   **`GenericParamNode : Node`**: Represents a generic parameter in a declaration, e.g., `T: Trait1 + Trait2`.
+-   **`GenericParamNode : Node`**: Represents a generic parameter in a declaration.
+    -   `enum class Kind { TYPE, CONST };`
     -   `std::unique_ptr<IdentifierNode> name;`
+    -   `Kind kind;` // To distinguish between type parameters (e.g., `T`) and const parameters (e.g., `N: int`)
+    -   `std::unique_ptr<TypeNode> typeAnnotation;` // Optional: For const generic parameters (e.g., `int` for `N`)
     -   `std::vector<std::unique_ptr<TypeNode>> trait_bounds;`
 -   **`ParamNode : DeclNode`**: Represents a parameter in a function declaration.
     -   `std::unique_ptr<IdentifierNode> name;`
@@ -256,10 +318,11 @@ Derived from `DeclNode : Node`.
     -   `std::unique_ptr<IdentifierNode> name;`
     -   `std::vector<std::unique_ptr<GenericParamNode>> genericParams;`
     -   `std::vector<std::unique_ptr<ParamNode>> params;`
-    -   `std::unique_ptr<TypeNode> returnType;` // Optional, return_type to returnType
+    -   `std::unique_ptr<TypeNode> returnType;` // Optional
     -   `std::unique_ptr<BlockStmtNode> body;` // Optional (for external/interface functions)
-    -   `// bool is_async;`
-    -   `// bool is_extern;`
+    -   `bool isAsync;`
+    -   `bool isExtern;` // Added from previous comment
+    -   `std::vector<std::unique_ptr<TypeNode>> throwsClause;` // Optional: List of types this function can throw
 -   **`StructDeclNode : DeclNode`**: Represents a struct declaration.
     -   `std::unique_ptr<IdentifierNode> name;`
     -   `std::vector<std::unique_ptr<GenericParamNode>> genericParams;`
@@ -292,10 +355,18 @@ Derived from `DeclNode : Node`.
 
 -   **`GlobalVarDeclNode : DeclNode`**: Represents a global variable declaration, e.g., `let x: int = 10;`, `var y = "hello";`, `const Z = 3.14;`.
     -   `std::unique_ptr<PatternNode> pattern;` (The pattern being declared, e.g., `IdentifierPatternNode` for `x`, `y`, `Z`)
-    -   `std::unique_ptr<TypeNode> type_annotation;` // Optional
+    -   `std::unique_ptr<TypeNode> typeAnnotation;` // Optional
     -   `std::unique_ptr<ExprNode> initializer;`     // Optional (but usually present for `const` and often for `let`/`var`)
-    -   `bool is_mutable;`                           // `true` for `var`, `false` for `let`
-    -   `bool is_const;`                             // `true` for `const`
+    -   `bool isMutable;`                           // `true` for `var`, `false` for `let` (camelCase)
+    -   `bool isConst;`                             // `true` for `const` (camelCase)
+
+-   **`ImportDeclNode : DeclNode`**: Represents an import declaration, e.g., `import vyn::fs;` or `import module::item as alias;`.
+    -   `std::unique_ptr<PathNode> path;`
+    -   `std::unique_ptr<IdentifierNode> alias;` // Optional
+
+-   **`SmuggleDeclNode : DeclNode`**: Represents a smuggle declaration, e.g., `smuggle http::client;`.
+    -   `std::unique_ptr<PathNode> path;`
+    -   `// Potentially other attributes related to how symbols are integrated.`
 
 ## 7. Type Nodes
 
@@ -374,6 +445,8 @@ public:
     virtual void visit(FloatLiteralNode* node) = 0;
     virtual void visit(StringLiteralNode* node) = 0;
     virtual void visit(BoolLiteralNode* node) = 0;
+    virtual void visit(CharLiteralNode* node) = 0; // Assuming added from previous context
+    virtual void visit(NullLiteralNode* node) = 0; // Assuming added from previous context
     virtual void visit(BinaryOpNode* node) = 0;
     virtual void visit(UnaryOpNode* node) = 0;
     virtual void visit(CallExprNode* node) = 0;
@@ -383,6 +456,10 @@ public:
     virtual void visit(TupleLiteralNode* node) = 0;
     virtual void visit(StructLiteralNode* node) = 0;
     virtual void visit(EnumLiteralNode* node) = 0;
+    virtual void visit(AwaitExprNode* node) = 0;             // Added
+    virtual void visit(IfExprNode* node) = 0;                // Added
+    virtual void visit(ListComprehensionNode* node) = 0; // Added
+    virtual void visit(MacroInvocationNode* node) = 0;  // Added
 
     // Statements
     virtual void visit(BlockStmtNode* node) = 0;
@@ -394,28 +471,42 @@ public:
     virtual void visit(ForStmtNode* node) = 0;
     virtual void visit(BreakStmtNode* node) = 0;
     virtual void visit(ContinueStmtNode* node) = 0;
+    virtual void visit(MatchStmtNode* node) = 0;             // Added
+    virtual void visit(MatchCaseNode* node) = 0;           // Added (helper for MatchStmtNode)
+    virtual void visit(ThrowStmtNode* node) = 0;             // Added
+    virtual void visit(TryStmtNode* node) = 0;               // Added
+    virtual void visit(CatchClauseNode* node) = 0;         // Added (helper for TryStmtNode)
+    virtual void visit(DeferStmtNode* node) = 0;             // Added
+    virtual void visit(ScopedBlockStmtNode* node) = 0;      // Added
 
     // Declarations
     virtual void visit(ParamNode* node) = 0;
     virtual void visit(FuncDeclNode* node) = 0;
     virtual void visit(StructDeclNode* node) = 0;
-    virtual void visit(FieldDeclNode* node) = 0; // Added
-    virtual void visit(ClassDeclNode* node) = 0; // Added
+    virtual void visit(FieldDeclNode* node) = 0;
+    virtual void visit(ClassDeclNode* node) = 0;
     virtual void visit(ImplDeclNode* node) = 0;
     virtual void visit(GenericParamNode* node) = 0;
-    virtual void visit(EnumVariantNode* node) = 0; // Added
-    virtual void visit(EnumDeclNode* node) = 0;   // Added
-    virtual void visit(TypeAliasDeclNode* node) = 0; // Added
-    virtual void visit(GlobalVarDeclNode* node) = 0; // Added
+    virtual void visit(EnumVariantNode* node) = 0;
+    virtual void visit(EnumDeclNode* node) = 0;
+    virtual void visit(TypeAliasDeclNode* node) = 0;
+    virtual void visit(GlobalVarDeclNode* node) = 0;
+    virtual void visit(ImportDeclNode* node) = 0;            // Added
+    virtual void visit(SmuggleDeclNode* node) = 0;           // Added
 
     // Types
-    // virtual void visit(TypeNameNode* node) = 0; // If TypeNameNode is used distinctly
+    // ... (existing type visits) ...
     virtual void visit(IdentifierTypeNode* node) = 0;
     virtual void visit(ArrayTypeNode* node) = 0;
     virtual void visit(PointerTypeNode* node) = 0;
     virtual void visit(OptionalTypeNode* node) = 0;
+    virtual void visit(ReferenceTypeNode* node) = 0;       // Assuming added from previous context
+    virtual void visit(FunctionTypeNode* node) = 0;        // Assuming added from previous context
+    virtual void visit(GenericInstanceTypeNode* node) = 0; // Assuming added from previous context
+
 
     // Patterns
+    // ... (existing pattern visits) ...
     virtual void visit(IdentifierPatternNode* node) = 0;
     virtual void visit(LiteralPatternNode* node) = 0;
     virtual void visit(WildcardPatternNode* node) = 0;
@@ -440,22 +531,17 @@ The parser components (`BaseParser`, `DeclarationParser`, `ExpressionParser`, `S
 
 ## 12. Future Considerations
 
--   **Macros**: Could be `MacroInvocationNode`, expanding to standard AST nodes.
 -   **Annotations/Attributes**: Could be `AnnotationNode` attached to declarable nodes.
--   **Error Handling**: Robust strategies for partial ASTs or error nodes during parsing.
--   **Enum Declarations**: Full support for `enum Name { Variant1(Type), ... }` declarations (currently only enum literals and patterns are supported).
--   **Match Expressions/Statements**: Full support using the defined pattern nodes.
--   **Import/Smuggle Statements**: Nodes for module system interactions.
--   **Other Literal Types**: `CharLiteralNode`, `RuneLiteralNode`, `BytesLiteralNode`, `NilLiteralNode` if they are added to the language.
--   **Other Expression Types**: `IfExprNode`, `ListComprehensionNode`, `AwaitExprNode` if added.
--   **Other Statement Types**: `ConstDeclNode`, `DeferStmtNode`, `TryStmtNode`, `MatchStmtNode` if added.
+-   **Error Handling**: Robust strategies for partial ASTs or error nodes during parsing (still relevant beyond specific throw/try nodes).
+-   **`scoped` block semantics**: Further define if `ScopedBlockStmtNode` is needed or if `BlockStmtNode` with metadata suffices.
+-   **Const Generic Parameter Details**: Refine representation in `GenericParamNode` or consider a separate `ConstGenericParamNode` if `kind` is insufficient.
+-   **Macro System Details**: The structure of `MacroInvocationNode` arguments (token stream vs. parsed expressions) needs definition. Also, macro definition nodes (`MacroDeclNode`).
+-   **Operator Overloading Details**: How `operator+` in `FuncDeclNode::name` is specifically represented and resolved.
 
 ## 13. Open Questions & Discussion Points
 
--   **Error Handling during AST Construction**: How should the parser signal unrecoverable syntax errors? Current approach involves throwing exceptions, but alternatives like error nodes or partial ASTs could be considered.
--   **Completeness of `ast.hpp` Snippet**: The provided `ast.hpp` in context primarily shows forward declarations and visitor methods for many nodes. This document assumes their member structures based on common practices and their `NodeType`. Full definitions in `ast.hpp` would be beneficial for precise documentation.
--   **Struct Field Mutability**: `StructDeclNode` fields currently only store name and type. Mutability of struct fields is typically handled by the mutability of the struct instance itself (e.g. `let s = MyStruct(); s.field = ...` would be an error if fields are not inherently mutable or `s` is not `var`). This might need further clarification in the language design.
--   **Enum Declarations**: Full support for `enum Name { Variant1(Type), ... }` declarations is still pending. -> **Implemented.**
--   **`ParamNode` details**: `ParamNode` in `ast.hpp` has `isRef` and `isMut` which are now reflected in this document's `ParamNode` description.
+-   **Error Handling during AST Construction**: How should the parser signal unrecoverable syntax errors? Current approach involves throwing exceptions, but alternatives like error nodes or partial ASTs could be considered. (Still relevant)
+-   **Completeness of `ast.hpp` Snippet**: The provided `ast.hpp` in context primarily shows forward declarations and visitor methods for many nodes. This document assumes their member structures based on common practices and their `NodeType`. Full definitions in `ast.hpp` would be beneficial for precise documentation. (Still relevant)
+-   **Struct Field Mutability**: `StructDeclNode` fields currently only store name and type. Mutability of struct fields is typically handled by the mutability of the struct instance itself (e.g. `let s = MyStruct(); s.field = ...` would be an error if fields are not inherently mutable or `s` is not `var`). This might need further clarification in the language design. (Still relevant)
 
-This document reflects the AST structure as per the latest understanding of `ast.hpp` and `ast.cpp` implementations. It should be updated as the language and its AST evolve.
+This document reflects the AST structure as per the latest understanding of `ast.hpp` and `ast.cpp` implementations and Vyn language examples. It should be updated as the language and its AST evolve.
