@@ -1,38 +1,42 @@
 #include "vyn/parser.hpp"
-#include <iostream>
+#include "vyn/ast.hpp"
+#include "vyn/token.hpp"
+#include <vector>
+#include <memory>
+#include <stdexcept> // Required for std::runtime_error
 
-ModuleParser::ModuleParser(const std::vector<Token>& tokens, size_t& pos)
-    : BaseParser(tokens, pos) {}
+// Constructor for ModuleParser
+ModuleParser::ModuleParser(const std::vector<Vyn::Token>& tokens, size_t& pos, const std::string& file_path, DeclarationParser& declaration_parser)
+    : BaseParser(tokens, pos, file_path), declaration_parser_(declaration_parser) {}
 
-std::unique_ptr<ASTNode> ModuleParser::parse() {
-    auto node = std::make_unique<ASTNode>(ASTNode::Kind::Module);
-    std::cout << "DEBUG: ModuleParser::parse at token " << token_type_to_string(peek().type)
-              << ", value = " << peek().value << ", line = " << peek().line
-              << ", pos_ = " << pos_ << ", indent_level = " << indent_levels_.back() << std::endl;
+std::unique_ptr<Vyn::AST::ModuleNode> ModuleParser::parse() {
+    Vyn::AST::SourceLocation module_loc = current_location(); // Get location at the start of the module
+    std::vector<std::unique_ptr<Vyn::AST::DeclNode>> declarations;
 
-    while (pos_ < tokens_.size() && tokens_[pos_].type != TokenType::EOF_TOKEN) {
-        if (pos_ >= tokens_.size() || tokens_[pos_].type == TokenType::EOF_TOKEN) {
-            break;
-        }
+    skip_comments_and_newlines(); // Skip any leading comments or newlines
 
-        std::cout << "DEBUG: Processing token " << token_type_to_string(peek().type)
-                  << ", value = " << peek().value << ", line = " << peek().line
-                  << ", column = " << peek().column << ", pos_ = " << pos_
-                  << ", indent_level = " << indent_levels_.back() << std::endl;
+    while (peek().type != Vyn::TokenType::EOF_TOKEN) {
+        // At the module level, we expect declarations (functions, structs, impls, etc.)
+        // Or potentially import/export statements if those are treated as declarations.
+        // For now, let's assume DeclarationParser handles all top-level constructs.
+        
+        Vyn::AST::SourceLocation decl_loc = current_location();
+        auto decl_node = declaration_parser_.parse(); // This will attempt to parse one declaration
 
-        DeclarationParser decl_parser(tokens_, pos_);
-        auto decl = decl_parser.parse(); // Call public parse() instead of private functions
-        if (decl) {
-            node->children.push_back(std::move(decl));
+        if (decl_node) {
+            declarations.push_back(std::move(decl_node));
         } else {
-            throw std::runtime_error("Failed to parse declaration at line " +
-                                    std::to_string(peek().line) + ", column " +
-                                    std::to_string(peek().column));
+            // DeclarationParser::parse() should throw on error or return nullptr only at EOF.
+            // If it returns nullptr and it's not EOF, it's an issue or unexpected token.
+            // DeclarationParser::parse() now throws on unexpected token if not EOF.
+            // So, if we are here and decl is nullptr, it implies EOF was hit by DeclarationParser,
+            // which contradicts the while loop condition.
+            // This path should ideally not be taken if DeclarationParser works as expected.
+            // For safety, if an unexpected nullptr occurs, break to avoid infinite loop.
+            break; 
         }
+        skip_comments_and_newlines(); // Skip stuff between declarations
     }
 
-    std::cout << "DEBUG: Completed ModuleParser::parse, next token " << token_type_to_string(peek().type)
-              << ", value = " << peek().value << ", line = " << peek().line
-              << ", pos_ = " << pos_ << std::endl;
-    return node;
+    return std::make_unique<Vyn::AST::ModuleNode>(module_loc, current_file_path_, std::move(declarations));
 }

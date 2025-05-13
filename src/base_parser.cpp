@@ -1,95 +1,145 @@
 #include "vyn/parser.hpp"
+#include "vyn/token.hpp" // For Vyn::Token, Vyn::TokenType, Vyn::token_type_to_string
+#include "vyn/ast.hpp"   // For Vyn::AST::SourceLocation
 #include <stdexcept>
 #include <iostream> // For debug output, consider removing for production
 
-// Advances pos_ past comments and newlines
-void BaseParser::skip_comments_and_newlines() {
-    while (pos_ < tokens_.size() &&
-           (tokens_[pos_].type == TokenType::COMMENT ||
-            tokens_[pos_].type == TokenType::NEWLINE)) {
-        pos_++;
-    }
-}
+namespace Vyn {
 
-// Skips comments/newlines with a temp var, then returns tokens_[temp_pos]
-const Token& BaseParser::peek() const {
-    size_t temp_pos = pos_;
-    // Skip comments and newlines for peeking
-    while (temp_pos < tokens_.size() &&
-           (tokens_[temp_pos].type == TokenType::COMMENT ||
-            tokens_[temp_pos].type == TokenType::NEWLINE)) {
-        temp_pos++;
-    }
-    if (temp_pos >= tokens_.size()) {
-        // Assuming the last token in tokens_ is always EOF_TOKEN
-        // or handle error if no EOF token is guaranteed.
-        if (tokens_.empty()) { // Should not happen with a lexer that adds EOF
-            throw std::runtime_error("Peek called on empty token stream");
+    Vyn::AST::SourceLocation BaseParser::current_location() const {
+        if (pos_ < tokens_.size()) {
+            const auto& token = tokens_[pos_];
+            return Vyn::AST::SourceLocation(current_file_path_, token.line, token.column);
+        } else if (!tokens_.empty()) {
+            const auto& token = tokens_.back(); // Use last token for EOF location
+            return Vyn::AST::SourceLocation(current_file_path_, token.line, token.column);
         }
-        return tokens_.back(); 
+        return Vyn::AST::SourceLocation(current_file_path_, 0, 0); // Default if no tokens
     }
-    return tokens_[temp_pos];
-}
 
-// Calls skip_comments_and_newlines, then returns tokens_[pos_] and advances pos_
-Token BaseParser::consume() {
-    skip_comments_and_newlines(); // Advance pos_ past any leading comments/newlines
-    if (pos_ >= tokens_.size()) {
-        if (tokens_.empty()) { 
-            throw std::runtime_error("Consume called on empty token stream");
-        }
-        // Attempting to consume beyond EOF. Return EOF token.
-        return tokens_.back(); 
-    }
-    const Token& current_token = tokens_[pos_];
-    pos_++; 
-    return current_token; 
-}
-
-// Uses peek, then consumes if type matches, returns consumed token
-Token BaseParser::expect(TokenType type) {
-    const Token& next_token = peek(); 
-    if (next_token.type != type) {
-        throw std::runtime_error("Expected " + token_type_to_string(type) +
-                                 " but found " + token_type_to_string(next_token.type) +
-                                 " at line " + std::to_string(next_token.line) +
-                                 ", column " + std::to_string(next_token.column));
-    }
-    return consume(); // consume() will advance past the validated token and any subsequent newlines/comments
-}
-
-// Uses peek, then consumes if type matches, returns bool
-bool BaseParser::match(TokenType type) {
-    if (peek().type == type) {
-        consume(); 
-        return true;
-    }
-    return false;
-}
-
-// Handles INDENT/DEDENT, may call skip_comments_and_newlines
-void BaseParser::skip_indents_dedents() {
-    // This function needs to be called explicitly where block structure is expected.
-    // It consumes INDENT/DEDENT tokens and skips any comments/newlines around them.
-    while (pos_ < tokens_.size()) {
-        if (tokens_[pos_].type == TokenType::INDENT) {
-            // indent_levels_.push_back(indent_levels_.back() + 1); // Indent level logic needs careful overall design
+    void BaseParser::skip_comments_and_newlines() {
+        while (pos_ < tokens_.size() &&
+               (tokens_[pos_].type == Vyn::TokenType::COMMENT ||
+                tokens_[pos_].type == Vyn::TokenType::NEWLINE)) {
             pos_++;
-            skip_comments_and_newlines(); // Skip any newlines/comments after INDENT
-        } else if (tokens_[pos_].type == TokenType::DEDENT) {
-            // if (!indent_levels_.empty()) { indent_levels_.pop_back(); } // Indent level logic
-            pos_++;
-            skip_comments_and_newlines(); // Skip any newlines/comments after DEDENT
-        } else {
-            break; // Not an INDENT or DEDENT token
         }
     }
-}
 
-// Added implementation for get_current_pos
-size_t BaseParser::get_current_pos() const {
-    return pos_;
-}
+    const Vyn::Token& BaseParser::peek() const {
+        size_t temp_pos = pos_;
+        while (temp_pos < tokens_.size() &&
+               (tokens_[temp_pos].type == Vyn::TokenType::COMMENT ||
+                tokens_[temp_pos].type == Vyn::TokenType::NEWLINE)) {
+            temp_pos++;
+        }
+        if (temp_pos >= tokens_.size()) {
+            if (tokens_.empty()) { 
+                throw std::runtime_error("Peek called on empty token stream from file: " + current_file_path_);
+            }
+            return tokens_.back(); 
+        }
+        return tokens_[temp_pos];
+    }
 
-// Removed old skip_raw_comments_and_newlines, skip_comments, skip_indents definitions.
-// Their logic is now integrated into the above methods or handled by skip_comments_and_newlines.
+    Vyn::Token BaseParser::consume() {
+        skip_comments_and_newlines(); 
+        if (pos_ >= tokens_.size()) {
+            if (tokens_.empty()) { 
+                throw std::runtime_error("Consume called on empty token stream from file: " + current_file_path_);
+            }
+            // Return the last token, which should be EOF or the last valid token if stream ended abruptly.
+            // This behavior might need refinement based on how EOF is handled.
+            return tokens_.back(); 
+        }
+        const Vyn::Token& current_token = tokens_[pos_]; // Use Vyn::Token
+        pos_++; 
+        return current_token; 
+    }
+
+    Vyn::Token BaseParser::expect(Vyn::TokenType type) {
+        const Vyn::Token& next_token = peek(); 
+        if (next_token.type != type) {
+            throw std::runtime_error("Expected " + token_type_to_string(type) +
+                                     " but found " + token_type_to_string(next_token.type) +
+                                     " at file " + current_file_path_ +
+                                     ", line " + std::to_string(next_token.line) +
+                                     ", column " + std::to_string(next_token.column));
+        }
+        return consume(); 
+    }
+
+    std::optional<Token> BaseParser::match(TokenType type) {
+        if (check(type)) {
+            return consume();
+        }
+        return std::nullopt;
+    }
+
+    std::optional<Token> BaseParser::match(const std::vector<TokenType>& types) {
+        for (TokenType type : types) {
+            if (check(type)) {
+                return consume();
+            }
+        }
+        return std::nullopt;
+    }
+
+    void BaseParser::skip_indents_dedents() {
+        while (pos_ < tokens_.size()) {
+            if (tokens_[pos_].type == Vyn::TokenType::INDENT) { // Use Vyn::TokenType
+                pos_++;
+                skip_comments_and_newlines(); 
+            } else if (tokens_[pos_].type == Vyn::TokenType::DEDENT) { // Use Vyn::TokenType
+                pos_++;
+                skip_comments_and_newlines(); 
+            } else {
+                break; 
+            }
+        }
+    }
+
+    size_t BaseParser::get_current_pos() const {
+        return pos_;\
+    }
+
+    bool BaseParser::IsAtEnd() const {
+        // Ensure pos_ is within bounds before accessing tokens_[pos_]
+        if (pos_ >= tokens_.size()) {
+            return true;
+        }
+        return tokens_[pos_].type == Vyn::TokenType::EOF_TOKEN; // Corrected to EOF_TOKEN
+    }
+
+    bool BaseParser::IsDataType(const Vyn::Token &token) const {
+        // Simplified: only checks for IDENTIFIER as type names.
+        // Actual type checking (int, float, custom types) is more complex
+        // and depends on language specification and semantic analysis.
+        return token.type == Vyn::TokenType::IDENTIFIER;
+    }
+
+    bool BaseParser::IsLiteral(const Vyn::Token &token) const {
+        return token.type == Vyn::TokenType::INT_LITERAL ||
+               token.type == Vyn::TokenType::FLOAT_LITERAL ||
+               token.type == Vyn::TokenType::STRING_LITERAL;
+               // token.type == Vyn::TokenType::TRUE_KEYWORD || // TRUE_KEYWORD not in TokenType
+               // token.type == Vyn::TokenType::FALSE_KEYWORD;  // FALSE_KEYWORD not in TokenType
+    }
+
+    bool BaseParser::IsOperator(const Vyn::Token &token) const {
+        return token.type == Vyn::TokenType::PLUS ||
+               token.type == Vyn::TokenType::MINUS ||
+               token.type == Vyn::TokenType::MULTIPLY ||     // Corrected from STAR
+               token.type == Vyn::TokenType::DIVIDE ||       // Corrected from SLASH
+               token.type == Vyn::TokenType::EQEQ ||         // Corrected from EQUAL_EQUAL
+               token.type == Vyn::TokenType::NOTEQ ||        // Corrected from BANG_EQUAL
+               token.type == Vyn::TokenType::LT ||           // Corrected from LESS
+               token.type == Vyn::TokenType::LTEQ ||         // Corrected from LESS_EQUAL
+               token.type == Vyn::TokenType::GT ||           // Corrected from GREATER
+               token.type == Vyn::TokenType::GTEQ;          // Corrected from GREATER_EQUAL
+    }
+
+    bool BaseParser::IsUnaryOperator(const Vyn::Token &token) const {
+        return token.type == Vyn::TokenType::MINUS ||
+               token.type == Vyn::TokenType::BANG;
+    }
+}

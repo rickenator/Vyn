@@ -1,101 +1,164 @@
 #ifndef VYN_PARSER_HPP
 #define VYN_PARSER_HPP
 
-#include "ast.hpp"
+#include "vyn/ast.hpp"
+#include "vyn/token.hpp"
 #include <vector>
 #include <memory>
-#include <stdexcept>
+#include <stdexcept> // For std::runtime_error
+#include <optional> // Add this
 
-class BaseParser {
-protected:
-    const std::vector<Token>& tokens_;
-    size_t& pos_;
-    std::vector<int> indent_levels_;
+namespace Vyn {
 
-    BaseParser(const std::vector<Token>& tokens, size_t& pos)
-        : tokens_(tokens), pos_(pos), indent_levels_{0} {}
+    class Token; // Forward declaration
+    enum class TokenType : int; // Forward declaration
 
-    void skip_comments_and_newlines(); // Advances pos_ past comments/newlines
-    const Token& peek() const;         // Skips comments/newlines with a temp var, then returns tokens_[temp_pos]
-    Token consume();                   // Calls skip_comments_and_newlines, then returns tokens_[pos_] and advances pos_
-    Token expect(TokenType type);      // Uses peek, then consumes if type matches, returns consumed token
-    bool match(TokenType type);        // Uses peek, then consumes if type matches, returns bool
+    // Forward declarations
+    namespace AST {
+        class FieldDeclNode; 
+    }
+    // Forward declarations for parser classes within Vyn namespace
+    class ExpressionParser;
+    class TypeParser;
+    class StatementParser;
+    class DeclarationParser;
+    class ModuleParser;
 
-    void skip_indents_dedents(); // Handles INDENT/DEDENT, may call skip_comments_and_newlines
-public: // Added public accessor for pos_
-    size_t get_current_pos() const;
-};
+    class BaseParser {
+    protected:
+        const std::vector<Vyn::Token>& tokens_;
+        size_t& pos_;
+        std::vector<int> indent_levels_;
+        std::string current_file_path_;
 
-class ExpressionParser : public BaseParser {
-public:
-    ExpressionParser(const std::vector<Token>& tokens, size_t& pos);
-    std::unique_ptr<ASTNode> parse(); // Entry point for parsing an expression
+        BaseParser(const std::vector<Vyn::Token>& tokens, size_t& pos, std::string file_path)
+            : tokens_(tokens), pos_(pos), indent_levels_{0}, current_file_path_(std::move(file_path)) {}
 
-private:
-    std::unique_ptr<ASTNode> parse_logical_expr();
-    std::unique_ptr<ASTNode> parse_equality_expr();
-    std::unique_ptr<ASTNode> parse_relational_expr();
-    std::unique_ptr<ASTNode> parse_additive_expr();
-    std::unique_ptr<ASTNode> parse_multiplicative_expr();
-    std::unique_ptr<ASTNode> parse_unary_expr();
-    std::unique_ptr<ASTNode> parse_primary();
-    std::unique_ptr<ASTNode> parse_call_expr(std::unique_ptr<ASTNode> callee);
-    std::unique_ptr<ASTNode> parse_member_expr(std::unique_ptr<ASTNode> object);
-    std::unique_ptr<ASTNode> parse_array_expr();
-};
+        Vyn::AST::SourceLocation current_location() const;
+        void skip_comments_and_newlines();
+        const Vyn::Token& peek() const;
+        Vyn::Token consume();
+        Vyn::Token expect(Vyn::TokenType type);
+        // bool match(const std::vector<TokenType>& types); // Old signature
+        std::optional<Vyn::Token> match(const std::vector<Vyn::TokenType>& types); // New signature
+        bool check(Vyn::TokenType type) const;
+        bool check(const std::vector<Vyn::TokenType>& types) const; // Added const
+        bool IsAtEnd() const;
 
-class TypeParser : public BaseParser {
-public:
-    TypeParser(const std::vector<Token>& tokens, size_t& pos);
-    std::unique_ptr<ASTNode> parse();
-};
+        void skip_indents_dedents();
 
-class StatementParser : public BaseParser {
-    int indent_level_;
-public:
-    StatementParser(const std::vector<Token>& tokens, size_t& pos, int indent_level);
-    std::unique_ptr<ASTNode> parse();
-    std::unique_ptr<ASTNode> parse_expression_statement(); // Moved to public
-    std::unique_ptr<ASTNode> parse_block(); // Moved to public
-private:
-    std::unique_ptr<ASTNode> parse_if();
-    std::unique_ptr<ASTNode> parse_while();
-    std::unique_ptr<ASTNode> parse_for();
-    std::unique_ptr<ASTNode> parse_return();
-    std::unique_ptr<ASTNode> parse_break();
-    std::unique_ptr<ASTNode> parse_continue();
-    std::unique_ptr<ASTNode> parse_var_decl(bool is_scoped = false);
-    std::unique_ptr<ASTNode> parse_const_decl(bool is_scoped = false);
-    std::unique_ptr<ASTNode> parse_import();
-    std::unique_ptr<ASTNode> parse_smuggle();
-    std::unique_ptr<ASTNode> parse_class();
-    std::unique_ptr<ASTNode> parse_template();
-    std::unique_ptr<ASTNode> parse_try();
-    std::unique_ptr<ASTNode> parse_defer();
-    std::unique_ptr<ASTNode> parse_await();
-    std::unique_ptr<ASTNode> parse_match();
-    std::unique_ptr<ASTNode> parse_var();
-    std::unique_ptr<ASTNode> parse_const();
-    std::unique_ptr<ASTNode> parse_scoped();
-    std::unique_ptr<ASTNode> parse_pattern(); // Added declaration
-};
+        // Helper methods
+        bool IsDataType(const Vyn::Token &token) const;
+        bool IsLiteral(const Vyn::Token &token) const;
+        bool IsOperator(const Vyn::Token &token) const;
+        bool IsUnaryOperator(const Vyn::Token &token) const;
+    public:
+        size_t get_current_pos() const;
+    };
 
-class DeclarationParser : public BaseParser {
-public:
-    DeclarationParser(const std::vector<Token>& tokens, size_t& pos);
-    std::unique_ptr<ASTNode> parse();
-    std::unique_ptr<ASTNode> parse_function();
-    std::unique_ptr<ASTNode> parse_class(); // Make public
-    std::unique_ptr<ASTNode> parse_template(); // Make public
+    class ExpressionParser : public BaseParser {
+    public:
+        ExpressionParser(const std::vector<Vyn::Token>& tokens, size_t& pos, const std::string& file_path);
+        Vyn::AST::ExprPtr parse(); 
 
-private:
-    std::unique_ptr<ASTNode> parse_block(); // Keep private or remove if StatementParser::parse_block is used
-};
+    private:
+        Vyn::AST::ExprPtr parse_expression();
+        Vyn::AST::ExprPtr parse_assignment_expr(); 
+        Vyn::AST::ExprPtr parse_logical_or_expr(); 
+        Vyn::AST::ExprPtr parse_logical_and_expr(); 
+        Vyn::AST::ExprPtr parse_bitwise_or_expr(); 
+        Vyn::AST::ExprPtr parse_bitwise_xor_expr(); 
+        Vyn::AST::ExprPtr parse_bitwise_and_expr(); 
+        Vyn::AST::ExprPtr parse_equality_expr(); 
+        Vyn::AST::ExprPtr parse_relational_expr(); 
+        Vyn::AST::ExprPtr parse_shift_expr(); 
+        Vyn::AST::ExprPtr parse_additive_expr(); 
+        Vyn::AST::ExprPtr parse_multiplicative_expr(); 
+        Vyn::AST::ExprPtr parse_unary_expr(); 
+        Vyn::AST::ExprPtr parse_postfix_expr(); 
+        Vyn::AST::ExprPtr parse_atom(); 
+    };
 
-class ModuleParser : public BaseParser {
-public:
-    ModuleParser(const std::vector<Token>& tokens, size_t& pos);
-    std::unique_ptr<ASTNode> parse();
-};
+    class TypeParser : public BaseParser {
+        ExpressionParser& expr_parser_;
+    public:
+        TypeParser(const std::vector<Vyn::Token>& tokens, size_t& pos, const std::string& file_path, ExpressionParser& expr_parser);
+        Vyn::AST::TypePtr parse(); 
+    private:
+        Vyn::AST::TypePtr parse_base_type(); 
+        Vyn::AST::TypePtr parse_postfix_type(Vyn::AST::TypePtr base_type); 
+    };
+
+    class StatementParser : public BaseParser {
+        int indent_level_;
+        TypeParser& type_parser_;
+        ExpressionParser& expr_parser_;
+    public:
+        StatementParser(const std::vector<Vyn::Token>& tokens, size_t& pos, int indent_level, const std::string& file_path, TypeParser& type_parser, ExpressionParser& expr_parser);
+        Vyn::AST::StmtPtr parse(); 
+        std::unique_ptr<Vyn::AST::ExpressionStmtNode> parse_expression_statement(); 
+        std::unique_ptr<Vyn::AST::BlockStmtNode> parse_block(); 
+    private:
+        std::unique_ptr<Vyn::AST::IfStmtNode> parse_if(); 
+        std::unique_ptr<Vyn::AST::WhileStmtNode> parse_while(); 
+        std::unique_ptr<Vyn::AST::ForStmtNode> parse_for(); 
+        std::unique_ptr<Vyn::AST::ReturnStmtNode> parse_return(); 
+        std::unique_ptr<Vyn::AST::BreakStmtNode> parse_break(); 
+        std::unique_ptr<Vyn::AST::ContinueStmtNode> parse_continue(); 
+        std::unique_ptr<Vyn::AST::VarDeclStmtNode> parse_var_decl(); 
+        Vyn::AST::PatternPtr parse_pattern(); 
+    };
+
+    class DeclarationParser : public BaseParser {
+        TypeParser& type_parser_;
+        ExpressionParser& expr_parser_;
+        StatementParser& stmt_parser_;
+    public:
+        DeclarationParser(const std::vector<Vyn::Token>& tokens, size_t& pos, const std::string& file_path, TypeParser& type_parser, ExpressionParser& expr_parser, StatementParser& stmt_parser);
+        Vyn::AST::DeclPtr parse(); 
+        std::unique_ptr<Vyn::AST::FuncDeclNode> parse_function(); 
+        std::unique_ptr<Vyn::AST::StructDeclNode> parse_struct(); 
+        std::unique_ptr<Vyn::AST::ImplDeclNode> parse_impl(); 
+        std::unique_ptr<Vyn::AST::ClassDeclNode> parse_class_declaration();
+        std::unique_ptr<Vyn::AST::FieldDeclNode> parse_field_declaration();
+        std::unique_ptr<Vyn::AST::EnumDeclNode> parse_enum_declaration();
+        std::unique_ptr<Vyn::AST::TypeAliasDeclNode> parse_type_alias_declaration(); 
+        std::unique_ptr<Vyn::AST::GlobalVarDeclNode> parse_global_var_declaration(); 
+        std::vector<std::unique_ptr<Vyn::AST::GenericParamNode>> parse_generic_params();
+
+    private:
+        std::unique_ptr<Vyn::AST::EnumVariantNode> parse_enum_variant(); 
+    };
+
+    class ModuleParser : public BaseParser {
+        DeclarationParser& declaration_parser_;
+    public:
+        ModuleParser(const std::vector<Vyn::Token>& tokens, size_t& pos, const std::string& file_path, DeclarationParser& declaration_parser); 
+        std::unique_ptr<Vyn::AST::ModuleNode> parse();
+    };
+
+    class Parser {
+        std::vector<Vyn::Token> tokens_; 
+        size_t pos_ = 0;
+        std::string file_path_;
+
+        ExpressionParser expression_parser_;
+        TypeParser type_parser_;
+        StatementParser statement_parser_; 
+        DeclarationParser declaration_parser_;
+        ModuleParser module_parser_;
+
+    public:
+        Parser(const std::vector<Vyn::Token>& tokens, std::string file_path); 
+        std::unique_ptr<Vyn::AST::ModuleNode> parse_module();
+
+        ExpressionParser& get_expression_parser() { return expression_parser_; }
+        TypeParser& get_type_parser() { return type_parser_; }
+        StatementParser& get_statement_parser() { return statement_parser_; }
+        DeclarationParser& get_declaration_parser() { return declaration_parser_; }
+        ModuleParser& get_module_parser() { return module_parser_; }
+    };
+
+} // namespace Vyn
 
 #endif

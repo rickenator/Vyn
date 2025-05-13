@@ -3,12 +3,14 @@ project(VynParser)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Catch2 REQUIRED)
 
 add_executable(vyn_parser
     src/token.cpp
     src/lexer.cpp
+    src/ast.cpp
     src/base_parser.cpp
     src/expression_parser.cpp
     src/type_parser.cpp

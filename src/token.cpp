@@ -1,4 +1,15 @@
 #include "vyn/token.hpp"
+#include <unordered_map> // Added for std::unordered_map
+#include <string> // Added for std::string
+
+// The function is defined within the Vyn namespace if the header declares it so.
+// If token.hpp declares `namespace Vyn { std::string token_type_to_string(TokenType type); }`
+// then this definition is correct.
+// If token.hpp declares `std::string token_type_to_string(Vyn::TokenType type);` at global scope,
+// then this definition is also correct.
+// Assuming it's part of the Vyn namespace as per previous discussions.
+
+namespace Vyn {
 
 std::string token_type_to_string(TokenType type) {
     static const std::unordered_map<TokenType, std::string> token_map = {
@@ -70,3 +81,5 @@ std::string token_type_to_string(TokenType type) {
     auto it = token_map.find(type);
     return it != token_map.end() ? it->second : "UNKNOWN";
 }
+
+} // namespace Vyn

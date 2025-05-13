@@ -1,0 +1,6 @@
+# Vyn Language Roadmap & Design Notes
+
+## Future Considerations:
+
+- **Template Placement**: Explore allowing template declarations in more contexts beyond just module-level (e.g., within classes, functions) if deemed beneficial for advanced metaprogramming scenarios. Currently, templates are module-level items.
+- **Header Files (`.vyh`)**: Investigate the potential need for dedicated header files (e.g., `.vyh`) for separating interfaces, public template definitions, and type declarations from implementation files (`.vyn`). This could improve organization and compile times for larger projects.

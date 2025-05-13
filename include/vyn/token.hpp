@@ -3,6 +3,10 @@
 
 #include <string>
 #include <unordered_map>
+#include <vector>
+#include "ast.hpp" // Required for Vyn::AST::SourceLocation
+
+namespace Vyn {
 
 enum class TokenType {
     EOF_TOKEN,
@@ -76,14 +80,19 @@ enum class TokenType {
 
 struct Token {
     TokenType type;
-    std::string value;
-    size_t line;
-    size_t column;
+    std::string lexeme;
+    int line;
+    int column;
+    AST::SourceLocation location; // Added
 
-    Token(TokenType type, std::string value, size_t line, size_t column)
-        : type(type), value(std::move(value)), line(line), column(column) {}
+    Token(TokenType type, const std::string& lexeme, int line, int column, AST::SourceLocation location) // Updated
+        : type(type), lexeme(lexeme), line(line), column(column), location(location) {} // Updated
+
+    std::string to_string() const;
 };
 
 std::string token_type_to_string(TokenType type);
+
+}
 
 #endif
