@@ -61,8 +61,8 @@ int main(int argc, char** argv) {
     std::string source = buffer.str();
 
     // Tokenize
-    Lexer lexer(source);
-    std::vector<Token> tokens;
+    Lexer lexer(source); // Lexer is not in Vyn namespace
+    std::vector<Vyn::Token> tokens;
     try {
         tokens = lexer.tokenize();
     } catch (const std::runtime_error& e) {
@@ -71,11 +71,11 @@ int main(int argc, char** argv) {
     }
 
     // Parse
-    size_t pos = 0;
-    ModuleParser parser(tokens, pos);
-    std::unique_ptr<ASTNode> ast;
+    // size_t pos = 0; // No longer needed with Vyn::Parser
+    Vyn::Parser parser(tokens, filename); // Use Vyn::Parser and pass filename
+    std::unique_ptr<Vyn::AST::Node> ast; // Use Vyn::AST::Node
     try {
-        ast = parser.parse();
+        ast = parser.parse_module(); // Changed to parse_module()
     } catch (const std::runtime_error& e) {
         std::cerr << "Parsing error: " << e.what() << "\n";
         return 1;

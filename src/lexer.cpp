@@ -230,7 +230,7 @@ std::vector<Vyn::Token> Lexer::tokenize() {
     indent_levels_.pop_back();
   }
 
-  tokens.emplace_back(Vyn::TokenType::EOF_TOKEN, "", line_, column_, Vyn::AST::SourceLocation{source_, line_, column_});
+  tokens.emplace_back(Vyn::TokenType::END_OF_FILE, "", line_, column_, Vyn::AST::SourceLocation{source_, line_, column_});
 
   return tokens;
 }

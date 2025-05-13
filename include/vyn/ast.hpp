@@ -22,6 +22,7 @@ class IntLiteralNode; class FloatLiteralNode; class StringLiteralNode; class Boo
 class ArrayLiteralNode; class TraitDeclNode; class TupleTypeNode; // Added ArrayLiteralNode, TraitDeclNode, TupleTypeNode
 class BinaryOpNode; class UnaryOpNode; class CallNode; class MemberAccessNode; class IndexAccessNode; class IfExprNode; class BlockNode; class ExpressionStmtNode; class VarDeclNode; class FunctionDeclNode; class ReturnStmtNode; class IfStmtNode; class WhileStmtNode; class ForStmtNode; class BreakStmtNode; class ContinueStmtNode; class StructDeclNode; class EnumDeclNode; class FieldDeclNode; class TypeNameNode; class IdentifierPatternNode; class StructPatternNode; class EnumVariantPatternNode; class ClassDeclNode; class MethodDeclNode; class ImportStmtNode; class ModuleNode;
 class TupleLiteralNode; class StructLiteralNode; class GenericParamNode; class ParamNode; class ArrayTypeNode; class PointerTypeNode; class OptionalTypeNode; class EnumVariantNode; class TypeAliasDeclNode; class GlobalVarDeclNode;
+class ReferenceTypeNode; class FunctionTypeNode; class GenericInstanceTypeNode; // Added forward declarations
 
 
 // Type Aliases for smart pointers
@@ -42,6 +43,10 @@ struct SourceLocation {
     int column;
 
     SourceLocation(std::string fp = "", int l = 0, int c = 0) : filePath(std::move(fp)), line(l), column(c) {} // Added initializer list
+    
+    std::string toString() const { // Added toString() method
+        return filePath + ":" + std::to_string(line) + ":" + std::to_string(column);
+    }
 };
 
 enum class NodeType {
@@ -96,6 +101,9 @@ enum class NodeType {
     OPTIONAL_TYPE,
     IDENTIFIER_TYPE, // Added for IdentifierTypeNode
     TUPLE_TYPE,      // Added NodeType for TupleTypeNode
+    REFERENCE_TYPE,        // Added
+    FUNCTION_TYPE,         // Added
+    GENERIC_INSTANCE_TYPE, // Added
 
     // Literals that are also expressions (or part of expressions)
     TUPLE_LITERAL,      // Added
@@ -488,15 +496,13 @@ public:
 
 class ForStmtNode : public StmtNode {
 public:
-    Node* init; 
-    Node* condition; 
-    Node* increment; 
-    BlockStmtNode* body; 
+    PatternPtr pattern;
+    ExprPtr iterable;
+    std::unique_ptr<BlockStmtNode> body;
 
-    ForStmtNode(SourceLocation loc, Node* i, Node* c, Node* incr, BlockStmtNode* b, Node* p = nullptr); 
-    ~ForStmtNode() override; 
-    void accept(Visitor& visitor) override; 
-    std::string toString(int indent = 0) const override; 
+    ForStmtNode(SourceLocation loc, PatternPtr pat, ExprPtr iter, std::unique_ptr<BlockStmtNode> b, Node* p = nullptr);
+    void accept(Visitor& visitor) override;
+    std::string toString(int indent = 0) const override;
 };
 
 class BreakStmtNode : public StmtNode {
@@ -686,6 +692,36 @@ public:
     void accept(Visitor& visitor) override;
 };
 
+class ReferenceTypeNode : public TypeNode {
+public:
+    TypePtr referenced_type;
+    bool is_mutable;
+
+    ReferenceTypeNode(SourceLocation loc, TypePtr ref_type, bool mut, Node* p = nullptr);
+    std::string toString(int indent = 0) const override;
+    void accept(Visitor& visitor) override;
+};
+
+class FunctionTypeNode : public TypeNode {
+public:
+    std::vector<TypePtr> param_types;
+    TypePtr return_type; 
+
+    FunctionTypeNode(SourceLocation loc, std::vector<TypePtr> p_types, TypePtr ret_type, Node* p = nullptr);
+    std::string toString(int indent = 0) const override;
+    void accept(Visitor& visitor) override;
+};
+
+class GenericInstanceTypeNode : public TypeNode {
+public:
+    TypePtr base_type; 
+    std::vector<TypePtr> type_arguments;
+
+    GenericInstanceTypeNode(SourceLocation loc, TypePtr b_type, std::vector<TypePtr> t_args, Node* p = nullptr);
+    std::string toString(int indent = 0) const override;
+    void accept(Visitor& visitor) override;
+};
+
 
 // Module Node
 class ModuleNode : public Node {
@@ -833,6 +869,9 @@ public:
     virtual void visit(PointerTypeNode* node);
     virtual void visit(OptionalTypeNode* node);
     virtual void visit(TupleTypeNode* node);
+    virtual void visit(ReferenceTypeNode* node);        // Added
+    virtual void visit(FunctionTypeNode* node);         // Added
+    virtual void visit(GenericInstanceTypeNode* node);  // Added
     // visit(TypeNode* node) is with base types
 
     // Patterns

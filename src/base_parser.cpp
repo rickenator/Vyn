@@ -84,6 +84,28 @@ namespace Vyn {
         return std::nullopt;
     }
 
+    bool BaseParser::check(Vyn::TokenType type) const {
+        size_t temp_pos = pos_;
+        while (temp_pos < tokens_.size() &&
+               (tokens_[temp_pos].type == Vyn::TokenType::COMMENT ||
+                tokens_[temp_pos].type == Vyn::TokenType::NEWLINE)) {
+            temp_pos++;
+        }
+        if (temp_pos >= tokens_.size()) {
+            return false; // Or handle as EOF, depending on desired behavior for check at EOF
+        }
+        return tokens_[temp_pos].type == type;
+    }
+
+    bool BaseParser::check(const std::vector<Vyn::TokenType>& types) const {
+        for (TokenType type : types) {
+            if (check(type)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     void BaseParser::skip_indents_dedents() {
         while (pos_ < tokens_.size()) {
             if (tokens_[pos_].type == Vyn::TokenType::INDENT) { // Use Vyn::TokenType
@@ -107,7 +129,7 @@ namespace Vyn {
         if (pos_ >= tokens_.size()) {
             return true;
         }
-        return tokens_[pos_].type == Vyn::TokenType::EOF_TOKEN; // Corrected to EOF_TOKEN
+        return tokens_[pos_].type == Vyn::TokenType::END_OF_FILE; // Corrected to END_OF_FILE
     }
 
     bool BaseParser::IsDataType(const Vyn::Token &token) const {

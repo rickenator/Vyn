@@ -1,22 +1,15 @@
 #ifndef VYN_PARSER_HPP
 #define VYN_PARSER_HPP
 
-#include "vyn/ast.hpp"
+#include "vyn/ast.hpp" // Moved ast.hpp include to the top
 #include "vyn/token.hpp"
 #include <vector>
 #include <memory>
 #include <stdexcept> // For std::runtime_error
-#include <optional> // Add this
+#include <optional> 
 
 namespace Vyn {
 
-    class Token; // Forward declaration
-    enum class TokenType : int; // Forward declaration
-
-    // Forward declarations
-    namespace AST {
-        class FieldDeclNode; 
-    }
     // Forward declarations for parser classes within Vyn namespace
     class ExpressionParser;
     class TypeParser;
@@ -39,10 +32,10 @@ namespace Vyn {
         const Vyn::Token& peek() const;
         Vyn::Token consume();
         Vyn::Token expect(Vyn::TokenType type);
-        // bool match(const std::vector<TokenType>& types); // Old signature
-        std::optional<Vyn::Token> match(const std::vector<Vyn::TokenType>& types); // New signature
+        std::optional<Vyn::Token> match(Vyn::TokenType type);
+        std::optional<Vyn::Token> match(const std::vector<Vyn::TokenType>& types);
         bool check(Vyn::TokenType type) const;
-        bool check(const std::vector<Vyn::TokenType>& types) const; // Added const
+        bool check(const std::vector<Vyn::TokenType>& types) const;
         bool IsAtEnd() const;
 
         void skip_indents_dedents();
@@ -59,34 +52,35 @@ namespace Vyn {
     class ExpressionParser : public BaseParser {
     public:
         ExpressionParser(const std::vector<Vyn::Token>& tokens, size_t& pos, const std::string& file_path);
-        Vyn::AST::ExprPtr parse(); 
+        Vyn::AST::ExprPtr parse();
 
     private:
         Vyn::AST::ExprPtr parse_expression();
-        Vyn::AST::ExprPtr parse_assignment_expr(); 
-        Vyn::AST::ExprPtr parse_logical_or_expr(); 
-        Vyn::AST::ExprPtr parse_logical_and_expr(); 
-        Vyn::AST::ExprPtr parse_bitwise_or_expr(); 
-        Vyn::AST::ExprPtr parse_bitwise_xor_expr(); 
-        Vyn::AST::ExprPtr parse_bitwise_and_expr(); 
-        Vyn::AST::ExprPtr parse_equality_expr(); 
-        Vyn::AST::ExprPtr parse_relational_expr(); 
-        Vyn::AST::ExprPtr parse_shift_expr(); 
-        Vyn::AST::ExprPtr parse_additive_expr(); 
-        Vyn::AST::ExprPtr parse_multiplicative_expr(); 
-        Vyn::AST::ExprPtr parse_unary_expr(); 
-        Vyn::AST::ExprPtr parse_postfix_expr(); 
-        Vyn::AST::ExprPtr parse_atom(); 
+        Vyn::AST::ExprPtr parse_assignment_expr();
+        Vyn::AST::ExprPtr parse_logical_or_expr();
+        Vyn::AST::ExprPtr parse_logical_and_expr();
+        Vyn::AST::ExprPtr parse_bitwise_or_expr();
+        Vyn::AST::ExprPtr parse_bitwise_xor_expr();
+        Vyn::AST::ExprPtr parse_bitwise_and_expr();
+        Vyn::AST::ExprPtr parse_equality_expr();
+        Vyn::AST::ExprPtr parse_relational_expr();
+        Vyn::AST::ExprPtr parse_shift_expr();
+        Vyn::AST::ExprPtr parse_additive_expr();
+        Vyn::AST::ExprPtr parse_multiplicative_expr();
+        Vyn::AST::ExprPtr parse_unary_expr();
+        Vyn::AST::ExprPtr parse_postfix_expr();
+        Vyn::AST::ExprPtr parse_atom();
     };
 
     class TypeParser : public BaseParser {
-        ExpressionParser& expr_parser_;
+        ExpressionParser& expr_parser_; // Reference to an ExpressionParser instance
     public:
         TypeParser(const std::vector<Vyn::Token>& tokens, size_t& pos, const std::string& file_path, ExpressionParser& expr_parser);
-        Vyn::AST::TypePtr parse(); 
+        Vyn::AST::TypePtr parse(); // Use TypePtr alias
+
     private:
-        Vyn::AST::TypePtr parse_base_type(); 
-        Vyn::AST::TypePtr parse_postfix_type(Vyn::AST::TypePtr base_type); 
+        Vyn::AST::TypePtr parse_base_type(); // Use TypePtr alias
+        Vyn::AST::TypePtr parse_postfix_type(Vyn::AST::TypePtr base_type); // Use TypePtr alias
     };
 
     class StatementParser : public BaseParser {
@@ -98,6 +92,7 @@ namespace Vyn {
         Vyn::AST::StmtPtr parse(); 
         std::unique_ptr<Vyn::AST::ExpressionStmtNode> parse_expression_statement(); 
         std::unique_ptr<Vyn::AST::BlockStmtNode> parse_block(); 
+        Vyn::AST::PatternPtr parse_pattern(bool is_binding_mutable = false); // Moved to public
     private:
         std::unique_ptr<Vyn::AST::IfStmtNode> parse_if(); 
         std::unique_ptr<Vyn::AST::WhileStmtNode> parse_while(); 
@@ -106,7 +101,8 @@ namespace Vyn {
         std::unique_ptr<Vyn::AST::BreakStmtNode> parse_break(); 
         std::unique_ptr<Vyn::AST::ContinueStmtNode> parse_continue(); 
         std::unique_ptr<Vyn::AST::VarDeclStmtNode> parse_var_decl(); 
-        Vyn::AST::PatternPtr parse_pattern(); 
+        std::unique_ptr<AST::PatternNode> parse_struct_pattern();
+        std::unique_ptr<AST::PatternNode> parse_tuple_pattern();
     };
 
     class DeclarationParser : public BaseParser {
@@ -125,6 +121,7 @@ namespace Vyn {
         std::unique_ptr<Vyn::AST::TypeAliasDeclNode> parse_type_alias_declaration(); 
         std::unique_ptr<Vyn::AST::GlobalVarDeclNode> parse_global_var_declaration(); 
         std::vector<std::unique_ptr<Vyn::AST::GenericParamNode>> parse_generic_params();
+        std::unique_ptr<Vyn::AST::ParamNode> parse_param(); // Added declaration
 
     private:
         std::unique_ptr<Vyn::AST::EnumVariantNode> parse_enum_variant(); 
@@ -153,10 +150,10 @@ namespace Vyn {
         std::unique_ptr<Vyn::AST::ModuleNode> parse_module();
 
         ExpressionParser& get_expression_parser() { return expression_parser_; }
-        TypeParser& get_type_parser() { return type_parser_; }
-        StatementParser& get_statement_parser() { return statement_parser_; }
-        DeclarationParser& get_declaration_parser() { return declaration_parser_; }
-        ModuleParser& get_module_parser() { return module_parser_; }
+        TypeParser& get_type_parser() { return type_parser_; } // Corrected return type
+        StatementParser& get_statement_parser() { return statement_parser_; } // Corrected return type
+        DeclarationParser& get_declaration_parser() { return declaration_parser_; } // Corrected return type
+        ModuleParser& get_module_parser() { return module_parser_; } // Corrected return type
     };
 
 } // namespace Vyn

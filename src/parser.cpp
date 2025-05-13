@@ -5,6 +5,8 @@
 
 #include <stdexcept> // For std::runtime_error
 
+namespace Vyn {
+
 // Main Parser class implementation
 Parser::Parser(const std::vector<Vyn::Token>& tokens, std::string file_path)
     : tokens_(tokens),
@@ -12,11 +14,7 @@ Parser::Parser(const std::vector<Vyn::Token>& tokens, std::string file_path)
       file_path_(std::move(file_path)),
       expression_parser_(tokens_, pos_, file_path_),
       type_parser_(tokens_, pos_, file_path_, expression_parser_),
-      // StatementParser needs indent_level, type_parser, expr_parser.
-      // Initial indent level for top-level statements in a module context might be 0.
-      // This instance of StatementParser is primarily for DeclarationParser to use when it needs to parse blocks (e.g. function bodies).
       statement_parser_(tokens_, pos_, 0, file_path_, type_parser_, expression_parser_),
-      // DeclarationParser now also needs StatementParser
       declaration_parser_(tokens_, pos_, file_path_, type_parser_, expression_parser_, statement_parser_),
       module_parser_(tokens_, pos_, file_path_, declaration_parser_) {}
 
@@ -45,16 +43,16 @@ std::unique_ptr<Vyn::AST::ModuleNode> Parser::parse_module() {
                 tokens_[temp_pos].type == Vyn::TokenType::NEWLINE)) {
             temp_pos++;
         }
-        if (temp_pos < tokens_.size() && tokens_[temp_pos].type != Vyn::TokenType::EOF_TOKEN) {
+        if (temp_pos < tokens_.size() && tokens_[temp_pos].type != Vyn::TokenType::END_OF_FILE) {
              throw std::runtime_error("Parser::parse_module: Failed to parse the entire module. Unexpected token at end: " + Vyn::token_type_to_string(tokens_[temp_pos].type) + " in file " + file_path_);
-        } else if (temp_pos >= tokens_.size() && !tokens_.empty() && tokens_.back().type != Vyn::TokenType::EOF_TOKEN) {
+        } else if (temp_pos >= tokens_.size() && !tokens_.empty() && tokens_.back().type != Vyn::TokenType::END_OF_FILE) {
             // This case means we ran out of tokens but the last one wasn't EOF. Lexer issue?
-             throw std::runtime_error("Parser::parse_module: Token stream did not end with EOF_TOKEN in file " + file_path_);
+             throw std::runtime_error("Parser::parse_module: Token stream did not end with END_OF_FILE in file " + file_path_);
         }
         // If module_node is null but we are at EOF, it means an empty file or only comments.
         // This should be handled by ModuleParser::parse() returning a valid (possibly empty) ModuleNode.
         // So, if it's null here, it's an issue.
-        if (!module_node && temp_pos < tokens_.size() && tokens_[temp_pos].type == Vyn::TokenType::EOF_TOKEN) {
+        if (!module_node && temp_pos < tokens_.size() && tokens_[temp_pos].type == Vyn::TokenType::END_OF_FILE) {
             // This implies ModuleParser returned nullptr for a valid EOF scenario, which it shouldn't.
             // It should return an empty ModuleNode.
             // For now, let's assume ModuleParser handles empty files by returning a ModuleNode with no declarations.
@@ -63,10 +61,28 @@ std::unique_ptr<Vyn::AST::ModuleNode> Parser::parse_module() {
              throw std::runtime_error("Parser::parse_module: ModuleParser returned null for a seemingly valid EOF. file: " + file_path_);
         }
     }
+    // After successful parsing by module_parser_, pos_ should be at END_OF_FILE or past the end of tokens.
+    // Additional check to ensure we are indeed at the end.
+    if (pos_ < tokens_.size() && tokens_[pos_].type != Vyn::TokenType::END_OF_FILE) {
+        // This condition implies that module_parser_.parse() finished, but there are still non-EOF tokens left.
+        // This might happen if module_parser_ doesn't consume all tokens up to EOF.
+        // We need to skip any trailing comments or newlines before this check.
+        size_t final_check_pos = pos_;
+        while (final_check_pos < tokens_.size() &&
+               (tokens_[final_check_pos].type == Vyn::TokenType::COMMENT ||
+                tokens_[final_check_pos].type == Vyn::TokenType::NEWLINE)) {
+            final_check_pos++;
+        }
+        if (final_check_pos < tokens_.size() && tokens_[final_check_pos].type != Vyn::TokenType::END_OF_FILE) {
+            throw std::runtime_error("Parser::parse_module: Trailing tokens found after module parsing. Next token: " + Vyn::token_type_to_string(tokens_[final_check_pos].type) + " at " + tokens_[final_check_pos].location.toString() + " in file " + file_path_);
+        }
+    } else if (pos_ >= tokens_.size() && !tokens_.empty() && tokens_.back().type != Vyn::TokenType::END_OF_FILE) {
+        // This case implies the token stream didn't end with an EOF token, which should be ensured by the lexer.
+        throw std::runtime_error("Parser::parse_module: Token stream did not end with END_OF_FILE (checked after parsing). File: " + file_path_);
+    }
 
 
     return module_node;
 }
 
-// Constructor implementations for other parsers will go into their respective files.
-// e.g., ExpressionParser constructor in expression_parser.cpp
+} // namespace Vyn
