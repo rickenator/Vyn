@@ -4,33 +4,77 @@ smuggle http::client
 class Vector
   var x: Float
   var y: Float
+
+  // 'self' is implicitly 'view Self' (their<Self const>) for operators if not specified otherwise.
+  // 'other: Vector' is passed by value (copied), which is acceptable for small structs.
+
   fn operator+(other: Vector) -> Vector
     Vector { x: self.x + other.x, y: self.y + other.y }
+
+  // Static method, returns a new Vector instance by value.
+  // Using field init shorthand { x, y } which means { x: x, y: y }.
+
   fn new(x: Float, y: Float) -> Vector
     Vector { x, y }
 
+
 async fn fetch_data(url: String) throws NetworkError -> String
-  const conn = http::client::connect(url)
-  const resp = await conn.get("/")
+
+  // Assuming http::client::connect returns an owned connection object, e.g., my<Connection>.
+
+  const conn: my<http::client::Connection> = http::client::connect(url)
+
+  // Assuming conn.get() takes 'view self' (their<Connection const>) and returns my<Response>.
+  // If 'conn' is my<T>, (view conn) creates their<T const>.
+  // Auto-viewing for method calls might make 'view' optional in some contexts.
+
+  const resp: my<http::client::Response> = await (view conn).get("/")
+
+  // Accessing field 'status' on 'resp' (my<Response>).
+  // This might implicitly create a temporary view if 'status' is accessed via a method.
+  // If 'status' is a direct public field, access is direct.
+
   if resp.status != 200
     throw NetworkError("Failed to fetch: " + resp.status.to_string())
-  resp.text()
+
+  // Assuming text() on my<Response> takes 'view self' (their<Response const>)
+  // because 'resp' is a const-bound 'my<Response>'.
+  // If text() were to consume 'my<Response>', 'resp' would need to be 'var'.
+
+  return (view resp).text()
+
 
 fn main()
   try
-    var squares = [x * x for x in 0..10]
-    const v1 = Vector::new(1.0, 2.0)
-    const v2 = Vector::new(3.0, 4.0)
-    const sum = v1 + v2
-    println("Sum: x={}, y={}", sum.x, sum.y)
-    var f = fs::open("output.txt")
+    var squares = [x * x for x in 0..10] // squares: Vec<Int> or similar, mutable binding.
+
+    const v1 = Vector::new(1.0, 2.0)    // v1: Vector (value type), immutable binding.
+    const v2 = Vector::new(3.0, 4.0)    // v2: Vector (value type), immutable binding.
+    const sum_vec = v1 + v2             // sum_vec: Vector, result of operator+, immutable binding
+    
+    println("Sum: x=" + sum_vec.x.to_string() + ", y=" + sum_vec.y.to_string())
+
+    // Assuming fs::open returns an owned file handle, e.g., my<fs::File>.
+    var f: my<fs::File> = fs::open("output.txt") // f is a mutable binding to my<fs::File>.
+
+    // defer f.close():
+    // The close() method on my<fs::File> would likely take 'borrow self' (their<fs::File>)
+    // or 'view self' (their<fs::File const>).
+    // 'defer' is expected to handle the necessary borrowing semantics for the call.
+
     defer f.close()
-    f.write("Squares: " + squares.to_string())
-    const data = await fetch_data("https://api.example.com")
-    println("Fetched: {}", data)
+
+    // f.write() needs to mutate the file's state or internal buffer,
+    // so it likely takes 'borrow self' (their<fs::File>).
+    
+    (borrow f).write("Squares: " + squares.to_string())
+
+    const data_str = await fetch_data("https://api.example.com") // data_str: String, immutable binding.
+    println("Fetched: " + data_str)
+
   catch (e: NetworkError)
-    println("Network error: {}", e.message)
+    println("Network error: " + e.message) // Assuming error objects have a 'message' field.
   catch (e: IOError)
-    println("IO error: {}", e.message)
+    println("IO error: " + e.message)
   finally
     println("Cleanup complete")
