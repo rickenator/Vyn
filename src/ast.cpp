@@ -154,14 +154,14 @@ NodeType ObjectLiteral::getType() const {
 
 std::string ObjectLiteral::toString() const {
     std::stringstream ss;
-    ss << "ObjectLiteral({";
+    ss << "ObjectLiteral([";
     for (size_t i = 0; i < properties.size(); ++i) {
-        if (properties[i].key) ss << properties[i].key->toString(); else ss << "<null_key>";
-        ss << ": ";
-        if (properties[i].value) ss << properties[i].value->toString(); else ss << "<null_value>";
-        if (i < properties.size() - 1) ss << ", ";
+        ss << properties[i].key->toString() << ": " << properties[i].value->toString();
+        if (i < properties.size() - 1) {
+            ss << ", ";
+        }
     }
-    ss << "})";
+    ss << "])";
     return ss.str();
 }
 
@@ -169,8 +169,22 @@ void ObjectLiteral::accept(Visitor& visitor) {
     visitor.visit(this);
 }
 
+// NilLiteral
+NilLiteral::NilLiteral(SourceLocation loc) : Expression(loc) {}
 
-// Expression Nodes
+NodeType NilLiteral::getType() const {
+    return NodeType::NIL_LITERAL;
+}
+
+std::string NilLiteral::toString() const {
+    return "NilLiteral(nil)";
+}
+
+void NilLiteral::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
+// --- Expressions ---
 // UnaryExpression
 UnaryExpression::UnaryExpression(SourceLocation loc, const vyn::token::Token& op_token, ExprPtr oper)
     : Expression(loc), op(op_token), operand(std::move(oper)) {}
@@ -666,16 +680,24 @@ void TypeNode::accept(Visitor& visitor) {
 
 
 // --- New BorrowExprNode Implementation ---
-BorrowExprNode::BorrowExprNode(SourceLocation loc, ExprPtr expr, bool is_mutable)
-    : Expression(loc), expressionToBorrow(std::move(expr)), isMutable(is_mutable) {}
+BorrowExprNode::BorrowExprNode(SourceLocation loc, ExprPtr expr, BorrowKind borrow_kind) 
+    : Expression(loc), kind(borrow_kind), expressionToBorrow(std::move(expr)) {}
 
-NodeType BorrowExprNode::getType() const {
-    return NodeType::BORROW_EXPRESSION;
+NodeType BorrowExprNode::getType() const { 
+    return NodeType::BORROW_EXPRESSION; 
 }
 
 std::string BorrowExprNode::toString() const {
     std::stringstream ss;
-    ss << "BorrowExprNode(" << (isMutable ? "borrow_mut " : "borrow ");
+    ss << "BorrowExprNode(";
+    switch (kind) {
+        case BorrowKind::MUTABLE_BORROW:
+            ss << "borrow ";
+            break;
+        case BorrowKind::IMMUTABLE_VIEW:
+            ss << "view ";
+            break;
+    }
     if (expressionToBorrow) {
         ss << expressionToBorrow->toString();
     } else {
@@ -685,60 +707,15 @@ std::string BorrowExprNode::toString() const {
     return ss.str();
 }
 
-void BorrowExprNode::accept(Visitor& visitor) {
-    visitor.visit(this);
+void BorrowExprNode::accept(Visitor& visitor) { 
+    visitor.visit(this); 
 }
 
+// --- New Declarations ---
 
-// --- REMOVE OLD TypeAnnotation IMPLEMENTATIONS ---
-/*
-// TypeAnnotation 
-// Constructor for simple type: MyType
-TypeAnnotation::TypeAnnotation(SourceLocation loc, std::unique_ptr<Identifier> name)
-    : Node(loc), simpleTypeName(std::move(name)), arrayElementType(nullptr), genericBaseType(nullptr) {}
-
-// Constructor for array type: T[]
-TypeAnnotation::TypeAnnotation(SourceLocation loc, TypeAnnotationPtr elementType, bool /\\*isArrayMarker*\\/) 
-    : Node(loc), simpleTypeName(nullptr), arrayElementType(std::move(elementType)), genericBaseType(nullptr) {}
-
-// Constructor for generic type: List<T>
-TypeAnnotation::TypeAnnotation(SourceLocation loc, std::unique_ptr<Identifier> base, std::vector<TypeAnnotationPtr> args)
-    : Node(loc), simpleTypeName(nullptr), arrayElementType(nullptr), genericBaseType(std::move(base)), genericTypeArguments(std::move(args)) {}
-
-
-NodeType TypeAnnotation::getType() const {
-    return NodeType::TYPE_NODE; // Was TYPE_ANNOTATION, but NodeType was updated
-}
-
-std::string TypeAnnotation::toString() const {
-    std::stringstream ss;
-    if (isSimpleType() && simpleTypeName) {
-        ss << simpleTypeName->toString();
-    } else if (isArrayType() && arrayElementType) {
-        ss << arrayElementType->toString() << "[]";
-    } else if (isGenericType() && genericBaseType) {
-        ss << genericBaseType->toString() << "<";
-        for (size_t i = 0; i < genericTypeArguments.size(); ++i) {
-            if (genericTypeArguments[i]) ss << genericTypeArguments[i]->toString(); else ss << "<null_type_arg>";
-            if (i < genericTypeArguments.size() - 1) ss << ", ";
-        }
-        ss << ">";
-    } else {
-        // This case should ideally not be reached if constructors are used properly
-        ss << "<invalid_type_annotation_state>";
-    }
-    return ss.str();
-}
-
-void TypeAnnotation::accept(Visitor& visitor) {
-    visitor.visit(this); // Visitor needs to be updated to visit TypeNode*
-}
-*/
-
-// --- New Declaration Node Implementations ---
 // FieldDeclaration
-FieldDeclaration::FieldDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, TypeNodePtr tn, ExprPtr init, bool mut)
-    : Declaration(loc), name(std::move(n)), typeNode(std::move(tn)), initializer(std::move(init)), isMutable(mut) {}
+FieldDeclaration::FieldDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, TypeNodePtr tn, ExprPtr init, bool is_mut)
+    : Declaration(loc), name(std::move(n)), typeNode(std::move(tn)), initializer(std::move(init)), isMutable(is_mut) {}
 
 NodeType FieldDeclaration::getType() const {
     return NodeType::FIELD_DECLARATION;
@@ -746,14 +723,8 @@ NodeType FieldDeclaration::getType() const {
 
 std::string FieldDeclaration::toString() const {
     std::stringstream ss;
-    ss << "FieldDeclaration(" << (isMutable ? "var " : "const "); // RFC uses var/const for fields
-    if (name) ss << name->toString(); else ss << "<null_name>";
-    if (typeNode) {
-        ss << ": " << typeNode->toString();
-    } else {
-        // Fields must have types according to RFC and ast.hpp
-        ss << ": <ERROR_missing_type_node>"; 
-    }
+    ss << "FieldDeclaration(" << (isMutable ? "var " : "let ") << name->toString();
+    ss << ": " << typeNode->toString();
     if (initializer) {
         ss << " = " << initializer->toString();
     }
@@ -766,8 +737,8 @@ void FieldDeclaration::accept(Visitor& visitor) {
 }
 
 // StructDeclaration
-StructDeclaration::StructDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<std::unique_ptr<GenericParamNode>> gps, std::vector<std::unique_ptr<FieldDeclaration>> flds)
-    : Declaration(loc), name(std::move(n)), genericParams(std::move(gps)), fields(std::move(flds)) {}
+StructDeclaration::StructDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<std::unique_ptr<GenericParamNode>> gp, std::vector<std::unique_ptr<FieldDeclaration>> f)
+    : Declaration(loc), name(std::move(n)), genericParams(std::move(gp)), fields(std::move(f)) {}
 
 NodeType StructDeclaration::getType() const {
     return NodeType::STRUCT_DECLARATION;
@@ -775,22 +746,18 @@ NodeType StructDeclaration::getType() const {
 
 std::string StructDeclaration::toString() const {
     std::stringstream ss;
-    ss << "StructDeclaration(" << (name ? name->toString() : "<null_name>");
+    ss << "StructDeclaration(" << name->toString();
     if (!genericParams.empty()) {
         ss << "<";
         for (size_t i = 0; i < genericParams.size(); ++i) {
-            if (genericParams[i]) ss << genericParams[i]->toString(); else ss << "<null_generic_param>";
+            ss << genericParams[i]->toString();
             if (i < genericParams.size() - 1) ss << ", ";
         }
         ss << ">";
     }
-    ss << " {\\\\\\n"; // Escaped newline
+    ss << " {\\\\n"; // Escaped newline
     for (const auto& field : fields) {
-        if (field) {
-            ss << "  " << field->toString() << ";\\\\\\n"; // Escaped newline
-        } else {
-            ss << "  <null_field>;\\\\\\n"; // Escaped newline
-        }
+        ss << "  " << field->toString() << ";\\\\n"; // Escaped newline
     }
     ss << "})";
     return ss.str();
@@ -801,8 +768,8 @@ void StructDeclaration::accept(Visitor& visitor) {
 }
 
 // ClassDeclaration
-ClassDeclaration::ClassDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<std::unique_ptr<GenericParamNode>> gps, std::vector<DeclPtr> membs)
-    : Declaration(loc), name(std::move(n)), genericParams(std::move(gps)), members(std::move(membs)) {}
+ClassDeclaration::ClassDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<std::unique_ptr<GenericParamNode>> gp, std::vector<DeclPtr> m)
+    : Declaration(loc), name(std::move(n)), genericParams(std::move(gp)), members(std::move(m)) {}
 
 NodeType ClassDeclaration::getType() const {
     return NodeType::CLASS_DECLARATION;
@@ -810,22 +777,18 @@ NodeType ClassDeclaration::getType() const {
 
 std::string ClassDeclaration::toString() const {
     std::stringstream ss;
-    ss << "ClassDeclaration(" << (name ? name->toString() : "<null_name>");
+    ss << "ClassDeclaration(" << name->toString();
     if (!genericParams.empty()) {
         ss << "<";
         for (size_t i = 0; i < genericParams.size(); ++i) {
-            if (genericParams[i]) ss << genericParams[i]->toString(); else ss << "<null_generic_param>";
+            ss << genericParams[i]->toString();
             if (i < genericParams.size() - 1) ss << ", ";
         }
         ss << ">";
     }
-    ss << " {\\\\\\n"; // Escaped newline
+    ss << " {\\\\n"; // Escaped newline
     for (const auto& member : members) {
-        if (member) {
-            ss << "  " << member->toString() << ";\\\\\\n"; // Escaped newline
-        } else {
-            ss << "  <null_member>;\\\\\\n"; // Escaped newline
-        }
+        ss << "  " << member->toString() << ";\\\\n"; // Escaped newline
     }
     ss << "})";
     return ss.str();
@@ -836,8 +799,8 @@ void ClassDeclaration::accept(Visitor& visitor) {
 }
 
 // ImplDeclaration
-ImplDeclaration::ImplDeclaration(SourceLocation loc, std::vector<std::unique_ptr<GenericParamNode>> gps, TypeNodePtr self_type_node, std::vector<std::unique_ptr<FunctionDeclaration>> meths, TypeNodePtr trait_type_node)
-    : Declaration(loc), genericParams(std::move(gps)), selfTypeNode(std::move(self_type_node)), traitTypeNode(std::move(trait_type_node)), methods(std::move(meths)) {}
+ImplDeclaration::ImplDeclaration(SourceLocation loc, std::vector<std::unique_ptr<GenericParamNode>> gp, TypeNodePtr self_tn, std::vector<std::unique_ptr<FunctionDeclaration>> meths, TypeNodePtr trait_tn)
+    : Declaration(loc), genericParams(std::move(gp)), selfTypeNode(std::move(self_tn)), traitTypeNode(std::move(trait_tn)), methods(std::move(meths)) {}
 
 NodeType ImplDeclaration::getType() const {
     return NodeType::IMPL_DECLARATION;
@@ -845,30 +808,21 @@ NodeType ImplDeclaration::getType() const {
 
 std::string ImplDeclaration::toString() const {
     std::stringstream ss;
-    ss << "ImplDeclaration(impl";
+    ss << "ImplDeclaration(";
     if (!genericParams.empty()) {
         ss << "<";
         for (size_t i = 0; i < genericParams.size(); ++i) {
-            if (genericParams[i]) ss << genericParams[i]->toString(); else ss << "<null_generic_param>";
+            ss << genericParams[i]->toString();
             if (i < genericParams.size() - 1) ss << ", ";
         }
-        ss << ">";
+        ss << "> ";
     }
     if (traitTypeNode) {
-        ss << " " << traitTypeNode->toString() << " for";
+        ss << traitTypeNode->toString() << " for ";
     }
-    if (selfTypeNode) {
-        ss << " " << selfTypeNode->toString();
-    } else {
-        ss << " <null_self_type_node>";
-    }
-    ss << " {\\\\n"; // Escaped newline
+    ss << selfTypeNode->toString() << " {\\\\n"; // Escaped newline
     for (const auto& method : methods) {
-        if (method) {
-            ss << "  " << method->toString() << "\\\\n"; // Escaped newline
-        } else {
-            ss << "  <null_method>;\\\\n"; // Escaped newline
-        }
+        ss << "  " << method->toString() << ";\\\\n"; // Escaped newline
     }
     ss << "})";
     return ss.str();
@@ -879,8 +833,8 @@ void ImplDeclaration::accept(Visitor& visitor) {
 }
 
 // EnumVariantNode
-EnumVariantNode::EnumVariantNode(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<TypeNodePtr> typs)
-    : Declaration(loc), name(std::move(n)), typeNodes(std::move(typs)) {}
+EnumVariantNode::EnumVariantNode(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<TypeNodePtr> tns)
+    : Declaration(loc), name(std::move(n)), typeNodes(std::move(tns)) {}
 
 NodeType EnumVariantNode::getType() const {
     return NodeType::ENUM_VARIANT;
@@ -888,19 +842,12 @@ NodeType EnumVariantNode::getType() const {
 
 std::string EnumVariantNode::toString() const {
     std::stringstream ss;
-    ss << "EnumVariantNode(";
-    if (name) ss << name->toString(); else ss << "<null_name>";
+    ss << "EnumVariantNode(" << name->toString();
     if (!typeNodes.empty()) {
         ss << "(";
         for (size_t i = 0; i < typeNodes.size(); ++i) {
-            if (typeNodes[i]) {
-                ss << typeNodes[i]->toString();
-            } else {
-                ss << "<null_type_node_arg>";
-            }
-            if (i < typeNodes.size() - 1) {
-                ss << ", ";
-            }
+            ss << typeNodes[i]->toString();
+            if (i < typeNodes.size() - 1) ss << ", ";
         }
         ss << ")";
     }
@@ -913,8 +860,8 @@ void EnumVariantNode::accept(Visitor& visitor) {
 }
 
 // EnumDeclaration
-EnumDeclaration::EnumDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<std::unique_ptr<GenericParamNode>> gps, std::vector<std::unique_ptr<EnumVariantNode>> vars)
-    : Declaration(loc), name(std::move(n)), genericParams(std::move(gps)), variants(std::move(vars)) {}
+EnumDeclaration::EnumDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<std::unique_ptr<GenericParamNode>> gp, std::vector<std::unique_ptr<EnumVariantNode>> vars)
+    : Declaration(loc), name(std::move(n)), genericParams(std::move(gp)), variants(std::move(vars)) {}
 
 NodeType EnumDeclaration::getType() const {
     return NodeType::ENUM_DECLARATION;
@@ -922,22 +869,18 @@ NodeType EnumDeclaration::getType() const {
 
 std::string EnumDeclaration::toString() const {
     std::stringstream ss;
-    ss << "EnumDeclaration(" << (name ? name->toString() : "<null_name>");
+    ss << "EnumDeclaration(" << name->toString();
     if (!genericParams.empty()) {
         ss << "<";
         for (size_t i = 0; i < genericParams.size(); ++i) {
-            if (genericParams[i]) ss << genericParams[i]->toString(); else ss << "<null_generic_param>";
+            ss << genericParams[i]->toString();
             if (i < genericParams.size() - 1) ss << ", ";
         }
         ss << ">";
     }
-    ss << " {\\\\\\n"; // Escaped newline
+    ss << " {\\\\n"; // Escaped newline
     for (const auto& variant : variants) {
-        if (variant) {
-            ss << "  " << variant->toString() << ",\\\\\\n"; // Escaped newline
-        } else {
-            ss << "  <null_variant>,\\\\\\n"; // Escaped newline
-        }
+        ss << "  " << variant->toString() << ",\\\\n"; // Escaped newline
     }
     ss << "})";
     return ss.str();
@@ -948,8 +891,8 @@ void EnumDeclaration::accept(Visitor& visitor) {
 }
 
 // GenericParamNode
-GenericParamNode::GenericParamNode(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<TypeNodePtr> bnds)
-    : Node(loc), name(std::move(n)), bounds(std::move(bnds)) {}
+GenericParamNode::GenericParamNode(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<TypeNodePtr> b)
+    : Node(loc), name(std::move(n)), bounds(std::move(b)) {}
 
 NodeType GenericParamNode::getType() const {
     return NodeType::GENERIC_PARAMETER;
@@ -957,20 +900,15 @@ NodeType GenericParamNode::getType() const {
 
 std::string GenericParamNode::toString() const {
     std::stringstream ss;
-    ss << (name ? name->toString() : "<null_name>");
+    ss << "GenericParamNode(" << name->toString();
     if (!bounds.empty()) {
         ss << ": ";
         for (size_t i = 0; i < bounds.size(); ++i) {
-            if (bounds[i]) {
-                ss << bounds[i]->toString();
-            } else {
-                ss << "<null_bound>";
-            }
-            if (i < bounds.size() - 1) {
-                ss << " + "; // Assuming '+' syntax for multiple bounds
-            }
+            ss << bounds[i]->toString();
+            if (i < bounds.size() - 1) ss << " + ";
         }
     }
+    ss << ")";
     return ss.str();
 }
 
@@ -979,16 +917,3 @@ void GenericParamNode::accept(Visitor& visitor) {
 }
 
 } // namespace vyn
-
-/* Remaining original ast.cpp content is commented out below as it does not
-   directly map to the provided ast.hpp or requires more information.
-
-... A lot of commented out code ...
-
-    // // Pattern Nodes
-    // IdentifierPatternNode::IdentifierPatternNode(SourceLocation loc, std::unique_ptr<IdentifierNode> id, bool mut, Node* p)
-    //     : PatternNode(NodeType::IDENTIFIER_PATTERN, std::move(loc), p), identifier(std::move(id)), isMutable(mut) {}
-    // void IdentifierPatternNode::accept(Visitor& visitor) {
-    //     visitor.visit(this);
-    // }
-*/

@@ -19,6 +19,7 @@ namespace vyn {
     class Statement;
     class Declaration;
     class Visitor;
+    class NilLiteral; // Forward declare NilLiteral
 
     // Forward declarations for new nodes
     class StructDeclaration;
@@ -55,6 +56,12 @@ namespace vyn {
         PTR
     };
 
+    // New Enum for Borrow Kinds
+    enum class BorrowKind {
+        MUTABLE_BORROW, // for 'borrow' keyword
+        IMMUTABLE_VIEW  // for 'view' keyword
+    };
+
     // enum class NodeType must be defined before Visitor
     enum class NodeType {
         // Literals
@@ -65,6 +72,7 @@ namespace vyn {
         BOOLEAN_LITERAL,
         ARRAY_LITERAL,
         OBJECT_LITERAL,
+        NIL_LITERAL, // New
 
         // Expressions
         UNARY_EXPRESSION,
@@ -116,6 +124,7 @@ namespace vyn {
         virtual void visit(class BooleanLiteral* node) = 0;
         virtual void visit(class ArrayLiteral* node) = 0;
         virtual void visit(class ObjectLiteral* node) = 0;
+        virtual void visit(class NilLiteral* node) = 0; // New
 
         // Expressions
         virtual void visit(class UnaryExpression* node) = 0;
@@ -311,6 +320,15 @@ namespace vyn {
         void accept(Visitor& visitor) override;
     };
 
+    // New NilLiteral Node
+    class NilLiteral : public Expression {
+    public:
+        NilLiteral(SourceLocation loc);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
+
     // --- Expressions ---
     class UnaryExpression : public Expression {
     public:
@@ -374,10 +392,10 @@ namespace vyn {
     // New Borrow Expression Node
     class BorrowExprNode : public Expression {
     public:
-        bool isMutable; // true for borrow_mut, false for borrow
+        BorrowKind kind; // Changed from bool isMutable
         ExprPtr expressionToBorrow; 
 
-        BorrowExprNode(SourceLocation loc, ExprPtr expr, bool isMutable);
+        BorrowExprNode(SourceLocation loc, ExprPtr expr, BorrowKind kind); // Updated constructor
         NodeType getType() const override;
         std::string toString() const override;
         void accept(Visitor& visitor) override;

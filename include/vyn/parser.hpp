@@ -79,7 +79,9 @@ namespace vyn { // Changed Vyn to vyn
         vyn::TypeNodePtr parse(); // Changed Vyn::AST::TypePtr to vyn::TypeNodePtr
 
     private:
-        vyn::TypeNodePtr parse_base_type(); // Changed Vyn::AST::TypePtr to vyn::TypeNodePtr
+        // Renamed from parse_base_type and added parse_atomic_or_group_type
+        vyn::TypeNodePtr parse_base_or_ownership_wrapped_type(); 
+        vyn::TypeNodePtr parse_atomic_or_group_type();
         vyn::TypeNodePtr parse_postfix_type(vyn::TypeNodePtr base_type); // Changed Vyn::AST::TypePtr to vyn::TypeNodePtr
     };
 

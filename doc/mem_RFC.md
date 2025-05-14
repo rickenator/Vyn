@@ -47,19 +47,19 @@ Data mutability is controlled by `const` on the pointee: e.g., `my<Foo const>` m
 
 ## 4. Borrow Creation Syntax
 
-Borrow creation is a compiler intrinsic:
+Borrow creation is achieved using the `borrow` and `view` keywords, which act as prefix operators:
 
 ```vyn
-// Immutable borrow (read-only)
-var br1: their<Foo const> = borrow(owner)
+// Immutable borrow (read-only view)
+var v: their<Foo const> = view owner_expr // or view(owner_expr) for clarity
 // Mutable borrow
-var br2: their<Foo> = borrow_mut(owner)
+var b: their<Foo> = borrow owner_expr   // or borrow(owner_expr) for clarity
 ```
 
-* `borrow(owner)`: creates `their<T const>` from a `my<T>` or `our<T>`
-* `borrow_mut(owner)`: creates `their<T>` if no conflicting borrows exist
+* `view <expr>`: creates `their<T const>` (an immutable view) from a `my<T>`, `our<T>`, or another `their<T>`. This is equivalent to an immutable borrow.
+* `borrow <expr>`: creates `their<T>` (a mutable borrow) if no conflicting borrows exist. This is equivalent to a mutable borrow.
 
-Compile-time checks enforce lifetimes and aliasing rules.
+Compile-time checks enforce lifetimes and aliasing rules (e.g., one mutable borrow or multiple immutable views, but not both simultaneously).
 
 ---
 
@@ -78,7 +78,8 @@ Immutable shared data (`our<T const>`) is thread-safe by default.
 ## 6. Helper Intrinsics
 
 * `make_our(expr)`: returns `our<T>` by allocating and ref‑counting
-* `borrow(x)` / `borrow_mut(x)`: create `their<T const>` / `their<T>` borrows
+* `view <expr>`: creates `their<T const>` (immutable view/borrow)
+* `borrow <expr>`: creates `their<T>` (mutable borrow)
 * `alloc(n)` / `free(p)`: raw memory operations for `ptr<T>`
 * **`sizeof(Type)`**: built‑in compile‑time operator returning the size (in bytes) of `Type`
 
@@ -214,8 +215,16 @@ var ts: our<Mutex<Bar>> = make_our(Mutex(Bar{v:2}))
 
 ```vyn
 var owner: my<Baz> = Baz{v:99}
-var br1: their<Baz const> = borrow(owner)    // read-only borrow
-var br2: their<Baz> = borrow_mut(owner)      // mutable borrow
+var v1: their<Baz const> = view owner    // read-only view (immutable borrow)
+var b1: their<Baz> = borrow owner      // mutable borrow
+
+// Example with an existing borrow
+var b2: their<Baz> = borrow b1         // re-borrowing (mutable)
+var v2: their<Baz const> = view b1     // creating an immutable view from a mutable borrow
+var v3: their<Baz const> = view v1     // creating an immutable view from an immutable view
+
+// Invalid: cannot mutably borrow while an immutable view exists (or vice-versa if b1 was still active)
+// var b3: their<Baz> = borrow v1 // This would be a compile-time error if v1 is still live and used.
 ```
 
 ### 10.4 Raw Pointers (`ptr<T>`)
@@ -244,8 +253,13 @@ BaseType   ::= IDENTIFIER
              | OwnershipWrapper '<' Type '>'
 OwnershipWrapper ::= 'my' | 'our' | 'their' | 'ptr'
 
-BorrowExpr ::= 'borrow' '(' Expr ')'
-            | 'borrow_mut' '(' Expr ')'
+Expr       ::= ...
+             | BorrowExpr
+             | ViewExpr
+             | ...
+
+BorrowExpr ::= 'borrow' Expr // Precedence similar to other unary operators
+ViewExpr   ::= 'view' Expr   // Precedence similar to other unary operators
 ```
 
 ---

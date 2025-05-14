@@ -50,6 +50,7 @@ enum class NodeType {
     BOOLEAN_LITERAL,
     ARRAY_LITERAL,    // Implemented
     STRUCT_LITERAL,   // Was OBJECT_LITERAL, renamed for clarity with EBNF struct_literal
+    NIL_LITERAL,        // Represents a 'nil' literal
 
     // Expressions
     UNARY_EXPRESSION,
@@ -60,6 +61,7 @@ enum class NodeType {
     ASSIGNMENT_EXPRESSION,
     IF_EXPRESSION,      // New: For if-expressions
     RANGE_EXPRESSION,   // New: For range expressions (e.g., a..b)
+    BORROW_EXPR_NODE,   // Represents a borrow or view expression (e.g., borrow x, view y)
 
     // Statements
     BLOCK_STATEMENT,
@@ -427,49 +429,73 @@ Derived from `vyn::Declaration : vyn::Statement`.
 -   **`SmuggleDeclNode : DeclNode`**: *(Note: This node is planned and not yet implemented.)*
     -   `std::unique_ptr<PathNode> path;`
 
-## 7. Type Representation (`vyn::TypeAnnotation`)
+## 7. Type Representation: `TypeNode`
 
-In the current C++ implementation, type information is primarily handled by the `vyn::TypeAnnotation` class. This section describes its structure and how it maps to the EBNF type constructs. The EBNF supports simple paths, array types, tuple types, function types, and generic arguments (which can be types or expressions for const generics).
+In Vyn, types are represented in the AST by `TypeNode` (NodeType: `TYPE_NODE`). This node is crucial for static type checking and code generation, appearing in variable declarations, function signatures, struct/class fields, generic parameters, and type casts.
 
--   **`vyn::TypeAnnotation : vyn::Node`**: (Matches C++ `TypeAnnotation`, extended conceptually for EBNF features)
-    -   Represents various type structures. It would likely use an internal enum or variant to distinguish between:
-        -   **Path-based Types (Simple or Generic)**: e.g., `int`, `MyClass`, `List<string>`, `module::MyType<T, const N>`. (Corresponds to EBNF `type_path`)
-            -   `std::unique_ptr<vyn::Identifier> baseName; // Or a PathNode for qualified names like module::Type`
-            -   `std::vector<std::variant<std::unique_ptr<vyn::TypeAnnotation>, std::unique_ptr<vyn::Expression>>> genericArguments; // New: Supports type or expression for generic arguments (EBNF generic_argument_list)`
-        -   **Array Types**: e.g., `int[]`, `string[10]`. (Corresponds to EBNF `array_type` which is part of `type_annotation`)
-            -   `std::unique_ptr<vyn::TypeAnnotation> arrayElementType;`
-            -   `std::unique_ptr<vyn::Expression> arraySize; // Optional, from EBNF '[' expression ']''`
-        -   **Tuple Types**: e.g., `(int, string)`, `()`. (Corresponds to EBNF `tuple_type_suffix`)
-            -   `std::vector<std::unique_ptr<vyn::TypeAnnotation>> tupleElementTypes;`
-        -   **Function Types**: e.g., `(int, int) -> string throws MyError`. (Corresponds to EBNF `function_type_suffix`)
-            -   `std::vector<std::unique_ptr<vyn::TypeAnnotation>> parameterTypes;`
-            -   `std::unique_ptr<vyn::TypeAnnotation> returnType;`
-            -   `std::vector<std::unique_ptr<vyn::TypeAnnotation>> throwsClause; // Optional`
-    -   Constructors and helper methods (`isPathType()`, `isArrayType()`, `isTupleType()`, `isFunctionType()`) would manage the active state.
+### Enums for `TypeNode`
 
-*(The following specific TypeNode definitions from the original design are conceptual. `vyn::TypeAnnotation` aims to cover these. Some, like pointer types, are not in the current EBNF but remain planned.)*
+`TypeNode` utilizes several enums to specify the characteristics of a type:
 
--   **`IdentifierTypeNode : TypeNode`**: *(Conceptual; covered by `TypeAnnotation` with `baseName`)*
-    -   `std::unique_ptr<PathNode> path;`
--   **`ArrayTypeNode : TypeNode`**: *(Conceptual; covered by `TypeAnnotation` with `arrayElementType` and `arraySize`)*
-    -   `std::unique_ptr<TypeNode> elementType;`
-    -   `std::unique_ptr<ExprNode> size;` // Now part of TypeAnnotation directly
--   **`PointerTypeNode : TypeNode`**: *(Note: This type is planned and not yet implemented, not in current EBNF.)*
-    -   `std::unique_ptr<TypeNode> pointedToType;`
-    -   `bool isMutable;`
--   **`OptionalTypeNode : TypeNode`**: *(Note: This type is planned and not yet implemented, not in current EBNF. May be handled by library types like `Option<T>`.)*
-    -   `std::unique_ptr<TypeNode> wrappedType;`
--   **`ReferenceTypeNode : TypeNode`**: *(Note: This type is planned and not yet implemented. EBNF uses `&` in patterns, but not explicitly in type annotations yet.)*
-    -   `std::unique_ptr<TypeNode> referencedType;`
-    -   `bool isMutable;`
--   **`FunctionTypeNode : TypeNode`**: *(Conceptual; covered by `TypeAnnotation`)*
-    -   `std::vector<std::unique_ptr<TypeNode>> parameterTypes;`
-    -   `std::unique_ptr<TypeNode> returnType;`
-    -   `// bool isVariadic; // EBNF function_type_suffix does not explicitly show variadics yet.`
-    -   `// std::vector<std::unique_ptr<TypeNode>> throwsClause; // Now part of TypeAnnotation`
--   **`GenericInstanceTypeNode : TypeNode`**: *(Conceptual; covered by `TypeAnnotation` with `baseName` and `genericArguments`)*
-    -   `std::unique_ptr<TypeNode> genericType;`
-    -   `std::vector<std::variant<std::unique_ptr<TypeNode>, std::unique_ptr<ExprNode>>> typeArguments; // Updated for const generics`
+#### `TypeCategory`
+Defines the fundamental category of the type.
+```vyn_pseudo_cpp
+enum class TypeCategory {
+    BASIC,            // Basic built-in type (e.g., Int, Float, Bool, String, Void)
+    STRUCT,           // User-defined struct type
+    CLASS,            // User-defined class type
+    ENUM,             // User-defined enum type
+    FUNCTION,         // Function type (e.g., fn(Int) -> Bool)
+    GENERIC_PARAM,    // A generic type parameter (e.g., T in fn foo<T>(p: T))
+    POINTER,          // Raw pointer type (e.g., ptr<T>)
+    OWNERSHIP_WRAPPED // Ownership-qualified type (e.g., my<T>, our<T>, their<T>)
+};
+```
+
+#### `OwnershipKind`
+Defines the ownership semantics for `OWNERSHIP_WRAPPED` types.
+```vyn_pseudo_cpp
+enum class OwnershipKind {
+    MY,     // Unique ownership (my<T>)
+    OUR,    // Shared ownership (our<T>)
+    THEIR   // Borrowed reference (their<T>)
+    // PTR is handled by TypeCategory::POINTER
+};
+```
+
+#### `BorrowKind`
+Defines the mutability of a `THEIR` borrow. This enum is also used by `BorrowExprNode`.
+```vyn_pseudo_cpp
+enum class BorrowKind {
+    MUTABLE, // Mutable borrow (e.g., their<T>, created by `borrow`)
+    CONST    // Immutable/constant borrow (e.g., their<T const>, created by `view`)
+};
+```
+
+### `TypeNode` Structure
+
+A `TypeNode` has the following fields:
+
+*   `category: TypeCategory`: The category of this type.
+*   `isConst: bool`: Indicates if the underlying data is `const` (e.g., for `T const` in `my<T const>`). For `their<T const>`, `borrowKind` is used.
+*   `name: std::string`: The name of the type.
+    *   For `BASIC`: e.g., "Int", "String".
+    *   For `STRUCT`, `CLASS`, `ENUM`, `GENERIC_PARAM`: The identifier of the type/parameter.
+*   `genericArgs: std::vector<TypeNode*>`: A list of `TypeNode`s representing generic arguments (e.g., for `Map<String, Int>`).
+*   `returnType: TypeNode*`: The return type, used when `category` is `FUNCTION`.
+*   `paramTypes: std::vector<TypeNode*>`: A list of parameter types, used when `category` is `FUNCTION`.
+*   `ownershipKind: OwnershipKind`: The kind of ownership, used when `category` is `OWNERSHIP_WRAPPED`.
+*   `borrowKind: BorrowKind`: The kind of borrow, used when `category` is `OWNERSHIP_WRAPPED` and `ownershipKind` is `THEIR`.
+*   `wrappedType: TypeNode*`: The `TypeNode` being wrapped.
+    *   For `POINTER`: The type pointed to (e.g., `T` in `ptr<T>`).
+    *   For `OWNERSHIP_WRAPPED`: The underlying type (e.g., `T` in `my<T>`).
+
+**Example Mappings:**
+*   `Int`: `TypeNode{category=BASIC, name="Int"}`
+*   `my<String>`: `TypeNode{category=OWNERSHIP_WRAPPED, ownershipKind=MY, wrappedType=TypeNode{category=BASIC, name="String"}}`
+*   `their<Foo const>`: `TypeNode{category=OWNERSHIP_WRAPPED, ownershipKind=THEIR, borrowKind=CONST, wrappedType=TypeNode{category=STRUCT, name="Foo"}}` (assuming Foo is a struct)
+*   `ptr<T>` (where T is generic): `TypeNode{category=POINTER, wrappedType=TypeNode{category=GENERIC_PARAM, name="T"}}`
+*   `fn(Int) -> Bool`: `TypeNode{category=FUNCTION, paramTypes=[TypeNode{Int}], returnType=TypeNode{Bool}}`
 
 ## 8. Pattern Nodes
 *(Note: Pattern nodes and destructuring features are defined in the EBNF (e.g., `pattern`, `struct_pattern_field`, `tuple_pattern_element`) but are mostly planned for full AST implementation. The `toString()` in `ast.cpp` had commented-out code for `IdentifierPatternNode`, indicating early thought but no current C++ implementation of these specific nodes.)*
@@ -530,6 +556,7 @@ public:
     virtual void visit(class BooleanLiteral* node) = 0;
     virtual void visit(class ArrayLiteral* node) = 0;
     virtual void visit(class StructLiteralNode* node) = 0; // Was ObjectLiteral, updated for EBNF struct_literal
+    virtual void visit(class NilLiteral* node) = 0;
 
     // Expressions (Reflects current and EBNF-driven AST nodes)
     virtual void visit(class UnaryExpression* node) = 0;
@@ -540,6 +567,7 @@ public:
     virtual void visit(class AssignmentExpression* node) = 0;
     virtual void visit(class IfExpressionNode* node) = 0;      // New: For if-expressions
     virtual void visit(class RangeExpressionNode* node) = 0;   // New: For range expressions (e.g., a..b)
+    virtual void visit(class BorrowExprNode* node) = 0;
 
     // Statements (Reflects current and EBNF-driven AST nodes)
     virtual void visit(class BlockStatement* node) = 0;

@@ -28,20 +28,18 @@ namespace vyn {
         } else if (token.type == vyn::TokenType::STRING_LITERAL) {
             this->consume();
             return std::make_unique<vyn::StringLiteral>(token.location, token.lexeme);
-        // } else if (token.type == vyn::TokenType::CHAR_LITERAL) {
-        //     this->consume();
-        //     return std::make_unique<vyn::CharLiteral>(token.location, token.lexeme[0]);
-        // } else if (token.type == vyn::TokenType::KEYWORD_TRUE || token.type == vyn::TokenType::KEYWORD_FALSE) {
-        //     this->consume();
-        //     return std::make_unique<vyn::BooleanLiteral>(token.location, token.type == vyn::TokenType::KEYWORD_TRUE);
-        // } else if (token.type == vyn::TokenType::KEYWORD_NULL) {
-        //     this->consume();
-        //     return std::make_unique<vyn::NullLiteral>(token.location);
+        } else if (token.type == vyn::TokenType::KEYWORD_TRUE || token.type == vyn::TokenType::KEYWORD_FALSE) {
+            this->consume();
+            return std::make_unique<vyn::BooleanLiteral>(token.location, token.type == vyn::TokenType::KEYWORD_TRUE);
+        } else if (token.type == vyn::TokenType::KEYWORD_NIL) { 
+            this->consume();
+            return std::make_unique<vyn::NilLiteral>(token.location);
         } else if (token.type == vyn::TokenType::LPAREN) {
             this->consume(); 
             vyn::ExprPtr expr = this->parse_expression();
             this->expect(vyn::TokenType::RPAREN);
             return expr;
+        // Removed KEYWORD_BORROW and KEYWORD_VIEW from here, they are handled in parse_unary_expr
         }
         
         vyn::SourceLocation loc = this->current_location();
@@ -84,6 +82,20 @@ namespace vyn {
 
     vyn::ExprPtr ExpressionParser::parse_unary_expr() {
         std::optional<vyn::token::Token> op_token_opt;
+        const vyn::token::Token& current_token = this->peek();
+
+        if (current_token.type == vyn::TokenType::KEYWORD_BORROW) {
+            this->consume(); // consume 'borrow'
+            // According to RFC: borrow <expr>. No parentheses required by default.
+            // If parentheses are desired for grouping, they'd be part of <expr>.
+            vyn::ExprPtr expr_to_borrow = this->parse_unary_expr(); // Borrow has high precedence, applies to the following unary expression
+            return std::make_unique<vyn::BorrowExprNode>(current_token.location, std::move(expr_to_borrow), vyn::BorrowKind::MUTABLE_BORROW);
+        } else if (current_token.type == vyn::TokenType::KEYWORD_VIEW) {
+            this->consume(); // consume 'view'
+            vyn::ExprPtr expr_to_view = this->parse_unary_expr(); // View has high precedence
+            return std::make_unique<vyn::BorrowExprNode>(current_token.location, std::move(expr_to_view), vyn::BorrowKind::IMMUTABLE_VIEW);
+        }
+
         if ((op_token_opt = this->match({vyn::TokenType::PLUS, vyn::TokenType::MINUS, vyn::TokenType::BANG /*, vyn::TokenType::TILDE */}))) {
             vyn::token::Token op_token = *op_token_opt;
             vyn::ExprPtr right = this->parse_unary_expr();
