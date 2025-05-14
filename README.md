@@ -6,7 +6,7 @@
 
 ## 1. Introduction
 
-Welcome to the Vyn Programming Guide. This guide walks you through writing, building, and extending Vyn programs, from your first “Hello, Vyn!” to deep dives into the Vyn language internals and runtime. Version 0.2.8 delivers a robust parser with support for advanced constructs like asynchronous programming, generic templates, operator overloading, and class declarations within templates, validated by a comprehensive test suite (15/15 tests passing).
+Welcome to the Vyn Programming Guide. This guide walks you through writing, building, and extending Vyn programs, from your first “Hello, Vyn!” to deep dives into the Vyn language internals and runtime. Version 0.3.0 delivers a robust parser with support for advanced constructs like asynchronous programming, generic templates, operator overloading, and class declarations within templates, validated by a comprehensive test suite (34/34 tests passing).
 
 ### 1.1 Purpose & Audience
 
@@ -44,11 +44,20 @@ Vyn is a statically typed, template-metaprogramming language designed to compile
 
 ### 1.3 Key Concepts & Terminology
 
-* **Template**: A generic type/function parameterized by types or constants, instantiated at compile time.
-* **Scoped Block**: Planned block prefixed with `scoped` that defers GC and cleans up at block exit.
-* **Reference (`ref<T>`)**: Planned per-object reference-counted pointer for deterministic deallocation.
-* **Actor**: Planned lightweight concurrent entity with a built-in mailbox for message passing.
-* **Tiered JIT**: Planned two-level execution—bytecode interpreter for startup, optimized native JIT for hot code.
+*   **Template**: A generic type/function parameterized by types or constants, instantiated at compile time.
+*   **Binding Mutability**: Variables are declared with `var` (mutable binding, can be reassigned) or `const` (immutable binding, cannot be reassigned).
+*   **Ownership Types**:
+    *   `my<T>`: Unique ownership of data `T`.
+    *   `our<T>`: Shared (reference-counted) ownership of data `T`.
+    *   `their<T>`: Non-owning borrow/reference to data `T`.
+*   **Data Mutability**: Indicated by `const` on the type itself (e.g., `my<T const>` for unique ownership of immutable data).
+*   **Borrowing**:
+    *   `view <expr>`: Creates an immutable borrow `their<T const>`.
+    *   `borrow <expr>`: Creates a mutable borrow `their<T>`.
+*   **`unsafe` Blocks**: Sections of code marked `unsafe { ... }` where raw pointers (`ptr<T>`) can be used and some compiler guarantees are relaxed.
+*   **Scoped Block**: Planned block prefixed with `scoped` that defers GC and cleans up at block exit.
+*   **Actor**: Planned lightweight concurrent entity with a built-in mailbox for message passing.
+*   **Tiered JIT**: Planned two-level execution—bytecode interpreter for startup, optimized native JIT for hot code.
 
 ### 1.4 How to Use This Guide
 
@@ -147,7 +156,7 @@ vyn repl
 
 ## 3. Language Fundamentals
 
-In this section we cover the core building blocks of Vyn: its syntax, basic types, and fundamental constructs. Most code you write will use these concepts daily.
+In this section we cover the core building blocks of Vyn: its syntax, basic types, memory model, and fundamental constructs. Most code you write will use these concepts daily.
 
 ### 3.1 Basic Syntax & Data Types
 
@@ -188,7 +197,71 @@ let list: Vec<Int> = vec![4,5,6]  # Planned dynamic vector
 
 These primitives cover most use cases; additional fixed-width or packed types are planned for future releases.
 
-### 3.2 Control Flow (if, for, while, match)
+### 3.2 Variables, Ownership, and Mutability
+
+Vyn's memory model is designed for safety and explicitness, distinguishing between binding mutability, data mutability, and ownership.
+
+**Binding Mutability**:
+*   **`var`**: Declares a mutable binding. The variable can be reassigned.
+    ```vyn
+    var x: Int = 10;
+    x = 20; // Allowed
+    ```
+*   **`const`**: Declares an immutable binding. The variable cannot be reassigned after initialization.
+    ```vyn
+    const PI: Float = 3.14159;
+    // PI = 3.0; // Error
+    ```
+
+**Ownership Types**:
+Vyn uses ownership types to manage memory and control data access:
+*   **`my<T>`**: Unique-owning pointer. When a `my<T>` goes out of scope, its data is deallocated.
+    ```vyn
+    var unique_data: my<String> = make_my("owned");
+    ```
+*   **`our<T>`**: Shared-owning pointer (reference-counted). Data is deallocated when the last `our<T>` is dropped.
+    ```vyn
+    var shared_data: our<String> = make_our("shared");
+    var another_ref: our<String> = shared_data; // Reference count incremented
+    ```
+*   **`their<T>`**: Borrowed pointer (non-owning reference). Provides temporary access to data owned by `my<T>`, `our<T>`, or another `their<T>`. Created using `borrow` or `view`.
+
+**Data Mutability**:
+Controlled by applying `const` to the type `T` *within* the ownership wrapper:
+*   `my<T>`: Unique ownership of mutable data `T`.
+*   `my<T const>`: Unique ownership of immutable data `T`.
+*   `our<T>`: Shared ownership of (potentially) mutable data `T`. (Requires synchronization like `Mutex<T>` for thread-safe mutation).
+*   `our<T const>`: Shared ownership of immutable data `T`.
+*   `their<T>`: A mutable borrow of data `T`.
+*   `their<T const>`: An immutable borrow (view) of data `T`.
+
+**Borrowing with `view` and `borrow`**:
+*   **`view <expr>`**: Creates an immutable borrow `their<T const>`.
+    ```vyn
+    var owner: my<Int> = make_my(10);
+    var immutable_ref: their<Int const> = view owner;
+    // immutable_ref = 20; // Error: cannot modify through their<T const>
+    ```
+*   **`borrow <expr>`**: Creates a mutable borrow `their<T>`.
+    ```vyn
+    var owner: my<Int> = make_my(10);
+    var mutable_ref: their<Int> = borrow owner;
+    mutable_ref = 20; // OK, owner's data is now 20
+    ```
+The compiler enforces borrow-checking rules to ensure memory safety.
+
+**Raw Pointers (`ptr<T>`) and `unsafe`**:
+For low-level operations, Vyn provides raw pointers `ptr<T>`. Operations involving `ptr<T>` (like dereferencing) are generally restricted to `unsafe` blocks.
+```vyn
+var raw_ptr: ptr<Int>;
+unsafe {
+    // Operations with raw_ptr
+}
+```
+
+These concepts extend to function parameters and struct/class fields, allowing fine-grained control over how data is passed and managed.
+
+### 3.3 Control Flow (if, for, while, match)
 
 Vyn supports standard control structures:
 
@@ -214,7 +287,7 @@ match opt {
 }
 ```
 
-### 3.3 Functions & Nested Functions
+### 3.4 Functions & Nested Functions
 
 Functions form the basic unit of behavior. You can nest functions inside other functions, capturing outer variables:
 
@@ -236,7 +309,7 @@ let squares = nums.map(fn(n) -> Int { n * n })  # Will pass lambda directly
 
 Under the hood, lambdas will produce a function object that can capture surrounding variables by value or reference, depending on usage.
 
-### 3.4 Modules & Imports
+### 3.5 Modules & Imports
 
 Organize code into modules by file or planned `module` declarations. Import or smuggle symbols:
 
@@ -378,32 +451,18 @@ fn example() {
 }
 ```
 
-### 4.5 Memory Management (GC, Manual, Reference)
+### 4.5 Memory Management (Ownership, Borrowing, GC, Manual)
 
-Vyn offers a planned hybrid memory model:
+Vyn's memory management is built upon its ownership and borrowing system (`my<T>`, `our<T>`, `their<T>`, `view`, `borrow`), which aims for memory safety without always relying on a garbage collector for primary memory management of owned objects.
 
-* **Default GC**: Lazy, based on allocation pressure.
-* **Manual**: Call `free(ptr)` to immediately release.
-* **Reference Counting**: Wrap objects in `ref<T>` for automatic per-object cleanup and cyclic detection.
+*   **`my<T>` (Unique Ownership)**: Provides deterministic deallocation. When a `my<T>` owner goes out of scope, the resource is freed. This is the primary mechanism for managing resources with a clear single owner.
+*   **`our<T>` (Shared Ownership)**: Uses reference counting for automatic memory management when multiple owners are necessary. The resource is freed when the last `our<T>` pointer is dropped.
+*   **`their<T>` (Borrows)**: Non-owning references created by `view` (immutable) and `borrow` (mutable). The compiler enforces lifetime rules to ensure these references do not outlive the data they point to, preventing dangling pointers.
+*   **Planned Default GC**: For scenarios not easily managed by `my`/`our` (e.g., complex object graphs with cycles not broken by `our<Weak<T>>` or for general heap allocations where ownership is diffuse), a garbage collector is planned. It will work alongside the explicit ownership system.
+*   **Manual Management (`ptr<T>`, `unsafe`)**: For low-level control, raw pointers (`ptr<T>`) can be used within `unsafe` blocks, with manual allocation (`alloc`) and deallocation (`free`) functions. This is intended for specific performance-critical sections or FFI.
+*   **Scoped Cleanup**: The planned `scoped { ... }` blocks will offer a way to manage resources with RAII-like semantics, ensuring cleanup at the end of the scope, potentially interacting with the GC by deferring collection for objects created within the scope.
 
-### 4.6 Inline Macros & Metaprogramming
-
-Vyn macros will run at compile time to generate or transform code. They are hygienic and can manipulate AST nodes:
-
-```vyn
-macro log_calls(fn_def) {
-    # Inject dbg() at start of function body
-}
-
-@log_calls
-fn compute(x: Int) -> Int {
-    x * 2
-}
-```
-
-Macro definitions and usage will be covered in depth in future releases.
-
----
+This hybrid approach allows developers to choose the most appropriate memory management strategy for different parts of their application, balancing safety, performance, and convenience.
 
 ## 5. Concurrency & Parallelism
 
@@ -437,7 +496,7 @@ Actors are planned lightweight, isolated units that communicate via typed mailbo
 ```vyn
 template Counter {
     var count: Int = 0
-    fn handle(&mut self, msg: Int) {
+    fn handle(&mut self, msg: Int) { // msg is typically owned or a 'static borrow
         self.count += msg
         dbg(self.count)
     }
@@ -445,14 +504,14 @@ template Counter {
 
 fn main() {
     let counter = actor Counter()
-    counter.send(5)
+    counter.send(5) // Ownership of 5 (if it were a complex type) would be transferred
     counter.send(3)
     # Messages processed asynchronously
 }
 ```
 
-* **`actor MyType()`**: Will spawn an actor instance of template `MyType`.
-* **`send` / `recv`**: Methods for sending messages into an actor’s queue; `recv` will block in an async context.
+*   **`actor MyType()`**: Will spawn an actor instance of template `MyType`.
+*   **`send` / `recv`**: Methods for sending messages into an actor’s queue; `recv` will block in an async context. Messages sent between actors typically involve transfer of ownership (e.g., sending `my<Data>`) or sending shareable data (e.g., `our<DataConst>`).
 
 ### 5.3 Threads & ThreadPool Usage
 
@@ -460,8 +519,8 @@ Low-level threads are planned via templates:
 
 ```vyn
 # Spawn a thread returning Int
-let handle: Thread<Int> = Thread::spawn(fn() -> Int {
-    heavy_compute()
+let handle: Thread<Int> = Thread::spawn(fn() -> Int { // Closures capture environment
+    heavy_compute()                                  // Data shared with threads must be Send/Sync
 })
 let result = handle.join()
 ```
@@ -471,13 +530,13 @@ Use a `ThreadPool<T>` to manage a fixed worker set:
 ```vyn
 let pool = ThreadPool<String>(8)
 let futs = for i in 0..<10 {
-    pool.submit(fn() -> String { process(i) })
+    pool.submit(fn() -> String { process(i) }) // Data captured by closure must be Send/Sync
 }
-for f in futs { dbg(f.join()) }
-```
+for f in futs { dbg(f.join()) }\n```
 
-* **`join()`**: Will wait for thread completion and return its result.
-* **`ThreadPool<T>`**: Will reuse worker threads for tasks of signature `fn() -> T`.
+*   **`join()`**: Will wait for thread completion and return its result.
+*   **`ThreadPool<T>`**: Will reuse worker threads for tasks of signature `fn() -> T`.
+*   **Data Sharing**: Sharing data between threads safely requires types that are `Send` (can be transferred to another thread) and `Sync` (can be safely accessed from multiple threads). Vyn's ownership system, particularly `our<T>` (often with `Mutex<T>` for mutable shared state like `our<Mutex<Data>>`) and `our<T const>`, plays a crucial role here.
 
 ### 5.4 Channels & Synchronization Primitives
 
@@ -486,24 +545,48 @@ Channels will return an `Option<T>` on `recv()` (planned):
 * `Some(value)` wraps a received message.
 * `None` indicates the channel is closed and no more messages will arrive.
 
-Channels provide safe message queues between threads and actors:
+Channels provide safe message queues between threads and actors. Ownership of data is typically transferred through channels.
 
 ```vyn
-let ch: Channel<Int> = Channel::bounded(100)
+let ch: Channel<my<Data>> = Channel::bounded(100) // Channel of owned data
 
 spawn fn producer() {
-    for i in 0..<50 { ch.send(i) }
+    for i in 0..<50 { ch.send(make_my(Data{id:i})) } // Send owned data
 }
 spawn fn consumer() {
-    # recv() yields Option<Int>: Some(v) until channel closes
-    while let Some(v) = ch.recv() { println(v) }
-    # When producer is done and channel closed, recv() returns None and loop exits
+    while let Some(owned_data) = ch.recv() { // Receive owned data
+        println(owned_data.id)
+    }
 }
 ```
 
 * **Bounded / Unbounded**: Choose capacity at creation time.
 * **`recv()`**: Will block until a message is available or channel is closed.
 * **`select`**: Will wait on multiple channels (planned for future releases).
+
+**Mutex<T> for Shared Mutable State**:
+When data needs to be shared and mutated between threads, `Mutex<T>` (Mutual Exclusion) is used, typically wrapped in an `our<T>` for shared ownership of the mutex itself.
+
+```vyn
+var shared_value: our<Mutex<Int>> = make_our(Mutex(0));
+
+// Thread 1
+spawn fn(val_ref = shared_value.clone()) { // Clone our<Mutex<Int>>
+    let mut guard = val_ref.lock(); // Acquire lock, blocks until available
+    *guard = *guard + 1;          // Modify data through the guard
+                                  // Lock released when guard goes out of scope
+};
+
+// Thread 2
+spawn fn(val_ref = shared_value.clone()) {
+    let mut guard = val_ref.lock();
+    *guard = *guard * 2;
+};
+```
+*   **`lock()`**: Acquires the mutex, blocking if necessary. Returns a `LockGuard<T>`.
+*   **`try_lock()`**: Attempts to acquire the lock without blocking.
+*   **`LockGuard<T>`**: An RAII guard that releases the lock when it goes out of scope. Data is accessed through the guard.
+*   **Poisoning**: If a thread panics while holding a lock, the mutex becomes "poisoned" to indicate potential data corruption.
 
 ---
 
@@ -703,14 +786,15 @@ This section provides in-depth technical details necessary to implement the Vyn 
   - Support shadowing and name hiding rules.
 * **Type Inference & Checking** (Planned):
   - Implement Hindley-Milner style inference for let-bindings and function return types, with template parameters explicit.
-  - Enforce mutability: `&T` vs `&mut T`; track ownership and lifetimes to prevent invalid borrows.
+  - Enforce mutability and ownership rules: `my<T>`, `our<T>`, `their<T>`, `T const`.
 * **Template Instantiation** (Implemented in 0.2.8):
   - When encountering a `template` use, instantiate a specialized AST by substituting type arguments.
   - Cache instantiations to avoid duplicate work; generate unique mangled names.
 * **Macro Expansion** (Planned):
   - Execute hygienic macros during semantic phase; transform AST subtrees and re-run analysis on generated code.
 * **Borrow and Ownership Analysis** (Planned):
-  - For each function, build a borrow graph tracking references and lifetimes.
+  - For each function, build a borrow graph tracking references (`their<T>`), their lifetimes, and their relationship to owners (`my<T>`, `our<T>`).
+  - Enforce rules: e.g., no mutable borrow if an immutable borrow exists, borrows do not outlive owners.
   - Insert runtime checks or optimize based on escape analysis.
 
 #### 8.1.3 Intermediate Representation (VIR)
