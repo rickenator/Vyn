@@ -49,14 +49,17 @@ enum class NodeType {
     STRING_LITERAL,
     BOOLEAN_LITERAL,
     ARRAY_LITERAL,    // Implemented
-    OBJECT_LITERAL,   // Implemented
+    STRUCT_LITERAL,   // Was OBJECT_LITERAL, renamed for clarity with EBNF struct_literal
 
     // Expressions
     UNARY_EXPRESSION,
     BINARY_EXPRESSION,
+    TERNARY_EXPRESSION, // New: For conditional_expression (?:)
     CALL_EXPRESSION,
     MEMBER_EXPRESSION,
     ASSIGNMENT_EXPRESSION,
+    IF_EXPRESSION,      // New: For if-expressions
+    RANGE_EXPRESSION,   // New: For range expressions (e.g., a..b)
 
     // Statements
     BLOCK_STATEMENT,
@@ -67,6 +70,9 @@ enum class NodeType {
     RETURN_STATEMENT,
     BREAK_STATEMENT,
     CONTINUE_STATEMENT,
+    THROW_STATEMENT,    // New: For throw statements
+    SCOPED_STATEMENT,   // New: For scoped blocks
+    PATTERN_ASSIGNMENT_STATEMENT, // New: For pattern-based assignments (e.g. let (a,b) = foo();)
 
     // Declarations
     VARIABLE_DECLARATION,
@@ -74,12 +80,14 @@ enum class NodeType {
     TYPE_ALIAS_DECLARATION,
     IMPORT_DECLARATION,
     STRUCT_DECLARATION,
-    CLASS_DECLARATION,
+    CLASS_DECLARATION,  // Note: May be superseded or refined by traits/impls
     FIELD_DECLARATION,
     IMPL_DECLARATION,
     ENUM_DECLARATION,
     ENUM_VARIANT,
     GENERIC_PARAMETER,
+    TRAIT_DECLARATION,  // New: For trait definitions
+    METHOD_SIGNATURE,   // New: For method signatures within traits
 
     // Other
     TYPE_ANNOTATION,
@@ -117,9 +125,9 @@ public:
     Declaration(SourceLocation loc);
 };
 
-// Conceptual base classes from original design (Not directly in C++ hierarchy this way)
+// Conceptual base classes from original design
 // class TypeNode : public Node { /* ... */ }; // *(Note: This specific base class is conceptual; TypeAnnotation is the implemented type representation.)*
-// class PatternNode : public Node { /* ... */ }; // *(Note: This base class and Pattern nodes are planned and not yet implemented.)*
+// class PatternNode : public Node { /* ... */ }; // *(Note: This base class is conceptual. Pattern structures are defined in the EBNF and corresponding AST nodes are planned for implementation.)*
 
 } // namespace vyn
 ```
@@ -134,13 +142,13 @@ public:
 -   **Planned Node Categories**: `TypeNode` and `PatternNode` represent categories of nodes that are part of the broader language design but are not yet implemented as specific base classes in C++ or have limited/different representation (e.g. `TypeAnnotation` for types).
 
 ## 3. Path Node
-*(Note: `PathNode` and its related features are planned and not yet implemented.)*
+*(Note: The `path` syntax (e.g., `module::item` or `module.item`) is defined in the Vyn EBNF grammar. However, a dedicated `PathNode` AST element as described below is conceptual/planned and not yet implemented as a distinct node type in `ast.hpp`. Paths in expressions are typically represented using `Identifier` for single segments or `MemberExpression` for multiple segments, and in types via `TypeAnnotation`.)*
 
-A `PathNode` represents a qualified name, such as `module::submodule::Item`. It can be part of a Type, Expression, or Pattern.
+A `PathNode` represents a qualified name, such as `module::submodule::Item` or `module.submodule.Item`. It can be part of a Type, Expression, or Pattern.
 
--   **`PathNode : Node`** (Conceptual):
+-   **`PathNode : Node`** (Conceptual/Planned):
     -   `std::vector<std::unique_ptr<IdentifierNode>> segments;`
-    -   `// bool is_absolute; // Optional: for paths like ::foo::bar`
+    -   `// bool is_absolute; // Optional: for paths like ::foo::bar (EBNF does not currently specify leading ::)`
 
 ## 4. Expression Nodes
 
@@ -159,24 +167,18 @@ Derived from `vyn::Expression : vyn::Node`.
         -   `bool value;`
     -   **`vyn::ArrayLiteral : vyn::Expression`**: Represents an array literal e.g. `[1, 2, 3]`. (Matches C++ `ArrayLiteral`)
         -   `std::vector<std::unique_ptr<vyn::Expression>> elements;`
-    -   **`vyn::ObjectLiteral : vyn::Expression`**: Represents an object literal e.g. `{key1: val1, key2: val2}`. (Matches C++ `ObjectLiteral`)
-        -   `std::vector<vyn::ObjectProperty> properties;`
-        -   **`vyn::ObjectProperty`** (Helper struct, matches C++):
+    -   **`vyn::StructLiteralNode : vyn::Expression`**: Represents a struct literal, e.g., `MyType { field1: val1, field2 }` or `{ field1 = val1 }`. (Corresponds to EBNF `struct_literal`. The `NodeType` is `STRUCT_LITERAL`.)
+        -   `std::unique_ptr<vyn::TypeAnnotation> typePath; // Optional, e.g. MyStruct{...} from EBNF type_path?`
+        -   `std::vector<vyn::StructLiteralField> fields;`
+        -   **`vyn::StructLiteralField`** (Helper struct):
             -   `vyn::SourceLocation loc;`
-            -   `std::unique_ptr<vyn::Identifier> key;`
-            -   `std::unique_ptr<vyn::Expression> value;`
+            -   `std::unique_ptr<vyn::Identifier> name;`
+            -   `std::unique_ptr<vyn::Expression> value; // Optional. If null, it's shorthand (e.g. { name }). If present, it's from 'name: value' or 'name = value'.`
     -   **`CharLiteralNode : ExprNode`**: *(Note: This node is planned and not yet implemented.)*
         -   `char value;`
     -   **`NullLiteralNode : ExprNode`**: *(Note: This node is planned and not yet implemented.)*
 -   **`TupleLiteralNode : ExprNode`**: *(Note: This node is planned and not yet implemented.)*
     -   `std::vector<std::unique_ptr<ExprNode>> elements;`
--   **`StructLiteralNode : ExprNode`**: *(Note: This node is planned and not yet implemented. Current C++ uses `ObjectLiteral` for key-value pairs, which is different from a typed struct instantiation.)*
-    -   `std::unique_ptr<TypeNode> type;`
-    -   `std::vector<StructLiteralField> fields;`
-    -   **`StructLiteralField`** (Helper struct):
-        -   `SourceLocation location;`
-        -   `std::unique_ptr<IdentifierNode> name;`
-        -   `std::unique_ptr<ExprNode> value;`
 -   **`EnumLiteralNode : ExprNode`**: *(Note: This node is planned and not yet implemented.)*
     -   `std::unique_ptr<PathNode> path;`
     -   `std::vector<std::unique_ptr<ExprNode>> arguments;`
@@ -201,13 +203,22 @@ Derived from `vyn::Expression : vyn::Node`.
     -   `vyn::token::Token op;` // e.g., `=`, `+=`
     -   `std::unique_ptr<vyn::Expression> right;`
 
+-   **`TernaryExpressionNode : vyn::Expression`**: Represents a ternary conditional expression (e.g., `condition ? then_expr : else_expr`). (Corresponds to EBNF `conditional_expression`. The `NodeType` is `TERNARY_EXPRESSION`.)
+    -   `std::unique_ptr<vyn::Expression> condition;`
+    -   `std::unique_ptr<vyn::Expression> thenExpression;`
+    -   `std::unique_ptr<vyn::Expression> elseExpression;`
+
+-   **`RangeExpressionNode : vyn::Expression`**: Represents a range expression (e.g., `start .. end`). (Corresponds to EBNF `range_expression`. The `NodeType` is `RANGE_EXPRESSION`.)
+    -   `std::unique_ptr<vyn::Expression> start;`
+    -   `std::unique_ptr<vyn::Expression> end;`
+
 -   **`AwaitExprNode : ExprNode`**: *(Note: This node is planned and not yet implemented.)*
     -   `std::unique_ptr<ExprNode> expression;`
 
--   **`IfExprNode : ExprNode`**: *(Note: This node is planned and not yet implemented.)*
-    -   `std::unique_ptr<ExprNode> condition;`
-    -   `std::unique_ptr<BlockStmtNode> thenBlock;`
-    -   `std::unique_ptr<ExprNode> elseExpression;`
+-   **`IfExpressionNode : vyn::Expression`**: Represents an if-expression that evaluates to a value (e.g., `if condition { value1 } else { value2 }`). (Corresponds to EBNF `if_expression`. The `NodeType` is `IF_EXPRESSION`.)
+    -   `std::unique_ptr<vyn::Expression> condition;`
+    -   `std::unique_ptr<vyn::BlockStatement> thenBlock; // Must evaluate to a value (e.g., by its last expression).`
+    -   `std::unique_ptr<vyn::Node> elseBranch; // Optional. Can be a vyn::BlockStatement or a vyn::IfExpressionNode. Both must evaluate to a value.`
 
 -   **`ListComprehensionNode : ExprNode`**: *(Note: This node is planned and not yet implemented.)*
     -   `std::unique_ptr<ExprNode> outputExpression;`
@@ -227,12 +238,13 @@ Derived from `vyn::Statement : vyn::Node`.
     -   `std::unique_ptr<vyn::Expression> expression;`
 -   **`vyn::BlockStatement : vyn::Statement`**: Represents a block of statements. (Matches C++ `BlockStatement`)
     -   `std::vector<std::unique_ptr<vyn::Statement>> body;`
--   **`vyn::VariableDeclaration : vyn::Declaration`**: Represents a variable declaration. (Matches C++ `VariableDeclaration`)
-    -   `std::unique_ptr<vyn::Identifier> id;`
-    -   `bool isConst;`
+-   **`vyn::VariableDeclaration : vyn::Declaration`**: Represents a variable declaration (e.g., `let x = 1;`, `var y: int;`, `let mut z = 2;`). (Matches C++ `VariableDeclaration`, updated for `let`/`var` and mutability from EBNF `variable_declaration`.)
+    -   `std::unique_ptr<vyn::Identifier> id; // For simple cases like 'let x = 1'. For pattern destructuring, this would be a PatternNode.`
+    -   `// std::unique_ptr<PatternNode> pattern; // Planned for destructuring, e.g., let (a, b) = ...`
+    -   `bool isMutable; // True if 'mut' keyword is present (e.g., 'let mut').`
+    -   `bool isLet; // True if 'let' keyword is used, false if 'var' (implies different semantics, e.g. const vs assignable).`
     -   `std::unique_ptr<vyn::TypeAnnotation> typeAnnotation;` // Optional
     -   `std::unique_ptr<vyn::Expression> init;` // Optional
-    *(Note: This replaces `VarDeclStmtNode` which used `PatternNode`. Pattern-based destructuring is a planned feature.)*
 -   **`vyn::IfStatement : vyn::Statement`**: Represents an if-else statement. (Matches C++ `IfStatement`)
     -   `std::unique_ptr<vyn::Expression> test;`
     -   `std::unique_ptr<vyn::Statement> consequent;`
@@ -245,11 +257,15 @@ Derived from `vyn::Statement : vyn::Node`.
     -   `std::unique_ptr<vyn::Expression> test;`   // Expression or nullptr
     -   `std::unique_ptr<vyn::Expression> update;` // Expression or nullptr
     -   `std::unique_ptr<vyn::Statement> body;`
-    *(Note: The original design's `ForStmtNode` with `PatternNode` and iterable is a planned feature for for-in loops.)*
+    *(Note: The EBNF also includes `for_in_statement` (e.g., `for x in iterable {}`), which would require a different AST node, e.g., `ForInStatementNode`, likely using a `PatternNode` for `x`.)*
 -   **`vyn::ReturnStatement : vyn::Statement`**: Represents a return statement. (Matches C++ `ReturnStatement`)
     -   `std::unique_ptr<vyn::Expression> argument;` // Optional
 -   **`vyn::BreakStatement : vyn::Statement`**: Represents a break statement. (Matches C++ `BreakStatement`)
 -   **`vyn::ContinueStatement : vyn::Statement`**: Represents a continue statement. (Matches C++ `ContinueStatement`)
+
+-   **`PatternAssignmentStatementNode : vyn::Statement`**: Represents a pattern-based assignment (e.g., `(a, b) = expression;`). (Corresponds to EBNF `pattern_assignment_statement`. The `NodeType` is `PATTERN_ASSIGNMENT_STATEMENT`.)
+    -   `std::unique_ptr<PatternNode> pattern; // Planned PatternNode structure`
+    -   `std::unique_ptr<vyn::Expression> expression;`
 
 -   **`MatchStmtNode : StmtNode`**: *(Note: This node and its helpers are planned and not yet implemented.)*
     -   `std::unique_ptr<ExprNode> expression;`
@@ -259,83 +275,147 @@ Derived from `vyn::Statement : vyn::Node`.
         -   `std::unique_ptr<ExprNode> guard;`
         -   `std::unique_ptr<BlockStmtNode> body;`
 
--   **`ThrowStmtNode : StmtNode`**: *(Note: This node is planned and not yet implemented.)*
-    -   `std::unique_ptr<ExprNode> expression;`
+-   **`ThrowStatementNode : vyn::Statement`**: Represents a throw statement (e.g., `throw MyException();`). (Corresponds to EBNF `throw_statement`. The `NodeType` is `THROW_STATEMENT`.)
+    -   `std::unique_ptr<vyn::Expression> expression;`
 
--   **`TryStmtNode : StmtNode`**: *(Note: This node and its helpers are planned and not yet implemented.)*
+-   **`TryStmtNode : StmtNode`**: *(Note: This node and its helpers are planned and not yet implemented. The EBNF `try_statement` has a specific structure for `catch_clause`.)*
     -   `std::unique_ptr<BlockStmtNode> tryBlock;`
     -   `std::vector<CatchClauseNode> catchClauses;`
-    -   `std::unique_ptr<BlockStmtNode> finallyBlock;`
-    -   **`CatchClauseNode : Node`** (Helper):
-        -   `std::unique_ptr<IdentifierNode> variableName;`
-        -   `std::unique_ptr<TypeNode> exceptionType;`
-        -   `std::unique_ptr<BlockStmtNode> body;`
+    -   `std::unique_ptr<BlockStmtNode> finallyBlock;` // Optional
+    -   **`CatchClauseNode : Node`** (Helper, updated to match EBNF `catch_clause`):
+        -   `std::unique_ptr<vyn::Identifier> variableName; // e.g., 'e' in 'catch e: ExceptionType'`
+        -   `std::unique_ptr<vyn::TypeAnnotation> exceptionType; // Optional, e.g., 'ExceptionType'`
+        -   `std::unique_ptr<vyn::BlockStatement> body;`
 
 -   **`DeferStmtNode : StmtNode`**: *(Note: This node is planned and not yet implemented.)*
     -   `std::unique_ptr<ExprNode> expression;`
 
--   **`ScopedBlockStmtNode : StmtNode`**: *(Note: This node is planned and not yet implemented.)*
-    -   `std::vector<std::unique_ptr<StmtNode>> statements;`
+-   **`ScopedStatementNode : vyn::Statement`**: Represents a scoped block (e.g., `scoped { ... }`). (Corresponds to EBNF `scoped_statement`. The `NodeType` is `SCOPED_STATEMENT`.)
+    -   `std::unique_ptr<vyn::BlockStatement> body;`
 
 ## 6. Declaration Nodes
 
 Derived from `vyn::Declaration : vyn::Statement`.
 
--   **`vyn::GenericParamNode : vyn::Node`**: Represents a generic parameter. (Matches C++ `GenericParamNode`)
+*(Note: Many declarations in the EBNF can be preceded by `attributes?` and `visibility?`. These are considered planned features for the AST nodes unless specified otherwise, and dedicated `AttributeNode` and visibility flags would be added in the future.)*
+
+-   **`vyn::GenericParamNode : vyn::Node`**: Represents a generic parameter (e.g., `T`, `const N: int`). (Matches C++ `GenericParamNode`, updated for const generics from EBNF `generic_parameter`.)
     -   `std::unique_ptr<vyn::Identifier> name;`
-    -   `std::vector<std::unique_ptr<vyn::TypeAnnotation>> bounds;`
-    *(Note: The C++ version is simpler. Original design's `Kind { TYPE, CONST }` and `typeAnnotation` for const generics are planned enhancements.)*
--   **`vyn::FunctionParameter`** (Struct used in `FunctionDeclaration`, matches C++):
+    -   `bool isConst; // New: True for const generic parameters (e.g., "const N: int").`
+    -   `std::unique_ptr<vyn::TypeAnnotation> constType; // New: Type for const generic parameters (e.g., "int" in "const N: int"). Null if not a const generic.`
+    -   `std::vector<std::unique_ptr<vyn::TypeAnnotation>> bounds; // For type parameters (e.g., "T: MyTrait").`
+    *(Note: The C++ version might be simpler; this reflects full EBNF capability.)*
+
+-   **`vyn::FunctionParameter`** (Struct used in function-like declarations, matches C++ `FunctionParameter`, extended for EBNF `parameter`):
     -   `vyn::SourceLocation loc;`
-    -   `std::unique_ptr<vyn::Identifier> name;`
-    -   `std::unique_ptr<vyn::TypeAnnotation> typeAnnotation;`
-    *(Note: Original `ParamNode` with `isMut`, `isRef` is part of a more detailed planned design.)*
--   **`vyn::FunctionDeclaration : vyn::Declaration`**: Represents a function declaration. (Matches C++ `FunctionDeclaration`)
+    -   `std::unique_ptr<vyn::Identifier> name; // Represents IDENTIFIER in 'pattern_or_identifier'.`
+    -   `// std::unique_ptr<PatternNode> pattern; // Planned: To support 'pattern' in 'pattern_or_identifier'.`
+    -   `std::unique_ptr<vyn::TypeAnnotation> typeAnnotation; // Mandatory in EBNF parameter.`
+    -   `// std::unique_ptr<vyn::Expression> defaultValue; // Planned: For default parameter values.`
+    *(Note: Original `ParamNode` with `isMut`, `isRef` is part of a more detailed planned design not directly in current EBNF parameter structure.)*
+
+-   **`vyn::VariableDeclaration : vyn::Declaration`**: Represents a variable declaration (e.g., `let x = 1;`, `var y: int;`, `let mut z = 2;`). (Matches C++ `VariableDeclaration`, updated for `let`/`var`, mutability, and planned pattern support from EBNF `variable_declaration`.)
+    -   `std::unique_ptr<vyn::Identifier> identifier; // Represents the IDENTIFIER in 'pattern_or_identifier' when not using a pattern.`
+    -   `// std::unique_ptr<PatternNode> pattern; // Planned: To support 'pattern' in 'pattern_or_identifier' for destructuring.`
+    -   `bool isLet; // True if 'let' keyword is used.`
+    -   `bool isMutable; // True if 'mut' keyword is present (e.g., 'let mut'). 'var' also implies mutability.`
+    -   `std::unique_ptr<vyn::TypeAnnotation> typeAnnotation;` // Optional
+    -   `std::unique_ptr<vyn::Expression> init;` // Optional
+    *(Note: Pattern-based destructuring is a planned feature. The 'identifier' field is used for simple variable declarations.)*
+
+-   **`vyn::FunctionDeclaration : vyn::Declaration`**: Represents a free function declaration. (Matches C++ `FunctionDeclaration`, updated for EBNF `function_declaration`.)
     -   `std::unique_ptr<vyn::Identifier> id;`
+    -   `std::vector<std::unique_ptr<vyn::GenericParamNode>> genericParams; // New`
     -   `std::vector<vyn::FunctionParameter> params;`
-    -   `std::unique_ptr<vyn::BlockStatement> body;`
     -   `std::unique_ptr<vyn::TypeAnnotation> returnType;` // Optional
-    -   `bool isAsync;`
-    *(Note: Original `FuncDeclNode` with generics, extern, throwsClause details more planned features.)*
--   **`vyn::StructDeclaration : vyn::Declaration`**: Represents a struct declaration. (Matches C++ `StructDeclaration`)
+    -   `std::vector<std::unique_ptr<vyn::TypeAnnotation>> throwsClause; // New: For 'throws' annotations.`
+    -   `std::variant<std::unique_ptr<vyn::BlockStatement>, std::unique_ptr<vyn::Expression>> body; // New: Supports block or '=> expression' body.`
+    -   `bool isAsync; // Existing: from C++ version. (Note: EBNF might handle via attributes).`
+
+-   **`MethodDeclarationNode : vyn::Declaration`** (New): Represents a method declaration within a class or impl block. (Corresponds to EBNF `method_declaration`.)
+    -   `std::unique_ptr<vyn::Identifier> id;`
+    -   `std::vector<std::unique_ptr<vyn::GenericParamNode>> genericParams;`
+    -   `bool hasSelfParam; // True if the first parameter is 'self'. Details of 'self' (e.g. mut, ref) are part of FunctionParameter.`
+    -   `std::vector<vyn::FunctionParameter> params; // Parameters excluding 'self' if hasSelfParam is true, or all params if false.`
+    -   `std::unique_ptr<vyn::TypeAnnotation> returnType;` // Optional
+    -   `std::vector<std::unique_ptr<vyn::TypeAnnotation>> throwsClause;`
+    -   `std::variant<std::unique_ptr<vyn::BlockStatement>, std::unique_ptr<vyn::Expression>> body; // Supports block or '=> expression' body.`
+
+-   **`ConstructorDeclarationNode : vyn::Declaration`** (New): Represents a constructor declaration. (Corresponds to EBNF `constructor_declaration`.)
+    -   `std::vector<std::unique_ptr<vyn::GenericParamNode>> genericParams;`
+    -   `std::vector<vyn::FunctionParameter> params;`
+    -   `std::vector<std::unique_ptr<vyn::TypeAnnotation>> throwsClause;`
+    -   `std::variant<std::unique_ptr<vyn::BlockStatement>, std::unique_ptr<vyn::Expression>> body; // Supports block or '=> expression' body.`
+
+-   **`vyn::StructDeclaration : vyn::Declaration`**: Represents a struct declaration. (Matches C++ `StructDeclaration`, updated for EBNF `struct_declaration`.)
     -   `std::unique_ptr<vyn::Identifier> name;`
     -   `std::vector<std::unique_ptr<vyn::GenericParamNode>> genericParams;`
-    -   `std::vector<std::unique_ptr<vyn::FieldDeclaration>> fields;`
--   **`vyn::FieldDeclaration : vyn::Declaration`**: Represents a field declaration. (Matches C++ `FieldDeclaration`)
+    -   `std::variant< // New: Supports both struct and tuple-like fields.
+            std::vector<std::unique_ptr<vyn::FieldDeclaration>>,    // For regular struct fields: struct Name { field: Type }
+            std::vector<std::unique_ptr<vyn::TypeAnnotation>>       // For tuple struct fields: struct Name(Type1, Type2)
+        > fieldLayout;`
+
+-   **`vyn::FieldDeclaration : vyn::Declaration`**: Represents a field declaration within a struct or class. (Matches C++ `FieldDeclaration`, aligns with EBNF `field_declaration`.)
     -   `std::unique_ptr<vyn::Identifier> name;`
     -   `std::unique_ptr<vyn::TypeAnnotation> typeAnnotation;` // Mandatory
-    -   `std::unique_ptr<vyn::Expression> initializer;`     // Optional
-    -   `bool isMutable;`
--   **`vyn::ClassDeclaration : vyn::Declaration`**: Represents a class declaration. (Matches C++ `ClassDeclaration`)
+    -   `std::unique_ptr<vyn::Expression> initializer;`     // Optional (New from EBNF)
+    -   `// bool isMutable; // Note: EBNF field_declaration doesn't specify mutability. Mutability is usually on the instance or via 'let mut' for local bindings.`
+
+-   **`vyn::ClassDeclaration : vyn::Declaration`**: Represents a class declaration. (Matches C++ `ClassDeclaration`, updated for EBNF `class_declaration`.)
     -   `std::unique_ptr<vyn::Identifier> name;`
     -   `std::vector<std::unique_ptr<vyn::GenericParamNode>> genericParams;`
-    -   `std::vector<std::unique_ptr<vyn::Declaration>> members;` // `FieldDeclaration` or `FunctionDeclaration`
--   **`vyn::ImplDeclaration : vyn::Declaration`**: Represents an implementation block. (Matches C++ `ImplDeclaration`)
-    -   `std::vector<std::unique_ptr<vyn::GenericParamNode>> genericParams;`
-    -   `std::unique_ptr<vyn::TypeAnnotation> selfType;`
-    -   `std::unique_ptr<vyn::TypeAnnotation> traitType;` // Optional
-    -   `std::vector<std::unique_ptr<vyn::FunctionDeclaration>> methods;`
--   **`vyn::EnumVariantNode : vyn::Declaration`**: Represents an enum variant. (Matches C++ `EnumVariantNode`)
+    -   `std::unique_ptr<vyn::TypeAnnotation> extendsClause; // New: For 'extends BaseClass'.`
+    -   `std::vector<std::unique_ptr<vyn::TypeAnnotation>> implementsClause; // New: For 'implements Interface1, Interface2'.`
+    -   `std::vector<std::unique_ptr<vyn::Declaration>> members; // Updated: Can be FieldDeclaration, MethodDeclarationNode, ConstructorDeclarationNode.`
+
+-   **`TraitDeclarationNode : vyn::Declaration`** (New): Represents a trait declaration. (Corresponds to EBNF `trait_declaration`.)
     -   `std::unique_ptr<vyn::Identifier> name;`
-    -   `std::vector<std::unique_ptr<vyn::TypeAnnotation>> types;` // For tuple-like parameters
--   **`vyn::EnumDeclaration : vyn::Declaration`**: Represents an enum declaration. (Matches C++ `EnumDeclaration`)
+    -   `std::vector<std::unique_ptr<vyn::GenericParamNode>> genericParams;`
+    -   `std::vector<std::unique_ptr<vyn::Declaration>> members; // Can be MethodSignatureNode, TypeAliasDeclarationNode.`
+
+-   **`MethodSignatureNode : vyn::Declaration`** (New): Represents a method signature within a trait. (Corresponds to EBNF `method_signature`.)
+    -   `std::unique_ptr<vyn::Identifier> id;`
+    -   `std::vector<std::unique_ptr<vyn::GenericParamNode>> genericParams;`
+    -   `bool hasSelfParam; // True if 'self' is a parameter.`
+    -   `std::vector<vyn::FunctionParameter> params; // Parameters excluding 'self' if hasSelfParam is true.`
+    -   `std::unique_ptr<vyn::TypeAnnotation> returnType;` // Optional
+    -   `std::vector<std::unique_ptr<vyn::TypeAnnotation>> throwsClause;` // Optional
+
+-   **`vyn::ImplDeclaration : vyn::Declaration`**: Represents an implementation block. (Matches C++ `ImplDeclaration`, updated for EBNF `impl_declaration`.)
+    -   `std::vector<std::unique_ptr<vyn::GenericParamNode>> genericParams;`
+    -   `std::unique_ptr<vyn::TypeAnnotation> selfType; // The type being implemented.`
+    -   `std::unique_ptr<vyn::TypeAnnotation> traitType; // Optional: The trait being implemented for selfType.`
+    -   `std::vector<std::unique_ptr<vyn::Declaration>> members; // Updated: Can be MethodDeclarationNode, ConstructorDeclarationNode, TypeAliasDeclarationNode.`
+
+-   **`vyn::EnumVariantNode : vyn::Declaration`**: Represents an enum variant. (Matches C++ `EnumVariantNode`, updated for EBNF `enum_variant`.)
+    -   `std::unique_ptr<vyn::Identifier> name;`
+    -   `std::variant< // New: Supports simple, tuple-like, and struct-like variants.
+            std::monostate,                                         // For simple variants: VariantName
+            std::vector<std::unique_ptr<vyn::TypeAnnotation>>,    // For tuple variants: VariantName(Type1, Type2)
+            std::vector<std::unique_ptr<vyn::FieldDeclaration>>   // For struct variants: VariantName { field1: Type1 }
+        > payload;`
+    -   `std::unique_ptr<vyn::Expression> value; // New: Optional discriminant value (e.g., VariantName = 123).`
+
+-   **`vyn::EnumDeclaration : vyn::Declaration`**: Represents an enum declaration. (Matches C++ `EnumDeclaration`, aligns with EBNF `enum_declaration`.)
     -   `std::unique_ptr<vyn::Identifier> name;`
     -   `std::vector<std::unique_ptr<vyn::GenericParamNode>> genericParams;`
     -   `std::vector<std::unique_ptr<vyn::EnumVariantNode>> variants;`
--   **`vyn::TypeAliasDeclaration : vyn::Declaration`**: Represents a type alias. (Matches C++ `TypeAliasDeclaration`)
+
+-   **`vyn::TypeAliasDeclaration : vyn::Declaration`**: Represents a type alias. (Matches C++ `TypeAliasDeclaration`, updated for EBNF `type_alias_declaration`.)
     -   `std::unique_ptr<vyn::Identifier> name;`
-    -   `std::unique_ptr<vyn::TypeAnnotation> typeAnnotation;`
-    *(Note: Original `TypeAliasDeclNode` with generics is a planned enhancement.)*
--   **`vyn::ImportDeclaration : vyn::Declaration`**: Represents an import declaration. (Matches C++ `ImportDeclaration`)
-    -   `std::unique_ptr<vyn::StringLiteral> source;`
-    -   `std::vector<vyn::ImportSpecifier> specifiers;`
-    -   `std::unique_ptr<vyn::Identifier> defaultImport;` // Optional
-    -   `std::unique_ptr<vyn::Identifier> namespaceImport;` // Optional
+    -   `std::vector<std::unique_ptr<vyn::GenericParamNode>> genericParams; // New`
+    -   `std::unique_ptr<vyn::TypeAnnotation> typeAnnotation; // The type being aliased.`
+
+-   **`vyn::ImportDeclaration : vyn::Declaration`**: Represents an import declaration. (Matches C++ `ImportDeclaration`.)
+    -   `std::unique_ptr<vyn::StringLiteral> source; // Path to the module, typically a string literal.`
+    -   `std::vector<vyn::ImportSpecifier> specifiers; // For named imports: { name1, name2 as alias }`
+    -   `std::unique_ptr<vyn::Identifier> defaultImport; // Optional: For default import (ES6-style, Vyn EBNF is different).`
+    -   `std::unique_ptr<vyn::Identifier> namespaceImport; // Optional: For namespace import (ES6-style, Vyn EBNF is different).`
     -   **`vyn::ImportSpecifier`** (Helper struct, matches C++):
         -   `vyn::SourceLocation loc;`
         -   `std::unique_ptr<vyn::Identifier> importedName;`
         -   `std::unique_ptr<vyn::Identifier> localName;` // Optional alias
-    *(Note: This reflects the ES6-style import structure in C++. The simpler `PathNode`-based import is a different design aspect.)*
+    *(Note: The current C++ structure is ES6-like. The Vyn EBNF `import_declaration` also supports `import path ("as" IDENTIFIER)?` and `import { ... } from path_or_string`. This AST node primarily covers the latter. The simpler form might be represented differently or by specific usage of these fields.)*
 
 -   **`GlobalVarDeclNode : DeclNode`**: *(Note: This specific node is planned. Global variables would likely use `VariableDeclaration` at the module level, but specific semantics for `const` globals might evolve.)*
     -   `std::unique_ptr<PatternNode> pattern;`
@@ -349,63 +429,78 @@ Derived from `vyn::Declaration : vyn::Statement`.
 
 ## 7. Type Representation (`vyn::TypeAnnotation`)
 
-In the current C++ implementation, type information is primarily handled by the `vyn::TypeAnnotation` class, rather than a hierarchy of distinct `TypeNode` classes.
+In the current C++ implementation, type information is primarily handled by the `vyn::TypeAnnotation` class. This section describes its structure and how it maps to the EBNF type constructs. The EBNF supports simple paths, array types, tuple types, function types, and generic arguments (which can be types or expressions for const generics).
 
--   **`vyn::TypeAnnotation : vyn::Node`**: (Matches C++ `TypeAnnotation`)
-    -   Can represent:
-        -   **Simple Types**: e.g., `int`, `MyClass`. Stored via `std::unique_ptr<vyn::Identifier> simpleTypeName;`
-        -   **Array Types**: e.g., `int[]`. Stored via `std::unique_ptr<vyn::TypeAnnotation> arrayElementType;`
-        -   **Generic Types**: e.g., `List<string>`. Stored via `std::unique_ptr<vyn::Identifier> genericBaseType;` and `std::vector<std::unique_ptr<vyn::TypeAnnotation>> genericTypeArguments;`
-    -   Constructors enforce one of these states.
-    -   Helper methods: `isSimpleType()`, `isArrayType()`, `isGenericType()`.
+-   **`vyn::TypeAnnotation : vyn::Node`**: (Matches C++ `TypeAnnotation`, extended conceptually for EBNF features)
+    -   Represents various type structures. It would likely use an internal enum or variant to distinguish between:
+        -   **Path-based Types (Simple or Generic)**: e.g., `int`, `MyClass`, `List<string>`, `module::MyType<T, const N>`. (Corresponds to EBNF `type_path`)
+            -   `std::unique_ptr<vyn::Identifier> baseName; // Or a PathNode for qualified names like module::Type`
+            -   `std::vector<std::variant<std::unique_ptr<vyn::TypeAnnotation>, std::unique_ptr<vyn::Expression>>> genericArguments; // New: Supports type or expression for generic arguments (EBNF generic_argument_list)`
+        -   **Array Types**: e.g., `int[]`, `string[10]`. (Corresponds to EBNF `array_type` which is part of `type_annotation`)
+            -   `std::unique_ptr<vyn::TypeAnnotation> arrayElementType;`
+            -   `std::unique_ptr<vyn::Expression> arraySize; // Optional, from EBNF '[' expression ']''`
+        -   **Tuple Types**: e.g., `(int, string)`, `()`. (Corresponds to EBNF `tuple_type_suffix`)
+            -   `std::vector<std::unique_ptr<vyn::TypeAnnotation>> tupleElementTypes;`
+        -   **Function Types**: e.g., `(int, int) -> string throws MyError`. (Corresponds to EBNF `function_type_suffix`)
+            -   `std::vector<std::unique_ptr<vyn::TypeAnnotation>> parameterTypes;`
+            -   `std::unique_ptr<vyn::TypeAnnotation> returnType;`
+            -   `std::vector<std::unique_ptr<vyn::TypeAnnotation>> throwsClause; // Optional`
+    -   Constructors and helper methods (`isPathType()`, `isArrayType()`, `isTupleType()`, `isFunctionType()`) would manage the active state.
 
-*(The following specific TypeNode definitions from the original design are planned features or conceptual categorizations not directly mapped to distinct C++ classes at this time. The `vyn::TypeAnnotation` aims to cover some of these, while others like pointer or function types would require extensions or new specific nodes in the future.)*
+*(The following specific TypeNode definitions from the original design are conceptual. `vyn::TypeAnnotation` aims to cover these. Some, like pointer types, are not in the current EBNF but remain planned.)*
 
--   **`IdentifierTypeNode : TypeNode`**: *(Conceptual/Planned; covered by `TypeAnnotation` with `simpleTypeName` or `genericBaseType`)*
+-   **`IdentifierTypeNode : TypeNode`**: *(Conceptual; covered by `TypeAnnotation` with `baseName`)*
     -   `std::unique_ptr<PathNode> path;`
--   **`ArrayTypeNode : TypeNode`**: *(Conceptual/Planned; covered by `TypeAnnotation` with `arrayElementType`)*
+-   **`ArrayTypeNode : TypeNode`**: *(Conceptual; covered by `TypeAnnotation` with `arrayElementType` and `arraySize`)*
     -   `std::unique_ptr<TypeNode> elementType;`
-    -   `std::unique_ptr<ExprNode> size;` // Optional size is a planned detail.
--   **`PointerTypeNode : TypeNode`**: *(Note: This type is planned and not yet implemented.)*
+    -   `std::unique_ptr<ExprNode> size;` // Now part of TypeAnnotation directly
+-   **`PointerTypeNode : TypeNode`**: *(Note: This type is planned and not yet implemented, not in current EBNF.)*
     -   `std::unique_ptr<TypeNode> pointedToType;`
     -   `bool isMutable;`
--   **`OptionalTypeNode : TypeNode`**: *(Note: This type is planned and not yet implemented.)*
+-   **`OptionalTypeNode : TypeNode`**: *(Note: This type is planned and not yet implemented, not in current EBNF. May be handled by library types like `Option<T>`.)*
     -   `std::unique_ptr<TypeNode> wrappedType;`
--   **`ReferenceTypeNode : TypeNode`**: *(Note: This type is planned and not yet implemented.)*
+-   **`ReferenceTypeNode : TypeNode`**: *(Note: This type is planned and not yet implemented. EBNF uses `&` in patterns, but not explicitly in type annotations yet.)*
     -   `std::unique_ptr<TypeNode> referencedType;`
     -   `bool isMutable;`
--   **`FunctionTypeNode : TypeNode`**: *(Note: This type is planned and not yet implemented.)*
+-   **`FunctionTypeNode : TypeNode`**: *(Conceptual; covered by `TypeAnnotation`)*
     -   `std::vector<std::unique_ptr<TypeNode>> parameterTypes;`
     -   `std::unique_ptr<TypeNode> returnType;`
-    -   `bool isVariadic;`
--   **`GenericInstanceTypeNode : TypeNode`**: *(Conceptual/Planned; covered by `TypeAnnotation` with `genericBaseType` and `genericTypeArguments`)*
+    -   `// bool isVariadic; // EBNF function_type_suffix does not explicitly show variadics yet.`
+    -   `// std::vector<std::unique_ptr<TypeNode>> throwsClause; // Now part of TypeAnnotation`
+-   **`GenericInstanceTypeNode : TypeNode`**: *(Conceptual; covered by `TypeAnnotation` with `baseName` and `genericArguments`)*
     -   `std::unique_ptr<TypeNode> genericType;`
-    -   `std::vector<std::unique_ptr<TypeNode>> typeArguments;`
+    -   `std::vector<std::variant<std::unique_ptr<TypeNode>, std::unique_ptr<ExprNode>>> typeArguments; // Updated for const generics`
 
 ## 8. Pattern Nodes
-*(Note: Pattern nodes and destructuring features are planned and not yet implemented. The `toString()` in `ast.cpp` had commented-out code for `IdentifierPatternNode`, indicating early thought but no current implementation.)*
+*(Note: Pattern nodes and destructuring features are defined in the EBNF (e.g., `pattern`, `struct_pattern_field`, `tuple_pattern_element`) but are mostly planned for full AST implementation. The `toString()` in `ast.cpp` had commented-out code for `IdentifierPatternNode`, indicating early thought but no current C++ implementation of these specific nodes.)*
 
-Derived from `PatternNode : Node` (conceptual base class). Pattern nodes are used in variable declarations (planned for destructuring), for-in loops (planned), and match expressions (planned).
+Derived from `PatternNode : Node` (conceptual base class). Pattern nodes are used in variable declarations (e.g., `let (a, b) = ...`), `pattern_assignment_statement`, for-in loops (planned), and match expressions (planned).
 
--   **`IdentifierPatternNode : PatternNode`**: Binds a value to an identifier, e.g., `x` in `var x = ...`.
-    -   `std::unique_ptr<IdentifierNode> identifier;`
-    -   `bool isMutable;` // Added: true if the binding is mutable (e.g. `var mut x` or `var x` where context implies mutability)
+-   **`IdentifierPatternNode : PatternNode`**: Binds a value to an identifier, e.g., `x` in `let x = ...` or `(x, ...)`.
+    -   `std::unique_ptr<vyn::Identifier> identifier;`
+    -   `bool isMutable; // True if the binding is mutable (e.g. 'mut x' in a pattern).`
+    -   `bool isReference; // True if '&' prefix is used (e.g. '&x').`
 -   **`LiteralPatternNode : PatternNode`**: Matches a specific literal value.
-    -   `std::unique_ptr<ExprNode> literal;` (e.g., `IntLiteralNode`, `StringLiteralNode`)
+    -   `std::unique_ptr<vyn::Expression> literal;` (e.g., `IntegerLiteral`, `StringLiteral`)
 -   **`WildcardPatternNode : PatternNode`**: `_`, matches anything without binding.
 -   **`TuplePatternNode : PatternNode`**: Matches and destructures a tuple, e.g., `(a, _, c)`.
     -   `std::vector<std::unique_ptr<PatternNode>> elements;`
--   **`EnumVariantPatternNode : PatternNode`**: Matches and destructures an enum variant, e.g., `Option::Some(x)`.
-    -   `std::unique_ptr<PathNode> path;` (For `Option::Some`)
-    -   `std::vector<std::unique_ptr<PatternNode>> arguments;` (For `x`)
--   **`StructPatternNode : PatternNode`**: Matches and destructures a struct, e.g., `Point { x: 0, y }`.
-    -   `std::unique_ptr<PathNode> struct_path;` // Name/path of the struct (e.g., "Point" or "my::Point").
+-   **`EnumVariantPatternNode : PatternNode`**: Matches and destructures an enum variant, e.g., `Option::Some(x)` or `MyEnum.Variant { field }`.
+    -   `std::unique_ptr<PathNode> path;` (For `Option::Some` or `MyEnum.Variant`)
+    -   `std::variant< // Supports tuple-like and struct-like variant patterns
+            std::vector<std::unique_ptr<PatternNode>>,    // For tuple-like arguments: (x, y)
+            std::vector<StructPatternField>             // For struct-like fields: { field1: p1, field2 }
+        > argumentsOrFields;`
+    -   `// bool has_rest_pattern; // For .. syntax in tuple-like part`
+-   **`StructPatternNode : PatternNode`**: Matches and destructures a struct, e.g., `Point { x: 0, y, ..rest }`.
+    -   `std::unique_ptr<PathNode> structPath;` // Name/path of the struct (e.g., "Point" or "my::Point").
     -   `std::vector<StructPatternField> fields;`
-    -   `// bool has_rest_pattern; // For .. syntax`
+    -   `bool hasRestPattern; // For `..` or `..rest_identifier` syntax (EBNF `pattern_rest`).`
+    -   `std::unique_ptr<vyn::Identifier> restIdentifier; // Optional identifier for the rest pattern.`
     -   **`StructPatternField`** (Helper struct, not an AST `Node`):
-        -   `SourceLocation location;`
-        -   `std::string fieldName;`
-        -   `std::unique_ptr<PatternNode> pattern;` // Optional: if null, shorthand for fieldName: fieldName
+        -   `vyn::SourceLocation location;`
+        -   `std::unique_ptr<vyn::Identifier> fieldName;`
+        -   `std::unique_ptr<PatternNode> pattern;` // Optional: if null, shorthand for fieldName: fieldName.
 
 ## 9. Module Node (`vyn::Module`)
 
@@ -413,37 +508,40 @@ The `vyn::Module` node is the root of the AST for a single source file. It inher
 
 -   **`vyn::Module : vyn::Node`** (Matches C++ `Module`)
     -   Implicitly has `vyn::SourceLocation loc;` (inherited from `vyn::Node`), which includes file path information.
-    -   `std::vector<std::unique_ptr<vyn::Statement>> body;` (Stores a sequence of statements, including declarations. This matches `ast.hpp`'s `std::vector<StmtPtr> body;` where `StmtPtr` is `std::unique_ptr<vyn::Statement>`.)
+    -   `std::vector<std::unique_ptr<vyn::Statement>> body;` (Stores a sequence of statements, including declarations. This aligns with the EBNF where a `module` consists of `module_item`s, and `module_item` can be a `declaration`, `statement`, or `import_declaration`. Since `Declaration` (which includes `ImportDeclaration`) inherits from `Statement`, this structure accommodates the EBNF.)
 
 ## 10. AST Traversal and Manipulation (Visitor)
 
 The Visitor pattern is used for operating on the AST. Each concrete AST node has an `accept(Visitor& visitor)` method.
 
 ```cpp
-// Visitor interface as defined in include/vyn/ast.hpp
+// Visitor interface, updated to reflect AST changes based on EBNF
 namespace vyn { // Corrected namespace
 
 class Visitor {
 public:
     virtual ~Visitor() = default;
 
-    // Literals (Matches ast.hpp)
+    // Literals (Reflects current and EBNF-driven AST nodes)
     virtual void visit(class Identifier* node) = 0;
     virtual void visit(class IntegerLiteral* node) = 0;
     virtual void visit(class FloatLiteral* node) = 0;
     virtual void visit(class StringLiteral* node) = 0;
     virtual void visit(class BooleanLiteral* node) = 0;
     virtual void visit(class ArrayLiteral* node) = 0;
-    virtual void visit(class ObjectLiteral* node) = 0;
+    virtual void visit(class StructLiteralNode* node) = 0; // Was ObjectLiteral, updated for EBNF struct_literal
 
-    // Expressions (Matches ast.hpp)
+    // Expressions (Reflects current and EBNF-driven AST nodes)
     virtual void visit(class UnaryExpression* node) = 0;
     virtual void visit(class BinaryExpression* node) = 0;
+    virtual void visit(class TernaryExpressionNode* node) = 0; // New: For conditional_expression (?:)
     virtual void visit(class CallExpression* node) = 0;
     virtual void visit(class MemberExpression* node) = 0;
     virtual void visit(class AssignmentExpression* node) = 0;
+    virtual void visit(class IfExpressionNode* node) = 0;      // New: For if-expressions
+    virtual void visit(class RangeExpressionNode* node) = 0;   // New: For range expressions (e.g., a..b)
 
-    // Statements (Matches ast.hpp)
+    // Statements (Reflects current and EBNF-driven AST nodes)
     virtual void visit(class BlockStatement* node) = 0;
     virtual void visit(class ExpressionStatement* node) = 0;
     virtual void visit(class IfStatement* node) = 0;
@@ -452,15 +550,22 @@ public:
     virtual void visit(class ReturnStatement* node) = 0;
     virtual void visit(class BreakStatement* node) = 0;
     virtual void visit(class ContinueStatement* node) = 0;
+    virtual void visit(class ThrowStatementNode* node) = 0;    // New: For throw statements
+    virtual void visit(class ScopedStatementNode* node) = 0;   // New: For scoped blocks
+    virtual void visit(class PatternAssignmentStatementNode* node) = 0; // New: For pattern-based assignments
 
-    // Declarations (Matches ast.hpp)
+    // Declarations (Reflects current and EBNF-driven AST nodes)
     virtual void visit(class VariableDeclaration* node) = 0;
     virtual void visit(class FunctionDeclaration* node) = 0;
+    virtual void visit(class MethodDeclarationNode* node) = 0; // New: For methods in classes/impls
+    virtual void visit(class ConstructorDeclarationNode* node) = 0; // New: For constructors
     virtual void visit(class TypeAliasDeclaration* node) = 0;
     virtual void visit(class ImportDeclaration* node) = 0;
     virtual void visit(class StructDeclaration* node) = 0;
-    virtual void visit(class ClassDeclaration* node) = 0;
+    virtual void visit(class ClassDeclaration* node) = 0; // Note: May be superseded or refined by traits/impls
     virtual void visit(class FieldDeclaration* node) = 0;
+    virtual void visit(class TraitDeclarationNode* node) = 0;  // New: For trait definitions
+    virtual void visit(class MethodSignatureNode* node) = 0;   // New: For method signatures within traits
     virtual void visit(class ImplDeclaration* node) = 0;
     virtual void visit(class EnumDeclaration* node) = 0;
     virtual void visit(class EnumVariantNode* node) = 0;
@@ -470,43 +575,40 @@ public:
     virtual void visit(class TypeAnnotation* node) = 0;
     virtual void visit(class Module* node) = 0;
 
-    // --- Planned Visitor Methods (Not yet in ast.hpp Visitor) ---
+    // --- Planned Visitor Methods (Not yet in ast.hpp Visitor or correspond to planned AST Nodes) ---
     // These methods correspond to AST nodes that are part of the design
-    // but not yet implemented in C++ or its Visitor interface.
+    // but not yet fully implemented in C++ or its Visitor interface, or are helper nodes.
 
     // Planned Literals & Expressions:
     // virtual void visit(class PathNode* node) = 0; // Planned
     // virtual void visit(class CharLiteralNode* node) = 0; // Planned
     // virtual void visit(class NullLiteralNode* node) = 0; // Planned
     // virtual void visit(class TupleLiteralNode* node) = 0; // Planned
-    // virtual void visit(class StructLiteralNode* node) = 0; // Planned (Note: ObjectLiteral is implemented for key-value pairs)
     // virtual void visit(class EnumLiteralNode* node) = 0; // Planned
     // virtual void visit(class AwaitExprNode* node) = 0; // Planned
-    // virtual void visit(class IfExprNode* node) = 0; // Planned
     // virtual void visit(class ListComprehensionNode* node) = 0; // Planned
     // virtual void visit(class MacroInvocationNode* node) = 0; // Planned
 
     // Planned Statements:
     // virtual void visit(class MatchStmtNode* node) = 0; // Planned
     // virtual void visit(class MatchCaseNode* node) = 0; // Planned (helper for MatchStmtNode)
-    // virtual void visit(class ThrowStmtNode* node) = 0; // Planned
     // virtual void visit(class TryStmtNode* node) = 0; // Planned
-    // virtual void visit(class CatchClauseNode* node) = 0; // Planned (helper for TryStmtNode)
+    // virtual void visit(class CatchClauseNode* node) = 0; // Planned (helper for TryStmtNode, if it's a visitable Node)
     // virtual void visit(class DeferStmtNode* node) = 0; // Planned
-    // virtual void visit(class ScopedBlockStmtNode* node) = 0; // Planned
+    // virtual void visit(class ForInStatementNode* node) = 0; // Planned (for 'for item in iterable')
 
     // Planned Declarations:
     // virtual void visit(class GlobalVarDeclNode* node) = 0; // Planned (VariableDeclaration at module scope covers some aspects)
     // virtual void visit(class SmuggleDeclNode* node) = 0; // Planned
     // Note: vyn::FunctionParameter is a struct, not typically visited directly. vyn::GenericParamNode is visited.
 
-    // Planned Types (Note: vyn::TypeAnnotation is the primary implemented type representation):
+    // Planned Types (Note: vyn::TypeAnnotation is the primary implemented type representation, but specific nodes might be added):
     // virtual void visit(class IdentifierTypeNode* node) = 0; // Planned (Conceptually covered by TypeAnnotation)
     // virtual void visit(class ArrayTypeNode* node) = 0; // Planned (Conceptually covered by TypeAnnotation)
     // virtual void visit(class PointerTypeNode* node) = 0; // Planned
     // virtual void visit(class OptionalTypeNode* node) = 0; // Planned
     // virtual void visit(class ReferenceTypeNode* node) = 0; // Planned
-    // virtual void visit(class FunctionTypeNode* node) = 0; // Planned
+    // virtual void visit(class FunctionTypeNode* node) = 0; // Planned (Conceptually covered by TypeAnnotation)
     // virtual void visit(class GenericInstanceTypeNode* node) = 0; // Planned (Conceptually covered by TypeAnnotation)
 
     // Planned Patterns:
@@ -531,20 +633,22 @@ The parser components (`BaseParser`, `DeclarationParser`, `ExpressionParser`, `S
 
 ## 12. Future Considerations
 
--   **Annotations/Attributes**: Could be `AnnotationNode` attached to declarable nodes.
--   **Error Handling**: Robust strategies for partial ASTs or error nodes during parsing (still relevant beyond specific throw/try nodes).
--   **`scoped` block semantics**: Further define if `ScopedBlockStmtNode` is needed or if `BlockStmtNode` with metadata suffices.
--   **Const Generic Parameter Details**: Refine representation in `GenericParamNode` or consider a separate `ConstGenericParamNode` if `kind` is insufficient.
--   **Macro System Details**: The structure of `MacroInvocationNode` arguments (token stream vs. parsed expressions) needs definition. Also, macro definition nodes (`MacroDeclNode`).
--   **Operator Overloading Details**: How `operator+` in `FuncDeclNode::name` is specifically represented and resolved.
+-   **Annotations/Attributes**: EBNF includes `attributes?` for many declarations. The AST will need `AttributeNode`s that can be attached to declarable nodes. (Still relevant)
+-   **Error Handling**: Robust strategies for partial ASTs or error nodes during parsing remain important, beyond specific throw/try AST nodes. (Still relevant)
+-   **`scoped` block semantics**: `ScopedStatementNode` is now defined in the AST, corresponding to the EBNF `scoped_statement`. The precise semantics and use cases for `scoped` blocks are part of ongoing language design. (AST node exists, semantics are a design consideration)
+-   **Const Generic Parameter Details**: `GenericParamNode` now supports `isConst` and `constType`, and `TypeAnnotation` allows expressions as generic arguments, aligning with EBNF. Further refinement of their use in type checking and code generation is part of implementation. (Largely covered in AST design)
+-   **Macro System Details**: The EBNF defines `macro_definition` and `macro_invocation`. The AST will require `MacroDefinitionNode` and `MacroInvocationNode`. The structure of `MacroInvocationNode` arguments (e.g., token stream vs. parsed expressions) needs definition. (Still relevant)
+-   **Operator Overloading Details**: The EBNF includes `operator_declaration`. The AST will need to represent these, likely as specialized `FunctionDeclarationNode` or `MethodDeclarationNode` instances, and how they are resolved. (Still relevant)
 
 ## 13. Open Questions & Discussion Points
 
 -   **Error Handling during AST Construction**: How should the parser signal unrecoverable syntax errors? Current approach involves throwing exceptions, but alternatives like error nodes or partial ASTs could be considered. (Still relevant)
 -   **Completeness of `ast.hpp` Snippet**: The provided `ast.hpp` in context primarily shows forward declarations and visitor methods for many nodes. This document assumes their member structures based on common practices and their `NodeType`. Full definitions in `ast.hpp` would be beneficial for precise documentation. (Still relevant)
--   **Struct Field Mutability**: `StructDeclNode` fields currently only store name and type. Mutability of struct fields is typically handled by the mutability of the struct instance itself (e.g. `let s = MyStruct(); s.field = ...` would be an error if fields are not inherently mutable or `s` is not `var`). This might need further clarification in the language design. (Still relevant)
+-   **Struct Field Mutability**: `FieldDeclaration` in the AST (and EBNF `field_declaration`) does not specify mutability. Mutability of struct fields is typically handled by the mutability of the struct instance itself (e.g. `let s = MyStruct(); s.field = ...` would be an error if `s` is not `let mut` or `var`). This needs clear definition in the language design. (Still relevant for language design)
 
 ### Proposal: Ternary Conditional Operator
+
+*(This feature is now part of the language design, reflected in the EBNF grammar as `conditional_expression` and in the AST as `TernaryExpressionNode` (NodeType: `TERNARY_EXPRESSION`).)*
 
 **Syntax:** `condition ? expression_if_true : expression_if_false`
 
