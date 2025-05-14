@@ -3,122 +3,98 @@
 
 // Assume a Comparable trait for keys
 template Comparable
-  fn lt(&self, other: their<Self const>) -> Bool // Changed &Self to their<Self const>
-  fn eq(&self, other: their<Self const>) -> Bool // Changed &Self to their<Self const>
+  fn lt(self: view Self, other: their<Self const>) -> Bool 
+  fn eq(self: view Self, other: their<Self const>) -> Bool 
 
 // B-tree template parameterized by key type K, value type V, and order M
 template BTree<K: Comparable, V, M: UInt> {
   class Node {
-    var keys: [K; M-1]           // Up to M-1 keys
-    var values: [V; M-1]         // Values for leaf nodes
-    var children: [my<Node>; M] // Up to M child pointers (null for leaves) - Changed ref<Node> to my<Node>
-    var num_keys: UInt           // Current number of keys
-    var is_leaf: Bool            // True for leaf nodes, false for internal
+    var keys: [K; M-1]
+    var values: [V; M-1]
+    var children: [my<Node>; M]
+    var num_keys: UInt
+    var is_leaf: Bool
 
-    fn new(is_leaf_param: Bool) -> Node { // Renamed is_leaf to is_leaf_param to avoid conflict
+    fn new(is_leaf_param: Bool) -> Node { 
       Node {
-        keys = [K; M-1](), // Assuming default initialization
-        values = [V; M-1](), // Assuming default initialization
-        children = [my<Node>; M](), // Assuming default initialization to nil
+        keys = [K; M-1](), 
+        values = [V; M-1](), 
+        children = [my<Node>; M](), 
         num_keys = 0,
         is_leaf = is_leaf_param
       }
     }
   }
 
-  var root: my<Node>            // Root node of the tree - Changed ref<Node> to my<Node>
-  var size: UInt                // Total number of key-value pairs
+  var root: my<Node>
+  var size: UInt
 
-  // Initialize an empty B-tree
   fn new() -> BTree<K, V, M>
     const root_node = make_my(Node::new(true)) 
     BTree { root: root_node, size: 0 }
 
-  // Search for a key, return Maybe<V>
-  fn search(&self, key: K) -> Maybe<V> { // &self implies their<Self const>
-    search_node(view self.root, key) // Pass immutable borrow of root
+  fn search(self: view Self, key: K) -> Maybe<V> {
+    search_node(view self.root, key)
   }
 
-  // Helper: recursive search in a node
   fn search_node(node: their<Node const>, key: K) -> Maybe<V> {
     if node.num_keys == 0 {
       return None
     }
-    // find_key_index now takes their<Node const>
     const idx = find_key_index(node, key)
-    if idx < node.num_keys && node.keys[idx].eq(view key) { // Assuming key needs to be borrowed for eq
+    if idx < node.num_keys && node.keys[idx].eq(view key) { 
       if node.is_leaf {
         return Some(node.values[idx])
       }
-      // Check against nil for my<Node>
       return if node.children[idx] == nil { None } else { search_node(view node.children[idx], key) }
     }
     if node.is_leaf {
       return None
     }
-    // EBNF implies idx is correct, but original had child_idx logic. Assuming find_key_index gives correct index for child.
-    // const child_idx = if idx < node.num_keys { idx } else { idx - 1 } // Original logic, seems complex if idx is insertion point
-    // If key is greater than all keys in node, idx will be node.num_keys. Child is at children[idx]
-    // If key is smaller than keys[idx], child is at children[idx]
-    // If key matches keys[idx] (and not leaf), child is at children[idx+1] (this case handled above, but for non-match, it's children[idx])
-    // Let's assume idx is the correct child index if no match.
     return if node.children[idx] == nil { None } else { search_node(view node.children[idx], key) }
   }
 
-  // Insert a key-value pair
-  fn insert(&mut self, key: K, value: V) { // &mut self implies their<Self>
-    // scoped { // scoped is planned, will keep it commented if not essential for memory types
-      if self.root.num_keys == M-1 {
-        const new_root_node = make_my(Node::new(false)) // Changed ref<Node>::new to make_my(Node::new(...))
-        new_root_node.children[0] = self.root // Move old root
-        self.root = new_root_node // Assign new root (moved)
-        split_node(borrow self.root, 0) // Pass mutable borrow
-      }
-      insert_non_full(borrow self.root, key, value) // Pass mutable borrow
-    // }
+  fn insert(self: borrow Self, key: K, value: V) {
+    if self.root.num_keys == M-1 {
+      const new_root_node = make_my(Node::new(false))
+      new_root_node.children[0] = self.root 
+      self.root = new_root_node 
+      split_node(borrow self.root, 0)
+    }
+    insert_non_full(borrow self.root, key, value)
     self.size += 1
   }
 
-  // Helper: insert into a non-full node
   fn insert_non_full(node: their<Node>, key: K, value: V) { 
-    var idx = find_key_index(view node, key) // Pass immutable borrow for find_key_index
+    var idx = find_key_index(view node, key)
     if node.is_leaf {
-      // Shift keys and values to make space
-      for i in (idx..node.num_keys).rev() { // Assuming inclusive start, exclusive end for range, and rev() works
-        node.keys[i+1] = node.keys[i]     // Corrected index for shift
-        node.values[i+1] = node.values[i]   // Corrected index for shift
+      for i in (idx..node.num_keys).rev() {
+        node.keys[i+1] = node.keys[i]
+        node.values[i+1] = node.values[i]
       }
-      // Insert new key and value
       node.keys[idx] = key
       node.values[idx] = value
       node.num_keys += 1
     } else {
-      // If child is full, split it
       if node.children[idx] != nil && node.children[idx].num_keys == M-1 {
-        split_node(node, idx) // node is already their<Node>
-        // After split, find new index for key
-        if key.lt(view node.keys[idx]) { // Check if key goes to left part (original child)
-          // idx remains correct for the original child (now potentially smaller)
-        } else { // Key goes to right part (new sibling) or is the median
-          idx += 1 // Median moved up, key might go to new sibling at children[idx+1] which is now children[idx] after split logic
+        split_node(node, idx)
+        if key.lt(view node.keys[idx]) {
+        } else { 
+          idx += 1 
         }
       }
-      // Insert into the appropriate child
-      // Ensure child is not nil before calling insert_non_full
-      if node.children[idx] == nil { /* This case should ideally not happen if logic is correct */ return }
+      if node.children[idx] == nil { return } 
       insert_non_full(borrow node.children[idx], key, value)
     }
   }
 
-  // Helper: split a full child node at index child_idx of parent
   fn split_node(parent: their<Node>, child_idx: UInt) {
-    const full_child = borrow parent.children[child_idx] // Get mutable borrow of child
-    if full_child == nil { return } // Should not happen
+    const full_child = borrow parent.children[child_idx]
+    if full_child == nil { return } 
 
-    const mid_key_index = (M-1) / 2 // Key that moves up
+    const mid_key_index = (M-1) / 2
     const new_sibling = make_my(Node::new(full_child.is_leaf))
 
-    // Copy keys/values/children to new_sibling (right part)
     var j = 0
     for i in (mid_key_index + 1)..(M-1) {
       new_sibling.keys[j] = full_child.keys[i]
@@ -129,70 +105,46 @@ template BTree<K: Comparable, V, M: UInt> {
 
     if !full_child.is_leaf {
       j = 0
-      for i in (mid_key_index + 1)..M { // Children array has M elements
-        new_sibling.children[j] = full_child.children[i] // Move children
-        full_child.children[i] = nil // Nil out moved children from full_child
+      for i in (mid_key_index + 1)..M {
+        new_sibling.children[j] = full_child.children[i]
+        full_child.children[i] = nil 
         j += 1
       }
     }
     
     const median_key = full_child.keys[mid_key_index]
-    const median_value = if full_child.is_leaf { Some(full_child.values[mid_key_index]) } else { None } // Only if leaf
+    const median_value = if full_child.is_leaf { Some(full_child.values[mid_key_index]) } else { None }
 
-    full_child.num_keys = mid_key_index // Update num_keys for original child (left part)
+    full_child.num_keys = mid_key_index
 
-    // Shift children in parent to make space for new_sibling
     for i in (child_idx + 1 .. parent.num_keys + 1).rev() {
       parent.children[i+1] = parent.children[i]
     }
-    // Insert new_sibling
-    parent.children[child_idx + 1] = new_sibling // Move new_sibling into parent
+    parent.children[child_idx + 1] = new_sibling 
 
-    // Shift keys in parent
     for i in (child_idx .. parent.num_keys).rev() {
       parent.keys[i+1] = parent.keys[i]
-      if parent.is_leaf { parent.values[i+1] = parent.values[i] } // This logic is for parent, not child
+      if parent.is_leaf { parent.values[i+1] = parent.values[i] } 
     }
-    // Insert median key from child into parent
     parent.keys[child_idx] = median_key
-    if parent.is_leaf && median_value != None { // This is tricky, B-Tree internal nodes don't store values like leaves
-        // If parent is a leaf, this split logic is different.
-        // The current split_node assumes parent is an internal node when splitting a child.
-        // For simplicity, assuming values are only in leaves and parent here is not a leaf for this split.
-    } else if !parent.is_leaf && full_child.is_leaf && median_value != None {
-        // If the child was a leaf, the median_value is associated with median_key.
-        // In many B-Tree variants, values only reside in leaves.
-        // If this B-Tree stores values in internal nodes too (like B+ tree index part), then:
-        // parent.values[child_idx] = median_value.unwrap(); // Or handle appropriately
-        // For now, assuming values are primarily for leaf nodes as per struct def.
-        // The provided `values` array in `Node` suggests values are paired with keys at all levels.
-        // If so, and if `full_child` was a leaf, its `median_value` should go up.
-        // If `full_child` was internal, its `median_value` is not directly used, value comes from deeper.
-        if median_value != None { // If median_value was captured (i.e. full_child was leaf)
-             // This line is problematic if parent is not a leaf. Values are for leaves.
-             // Let's assume values in internal nodes are for keys that are also in leaves.
-             // Or, if values are ONLY in leaves, then parent.values[child_idx] is not set here.
-             // The original code had parent.values[child_idx] = full_child.values[mid]
-             // This implies values are also in internal nodes.
-             parent.values[child_idx] = full_child.values[mid_key_index];
-        }
+    if !parent.is_leaf && full_child.is_leaf && median_value != None {
+        parent.values[child_idx] = median_value.unwrap(); 
     }
     parent.num_keys += 1
   }
 
-  // Helper: find the index where key should be inserted or is located
   fn find_key_index(node: their<Node const>, key: K) -> UInt {
     var idx: UInt = 0
-    while idx < node.num_keys && node.keys[idx].lt(view key) { // Assuming key needs to be borrowed for lt
+    while idx < node.num_keys && node.keys[idx].lt(view key) {
       idx += 1
     }
-    return idx // Returns index of first key >= given key, or num_keys if all are smaller
+    return idx 
   }
-} // End of BTree template
+}
 
 // Example usage
 fn main()
-  var tree = BTree<Int, String, 3>::new() // var for mutable tree
+  var tree = BTree<Int, String, 3>::new()
   tree.insert(10, "ten")
   tree.insert(20, "twenty")
   tree.insert(5, "five")
@@ -202,7 +154,7 @@ fn main()
     Some(v) => println("Found: {}", v)
     None => println("Not found")
   
-  match tree.search(99) { // sometimes braces are more clear
+  match tree.search(99) {
     Some(v) => println("Found: {}", v)
     None => println("Not found")
   }
