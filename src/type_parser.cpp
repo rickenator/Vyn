@@ -11,10 +11,22 @@ TypeParser::TypeParser(const std::vector<vyn::token::Token>& tokens, size_t& pos
     : BaseParser(tokens, pos, file_path), expr_parser_(expr_parser) {}
 
 // Main entry point for parsing a type
-vyn::TypeAnnotationPtr TypeParser::parse() {
+vyn::TypeNodePtr TypeParser::parse() {
     this->skip_comments_and_newlines();
     vyn::SourceLocation start_loc = this->current_location();
-    vyn::TypeAnnotationPtr type;
+    vyn::TypeNodePtr type;
+
+    // This logic needs to be completely rewritten for the new TypeNode structure.
+    // For now, just returning a placeholder or attempting a very basic parse.
+    // Placeholder:
+    // if (peek().type == vyn::TokenType::IDENTIFIER) {
+    //     auto ident = std::make_unique<Identifier>(consume().loc, consume().lexeme);
+    //     type = TypeNode::newIdentifier(start_loc, std::move(ident), {}, false, false);
+    // } else {
+    //     throw std::runtime_error("Type parsing not yet fully implemented for new TypeNode at " + start_loc.toString());
+    // }
+    // The old logic is left here for reference during the upcoming refactor,
+    // but it will mostly be replaced.
 
     if (this->peek().type == vyn::TokenType::AMPERSAND) {
         this->consume(); // Consume '&'
@@ -24,30 +36,30 @@ vyn::TypeAnnotationPtr TypeParser::parse() {
         }
         auto referenced_type = this->parse(); // Recursively parse the type being referenced
         if (!referenced_type) {
-            throw std::runtime_error("Expected type after '&' or '&mut' at " + start_loc.filePath + ":" + std::to_string(start_loc.line) + ":" + std::to_string(start_loc.column));
+            throw std::runtime_error("Expected type after \'&\' or \'&mut\' at " + start_loc.filePath + ":" + std::to_string(start_loc.line) + ":" + std::to_string(start_loc.column));
         }
         // Simplification: return the referenced type, losing reference information
-        type = std::move(referenced_type);
+        // This needs to be updated to create a Ptr or Borrow type node
+        type = std::move(referenced_type); // Placeholder
     } else if (this->peek().type == vyn::TokenType::KEYWORD_FN) {
-        this->consume(); // Consume 'fn'
+        this->consume(); // Consume \'fn\'
         this->expect(vyn::TokenType::LPAREN);
-        // std::vector<vyn::TypeAnnotationPtr> param_types; // Info lost
+        std::vector<vyn::TypeNodePtr> param_types_parsed;
         if (this->peek().type != vyn::TokenType::RPAREN) {
             do {
-                this->parse(); // Parse to consume tokens, but result not stored in TypeAnnotation
+                param_types_parsed.push_back(this->parse());
             } while (this->match(vyn::TokenType::COMMA));
         }
         this->expect(vyn::TokenType::RPAREN);
         
+        vyn::TypeNodePtr return_type_parsed = nullptr;
         if (this->match(vyn::TokenType::ARROW)) {
-            auto return_type_parsed = this->parse(); // Parse to consume, info lost
+            return_type_parsed = this->parse(); 
             if (!return_type_parsed) {
-                 throw std::runtime_error("Expected return type after '->' in function type at " + this->current_location().filePath + ":" + std::to_string(this->current_location().line) + ":" + std::to_string(this->current_location().column));
+                 throw std::runtime_error("Expected return type after \'->\' in function type at " + this->current_location().filePath + ":" + std::to_string(this->current_location().line) + ":" + std::to_string(this->current_location().column));
             }
         }
-        // Simplification: represent as TypeAnnotation named "Function"
-        auto fn_identifier = std::make_unique<vyn::Identifier>(start_loc, "Function");
-        type = std::make_unique<vyn::TypeAnnotation>(start_loc, std::move(fn_identifier));
+        type = TypeNode::newFunctionSignature(start_loc, std::move(param_types_parsed), std::move(return_type_parsed), false, false);
     } else {
         type = this->parse_base_type();
     }
@@ -59,26 +71,28 @@ vyn::TypeAnnotationPtr TypeParser::parse() {
     return this->parse_postfix_type(std::move(type));
 }
 
-vyn::TypeAnnotationPtr TypeParser::parse_base_type() {
+vyn::TypeNodePtr TypeParser::parse_base_type() {
     this->skip_comments_and_newlines();
     vyn::SourceLocation loc = this->current_location();
 
+    // This function will need significant changes to support ownership keywords (my, our, their, ptr)
+    // and to correctly create different TypeNode categories.
+
     if (this->peek().type == vyn::TokenType::IDENTIFIER) {
         vyn::SourceLocation path_loc = this->current_location();
-        std::string full_path_name = this->consume().lexeme;
+        std::string full_path_name_str = this->consume().lexeme;
 
-        while (this->peek().type == vyn::TokenType::COLONCOLON) {
-            this->consume(); // ::
-            if (this->peek().type != vyn::TokenType::IDENTIFIER) {
-                throw std::runtime_error("Expected identifier after '::' in type path at " + this->current_location().filePath + ":" + std::to_string(this->current_location().line) + ":" + std::to_string(this->current_location().column));
-            }
-            full_path_name += "::";
-            full_path_name += this->consume().lexeme;
-        }
-        auto type_name_identifier = std::make_unique<vyn::Identifier>(path_loc, full_path_name);
-        return std::make_unique<vyn::TypeAnnotation>(loc, std::move(type_name_identifier));
-    } else if (this->match(vyn::TokenType::LPAREN)) {
-        std::vector<vyn::TypeAnnotationPtr> member_types_parsed; 
+        // Path resolution (e.g., module::type) can be handled here if needed,
+        // for now, assume a simple identifier.
+        // while (this->peek().type == vyn::TokenType::COLONCOLON) { ... }
+
+        auto type_name_identifier = std::make_unique<vyn::Identifier>(path_loc, full_path_name_str);
+        // Basic identifier type, no generics, not const, not optional by default here.
+        // Postfix parsing will handle generics, const, optional.
+        return TypeNode::newIdentifier(loc, std::move(type_name_identifier), {}, false, false);
+
+    } else if (this->match(vyn::TokenType::LPAREN)) { // Tuple type or grouped type
+        std::vector<vyn::TypeNodePtr> member_types_parsed;
         bool is_empty_tuple = true;
         if (this->peek().type != vyn::TokenType::RPAREN) {
             is_empty_tuple = false;
@@ -88,82 +102,109 @@ vyn::TypeAnnotationPtr TypeParser::parse_base_type() {
         }
         this->expect(vyn::TokenType::RPAREN);
         
-        std::string tuple_name = is_empty_tuple ? "Unit" : "Tuple";
-        
-        if (!is_empty_tuple && member_types_parsed.size() == 1 && !this->check(vyn::TokenType::COMMA) && this->tokens_[this->pos_-1].type == vyn::TokenType::RPAREN) {
-             // Check if the previous token before RPAREN was not a COMMA for single element tuples like (T) vs (T,)
-             // This logic is tricky; for now, we simplify. If it was (T), it should be T.
-             // The current TypeAnnotation model doesn't directly support tuple types with multiple elements distinctly from generic types or array types.
-             // We are returning a TypeAnnotation with a simple name "Tuple" or "Unit".
-             // If member_types_parsed.size() == 1, and it was meant to be just the inner type (e.g. (MyType) -> MyType),
-             // we should return that inner type.
-             // This requires more robust parsing of parenthesized expressions/types.
-             // For now, let's assume (T) is parsed as a TypeAnnotation named "T" if it's a simple identifier.
-             // And (T, U) or (T,) becomes "Tuple". () becomes "Unit".
-             // The current code makes all non-empty tuples "Tuple".
-        }
+        // If (T), it's a grouped type, not a tuple. The EBNF and RFC need to be clear.
+        // Assuming (T) is handled by expression parser or simplified here.
+        // For now, (T) will become a tuple of one element.
+        // () is a unit tuple. (T, U) is a tuple.
+        return TypeNode::newTuple(loc, std::move(member_types_parsed), false, false);
 
-        auto tuple_identifier = std::make_unique<vyn::Identifier>(loc, tuple_name);
-        return std::make_unique<vyn::TypeAnnotation>(loc, std::move(tuple_identifier));
-    } else if (this->match(vyn::TokenType::LBRACKET)) {
+    } else if (this->match(vyn::TokenType::LBRACKET)) { // Array type [T] or [T; N]
         vyn::SourceLocation array_loc = loc;
         auto element_type = this->parse(); 
         if (!element_type) {
-            // This path should ideally throw if parse() can return nullptr on failure and that's an error.
-            // If parse() throws on failure, this check might be redundant or for a different case.
-            throw std::runtime_error("Expected element type in array type definition at " + this->current_location().filePath + ":" + std::to_string(this->current_location().line) + ":" + std::to_string(this->current_location().column));
+            throw std::runtime_error("Expected element type in array type definition at " + this->current_location().toString());
         }
         
-        if (this->match(vyn::TokenType::SEMICOLON)) {
-            auto size_expr_val = expr_parser_.parse(); 
-            if (!size_expr_val) { // Ensure parse() failure is handled if it returns nullptr
-                 throw std::runtime_error("Expected size expression after ';' in array type at " + this->current_location().filePath + ":" + std::to_string(this->current_location().line) + ":" + std::to_string(this->current_location().column));
-            }
-        }
+        // Array with size [T; N] - Vyn doesn't have this in EBNF yet, assuming simple [T]
+        // if (this->match(vyn::TokenType::SEMICOLON)) {
+        //     auto size_expr_val = expr_parser_.parse(); 
+        //     if (!size_expr_val) { 
+        //          throw std::runtime_error("Expected size expression after \';\' in array type at " + this->current_location().toString());
+        //     }
+        // }
         this->expect(vyn::TokenType::RBRACKET);
-        return std::make_unique<vyn::TypeAnnotation>(array_loc, std::move(element_type), true /*isArrayMarker*/);
+        return TypeNode::newArray(array_loc, std::move(element_type), false, false);
     }
     
-    // Corrected call to token_type_to_string
-    throw std::runtime_error("Expected a type identifier, '(', or '[' to start a type, found " + this->peek().lexeme + " (" + vyn::token_type_to_string(this->peek().type) + ") at " + loc.filePath + ":" + std::to_string(loc.line) + ":" + std::to_string(loc.column));
-    // The throw above ensures this function doesn't end without returning/throwing.
-    // The warning might be a false positive or related to the token_type_to_string error.
+    // Handle ownership keywords: my, our, their, ptr
+    // This needs to be integrated carefully with the IDENTIFIER case, as it's `my<T>` etc.
+    // For now, this is a simplified placeholder.
+    OwnershipKind ownership_kind;
+    bool is_ownership_keyword = false;
+    if (match(TokenType::KEYWORD_MY)) { ownership_kind = OwnershipKind::MY; is_ownership_keyword = true;}
+    else if (match(TokenType::KEYWORD_OUR)) { ownership_kind = OwnershipKind::OUR; is_ownership_keyword = true;}
+    else if (match(TokenType::KEYWORD_THEIR)) { ownership_kind = OwnershipKind::THEIR; is_ownership_keyword = true;}
+    else if (match(TokenType::KEYWORD_PTR)) { ownership_kind = OwnershipKind::PTR; is_ownership_keyword = true;}
+
+    if (is_ownership_keyword) {
+        expect(TokenType::LT);
+        TypeNodePtr wrapped_type = parse();
+        expect(TokenType::GT);
+        return TypeNode::newOwnershipWrapped(loc, ownership_kind, std::move(wrapped_type), false, false);
+    }
+    
+    throw std::runtime_error("Expected a type identifier, '(', '[', or ownership keyword to start a type, found " + this->peek().lexeme + " (" + vyn::token_type_to_string(this->peek().type) + ") at " + loc.toString());
 }
 
-vyn::TypeAnnotationPtr TypeParser::parse_postfix_type(vyn::TypeAnnotationPtr base_type) {
-    vyn::TypeAnnotationPtr current_type = std::move(base_type);
+vyn::TypeNodePtr TypeParser::parse_postfix_type(vyn::TypeNodePtr base_type) {
+    vyn::TypeNodePtr current_type = std::move(base_type);
 
     while (true) {
         this->skip_comments_and_newlines();
         vyn::SourceLocation postfix_loc = current_type ? current_type->loc : this->current_location();
 
-
         if (this->peek().type == vyn::TokenType::LT) { 
-            if (!current_type) { // Should not happen if base_type was valid
-                 throw std::runtime_error("Cannot apply generic arguments to a null base type at " + postfix_loc.filePath + ":" + std::to_string(postfix_loc.line) + ":" + std::to_string(postfix_loc.column));
+            if (!current_type) { 
+                 throw std::runtime_error("Cannot apply generic arguments to a null base type at " + postfix_loc.toString());
             }
-            this->consume(); // Consume '<'
-            std::vector<vyn::TypeAnnotationPtr> type_args;
+            // Ensure current_type is an IDENTIFIER category before adding generic args
+            if (current_type->category != TypeCategory::IDENTIFIER) {
+                throw std::runtime_error("Generic arguments can only be applied to identifier types at " + postfix_loc.toString());
+            }
+
+            this->consume(); // Consume \'<\'
+            std::vector<vyn::TypeNodePtr> type_args_parsed;
             if (this->peek().type != vyn::TokenType::GT) {
                 do {
-                    type_args.push_back(this->parse()); 
+                    type_args_parsed.push_back(this->parse()); 
                 } while (this->match(vyn::TokenType::COMMA));
             }
             this->expect(vyn::TokenType::GT);
 
-            if (current_type->isSimpleType() && current_type->simpleTypeName) {
-                current_type = std::make_unique<vyn::TypeAnnotation>(postfix_loc, std::move(current_type->simpleTypeName), std::move(type_args));
-            } else {
-                 throw std::runtime_error("Base of generic type is not a simple identifier at " + postfix_loc.filePath + ":" + std::to_string(postfix_loc.line) + ":" + std::to_string(postfix_loc.column));
-            }
+            // Modify the existing IDENTIFIER TypeNode to include generic arguments.
+            // This assumes current_type is already a TypeNode::newIdentifier result.
+            current_type->genericArguments = std::move(type_args_parsed);
+            // The location might need to span the whole generic type `Id<T>`
+            // current_type->loc = postfix_loc; // Or a new loc spanning start to end of GT
+
         } else if (this->peek().type == vyn::TokenType::LBRACKET) { 
-             if (!current_type) { // Should not happen
-                 throw std::runtime_error("Cannot apply array operator to a null base type at " + postfix_loc.filePath + ":" + std::to_string(postfix_loc.line) + ":" + std::to_string(postfix_loc.column));
+             if (!current_type) { 
+                 throw std::runtime_error("Cannot apply array operator to a null base type at " + postfix_loc.toString());
             }
             this->consume(); // LBRACKET
             this->expect(vyn::TokenType::RBRACKET);
-            current_type = std::make_unique<vyn::TypeAnnotation>(postfix_loc, std::move(current_type), true /*isArrayMarker*/);
-        } else {
+            // Wrap the current_type in an Array TypeNode
+            current_type = TypeNode::newArray(postfix_loc, std::move(current_type), current_type->dataIsConst, current_type->isOptional);
+            // Note: const/optional from base_type are carried to the new array type wrapper.
+            // This might need refinement based on RFC (e.g. (T const)[] vs (T[]) const)
+
+        } else if (this->match(vyn::TokenType::QUESTION_MARK)) { // Optional type T?
+            if (!current_type) {
+                throw std::runtime_error("Cannot apply optional operator to a null base type at " + postfix_loc.toString());
+            }
+            current_type->isOptional = true;
+            // The location should ideally be updated to include the '?'
+            // current_type->loc = SourceLocation(...) // spanning original type + '?'
+
+        } else if (this->match(vyn::TokenType::KEYWORD_CONST)) { // Const type T const
+             if (!current_type) {
+                throw std::runtime_error("Cannot apply const qualifier to a null base type at " + postfix_loc.toString());
+            }
+            current_type->dataIsConst = true;
+            // The location should ideally be updated to include the 'const'
+            // current_type->loc = SourceLocation(...) // spanning original type + 'const'
+        }
+        else {
             break; 
         }
     }

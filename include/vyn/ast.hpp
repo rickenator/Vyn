@@ -4,16 +4,14 @@
 #include <string>
 #include <vector>
 #include <memory>
-#include <optional> 
-#include <utility>  
+#include <optional>
+#include <utility>
+#include <cstdint> // Added for int64_t
 
 #include "vyn/source_location.hpp" // For vyn::SourceLocation
 #include "vyn/token.hpp"           // For vyn::token::Token
 
 namespace vyn {
-
-    // SourceLocation struct is now in source_location.hpp
-    // Forward declaration of vyn::token::Token is no longer needed.
 
     // Forward declarations for Visitor pattern
     class Node;
@@ -28,14 +26,34 @@ namespace vyn {
     class FieldDeclaration;
     class ImplDeclaration;
     class EnumDeclaration;
-    class EnumVariantNode; // Or just EnumVariant if it\'s a simple struct
-    class GenericParamNode; // New forward declaration
+    class EnumVariantNode; 
+    class GenericParamNode;
+    class TypeNode; // Changed from TypeAnnotation
+    class BorrowExprNode; // New
 
     // Type aliases for smart pointers
     using NodePtr = std::unique_ptr<Node>;
     using ExprPtr = std::unique_ptr<Expression>;
     using StmtPtr = std::unique_ptr<Statement>;
     using DeclPtr = std::unique_ptr<Declaration>;
+    using TypeNodePtr = std::unique_ptr<TypeNode>; // Changed from TypeAnnotationPtr
+
+    // New Enum for Type Categories
+    enum class TypeCategory {
+        IDENTIFIER,          // e.g., Int, String, MyStruct<T>
+        OWNERSHIP_WRAPPED,   // e.g., my<T>, our<T>, their<T>, ptr<T>
+        ARRAY,               // e.g., T[]
+        TUPLE,               // e.g., (T1, T2)
+        FUNCTION_SIGNATURE,  // e.g., fn(T1, T2) -> R
+    };
+
+    // New Enum for Ownership Kinds (as per RFC)
+    enum class OwnershipKind {
+        MY,
+        OUR,
+        THEIR,
+        PTR
+    };
 
     // enum class NodeType must be defined before Visitor
     enum class NodeType {
@@ -54,6 +72,7 @@ namespace vyn {
         CALL_EXPRESSION,
         MEMBER_EXPRESSION,
         ASSIGNMENT_EXPRESSION,
+        BORROW_EXPRESSION, // New
 
         // Statements
         BLOCK_STATEMENT,
@@ -70,17 +89,17 @@ namespace vyn {
         FUNCTION_DECLARATION,
         TYPE_ALIAS_DECLARATION,
         IMPORT_DECLARATION,
-        STRUCT_DECLARATION,    // New
-        CLASS_DECLARATION,     // New
-        FIELD_DECLARATION,     // New
-        IMPL_DECLARATION,      // New
-        ENUM_DECLARATION,      // New
-        ENUM_VARIANT,          // New
-        GENERIC_PARAMETER,     // New
+        STRUCT_DECLARATION,
+        CLASS_DECLARATION,
+        FIELD_DECLARATION,
+        IMPL_DECLARATION,
+        ENUM_DECLARATION,
+        ENUM_VARIANT,
+        GENERIC_PARAMETER,
 
 
         // Other
-        TYPE_ANNOTATION,
+        TYPE_NODE, // Changed from TYPE_ANNOTATION
         MODULE
     };
 
@@ -104,6 +123,7 @@ namespace vyn {
         virtual void visit(class CallExpression* node) = 0;
         virtual void visit(class MemberExpression* node) = 0;
         virtual void visit(class AssignmentExpression* node) = 0;
+        virtual void visit(class BorrowExprNode* node) = 0; // New
 
         // Statements
         virtual void visit(class BlockStatement* node) = 0;
@@ -120,16 +140,16 @@ namespace vyn {
         virtual void visit(class FunctionDeclaration* node) = 0;
         virtual void visit(class TypeAliasDeclaration* node) = 0;
         virtual void visit(class ImportDeclaration* node) = 0;
-        virtual void visit(class StructDeclaration* node) = 0;    // New
-        virtual void visit(class ClassDeclaration* node) = 0;     // New
-        virtual void visit(class FieldDeclaration* node) = 0;     // New
-        virtual void visit(class ImplDeclaration* node) = 0;      // New
-        virtual void visit(class EnumDeclaration* node) = 0;      // New
-        virtual void visit(class EnumVariantNode* node) = 0;      // New
-        virtual void visit(class GenericParamNode* node) = 0;     // New
+        virtual void visit(class StructDeclaration* node) = 0;
+        virtual void visit(class ClassDeclaration* node) = 0;
+        virtual void visit(class FieldDeclaration* node) = 0;
+        virtual void visit(class ImplDeclaration* node) = 0;
+        virtual void visit(class EnumDeclaration* node) = 0;
+        virtual void visit(class EnumVariantNode* node) = 0;
+        virtual void visit(class GenericParamNode* node) = 0;
         
         // Other
-        virtual void visit(class TypeAnnotation* node) = 0;
+        virtual void visit(class TypeNode* node) = 0; // Changed from TypeAnnotation
         virtual void visit(class Module* node) = 0;
     };
 
@@ -162,6 +182,52 @@ namespace vyn {
     public:
         Declaration(SourceLocation loc) : Statement(loc) {}
     };
+
+    // --- New TypeNode Definition ---
+    class TypeNode : public Node {
+    public:
+        TypeCategory category;
+        bool dataIsConst; // True if this specific type construct is const, e.g. T const, (T1, T2) const, my<T> const
+        bool isOptional;  // True if this type construct is optional, e.g. T?, my<T>?
+
+        // Fields for IDENTIFIER category (and base for generic instantiation)
+        std::unique_ptr<Identifier> name; 
+        std::vector<TypeNodePtr> genericArguments;
+
+        // Fields for OWNERSHIP_WRAPPED category
+        OwnershipKind ownership; // my, our, their, ptr
+        TypeNodePtr wrappedType; // The T in my<T>
+
+        // Fields for ARRAY category
+        TypeNodePtr arrayElementType; // The T in T[]
+
+        // Fields for TUPLE category
+        std::vector<TypeNodePtr> tupleElementTypes; // The T1, T2 in (T1, T2)
+
+        // Fields for FUNCTION_SIGNATURE category
+        std::vector<TypeNodePtr> functionParameterTypes;
+        TypeNodePtr functionReturnType; // Can be nullptr if void or not specified yet
+
+    private:
+        // Private constructor to enforce use of static factory methods.
+        // Implementations will be in ast.cpp
+        TypeNode(SourceLocation loc, TypeCategory category, bool dataIsConst, bool isOptional);
+
+    public:
+        ~TypeNode() override = default;
+
+        // Static factory methods (declarations)
+        static TypeNodePtr newIdentifier(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<TypeNodePtr> genericArgs, bool dataIsConst, bool isOptional);
+        static TypeNodePtr newOwnershipWrapped(SourceLocation loc, OwnershipKind ownership, TypeNodePtr wrappedType, bool dataIsConst, bool isOptional);
+        static TypeNodePtr newArray(SourceLocation loc, TypeNodePtr elementType, bool dataIsConst, bool isOptional);
+        static TypeNodePtr newTuple(SourceLocation loc, std::vector<TypeNodePtr> elementTypes, bool dataIsConst, bool isOptional);
+        static TypeNodePtr newFunctionSignature(SourceLocation loc, std::vector<TypeNodePtr> paramTypes, TypeNodePtr returnType, bool dataIsConst, bool isOptional);
+
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
+
 
     // --- Literals ---
     class Identifier : public Expression {
@@ -305,6 +371,19 @@ namespace vyn {
         void accept(Visitor& visitor) override;
     };
 
+    // New Borrow Expression Node
+    class BorrowExprNode : public Expression {
+    public:
+        bool isMutable; // true for borrow_mut, false for borrow
+        ExprPtr expressionToBorrow; 
+
+        BorrowExprNode(SourceLocation loc, ExprPtr expr, bool isMutable);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
+
+
     // --- Statements ---
     class BlockStatement : public Statement {
     public:
@@ -388,20 +467,20 @@ namespace vyn {
         void accept(Visitor& visitor) override;
     };
     
-    // Forward declare TypeAnnotation for use in declarations
-    class TypeAnnotation;
-    using TypeAnnotationPtr = std::unique_ptr<TypeAnnotation>;
+    // Forward declare TypeNode for use in declarations (already done above with TypeNodePtr)
+    // class TypeNode; // No longer TypeAnnotation
+    // using TypeNodePtr = std::unique_ptr<TypeNode>; // No longer TypeAnnotationPtr
 
 
     // --- Declarations ---
     class VariableDeclaration : public Declaration {
     public:
         std::unique_ptr<Identifier> id;
-        bool isConst;
-        TypeAnnotationPtr typeAnnotation; // Optional
-        ExprPtr init;                     // Optional
+        bool isConst; // Binding const-ness (const x: T vs var x: T)
+        TypeNodePtr typeNode; // Optional, type of the variable (replaces typeAnnotation)
+        ExprPtr init;         // Optional
 
-        VariableDeclaration(SourceLocation loc, std::unique_ptr<Identifier> id, bool isConst, TypeAnnotationPtr typeAnnotation = nullptr, ExprPtr init = nullptr);
+        VariableDeclaration(SourceLocation loc, std::unique_ptr<Identifier> id, bool isConst, TypeNodePtr typeNode = nullptr, ExprPtr init = nullptr);
         NodeType getType() const override;
         std::string toString() const override;
         void accept(Visitor& visitor) override;
@@ -410,10 +489,10 @@ namespace vyn {
     struct FunctionParameter {
         SourceLocation loc;
         std::unique_ptr<Identifier> name;
-        TypeAnnotationPtr typeAnnotation; // Optional in some languages, mandatory in Vyn? AST.md implies it's there.
+        TypeNodePtr typeNode; // Type of the parameter (replaces typeAnnotation)
 
-        FunctionParameter(SourceLocation loc, std::unique_ptr<Identifier> name, TypeAnnotationPtr typeAnnotation)
-            : loc(loc), name(std::move(name)), typeAnnotation(std::move(typeAnnotation)) {}
+        FunctionParameter(SourceLocation loc, std::unique_ptr<Identifier> name, TypeNodePtr typeNode)
+            : loc(loc), name(std::move(name)), typeNode(std::move(typeNode)) {}
     };
 
 
@@ -422,11 +501,10 @@ namespace vyn {
         std::unique_ptr<Identifier> id;
         std::vector<FunctionParameter> params;
         std::unique_ptr<BlockStatement> body;
-        TypeAnnotationPtr returnType; // Optional
+        TypeNodePtr returnTypeNode; // Optional, return type (replaces returnType which was TypeAnnotationPtr)
         bool isAsync;
-        // bool isGenerator; // Future extension?
 
-        FunctionDeclaration(SourceLocation loc, std::unique_ptr<Identifier> id, std::vector<FunctionParameter> params, std::unique_ptr<BlockStatement> body, bool isAsync, TypeAnnotationPtr returnType = nullptr);
+        FunctionDeclaration(SourceLocation loc, std::unique_ptr<Identifier> id, std::vector<FunctionParameter> params, std::unique_ptr<BlockStatement> body, bool isAsync, TypeNodePtr returnTypeNode = nullptr);
         NodeType getType() const override;
         std::string toString() const override;
         void accept(Visitor& visitor) override;
@@ -435,9 +513,9 @@ namespace vyn {
     class TypeAliasDeclaration : public Declaration {
     public:
         std::unique_ptr<Identifier> name;
-        TypeAnnotationPtr typeAnnotation; // In AST.md this is aliased_type, but parser uses typeAnnotation
+        TypeNodePtr aliasedTypeNode; // The type being aliased (replaces typeAnnotation)
 
-        TypeAliasDeclaration(SourceLocation loc, std::unique_ptr<Identifier> name, TypeAnnotationPtr typeAnnotation);
+        TypeAliasDeclaration(SourceLocation loc, std::unique_ptr<Identifier> name, TypeNodePtr aliasedTypeNode);
         NodeType getType() const override;
         std::string toString() const override;
         void accept(Visitor& visitor) override;
@@ -481,11 +559,11 @@ namespace vyn {
     class FieldDeclaration : public Declaration {
     public:
         std::unique_ptr<Identifier> name;
-        TypeAnnotationPtr typeAnnotation; // Mandatory for fields
+        TypeNodePtr typeNode; // Mandatory for fields (replaces typeAnnotation)
         ExprPtr initializer;              // Optional
-        bool isMutable;                   // true for \'var\', false for \'let\'/\'const\' (matches AST.md \'is_mutable\')
+        bool isMutable;                   // true for 'var', false for 'let'/'const'
 
-        FieldDeclaration(SourceLocation loc, std::unique_ptr<Identifier> name, TypeAnnotationPtr typeAnnotation, ExprPtr init = nullptr, bool isMutable = false);
+        FieldDeclaration(SourceLocation loc, std::unique_ptr<Identifier> name, TypeNodePtr typeNode, ExprPtr init = nullptr, bool isMutable = false);
         NodeType getType() const override;
         std::string toString() const override;
         void accept(Visitor& visitor) override;
@@ -494,10 +572,10 @@ namespace vyn {
     class StructDeclaration : public Declaration {
     public:
         std::unique_ptr<Identifier> name;
-        std::vector<std::unique_ptr<GenericParamNode>> genericParams; // Uncommented and type updated
+        std::vector<std::unique_ptr<GenericParamNode>> genericParams;
         std::vector<std::unique_ptr<FieldDeclaration>> fields;
 
-        StructDeclaration(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<std::unique_ptr<GenericParamNode>> genericParams, std::vector<std::unique_ptr<FieldDeclaration>> fields); // Updated constructor
+        StructDeclaration(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<std::unique_ptr<GenericParamNode>> genericParams, std::vector<std::unique_ptr<FieldDeclaration>> fields);
         NodeType getType() const override;
         std::string toString() const override;
         void accept(Visitor& visitor) override;
@@ -506,10 +584,10 @@ namespace vyn {
     class ClassDeclaration : public Declaration {
     public:
         std::unique_ptr<Identifier> name;
-        std::vector<std::unique_ptr<GenericParamNode>> genericParams; // Uncommented and type updated
+        std::vector<std::unique_ptr<GenericParamNode>> genericParams;
         std::vector<DeclPtr> members; // Can be FieldDeclaration or FunctionDeclaration
 
-        ClassDeclaration(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<std::unique_ptr<GenericParamNode>> genericParams, std::vector<DeclPtr> members); // Updated constructor
+        ClassDeclaration(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<std::unique_ptr<GenericParamNode>> genericParams, std::vector<DeclPtr> members);
         NodeType getType() const override;
         std::string toString() const override;
         void accept(Visitor& visitor) override;
@@ -517,23 +595,23 @@ namespace vyn {
 
     class ImplDeclaration : public Declaration {
     public:
-        std::vector<std::unique_ptr<GenericParamNode>> genericParams; // Uncommented and type updated
-        TypeAnnotationPtr selfType; // The type being implemented (using TypeAnnotationPtr for flexibility)
-        TypeAnnotationPtr traitType; // Optional: if implementing a trait
+        std::vector<std::unique_ptr<GenericParamNode>> genericParams;
+        TypeNodePtr selfTypeNode; // The type being implemented (replaces selfType)
+        TypeNodePtr traitTypeNode; // Optional: if implementing a trait (replaces traitType)
         std::vector<std::unique_ptr<FunctionDeclaration>> methods;
 
-        ImplDeclaration(SourceLocation loc, std::vector<std::unique_ptr<GenericParamNode>> genericParams, TypeAnnotationPtr selfType, std::vector<std::unique_ptr<FunctionDeclaration>> methods, TypeAnnotationPtr traitType = nullptr); // Updated constructor
+        ImplDeclaration(SourceLocation loc, std::vector<std::unique_ptr<GenericParamNode>> genericParams, TypeNodePtr selfTypeNode, std::vector<std::unique_ptr<FunctionDeclaration>> methods, TypeNodePtr traitTypeNode = nullptr);
         NodeType getType() const override;
         std::string toString() const override;
         void accept(Visitor& visitor) override;
     };
 
-    class EnumVariantNode : public Declaration { // Inherits Declaration for consistency
+    class EnumVariantNode : public Declaration { 
     public:
         std::unique_ptr<Identifier> name;
-        std::vector<TypeAnnotationPtr> types; // For tuple-like parameters
+        std::vector<TypeNodePtr> typeNodes; // For tuple-like parameters (replaces types which was vector<TypeAnnotationPtr>)
 
-        EnumVariantNode(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<TypeAnnotationPtr> types = {});
+        EnumVariantNode(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<TypeNodePtr> typeNodes = {});
         NodeType getType() const override;
         std::string toString() const override;
         void accept(Visitor& visitor) override;
@@ -542,10 +620,10 @@ namespace vyn {
     class EnumDeclaration : public Declaration {
     public:
         std::unique_ptr<Identifier> name;
-        std::vector<std::unique_ptr<GenericParamNode>> genericParams; // Uncommented and type updated
+        std::vector<std::unique_ptr<GenericParamNode>> genericParams;
         std::vector<std::unique_ptr<EnumVariantNode>> variants;
 
-        EnumDeclaration(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<std::unique_ptr<GenericParamNode>> genericParams, std::vector<std::unique_ptr<EnumVariantNode>> variants); // Updated constructor
+        EnumDeclaration(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<std::unique_ptr<GenericParamNode>> genericParams, std::vector<std::unique_ptr<EnumVariantNode>> variants);
         NodeType getType() const override;
         std::string toString() const override;
         void accept(Visitor& visitor) override;
@@ -555,17 +633,20 @@ namespace vyn {
     // --- Other ---
 
     // Generic Parameter Node
-    class GenericParamNode : public Node { // Or Declaration if it makes more sense, Node for now
+    class GenericParamNode : public Node { 
     public:
         std::unique_ptr<Identifier> name;
-        std::vector<TypeAnnotationPtr> bounds; // e.g. T: Bound1 + Bound2
+        std::vector<TypeNodePtr> bounds; // e.g. T: Bound1 + Bound2 (replaces TypeAnnotationPtr)
 
-        GenericParamNode(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<TypeAnnotationPtr> bounds = {});
+        GenericParamNode(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<TypeNodePtr> bounds = {});
         NodeType getType() const override;
         std::string toString() const override;
         void accept(Visitor& visitor) override;
     };
 
+    // TypeAnnotation class is now removed and replaced by TypeNode above.
+    // Remove old TypeAnnotation class definition entirely.
+    /*
     class TypeAnnotation : public Node {
     public:
         // One of these will be non-null, defining the type of annotation
@@ -591,7 +672,7 @@ namespace vyn {
         bool isArrayType() const { return arrayElementType && !simpleTypeName && !genericBaseType; }
         bool isGenericType() const { return genericBaseType && !simpleTypeName && !arrayElementType; }
     };
-    
+    */
     // Module (Root of the AST)
     class Module : public Node {
     public:

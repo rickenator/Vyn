@@ -6,7 +6,7 @@
 #include "ast.hpp"
 #include "token.hpp"
 
-/* // EBNF Grammar of the Vyn Language
+/* // EBNF Grammar of the Vyn Language  // Uncommented
 //
 // Conventions:
 //   IDENTIFIER:        Represents a valid identifier token.
@@ -43,7 +43,7 @@ path                   ::= IDENTIFIER { ('::' | '.') IDENTIFIER } // Allow . as 
 
 class_declaration      ::= [ 'pub' ] [ 'template' '<' type_parameter_list '>' ] 'class' IDENTIFIER [ 'extends' type ] [ 'implements' type_list ] '{' { class_member } '}'
 class_member           ::= field_declaration | method_declaration | constructor_declaration
-field_declaration      ::= [ 'pub' ] ( 'var' | 'const' ) IDENTIFIER ':' type [ '=' expression ] [';'] // Semicolon made optional
+field_declaration      ::= [ 'pub' ] ( 'var' | 'const' ) IDENTIFIER ':' type [ '=' expression ] [';'] // Changed 'let' to 'var'
 method_declaration     ::= [ 'pub' ] [ 'static' ] [ 'template' '<' type_parameter_list '>' ] [ 'async' ] 'fn' IDENTIFIER '(' [ parameter_list ] ')' [ '->' type ] [ 'throws' type_list ] ( block_statement | '=>' expression [';'] ) // Added throws, expression body
 constructor_declaration::= [ 'pub' ] 'new' [ template_parameters ] '(' [ parameter_list ] ')' [ 'throws' type_list ] ( block_statement | '=>' expression [';'] ) // Added throws, expression body
 
@@ -61,7 +61,7 @@ trait_declaration      ::= [ 'pub' ] 'template' IDENTIFIER [ template_parameters
 method_signature       ::= [ 'async' ] 'fn' IDENTIFIER '(' [ parameter_list ] ')' [ '->' type ] [ 'throws' type_list ] ';'
 
 
-variable_declaration   ::= [ 'pub' ] ( 'var' | 'let' ) [ 'mut' ] IDENTIFIER [ ':' type ] [ '=' expression ] [';'] // Added let/let mut, semicolon optional
+variable_declaration   ::= [ 'pub' ] 'var' IDENTIFIER [ ':' type ] [ '=' expression ] [';'] // Changed 'let' to 'var', semicolon optional
 constant_declaration   ::= [ 'pub' ] 'const' IDENTIFIER ':' type '=' expression [';'] // Semicolon optional
 
 type_alias_declaration ::= [ 'pub' ] 'type' IDENTIFIER [ template_parameters ] '=' type [';'] // Semicolon optional
@@ -74,7 +74,7 @@ type_bounds            ::= type { '+' type }
 template_parameters    ::= '<' type_parameter_list '>'
 
 parameter_list         ::= parameter { ',' parameter }
-parameter              ::= [ 'ref' [ 'mut' ] ] IDENTIFIER ':' type [ '=' expression ]
+parameter              ::= IDENTIFIER ':' type [ '=' expression ] // Mutability via type e.g. &T, &const T
 
 type_list              ::= type { ',' type }
 
@@ -115,7 +115,7 @@ pattern                ::= IDENTIFIER [ '@' pattern ]
                          | path '(' [ pattern_list ] ')' // Enum variant pattern
                          | '[' [ pattern_list ] ']' // Array/slice pattern
                          | '(' pattern_list ')' // Tuple pattern
-                         | 'ref' [ 'mut' ] pattern
+                         | '&' [ 'const' ] pattern // For reference patterns
 field_pattern          ::= IDENTIFIER ':' pattern | IDENTIFIER
 pattern_list           ::= pattern { ',' pattern }
 pattern_assignment_statement ::= pattern '=' expression [';'] // For ref x = _
@@ -131,6 +131,8 @@ throw_statement        ::= 'throw' expression [';'] // Added
 
 // Expressions
 expression             ::= assignment_expression
+                           | BorrowExpr // Added BorrowExpr to the expression hierarchy
+
 assignment_expression  ::= conditional_expression [ assignment_operator assignment_expression ]
 assignment_operator    ::= '=' | '+=' | '-=' | '*=' | '/=' | '%=' | '&=' | '|=' | '^=' | '<<=' | '>>='
 
@@ -149,7 +151,7 @@ shift_expression       ::= additive_expression { ( '<<' | '>>' ) additive_expres
 additive_expression    ::= multiplicative_expression { ( '+' | '-' ) multiplicative_expression }
 multiplicative_expression ::= unary_expression { ( '*' | '/' | '%' ) unary_expression }
 
-unary_expression       ::= ( '!' | '-' | '+' | '*' | '&' [ 'mut' ] | 'await' | 'throw' ) unary_expression // Added throw here if it can be prefix
+unary_expression       ::= ( '!' | '-' | '+' | '*' | 'await' | 'throw' ) unary_expression // Removed '&' and '&const' as they are part of Type or handled by BorrowExpr
                          | primary_expression
 
 primary_expression     ::= literal
@@ -191,38 +193,42 @@ struct_literal_field   ::= IDENTIFIER (':' | '=') expression | IDENTIFIER // All
 
 lambda_expression      ::= [ 'async' ] ( '|' [ parameter_list ] '|' | IDENTIFIER ) [ '->' type ] ( '=>' expression | block_statement )
 
-// Type System:
-type                   ::= core_type [ '?' ]
-core_type              ::= named_type
-                         | array_type
-                         | slice_type
-                         | tuple_type
-                         | function_type
-                         | reference_type
-                         | pointer_type
-                         | 'self' | 'Self'
-                         | '_' | '!' // Never type
-                         | '(' type ')'
-                         | expression // For const generic types like 'M-1' if used directly as type
+// Type System (NEW - based on mem_RFC.md)
+Type                   ::= BaseType [ 'const' ] [ '?' ] // Added optional '?' for nullable types from old EBNF
+BaseType               ::= IDENTIFIER // Represents a simple type name like Int, Foo
+                         | OwnershipWrapper '<' Type '>'
+                         | ArrayType
+                         | TupleType
+                         | FunctionType
+                         | '(' Type ')' // Grouped type
 
-named_type             ::= path [ type_arguments ]
-type_arguments         ::= '<' type_argument_list '>' // Changed to type_argument_list
+OwnershipWrapper       ::= 'my' | 'our' | 'their' | 'ptr'
+
+ArrayType              ::= '[' Type [ ';' Expression ] ']' // e.g., [Int], [Int; 5]
+TupleType              ::= '(' [ Type { ',' Type } [ ',' ] ] ')' // e.g., (Int, String)
+FunctionType           ::= [ 'async' ] 'fn' '(' [ Type { ',' Type } ] ')' [ '->' Type ] [ 'throws' TypeList ]
+
+// Path and Arguments (mostly from old EBNF, ensure compatibility)
+path                   ::= IDENTIFIER { ('::' | '.') IDENTIFIER }
+type_arguments         ::= '<' type_argument_list '>'
 type_argument_list     ::= type_argument { ',' type_argument }
-type_argument          ::= type | expression // For const generics like '3' or 'M-1'
+type_argument          ::= Type | Expression // For const generics
 
-array_type             ::= '[' type ( ';' expression )? ']' // Made ;expression optional for slice-like array types e.g. [T]
-slice_type             ::= '[' type ']' // This is now covered by array_type with optional size
+// Borrow Expression (NEW - based on mem_RFC.md)
+BorrowExpr             ::= 'borrow' '(' Expression ')'
+                         | 'borrow_mut' '(' Expression ')'
 
-tuple_type             ::= '(' [ type_list [ ',' ] ] ')'
 
-function_type          ::= [ 'async' ] 'fn' '(' [ type_list ] ')' [ '->' type ] [ 'throws' type_list ] // Added throws
-
-reference_type         ::= '&' [ lifetime ] [ 'mut' ] type
-                         | 'ref' '<' type '>' // Consider if '&' form is preferred
-
-pointer_type           ::= '*' ( 'const' | 'mut' ) type
-
-lifetime               ::= APOSTROPHE IDENTIFIER
+// Note: The following old type productions are replaced or integrated above:
+// core_type              ::= named_type ...
+// named_type             ::= path [ type_arguments ] (now IDENTIFIER or path within BaseType, arguments via generic syntax if needed)
+// array_type             ::= '[' type ( ';' expression )? ']' (now ArrayType)
+// slice_type             ::= '[' type ']' (covered by ArrayType with no size expression)
+// tuple_type             ::= '(' [ type_list [ ',' ] ] ')' (now TupleType)
+// function_type          ::= [ 'async' ] 'fn' '(' [ type_list ] ')' [ '->' type ] [ 'throws' type_list ] (now FunctionType)
+// reference_type         ::= '&' [ lifetime ] [ 'const' ] type (Replaced by 'their<Type>' and 'their<Type const>')
+// pointer_type           ::= '*' ( 'const' | 'mut' ) type (Replaced by 'ptr<Type>' and 'ptr<Type const>')
+// lifetime               ::= APOSTROPHE IDENTIFIER (Lifetimes are not in the current mem_RFC.md focus, can be added later if needed)
 
 // End of EBNF Grammar
 //

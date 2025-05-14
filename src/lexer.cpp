@@ -408,7 +408,13 @@ vyn::TokenType Lexer::get_keyword_type(const std::string& word) {
         {"smuggle", vyn::TokenType::KEYWORD_SMUGGLE},
         {"await", vyn::TokenType::KEYWORD_AWAIT},
         {"async", vyn::TokenType::KEYWORD_ASYNC},
-        {"operator", vyn::TokenType::KEYWORD_OPERATOR}
+        {"operator", vyn::TokenType::KEYWORD_OPERATOR},
+        {"my", vyn::TokenType::KEYWORD_MY}, // New
+        {"our", vyn::TokenType::KEYWORD_OUR}, // New
+        {"their", vyn::TokenType::KEYWORD_THEIR}, // New
+        {"ptr", vyn::TokenType::KEYWORD_PTR}, // New
+        {"borrow", vyn::TokenType::KEYWORD_BORROW}, // New
+        {"borrow_mut", vyn::TokenType::KEYWORD_BORROW_MUT} // New
     };
 
     auto it = keywords.find(word);

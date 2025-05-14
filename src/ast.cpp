@@ -451,18 +451,18 @@ void ContinueStatement::accept(Visitor& visitor) {
 
 // --- Declarations ---
 // VariableDeclaration (was VarDeclStmtNode)
-VariableDeclaration::VariableDeclaration(SourceLocation loc, std::unique_ptr<Identifier> identifier, bool is_const, TypeAnnotationPtr type_ann, ExprPtr initial_value)
-    : Declaration(loc), id(std::move(identifier)), isConst(is_const), typeAnnotation(std::move(type_ann)), init(std::move(initial_value)) {}
+VariableDeclaration::VariableDeclaration(SourceLocation loc, std::unique_ptr<Identifier> identifier, bool is_const, TypeNodePtr type_node, ExprPtr initial_value)
+    : Declaration(loc), id(std::move(identifier)), isConst(is_const), typeNode(std::move(type_node)), init(std::move(initial_value)) {}
 
 NodeType VariableDeclaration::getType() const {
     return NodeType::VARIABLE_DECLARATION;
 }
 std::string VariableDeclaration::toString() const {
     std::stringstream ss;
-    ss << "VariableDeclaration(" << (isConst ? "const " : "let "); // Assuming 'let' for non-const
+    ss << "VariableDeclaration(" << (isConst ? "const " : "var "); 
     if (id) ss << id->toString(); else ss << "<null_id>";
-    if (typeAnnotation) {
-        ss << ": " << typeAnnotation->toString();
+    if (typeNode) {
+        ss << ": " << typeNode->toString();
     }
     if (init) {
         ss << " = " << init->toString();
@@ -475,8 +475,8 @@ void VariableDeclaration::accept(Visitor& visitor) {
 }
 
 // FunctionDeclaration (was FuncDeclNode)
-FunctionDeclaration::FunctionDeclaration(SourceLocation loc, std::unique_ptr<Identifier> identifier, std::vector<FunctionParameter> func_params, std::unique_ptr<BlockStatement> func_body, bool is_async, TypeAnnotationPtr return_type)
-    : Declaration(loc), id(std::move(identifier)), params(std::move(func_params)), body(std::move(func_body)), isAsync(is_async), returnType(std::move(return_type)) {}
+FunctionDeclaration::FunctionDeclaration(SourceLocation loc, std::unique_ptr<Identifier> identifier, std::vector<FunctionParameter> func_params, std::unique_ptr<BlockStatement> func_body, bool is_async, TypeNodePtr return_type_node)
+    : Declaration(loc), id(std::move(identifier)), params(std::move(func_params)), body(std::move(func_body)), isAsync(is_async), returnTypeNode(std::move(return_type_node)) {}
 
 NodeType FunctionDeclaration::getType() const {
     return NodeType::FUNCTION_DECLARATION;
@@ -488,11 +488,11 @@ std::string FunctionDeclaration::toString() const {
     ss << "(";
     for (size_t i = 0; i < params.size(); ++i) {
         if (params[i].name) ss << params[i].name->toString(); else ss << "<null_param_name>";
-        if (params[i].typeAnnotation) ss << ": " << params[i].typeAnnotation->toString();
+        if (params[i].typeNode) ss << ": " << params[i].typeNode->toString();
         if (i < params.size() - 1) ss << ", ";
     }
     ss << ")";
-    if (returnType) ss << " -> " << returnType->toString();
+    if (returnTypeNode) ss << " -> " << returnTypeNode->toString();
     if (body) ss << " " << body->toString(); else ss << " <no_body_or_extern>"; // extern functions might not have a body
     ss << ")";
     return ss.str();
@@ -502,8 +502,8 @@ void FunctionDeclaration::accept(Visitor& visitor) {
 }
 
 // TypeAliasDeclaration (was TypeAliasDeclNode)
-TypeAliasDeclaration::TypeAliasDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, TypeAnnotationPtr ta)
-    : Declaration(loc), name(std::move(n)), typeAnnotation(std::move(ta)) {}
+TypeAliasDeclaration::TypeAliasDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, TypeNodePtr aliased_type_node)
+    : Declaration(loc), name(std::move(n)), aliasedTypeNode(std::move(aliased_type_node)) {}
 
 NodeType TypeAliasDeclaration::getType() const {
     return NodeType::TYPE_ALIAS_DECLARATION;
@@ -513,7 +513,7 @@ std::string TypeAliasDeclaration::toString() const {
     ss << "TypeAliasDeclaration(type ";
     if (name) ss << name->toString(); else ss << "<null_name>";
     ss << " = ";
-    if (typeAnnotation) ss << typeAnnotation->toString(); else ss << "<null_type_annotation>";
+    if (aliasedTypeNode) ss << aliasedTypeNode->toString(); else ss << "<null_aliased_type_node>";
     ss << ")";
     return ss.str();
 }
@@ -563,14 +563,142 @@ void ImportDeclaration::accept(Visitor& visitor) {
     visitor.visit(this);
 }
 
-// --- Other ---
+// --- New TypeNode Implementation ---
+TypeNode::TypeNode(SourceLocation loc, TypeCategory category, bool dataIsConst, bool isOptional)
+    : Node(loc), category(category), dataIsConst(dataIsConst), isOptional(isOptional),
+      name(nullptr), wrappedType(nullptr), arrayElementType(nullptr), functionReturnType(nullptr) {}
+
+TypeNodePtr TypeNode::newIdentifier(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<TypeNodePtr> genericArgs, bool dataIsConst, bool isOptional) {
+    auto node = std::unique_ptr<TypeNode>(new TypeNode(loc, TypeCategory::IDENTIFIER, dataIsConst, isOptional));
+    node->name = std::move(name);
+    node->genericArguments = std::move(genericArgs);
+    return node;
+}
+
+TypeNodePtr TypeNode::newOwnershipWrapped(SourceLocation loc, OwnershipKind ownership, TypeNodePtr wrappedType, bool dataIsConst, bool isOptional) {
+    auto node = std::unique_ptr<TypeNode>(new TypeNode(loc, TypeCategory::OWNERSHIP_WRAPPED, dataIsConst, isOptional));
+    node->ownership = ownership;
+    node->wrappedType = std::move(wrappedType);
+    return node;
+}
+
+TypeNodePtr TypeNode::newArray(SourceLocation loc, TypeNodePtr elementType, bool dataIsConst, bool isOptional) {
+    auto node = std::unique_ptr<TypeNode>(new TypeNode(loc, TypeCategory::ARRAY, dataIsConst, isOptional));
+    node->arrayElementType = std::move(elementType);
+    return node;
+}
+
+TypeNodePtr TypeNode::newTuple(SourceLocation loc, std::vector<TypeNodePtr> elementTypes, bool dataIsConst, bool isOptional) {
+    auto node = std::unique_ptr<TypeNode>(new TypeNode(loc, TypeCategory::TUPLE, dataIsConst, isOptional));
+    node->tupleElementTypes = std::move(elementTypes);
+    return node;
+}
+
+TypeNodePtr TypeNode::newFunctionSignature(SourceLocation loc, std::vector<TypeNodePtr> paramTypes, TypeNodePtr returnType, bool dataIsConst, bool isOptional) {
+    auto node = std::unique_ptr<TypeNode>(new TypeNode(loc, TypeCategory::FUNCTION_SIGNATURE, dataIsConst, isOptional));
+    node->functionParameterTypes = std::move(paramTypes);
+    node->functionReturnType = std::move(returnType);
+    return node;
+}
+
+NodeType TypeNode::getType() const {
+    return NodeType::TYPE_NODE;
+}
+
+std::string TypeNode::toString() const {
+    std::stringstream ss;
+    // Placeholder: Detailed toString to be implemented based on category
+    ss << "TypeNode(category=";
+    switch (category) {
+        case TypeCategory::IDENTIFIER:
+            ss << "IDENTIFIER, name=" << (name ? name->toString() : "null");
+            if (!genericArguments.empty()) {
+                ss << "<";
+                for (size_t i = 0; i < genericArguments.size(); ++i) {
+                    ss << (genericArguments[i] ? genericArguments[i]->toString() : "null");
+                    if (i < genericArguments.size() - 1) ss << ", ";
+                }
+                ss << ">";
+            }
+            break;
+        case TypeCategory::OWNERSHIP_WRAPPED:
+            ss << "OWNERSHIP_WRAPPED, kind=";
+            switch (ownership) {
+                case OwnershipKind::MY: ss << "my"; break;
+                case OwnershipKind::OUR: ss << "our"; break;
+                case OwnershipKind::THEIR: ss << "their"; break;
+                case OwnershipKind::PTR: ss << "ptr"; break;
+            }
+            ss << "<" << (wrappedType ? wrappedType->toString() : "null") << ">";
+            break;
+        case TypeCategory::ARRAY:
+            ss << "ARRAY, element_type=" << (arrayElementType ? arrayElementType->toString() : "null") << "[]";
+            break;
+        case TypeCategory::TUPLE:
+            ss << "TUPLE, (";
+            for (size_t i = 0; i < tupleElementTypes.size(); ++i) {
+                ss << (tupleElementTypes[i] ? tupleElementTypes[i]->toString() : "null");
+                if (i < tupleElementTypes.size() - 1) ss << ", ";
+            }
+            ss << ")";
+            break;
+        case TypeCategory::FUNCTION_SIGNATURE:
+            ss << "FUNCTION_SIGNATURE, fn(";
+            for (size_t i = 0; i < functionParameterTypes.size(); ++i) {
+                ss << (functionParameterTypes[i] ? functionParameterTypes[i]->toString() : "null");
+                if (i < functionParameterTypes.size() - 1) ss << ", ";
+            }
+            ss << ") -> " << (functionReturnType ? functionReturnType->toString() : "void");
+            break;
+        default:
+            ss << "UNKNOWN";
+            break;
+    }
+    if (dataIsConst) ss << " const";
+    if (isOptional) ss << "?";
+    ss << ")";
+    return ss.str();
+}
+
+void TypeNode::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
+
+// --- New BorrowExprNode Implementation ---
+BorrowExprNode::BorrowExprNode(SourceLocation loc, ExprPtr expr, bool is_mutable)
+    : Expression(loc), expressionToBorrow(std::move(expr)), isMutable(is_mutable) {}
+
+NodeType BorrowExprNode::getType() const {
+    return NodeType::BORROW_EXPRESSION;
+}
+
+std::string BorrowExprNode::toString() const {
+    std::stringstream ss;
+    ss << "BorrowExprNode(" << (isMutable ? "borrow_mut " : "borrow ");
+    if (expressionToBorrow) {
+        ss << expressionToBorrow->toString();
+    } else {
+        ss << "<null_expression_to_borrow>";
+    }
+    ss << ")";
+    return ss.str();
+}
+
+void BorrowExprNode::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
+
+// --- REMOVE OLD TypeAnnotation IMPLEMENTATIONS ---
+/*
 // TypeAnnotation 
 // Constructor for simple type: MyType
 TypeAnnotation::TypeAnnotation(SourceLocation loc, std::unique_ptr<Identifier> name)
     : Node(loc), simpleTypeName(std::move(name)), arrayElementType(nullptr), genericBaseType(nullptr) {}
 
 // Constructor for array type: T[]
-TypeAnnotation::TypeAnnotation(SourceLocation loc, TypeAnnotationPtr elementType, bool /*isArrayMarker*/) 
+TypeAnnotation::TypeAnnotation(SourceLocation loc, TypeAnnotationPtr elementType, bool /\\*isArrayMarker*\\/) 
     : Node(loc), simpleTypeName(nullptr), arrayElementType(std::move(elementType)), genericBaseType(nullptr) {}
 
 // Constructor for generic type: List<T>
@@ -579,7 +707,7 @@ TypeAnnotation::TypeAnnotation(SourceLocation loc, std::unique_ptr<Identifier> b
 
 
 NodeType TypeAnnotation::getType() const {
-    return NodeType::TYPE_ANNOTATION;
+    return NodeType::TYPE_NODE; // Was TYPE_ANNOTATION, but NodeType was updated
 }
 
 std::string TypeAnnotation::toString() const {
@@ -603,14 +731,14 @@ std::string TypeAnnotation::toString() const {
 }
 
 void TypeAnnotation::accept(Visitor& visitor) {
-    visitor.visit(this);
+    visitor.visit(this); // Visitor needs to be updated to visit TypeNode*
 }
+*/
 
 // --- New Declaration Node Implementations ---
-
 // FieldDeclaration
-FieldDeclaration::FieldDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, TypeAnnotationPtr ta, ExprPtr init, bool mut)
-    : Declaration(loc), name(std::move(n)), typeAnnotation(std::move(ta)), initializer(std::move(init)), isMutable(mut) {}
+FieldDeclaration::FieldDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, TypeNodePtr tn, ExprPtr init, bool mut)
+    : Declaration(loc), name(std::move(n)), typeNode(std::move(tn)), initializer(std::move(init)), isMutable(mut) {}
 
 NodeType FieldDeclaration::getType() const {
     return NodeType::FIELD_DECLARATION;
@@ -618,12 +746,13 @@ NodeType FieldDeclaration::getType() const {
 
 std::string FieldDeclaration::toString() const {
     std::stringstream ss;
-    ss << "FieldDeclaration(" << (isMutable ? "mut " : "let ");
+    ss << "FieldDeclaration(" << (isMutable ? "var " : "const "); // RFC uses var/const for fields
     if (name) ss << name->toString(); else ss << "<null_name>";
-    if (typeAnnotation) {
-        ss << ": " << typeAnnotation->toString();
+    if (typeNode) {
+        ss << ": " << typeNode->toString();
     } else {
-        ss << ": <null_type_annotation>";
+        // Fields must have types according to RFC and ast.hpp
+        ss << ": <ERROR_missing_type_node>"; 
     }
     if (initializer) {
         ss << " = " << initializer->toString();
@@ -707,8 +836,8 @@ void ClassDeclaration::accept(Visitor& visitor) {
 }
 
 // ImplDeclaration
-ImplDeclaration::ImplDeclaration(SourceLocation loc, std::vector<std::unique_ptr<GenericParamNode>> gps, TypeAnnotationPtr self_type, std::vector<std::unique_ptr<FunctionDeclaration>> meths, TypeAnnotationPtr trait_type)
-    : Declaration(loc), genericParams(std::move(gps)), selfType(std::move(self_type)), traitType(std::move(trait_type)), methods(std::move(meths)) {}
+ImplDeclaration::ImplDeclaration(SourceLocation loc, std::vector<std::unique_ptr<GenericParamNode>> gps, TypeNodePtr self_type_node, std::vector<std::unique_ptr<FunctionDeclaration>> meths, TypeNodePtr trait_type_node)
+    : Declaration(loc), genericParams(std::move(gps)), selfTypeNode(std::move(self_type_node)), traitTypeNode(std::move(trait_type_node)), methods(std::move(meths)) {}
 
 NodeType ImplDeclaration::getType() const {
     return NodeType::IMPL_DECLARATION;
@@ -725,20 +854,20 @@ std::string ImplDeclaration::toString() const {
         }
         ss << ">";
     }
-    if (traitType) {
-        ss << " " << traitType->toString() << " for";
+    if (traitTypeNode) {
+        ss << " " << traitTypeNode->toString() << " for";
     }
-    if (selfType) {
-        ss << " " << selfType->toString();
+    if (selfTypeNode) {
+        ss << " " << selfTypeNode->toString();
     } else {
-        ss << " <null_self_type>";
+        ss << " <null_self_type_node>";
     }
-    ss << " {\\\\\\n"; // Escaped newline
+    ss << " {\\\\n"; // Escaped newline
     for (const auto& method : methods) {
         if (method) {
-            ss << "  " << method->toString() << "\\\\\\n"; // Escaped newline
+            ss << "  " << method->toString() << "\\\\n"; // Escaped newline
         } else {
-            ss << "  <null_method>;\\\\\\n"; // Escaped newline
+            ss << "  <null_method>;\\\\n"; // Escaped newline
         }
     }
     ss << "})";
@@ -750,8 +879,8 @@ void ImplDeclaration::accept(Visitor& visitor) {
 }
 
 // EnumVariantNode
-EnumVariantNode::EnumVariantNode(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<TypeAnnotationPtr> typs)
-    : Declaration(loc), name(std::move(n)), types(std::move(typs)) {}
+EnumVariantNode::EnumVariantNode(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<TypeNodePtr> typs)
+    : Declaration(loc), name(std::move(n)), typeNodes(std::move(typs)) {}
 
 NodeType EnumVariantNode::getType() const {
     return NodeType::ENUM_VARIANT;
@@ -761,15 +890,15 @@ std::string EnumVariantNode::toString() const {
     std::stringstream ss;
     ss << "EnumVariantNode(";
     if (name) ss << name->toString(); else ss << "<null_name>";
-    if (!types.empty()) {
+    if (!typeNodes.empty()) {
         ss << "(";
-        for (size_t i = 0; i < types.size(); ++i) {
-            if (types[i]) {
-                ss << types[i]->toString();
+        for (size_t i = 0; i < typeNodes.size(); ++i) {
+            if (typeNodes[i]) {
+                ss << typeNodes[i]->toString();
             } else {
-                ss << "<null_type_arg>";
+                ss << "<null_type_node_arg>";
             }
-            if (i < types.size() - 1) {
+            if (i < typeNodes.size() - 1) {
                 ss << ", ";
             }
         }
@@ -819,7 +948,7 @@ void EnumDeclaration::accept(Visitor& visitor) {
 }
 
 // GenericParamNode
-GenericParamNode::GenericParamNode(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<TypeAnnotationPtr> bnds)
+GenericParamNode::GenericParamNode(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<TypeNodePtr> bnds)
     : Node(loc), name(std::move(n)), bounds(std::move(bnds)) {}
 
 NodeType GenericParamNode::getType() const {

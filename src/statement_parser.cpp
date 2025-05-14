@@ -260,11 +260,11 @@ std::unique_ptr<vyn::VariableDeclaration> StatementParser::parse_var_decl() {
     }
 
 
-    vyn::TypeAnnotationPtr type_annotation = nullptr;
+    vyn::TypeNodePtr type_node = nullptr; // Changed from TypeAnnotationPtr to TypeNodePtr
     if (this->match(vyn::TokenType::COLON)) {
-        type_annotation = this->type_parser_.parse();
-        if (!type_annotation) {
-            throw std::runtime_error("Expected type annotation after \\':\\' in variable declaration at " + location_to_string(this->current_location()));
+        type_node = this->type_parser_.parse(); // Changed from type_annotation to type_node
+        if (!type_node) { // Changed from type_annotation to type_node
+            throw std::runtime_error("Expected type annotation after ':' in variable declaration at " + location_to_string(this->current_location()));
         }
     }
 
@@ -272,14 +272,14 @@ std::unique_ptr<vyn::VariableDeclaration> StatementParser::parse_var_decl() {
     if (this->match(vyn::TokenType::EQ)) {
         initializer = this->expr_parser_.parse();
         if (!initializer) {
-            throw std::runtime_error("Expected initializer expression after \\'=\\' in variable declaration at " + location_to_string(this->current_location()));
+            throw std::runtime_error("Expected initializer expression after '=' in variable declaration at " + location_to_string(this->current_location()));
         }
     } else {
-        if (!type_annotation && is_const_decl) { // Constants often require initializers if not typed (or always)
+        if (!type_node && is_const_decl) { // Changed from type_annotation to type_node. Constants often require initializers if not typed (or always)
              throw std::runtime_error("Constant variable declaration 'let' requires an initializer if type is not specified, at " + location_to_string(loc));
         }
          // Non-const 'var' without initializer and without type is also often an error or defaults to 'any'
-        if (!type_annotation && !initializer) {
+        if (!type_node && !initializer) { // Changed from type_annotation to type_node
              throw std::runtime_error("Variable declaration requires an initializer or a type annotation, at " + location_to_string(loc));
         }
     }
@@ -289,7 +289,7 @@ std::unique_ptr<vyn::VariableDeclaration> StatementParser::parse_var_decl() {
     // If semicolons are mandatory:
     // this->expect(vyn::TokenType::SEMICOLON); 
 
-    return std::make_unique<vyn::VariableDeclaration>(loc, std::move(identifier_node), is_const_decl, std::move(type_annotation), std::move(initializer));
+    return std::make_unique<vyn::VariableDeclaration>(loc, std::move(identifier_node), is_const_decl, std::move(type_node), std::move(initializer)); // Changed from type_annotation to type_node
 }
 
 // parse_pattern now returns ExprPtr.

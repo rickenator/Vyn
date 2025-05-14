@@ -2,6 +2,7 @@
 #define VYN_SOURCE_LOCATION_HPP
 
 #include <string> // Required for std::string
+#include <sstream> // Required for std::ostringstream
 
 namespace vyn {
     struct SourceLocation {
@@ -15,6 +16,13 @@ namespace vyn {
         // Constructor to initialize all members
         SourceLocation(const std::string& fp, unsigned int l, unsigned int c)
             : filePath(fp), line(l), column(c) {}
+
+        // Method to convert SourceLocation to string
+        std::string toString() const {
+            std::ostringstream oss;
+            oss << filePath << ":" << line << ":" << column;
+            return oss.str();
+        }
     };
 } // namespace vyn
 

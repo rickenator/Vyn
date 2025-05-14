@@ -79,10 +79,10 @@ std::vector<std::unique_ptr<vyn::GenericParamNode>> DeclarationParser::parse_gen
             }
             auto param_name = std::make_unique<vyn::Identifier>(param_loc, this->consume().lexeme);
 
-            std::vector<vyn::TypeAnnotationPtr> bounds;
+            std::vector<vyn::TypeNodePtr> bounds; // Changed from TypeAnnotationPtr to TypeNodePtr
             if (this->match(vyn::TokenType::COLON)) { 
                 do {
-                    auto bound_type = this->type_parser_.parse(); // Returns TypeAnnotationPtr
+                    auto bound_type = this->type_parser_.parse(); // Returns TypeNodePtr
                     if (!bound_type) {
                         throw std::runtime_error("Expected trait bound type after ':' for generic parameter at " + location_to_string(this->current_location()));
                     }
@@ -115,7 +115,7 @@ std::unique_ptr<vyn::Node> DeclarationParser::parse_param() {
 
     this->expect(vyn::TokenType::COLON);
 
-    auto type_annot = this->type_parser_.parse(); // Returns TypeAnnotationPtr
+    auto type_annot = this->type_parser_.parse(); // Returns TypeNodePtr
     if (!type_annot) {
         throw std::runtime_error("Expected type annotation for parameter '" + name_ident->name + "' at " + location_to_string(this->current_location()));
     }
@@ -160,7 +160,7 @@ vyn::FunctionParameter DeclarationParser::parse_function_parameter_struct() {
 
     this->expect(vyn::TokenType::COLON);
 
-    auto type_annot = this->type_parser_.parse(); // Returns TypeAnnotationPtr
+    auto type_annot = this->type_parser_.parse(); // Returns TypeNodePtr
     if (!type_annot) {
         throw std::runtime_error("Expected type annotation for parameter '" + name_ident->name + "' at " + location_to_string(this->current_location()));
     }
@@ -212,10 +212,10 @@ std::unique_ptr<vyn::FunctionDeclaration> DeclarationParser::parse_function() {
     }
     this->expect(vyn::TokenType::RPAREN);
 
-    vyn::TypeAnnotationPtr return_type = nullptr;
+    vyn::TypeNodePtr return_type_node = nullptr; // Changed from TypeAnnotationPtr to TypeNodePtr, and variable name
     if (this->match(vyn::TokenType::ARROW)) {
-        return_type = this->type_parser_.parse();
-        if (!return_type) {
+        return_type_node = this->type_parser_.parse(); // Changed variable name
+        if (!return_type_node) { // Changed variable name
             throw std::runtime_error("Expected return type after '->' at " + location_to_string(this->current_location()));
         }
     }
@@ -231,8 +231,8 @@ std::unique_ptr<vyn::FunctionDeclaration> DeclarationParser::parse_function() {
     } else { // Extern function without a body, expect a semicolon
         this->expect(vyn::TokenType::SEMICOLON);
     }
-    // vyn::FunctionDeclaration constructor: loc, id, params, body, isAsync, returnType
-    return std::make_unique<vyn::FunctionDeclaration>(loc, std::move(name), std::move(params_structs), std::move(body), is_async, std::move(return_type));
+    // vyn::FunctionDeclaration constructor: loc, id, params, body, isAsync, returnTypeNode
+    return std::make_unique<vyn::FunctionDeclaration>(loc, std::move(name), std::move(params_structs), std::move(body), is_async, std::move(return_type_node)); // Changed variable name
 }
 
 // StructDeclNode not in ast.hpp. Assuming a Declaration type for it.
@@ -263,13 +263,13 @@ std::unique_ptr<vyn::Declaration> DeclarationParser::parse_struct() {
         
         this->expect(vyn::TokenType::COLON);
         
-        auto field_type_annotation = this->type_parser_.parse();
-        if (!field_type_annotation) {
+        auto field_type_node = this->type_parser_.parse(); // Changed from field_type_annotation to field_type_node
+        if (!field_type_node) { // Changed variable name
             throw std::runtime_error("Expected type for field '" + field_name->name + "' in struct '" + name->name + "' at " + location_to_string(this->current_location()));
         }
         
         // Struct fields are immutable by default (isMutable=false) and have no initializers in their definition here.
-        fields.push_back(std::make_unique<vyn::FieldDeclaration>(field_loc, std::move(field_name), std::move(field_type_annotation), nullptr, false));
+        fields.push_back(std::make_unique<vyn::FieldDeclaration>(field_loc, std::move(field_name), std::move(field_type_node), nullptr, false)); // Changed variable name
 
         this->skip_comments_and_newlines(); 
         if (this->match(vyn::TokenType::COMMA)) {
@@ -294,16 +294,16 @@ std::unique_ptr<vyn::Declaration> DeclarationParser::parse_impl() {
 
     auto generic_params = this->parse_generic_params(); // Now returns std::vector<std::unique_ptr<vyn::GenericParamNode>>
 
-    vyn::TypeAnnotationPtr trait_type = nullptr; 
-    vyn::TypeAnnotationPtr self_type = this->type_parser_.parse(); 
-    if (!self_type) {
+    vyn::TypeNodePtr trait_type_node = nullptr; // Changed from TypeAnnotationPtr to TypeNodePtr, and variable name
+    vyn::TypeNodePtr self_type_node = this->type_parser_.parse(); // Changed from TypeAnnotationPtr to TypeNodePtr, and variable name
+    if (!self_type_node) { // Changed variable name
         throw std::runtime_error("Expected type name in impl block at " + location_to_string(this->current_location()));
     }
 
     if (this->match(vyn::TokenType::KEYWORD_FOR)) {
-        trait_type = std::move(self_type); 
-        self_type = this->type_parser_.parse(); 
-        if (!self_type) {
+        trait_type_node = std::move(self_type_node); // Changed variable name
+        self_type_node = this->type_parser_.parse(); // Changed variable name
+        if (!self_type_node) { // Changed variable name
             throw std::runtime_error("Expected type name after 'for' in impl block at " + location_to_string(this->current_location()));
         }
     }
@@ -323,7 +323,7 @@ std::unique_ptr<vyn::Declaration> DeclarationParser::parse_impl() {
     }
     this->expect(vyn::TokenType::RBRACE);
 
-    return std::make_unique<vyn::ImplDeclaration>(loc, std::move(generic_params), std::move(self_type), std::move(methods), std::move(trait_type));
+    return std::make_unique<vyn::ImplDeclaration>(loc, std::move(generic_params), std::move(self_type_node), std::move(methods), std::move(trait_type_node)); // Changed variable names
 }
 
 
@@ -353,8 +353,8 @@ std::unique_ptr<vyn::Declaration> DeclarationParser::parse_field_declaration() {
 
     this->expect(vyn::TokenType::COLON);
 
-    auto type_annotation = this->type_parser_.parse();
-    if (!type_annotation) {
+    auto type_node = this->type_parser_.parse(); // Changed from type_annotation to type_node
+    if (!type_node) { // Changed variable name
         throw std::runtime_error("Expected type annotation for field '" + name->name + "' at " + location_to_string(this->current_location()));
     }
 
@@ -366,7 +366,7 @@ std::unique_ptr<vyn::Declaration> DeclarationParser::parse_field_declaration() {
         }
     }
     // Using FieldDeclaration. isMutable is the opposite of isConst.
-    return std::make_unique<vyn::FieldDeclaration>(loc, std::move(name), std::move(type_annotation), std::move(initializer), !is_const_decl);
+    return std::make_unique<vyn::FieldDeclaration>(loc, std::move(name), std::move(type_node), std::move(initializer), !is_const_decl); // Changed variable name
 }
 
 // ClassDeclNode not in ast.hpp.
@@ -443,15 +443,15 @@ std::unique_ptr<vyn::EnumVariantNode> DeclarationParser::parse_enum_variant() { 
     }
     auto name = std::make_unique<vyn::Identifier>(loc, this->consume().lexeme);
 
-    std::vector<vyn::TypeAnnotationPtr> types; // For tuple-like variants: Variant(Type1, Type2)
+    std::vector<vyn::TypeNodePtr> types; // Changed from TypeAnnotationPtr to TypeNodePtr. For tuple-like variants: Variant(Type1, Type2)
     if (this->match(vyn::TokenType::LPAREN)) {
         if (this->peek().type != vyn::TokenType::RPAREN) { 
             do {
-                auto type_node = this->type_parser_.parse();
-                if (!type_node) {
+                auto current_type_node = this->type_parser_.parse(); // Changed variable name
+                if (!current_type_node) { // Changed variable name
                     throw std::runtime_error("Expected type in enum variant parameter list for '" + name->name + "' at " + location_to_string(this->current_location()));
                 }
-                types.push_back(std::move(type_node));
+                types.push_back(std::move(current_type_node)); // Changed variable name
             } while (this->match(vyn::TokenType::COMMA));
         }
         this->expect(vyn::TokenType::RPAREN);
@@ -470,7 +470,7 @@ std::unique_ptr<vyn::Declaration> DeclarationParser::parse_enum_declaration() {
     }
     auto name = std::make_unique<vyn::Identifier>(this->current_location(), this->consume().lexeme);
 
-    auto generic_params = this->parse_generic_params(); // Now returns std::vector<std::unique_ptr<vyn::GenericParamNode>>
+    auto generic_params = this->parse_generic_params(); // TypeAliasDeclaration in ast.hpp does not take generic_params.
 
     this->expect(vyn::TokenType::LBRACE);
     this->skip_comments_and_newlines();
@@ -520,16 +520,16 @@ std::unique_ptr<vyn::TypeAliasDeclaration> DeclarationParser::parse_type_alias_d
 
     this->expect(vyn::TokenType::EQ);
 
-    auto aliased_type = this->type_parser_.parse(); // Returns TypeAnnotationPtr
-    if (!aliased_type) {
+    auto aliased_type_node = this->type_parser_.parse(); // Changed from aliased_type to aliased_type_node
+    if (!aliased_type_node) { // Changed variable name
         throw std::runtime_error("Expected type definition after '=' for type alias '" + name->name + "' at " + location_to_string(this->current_location()));
     }
 
     this->expect(vyn::TokenType::SEMICOLON);
 
-    // vyn::TypeAliasDeclaration constructor: loc, name, typeAnnotation
+    // vyn::TypeAliasDeclaration constructor: loc, name, aliasedTypeNode
     // The generic_params are parsed but not used here.
-    return std::make_unique<vyn::TypeAliasDeclaration>(loc, std::move(name), std::move(aliased_type));
+    return std::make_unique<vyn::TypeAliasDeclaration>(loc, std::move(name), std::move(aliased_type_node)); // Changed variable name
 }
 
 // GlobalVarDeclNode not in ast.hpp. VariableDeclaration is the one.
@@ -577,10 +577,10 @@ std::unique_ptr<vyn::VariableDeclaration> DeclarationParser::parse_global_var_de
     std::unique_ptr<vyn::Identifier> identifier(static_cast<vyn::Identifier*>(pattern_expr.release()));
 
 
-    vyn::TypeAnnotationPtr type_annotation = nullptr;
+    vyn::TypeNodePtr type_node = nullptr; // Changed from TypeAnnotationPtr to TypeNodePtr, and variable name
     if (this->match(vyn::TokenType::COLON)) {
-        type_annotation = this->type_parser_.parse();
-        if (!type_annotation) {
+        type_node = this->type_parser_.parse(); // Changed variable name
+        if (!type_node) { // Changed variable name
             throw std::runtime_error("Expected type annotation after ':' in global variable/constant declaration at " + location_to_string(this->current_location()));
         }
     }
@@ -599,8 +599,8 @@ std::unique_ptr<vyn::VariableDeclaration> DeclarationParser::parse_global_var_de
 
     this->expect(vyn::TokenType::SEMICOLON);
 
-    // vyn::VariableDeclaration constructor: loc, id, isConst, typeAnnotation, init
-    return std::make_unique<vyn::VariableDeclaration>(loc, std::move(identifier), is_const_decl, std::move(type_annotation), std::move(initializer));
+    // vyn::VariableDeclaration constructor: loc, id, isConst, typeNode, init
+    return std::make_unique<vyn::VariableDeclaration>(loc, std::move(identifier), is_const_decl, std::move(type_node), std::move(initializer)); // Changed variable name
 }
 
 } // End namespace vyn

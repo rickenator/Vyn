@@ -76,11 +76,11 @@ namespace vyn { // Changed Vyn to vyn
         ExpressionParser& expr_parser_; 
     public:
         TypeParser(const std::vector<vyn::token::Token>& tokens, size_t& pos, const std::string& file_path, ExpressionParser& expr_parser); // Changed Vyn::Token
-        vyn::TypeAnnotationPtr parse(); // Changed Vyn::AST::TypePtr to vyn::TypeAnnotationPtr
+        vyn::TypeNodePtr parse(); // Changed Vyn::AST::TypePtr to vyn::TypeNodePtr
 
     private:
-        vyn::TypeAnnotationPtr parse_base_type(); // Changed Vyn::AST::TypePtr to vyn::TypeAnnotationPtr
-        vyn::TypeAnnotationPtr parse_postfix_type(vyn::TypeAnnotationPtr base_type); // Changed Vyn::AST::TypePtr to vyn::TypeAnnotationPtr
+        vyn::TypeNodePtr parse_base_type(); // Changed Vyn::AST::TypePtr to vyn::TypeNodePtr
+        vyn::TypeNodePtr parse_postfix_type(vyn::TypeNodePtr base_type); // Changed Vyn::AST::TypePtr to vyn::TypeNodePtr
     };
 
     class StatementParser : public BaseParser {
