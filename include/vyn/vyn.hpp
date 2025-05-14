@@ -6,7 +6,7 @@
 #include "ast.hpp"
 #include "token.hpp"
 
-// EBNF Grammar of the Vyn Language
+/* // EBNF Grammar of the Vyn Language
 //
 // Conventions:
 //   IDENTIFIER:        Represents a valid identifier token.
@@ -246,5 +246,6 @@ lifetime               ::= APOSTROPHE IDENTIFIER
 // Explicit type arguments on the literal itself (e.g. 'StructName<T> { ... }')
 // are not supported by the parser for struct literals; type arguments are resolved
 // from context or the variable's type annotation.
+*/
 
 #endif // VYN_HPP
