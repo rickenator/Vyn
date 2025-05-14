@@ -5,40 +5,41 @@
 #include <memory>
 #include <stdexcept> // Required for std::runtime_error
 
-namespace Vyn {
+namespace vyn { // Changed Vyn to vyn
 
 // Constructor for ModuleParser
-ModuleParser::ModuleParser(const std::vector<Vyn::Token>& tokens, size_t& pos, const std::string& file_path, DeclarationParser& declaration_parser)
+ModuleParser::ModuleParser(const std::vector<vyn::token::Token>& tokens, size_t& pos, const std::string& file_path, DeclarationParser& declaration_parser) // Changed Vyn::Token to vyn::token::Token
     : BaseParser(tokens, pos, file_path), declaration_parser_(declaration_parser) {}
 
-std::unique_ptr<Vyn::AST::ModuleNode> ModuleParser::parse() {
-    Vyn::AST::SourceLocation module_loc = this->current_location(); // Get location at the start of the module
-    std::vector<std::unique_ptr<Vyn::AST::DeclNode>> declarations_decl_type;
+std::unique_ptr<vyn::Module> ModuleParser::parse() { // Changed Vyn::AST::ModuleNode to vyn::Module
+    vyn::SourceLocation module_loc = this->current_location(); // Get location at the start of the module // Changed Vyn::AST::SourceLocation to vyn::SourceLocation
+    std::vector<vyn::DeclPtr> declarations_decl_type; // Changed Vyn::AST::DeclNode to vyn::DeclPtr
 
     this->skip_comments_and_newlines(); // Skip any leading comments or newlines
 
-    while (this->peek().type != Vyn::TokenType::END_OF_FILE) { // Corrected EOF_TOKEN and peek call
-        Vyn::AST::SourceLocation decl_loc = this->current_location();
-        auto decl_node = this->declaration_parser_.parse(); // Corrected member access
+    while (this->peek().type != vyn::TokenType::END_OF_FILE) { // Changed Vyn::TokenType
+        // Vyn::AST::SourceLocation decl_loc = this->current_location(); // Not strictly needed if decl_node carries its own location
+        auto decl_node = this->declaration_parser_.parse(); 
 
         if (decl_node) {
             declarations_decl_type.push_back(std::move(decl_node));
         } else {
-            break;
+            // If parse returns nullptr, it might mean end of parsable content or an unrecoverable error.
+            // For now, assume it means no more declarations.
+            break; 
         }
         this->skip_comments_and_newlines(); // Skip stuff between declarations
     }
 
-    // Convert vector<unique_ptr<DeclNode>> to vector<unique_ptr<Node>>
-    std::vector<std::unique_ptr<Vyn::AST::Node>> declarations_node_type;
+    // Convert vector<unique_ptr<Declaration>> to vector<unique_ptr<Statement>>
+    // Module in ast.hpp expects std::vector<StmtPtr> body. Declaration derives from Statement.
+    std::vector<vyn::StmtPtr> statements_for_module;
     for (auto& decl : declarations_decl_type) {
-        declarations_node_type.push_back(std::move(decl));
+        statements_for_module.push_back(std::move(decl));
     }
 
-    // ModuleNode constructor in ast.hpp is: ModuleNode(SourceLocation loc, std::vector<std::unique_ptr<Node>> b, Node* p = nullptr)
-    // The current_file_path_ is part of the SourceLocation or managed internally by BaseParser.
-    // It is not a direct argument to ModuleNode constructor based on ast.hpp
-    return std::make_unique<Vyn::AST::ModuleNode>(module_loc, std::move(declarations_node_type));
+    // vyn::Module constructor in ast.hpp is: Module(SourceLocation loc, std::vector<StmtPtr> body);
+    return std::make_unique<vyn::Module>(module_loc, std::move(statements_for_module));
 }
 
-} // End namespace Vyn
+} // End namespace vyn

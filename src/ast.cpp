@@ -1,1162 +1,865 @@
 // Implementations for AST nodes
-// Note: Most of these are just placeholders and need to be implemented correctly.
 
 #include <sstream>
 #include <stdexcept> // Required for std::runtime_error
 #include "vyn/ast.hpp"
-#include "vyn/token.hpp" // Required for token_type_to_string
+#include "vyn/token.hpp" // For token_type_to_string, assuming it exists
 
-namespace Vyn::AST {
+namespace vyn {
 
-    // SourceLocation
-    // Constructor is defined inline in ast.hpp
-    // toString() was not declared in ast.hpp for SourceLocation struct
+// Module (was Program)
+Module::Module(SourceLocation loc, std::vector<StmtPtr> body_stmts) 
+    : Node(loc), body(std::move(body_stmts)) {}
 
-    // Node
-    // Constructor is defined inline in ast.hpp
+NodeType Module::getType() const { 
+    return NodeType::MODULE; 
+}
 
-    // Literal Nodes
-    IntLiteralNode::IntLiteralNode(SourceLocation loc, long long val, Node* p) : LiteralNode(NodeType::INT_LITERAL, std::move(loc), p), value(val) {}
-    void IntLiteralNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string IntLiteralNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "IntLiteralNode(" << value << ")";
-        return ss.str();
-    }
-
-    FloatLiteralNode::FloatLiteralNode(SourceLocation loc, double val, Node* p) : LiteralNode(NodeType::FLOAT_LITERAL, std::move(loc), p), value(val) {}
-    void FloatLiteralNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string FloatLiteralNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "FloatLiteralNode(" << value << ")";
-        return ss.str();
-    }
-
-    StringLiteralNode::StringLiteralNode(SourceLocation loc, std::string val, Node* p) : LiteralNode(NodeType::STRING_LITERAL, std::move(loc), p), value(std::move(val)) {}
-    void StringLiteralNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string StringLiteralNode::toString(int indent) const {
-        std::stringstream ss;
-        // Correctly escape special characters in the string if necessary, for now, simple representation
-        ss << "StringLiteralNode(\"" << value << "\")";
-        return ss.str();
-    }
-
-    CharLiteralNode::CharLiteralNode(SourceLocation loc, char val, Node* p) : LiteralNode(NodeType::CHAR_LITERAL, std::move(loc), p), value(val) {}
-    void CharLiteralNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string CharLiteralNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "CharLiteralNode(\'" << value << "\')";
-        return ss.str();
-    }
-
-    BoolLiteralNode::BoolLiteralNode(SourceLocation loc, bool val, Node* p) : LiteralNode(NodeType::BOOL_LITERAL, std::move(loc), p), value(val) {}
-    void BoolLiteralNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string BoolLiteralNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "BoolLiteralNode(" << (value ? "true" : "false") << ")";
-        return ss.str();
-    }
-
-    NullLiteralNode::NullLiteralNode(SourceLocation loc, Node* p) : LiteralNode(NodeType::NULL_LITERAL, std::move(loc), p) {}
-    void NullLiteralNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string NullLiteralNode::toString(int indent) const {
-        return "NullLiteralNode(null)";
-    }
-
-    IdentifierNode::IdentifierNode(SourceLocation loc, std::string n, Node* p) : ExprNode(NodeType::IDENTIFIER, std::move(loc), p), name(std::move(n)) {}
-    void IdentifierNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string IdentifierNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "IdentifierNode(" << name << ")";
-        return ss.str();
-    }
-
-    PathNode::PathNode(SourceLocation loc, std::vector<std::unique_ptr<IdentifierNode>> segs, Node* p) : Node(NodeType::PATH, std::move(loc), p), segments(std::move(segs)) {}
-    void PathNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string PathNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "PathNode(";\
-        for (size_t i = 0; i < segments.size(); ++i) {
-            if (segments[i]) {
-                ss << segments[i]->toString(indent);
-            } else {
-                ss << "<null_segment>";
-            }
-            if (i < segments.size() - 1) {
-                ss << "::";
-            }
+std::string Module::toString() const {
+    std::stringstream ss;
+    ss << "Module:\\n"; // Escaped newline
+    for (const auto& stmt : body) {
+        if (stmt) {
+            ss << stmt->toString(); // Assuming no indent needed based on prior changes
         }
-        ss << ")";
-        return ss.str();
     }
-    // getPathString implementation
-    std::string PathNode::getPathString() const {
-        std::string path_str;
-        for (size_t i = 0; i < segments.size(); ++i) {
-            if (segments[i]) {
-                path_str += segments[i]->name;
-            }
-            if (i < segments.size() - 1) {
-                path_str += "::";
-            }
-        }
-        return path_str;
-    }
+    return ss.str();
+}
 
-    TupleLiteralNode::TupleLiteralNode(SourceLocation loc, std::vector<std::unique_ptr<ExprNode>> elems, Node* p) : ExprNode(NodeType::TUPLE_LITERAL, std::move(loc), p), elements(std::move(elems)) {}
-    void TupleLiteralNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string TupleLiteralNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "TupleLiteralNode(";
-        for (size_t i = 0; i < elements.size(); ++i) {
-            if (elements[i]) {
-                ss << elements[i]->toString(indent);
-            } else {
-                ss << "<null_element>";
-            }
-            if (i < elements.size() - 1) {
-                ss << ", ";
-            }
-        }
-        ss << ")";
-        return ss.str();
-    }
+void Module::accept(Visitor& visitor) { 
+    visitor.visit(this); 
+}
 
-    // ArrayLiteralNode - Assuming definition in ast.hpp like:
-    // class ArrayLiteralNode : public ExprNode {
-    // public:
-    //     std::vector<std::unique_ptr<ExprNode>> elements;
-    //     ArrayLiteralNode(SourceLocation loc, std::vector<std::unique_ptr<ExprNode>> elems, Node* p = nullptr);
-    //     void accept(Visitor& visitor) override;
-    //     std::string toString(int indent = 0) const override;
-    // };
-    // And NodeType::ARRAY_LITERAL exists
-    ArrayLiteralNode::ArrayLiteralNode(SourceLocation loc, std::vector<std::unique_ptr<ExprNode>> elems, Node* p) : ExprNode(NodeType::ARRAY_LITERAL, std::move(loc), p), elements(std::move(elems)) {}
-    void ArrayLiteralNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string ArrayLiteralNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "ArrayLiteralNode([";\
-        for (size_t i = 0; i < elements.size(); ++i) {
-            if (elements[i]) ss << elements[i]->toString(indent); else ss << "<null>";
-            if (i < elements.size() - 1) {
-                ss << ", ";
-            }
-        }
-        ss << "])";
-        return ss.str();
-    }
-    
-    StructLiteralField::StructLiteralField(SourceLocation loc, std::unique_ptr<IdentifierNode> field_name, std::unique_ptr<ExprNode> field_value)
-        : location(std::move(loc)), name(std::move(field_name)), value(std::move(field_value)) {}
+// Identifier
+Identifier::Identifier(SourceLocation loc, std::string n) 
+    : Expression(loc), name(std::move(n)) {} 
 
-    std::string StructLiteralField::toString(int indent) const {
-        std::stringstream ss;
-        ss << std::string(indent, ' ');
-        if (name) ss << name->toString(0); else ss << "<null_field_name>";
+NodeType Identifier::getType() const { 
+    return NodeType::IDENTIFIER; 
+}
+
+std::string Identifier::toString() const {
+    std::stringstream ss;
+    ss << "Identifier(" << name << ")";
+    return ss.str();
+}
+
+void Identifier::accept(Visitor& visitor) { 
+    visitor.visit(this); 
+}
+
+// Literal Nodes
+// IntegerLiteral (was IntLiteral)
+IntegerLiteral::IntegerLiteral(SourceLocation loc, int64_t val) 
+    : Expression(loc), value(val) {} 
+
+NodeType IntegerLiteral::getType() const { 
+    return NodeType::INTEGER_LITERAL; 
+}
+
+std::string IntegerLiteral::toString() const {
+    std::stringstream ss;
+    ss << "IntegerLiteral(" << value << ")"; 
+    return ss.str();
+}
+
+void IntegerLiteral::accept(Visitor& visitor) { 
+    visitor.visit(this); 
+}
+
+// FloatLiteral
+FloatLiteral::FloatLiteral(SourceLocation loc, double val) 
+    : Expression(loc), value(val) {} 
+
+NodeType FloatLiteral::getType() const { 
+    return NodeType::FLOAT_LITERAL; 
+}
+
+std::string FloatLiteral::toString() const {
+    std::stringstream ss;
+    ss << "FloatLiteral(" << value << ")";
+    return ss.str();
+}
+
+void FloatLiteral::accept(Visitor& visitor) { 
+    visitor.visit(this); 
+}
+
+// StringLiteral
+StringLiteral::StringLiteral(SourceLocation loc, std::string val) 
+    : Expression(loc), value(std::move(val)) {} 
+
+NodeType StringLiteral::getType() const { 
+    return NodeType::STRING_LITERAL; 
+}
+
+std::string StringLiteral::toString() const {
+    std::stringstream ss;
+    ss << "StringLiteral(\\\"" << value << "\\\")"; // Escaped quotes and backslash
+    return ss.str();
+}
+
+void StringLiteral::accept(Visitor& visitor) { 
+    visitor.visit(this); 
+}
+
+// BooleanLiteral (was BoolLiteral)
+BooleanLiteral::BooleanLiteral(SourceLocation loc, bool val) 
+    : Expression(loc), value(val) {} 
+
+NodeType BooleanLiteral::getType() const { 
+    return NodeType::BOOLEAN_LITERAL; 
+}
+
+std::string BooleanLiteral::toString() const {
+    std::stringstream ss;
+    ss << "BooleanLiteral(" << (value ? "true" : "false") << ")"; 
+    return ss.str();
+}
+
+void BooleanLiteral::accept(Visitor& visitor) { 
+    visitor.visit(this); 
+}
+
+// ArrayLiteral - NEW
+ArrayLiteral::ArrayLiteral(SourceLocation loc, std::vector<ExprPtr> elems)
+    : Expression(loc), elements(std::move(elems)) {}
+
+NodeType ArrayLiteral::getType() const {
+    return NodeType::ARRAY_LITERAL;
+}
+
+std::string ArrayLiteral::toString() const {
+    std::stringstream ss;
+    ss << "ArrayLiteral([";
+    for (size_t i = 0; i < elements.size(); ++i) {
+        if (elements[i]) ss << elements[i]->toString(); else ss << "<null_element>";
+        if (i < elements.size() - 1) ss << ", ";
+    }
+    ss << "])";
+    return ss.str();
+}
+
+void ArrayLiteral::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
+// ObjectLiteral - NEW 
+ObjectLiteral::ObjectLiteral(SourceLocation loc, std::vector<ObjectProperty> props)
+    : Expression(loc), properties(std::move(props)) {}
+
+NodeType ObjectLiteral::getType() const {
+    return NodeType::OBJECT_LITERAL;
+}
+
+std::string ObjectLiteral::toString() const {
+    std::stringstream ss;
+    ss << "ObjectLiteral({";
+    for (size_t i = 0; i < properties.size(); ++i) {
+        if (properties[i].key) ss << properties[i].key->toString(); else ss << "<null_key>";
         ss << ": ";
-        if (value) ss << value->toString(0); else ss << "<null_field_value>";
-        return ss.str();
-    }
-
-    StructLiteralNode::StructLiteralNode(SourceLocation loc, std::unique_ptr<TypeNode> struct_type, std::vector<StructLiteralField> flds, Node* p) : ExprNode(NodeType::STRUCT_LITERAL, std::move(loc), p), type(std::move(struct_type)), fields(std::move(flds)) {}
-    void StructLiteralNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string StructLiteralNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "StructLiteralNode(";
-        if (type) ss << type->toString(indent); else ss << "<null_type>";
-        ss << " {";
-        for (size_t i = 0; i < fields.size(); ++i) {
-            // Assuming StructLiteralField has a toString or is handled here
-            if(fields[i].name) ss << fields[i].name->toString(indent); else ss << "<null_name>";
-            ss << ": ";
-            if(fields[i].value) ss << fields[i].value->toString(indent); else ss << "<null_value>";
-            if (i < fields.size() - 1) {
-                ss << ", ";
-            }
-        }
-        ss << "})";
-        return ss.str();
-    }
-
-    UnaryOpNode::UnaryOpNode(SourceLocation loc, Vyn::TokenType o, std::unique_ptr<ExprNode> oper, Node* p)
-        : ExprNode(NodeType::UNARY_OP, std::move(loc), p), op(o), operand(std::move(oper)) {}
-
-    void UnaryOpNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string UnaryOpNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "UnaryOpNode(" << token_type_to_string(op) << ", ";
-        if (operand) ss << operand->toString(indent); else ss << "<null_operand>";
-        ss << ")";
-        return ss.str();
-    }
-
-    BinaryOpNode::BinaryOpNode(SourceLocation loc, Vyn::TokenType o, std::unique_ptr<ExprNode> l, std::unique_ptr<ExprNode> r, Node* p)
-        : ExprNode(NodeType::BINARY_OP, std::move(loc), p), op(o), left(std::move(l)), right(std::move(r)) {}
-
-    void BinaryOpNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string BinaryOpNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "BinaryOpNode(" << token_type_to_string(op) << ", ";
-        if (left) ss << left->toString(indent); else ss << "<null_left>";
-        ss << ", ";
-        if (right) ss << right->toString(indent); else ss << "<null_right>";
-        ss << ")";
-        return ss.str();
-    }
-
-    // CallNode in ast.cpp should be CallExprNode from ast.hpp
-    CallExprNode::CallExprNode(SourceLocation loc, std::unique_ptr<ExprNode> cal, std::vector<std::unique_ptr<ExprNode>> args, Node* p) : ExprNode(NodeType::CALL_EXPR, std::move(loc), p), callee(std::move(cal)), arguments(std::move(args)) {}
-    void CallExprNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string CallExprNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "CallExprNode(" ;
-        if (callee) ss << callee->toString(indent); else ss << "<null_callee>";
-        ss << "(";
-        for (size_t i = 0; i < arguments.size(); ++i) {
-            if (arguments[i]) ss << arguments[i]->toString(indent); else ss << "<null_arg>";
-            if (i < arguments.size() - 1) {
-                ss << ", ";
-            }
-        }
-        ss << "))";
-        return ss.str();
-    }
-
-    // IndexNode in ast.cpp should be ArrayAccessNode from ast.hpp
-    // Assuming NodeType::ARRAY_ACCESS exists
-    ArrayAccessNode::ArrayAccessNode(SourceLocation loc, std::unique_ptr<ExprNode> arr, std::unique_ptr<ExprNode> idx, Node* p) : ExprNode(NodeType::ARRAY_ACCESS, std::move(loc), p), array(std::move(arr)), index(std::move(idx)) {}
-    void ArrayAccessNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string ArrayAccessNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "ArrayAccessNode(";
-        if (array) ss << array->toString(indent); else ss << "<null_array>";
-        ss << "[";
-        if (index) ss << index->toString(indent); else ss << "<null_index>";
-        ss << "])";
-        return ss.str();
-    }
-
-    MemberAccessNode::MemberAccessNode(SourceLocation loc, std::unique_ptr<ExprNode> obj, std::unique_ptr<IdentifierNode> mem, Node* p) : ExprNode(NodeType::MEMBER_ACCESS, std::move(loc), p), object(std::move(obj)), member(std::move(mem)) {}
-    void MemberAccessNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string MemberAccessNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "MemberAccessNode(";\
-        if (object) ss << object->toString(indent); else ss << "<null_object>";
-        ss << ".";
-        if (member) ss << member->toString(indent); else ss << "<null_member>";
-        ss << ")";
-        return ss.str();
-    }
-
-    AssignmentNode::AssignmentNode(SourceLocation loc, std::unique_ptr<ExprNode> l, std::unique_ptr<ExprNode> r, Node* p)
-        : ExprNode(NodeType::ASSIGNMENT, std::move(loc), p), left(std::move(l)), right(std::move(r)) {}
-
-    void AssignmentNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-
-    std::string AssignmentNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "AssignmentNode(";\
-        if (left) ss << left->toString(indent); else ss << "<null_left>";
-        ss << " = ";
-        if (right) ss << right->toString(indent); else ss << "<null_right>";
-        ss << ")";
-        return ss.str();
-    }
-
-    IfStmtNode::IfStmtNode(SourceLocation loc, std::unique_ptr<ExprNode> cond, std::unique_ptr<BlockStmtNode> thenB, std::unique_ptr<StmtNode> elseB, Node* p) : StmtNode(NodeType::IF_STMT, std::move(loc), p), condition(std::move(cond)), thenBranch(std::move(thenB)), elseBranch(std::move(elseB)) {}
-    void IfStmtNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string IfStmtNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "IfStmtNode(if ";
-        if (condition) ss << condition->toString(indent); else ss << "<null_condition>";
-        ss << " then ";
-        if (thenBranch) ss << thenBranch->toString(indent); else ss << "<null_thenBranch>";
-        if (elseBranch) {
-            ss << " else " << elseBranch->toString(indent);
-        }
-        ss << ")";
-        return ss.str();
-    }
-
-    // BlockNode in ast.cpp should be BlockStmtNode from ast.hpp
-    // Assuming NodeType::BLOCK_STMT
-    BlockStmtNode::BlockStmtNode(SourceLocation loc, std::vector<std::unique_ptr<StmtNode>> stmts, Node* p) : StmtNode(NodeType::BLOCK_STMT, std::move(loc), p), statements(std::move(stmts)) {}
-    void BlockStmtNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string BlockStmtNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "BlockStmtNode({";\
-        for (const auto& stmt : statements) {
-            if (stmt) ss << stmt->toString(indent) << "; "; else ss << "<null_stmt>; ";
-        }
-        ss << "})";
-        return ss.str();
-    }
-
-    ExpressionStmtNode::ExpressionStmtNode(SourceLocation loc, std::unique_ptr<ExprNode> expr, Node* p)
-        : StmtNode(NodeType::EXPRESSION_STMT, std::move(loc), p), expression(std::move(expr)) {}
-
-    void ExpressionStmtNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-
-    std::string ExpressionStmtNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "ExpressionStmtNode(";\
-        if (expression) ss << expression->toString(indent); else ss << "<null_expression>";
-        ss << ")";
-        return ss.str();
-    }
-
-    VarDeclStmtNode::VarDeclStmtNode(SourceLocation loc, std::unique_ptr<PatternNode> pat, std::unique_ptr<TypeNode> ta, std::unique_ptr<ExprNode> init, bool mut, Node* p) : StmtNode(NodeType::VAR_DECL_STMT, std::move(loc), p), pattern(std::move(pat)), typeAnnotation(std::move(ta)), initializer(std::move(init)), isMut(mut) {}
-    void VarDeclStmtNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string VarDeclStmtNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "VarDeclStmtNode(" << (isMut ? "mut " : "let ");
-        if (pattern) ss << pattern->toString(indent); else ss << "<null_pattern>";
-        if (typeAnnotation) {
-            ss << ": " << typeAnnotation->toString(indent);
-        }
-        if (initializer) {
-            ss << " = " << initializer->toString(indent);
-        }
-        ss << ")";
-        return ss.str();
-    }
-
-    ParamNode::ParamNode(SourceLocation loc, bool ref, bool mut, std::unique_ptr<IdentifierNode> n, std::unique_ptr<TypeNode> ta, Node* p) : DeclNode(NodeType::PARAM, std::move(loc), p), isRef(ref), isMut(mut), name(std::move(n)), typeAnnotation(std::move(ta)) {}
-    void ParamNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string ParamNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "ParamNode(";
-        if (isRef) ss << "ref ";
-        if (isMut) ss << "mut ";
-        if (name) ss << name->toString(indent); else ss << "<null_name>";
-        if (typeAnnotation) {
-            ss << ": " << typeAnnotation->toString(indent);
-        }
-        ss << ")";
-        return ss.str();
-    }
-
-    GenericParamNode::GenericParamNode(SourceLocation loc, std::unique_ptr<IdentifierNode> param_name, std::vector<std::unique_ptr<TypeNode>> bounds, Node* p) : Node(NodeType::GENERIC_PARAM, std::move(loc), p), name(std::move(param_name)), trait_bounds(std::move(bounds)) {}
-    void GenericParamNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string GenericParamNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "GenericParamNode(";
-        if (name) ss << name->toString(indent); else ss << "<null_name>";
-        if (!trait_bounds.empty()) {
-            ss << ": ";
-            for (size_t i = 0; i < trait_bounds.size(); ++i) {
-                if (trait_bounds[i]) ss << trait_bounds[i]->toString(indent); else ss << "<null_bound>";
-                if (i < trait_bounds.size() - 1) ss << " + ";
-            }
-        }
-        ss << ")";
-        return ss.str();
-    }
-
-    FuncDeclNode::FuncDeclNode(SourceLocation loc, std::unique_ptr<IdentifierNode> func_name, std::vector<std::unique_ptr<GenericParamNode>> gen_params, std::vector<std::unique_ptr<ParamNode>> func_params, std::unique_ptr<TypeNode> ret_type, std::unique_ptr<BlockStmtNode> func_body, bool async, bool ext, Node* p)
-        : DeclNode(NodeType::FUNC_DECL, std::move(loc), p), name(std::move(func_name)), generic_params(std::move(gen_params)), params(std::move(func_params)), return_type(std::move(ret_type)), body(std::move(func_body)), is_async(async), is_extern(ext) {}
-    void FuncDeclNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string FuncDeclNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "FuncDeclNode(";
-        if (name) ss << name->toString(indent); else ss << "<null_name>";
-        if (!generic_params.empty()) {
-            ss << "<";
-            for (size_t i = 0; i < generic_params.size(); ++i) {
-                if (generic_params[i]) ss << generic_params[i]->toString(indent); else ss << "<null_gen_param>";
-                if (i < generic_params.size() - 1) ss << ", ";
-            }
-            ss << ">";
-        }
-        ss << "(";
-        for (size_t i = 0; i < params.size(); ++i) {
-            if (params[i]) ss << params[i]->toString(indent); else ss << "<null_param>";
-            if (i < params.size() - 1) {
-                ss << ", ";
-            }
-        }
-        ss << ")";
-        if (return_type) {
-            ss << " -> " << return_type->toString(indent);
-        }
-        if (body) {
-            ss << " " << body->toString(indent);
-        } else {
-            ss << " <extern_or_interface>";
-        }
-        ss << ")";
-        return ss.str();
-    }
-
-    // ReturnNode in ast.cpp should be ReturnStmtNode from ast.hpp
-    // Assuming NodeType::RETURN_STMT
-    ReturnStmtNode::ReturnStmtNode(SourceLocation loc, std::unique_ptr<ExprNode> val, Node* p) : StmtNode(NodeType::RETURN_STMT, std::move(loc), p), value(std::move(val)) {}
-    void ReturnStmtNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string ReturnStmtNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "ReturnStmtNode(return";\
-        if (value) {
-            ss << " " << value->toString(indent);
-        }
-        ss << ")";
-        return ss.str();
-    }
-
-    WhileStmtNode::WhileStmtNode(SourceLocation loc, std::unique_ptr<ExprNode> cond, std::unique_ptr<BlockStmtNode> b, Node* p)
-        : StmtNode(NodeType::WHILE_STMT, std::move(loc), p), condition(std::move(cond)), body(std::move(b)) {}
-
-    void WhileStmtNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-
-    std::string WhileStmtNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "WhileStmtNode(while ";\
-        if (condition) ss << condition->toString(indent); else ss << "<null_condition>";
-        ss << " do ";\
-        if (body) ss << body->toString(indent); else ss << "<null_body>";
-        ss << ")";
-        return ss.str();
-    }
-
-    ForStmtNode::ForStmtNode(SourceLocation loc, PatternPtr pat, ExprPtr iter, std::unique_ptr<BlockStmtNode> b, Node* p)
-        : StmtNode(NodeType::FOR_STMT, std::move(loc), p), pattern(std::move(pat)), iterable(std::move(iter)), body(std::move(b)) {}
-
-    void ForStmtNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-
-    std::string ForStmtNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "ForStmtNode(for ";\
-        if (pattern) ss << pattern->toString(indent); else ss << "<null_pattern>";
-        ss << " in ";\
-        if (iterable) ss << iterable->toString(indent); else ss << "<null_iterable>";
-        ss << " do ";\
-        if (body) ss << body->toString(indent); else ss << "<null_body>";
-        ss << ")";
-        return ss.str();
-    }
-
-    BreakStmtNode::BreakStmtNode(SourceLocation loc, Node* p)
-        : StmtNode(NodeType::BREAK_STMT, std::move(loc), p) {}
-
-    void BreakStmtNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-
-    std::string BreakStmtNode::toString(int indent) const {
-        return "BreakStmtNode(break)";
-    }
-
-    ContinueStmtNode::ContinueStmtNode(SourceLocation loc, Node* p)
-        : StmtNode(NodeType::CONTINUE_STMT, std::move(loc), p) {}
-
-    void ContinueStmtNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-
-    std::string ContinueStmtNode::toString(int indent) const {
-        return "ContinueStmtNode(continue)";
-    }
-
-    FieldDeclNode::FieldDeclNode(SourceLocation loc, std::unique_ptr<IdentifierNode> field_name, std::unique_ptr<TypeNode> type_ann, std::unique_ptr<ExprNode> init, bool is_mut, Node* p) : DeclNode(NodeType::FIELD_DECL, std::move(loc), p), name(std::move(field_name)), type_annotation(std::move(type_ann)), initializer(std::move(init)), is_mutable(is_mut) {}
-    void FieldDeclNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string FieldDeclNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "FieldDeclNode(";
-        if (name) ss << name->toString(indent); else ss << "<null_name>";
-        ss << ": ";
-        if (type_annotation) ss << type_annotation->toString(indent); else ss << "<null_type>";
-        if (initializer) ss << " = " << initializer->toString(indent);
-        ss << (is_mutable ? " (mutable)" : "") << ")";
-        return ss.str();
-    }
-
-    StructDeclNode::StructDeclNode(SourceLocation loc, std::unique_ptr<IdentifierNode> struct_name, std::vector<std::unique_ptr<GenericParamNode>> gen_params, std::vector<std::unique_ptr<FieldDeclNode>> struct_fields, Node* p)
-        : DeclNode(NodeType::STRUCT_DECL, std::move(loc), p), name(std::move(struct_name)), generic_params(std::move(gen_params)), fields(std::move(struct_fields)) {}
-    void StructDeclNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string StructDeclNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "StructDeclNode(struct ";
-        if (name) ss << name->toString(indent); else ss << "<null_name>";
-        if (!generic_params.empty()) {
-            ss << "<";
-            for (size_t i = 0; i < generic_params.size(); ++i) {
-                if (generic_params[i]) ss << generic_params[i]->toString(indent); else ss << "<null_gen_param>";
-                if (i < generic_params.size() - 1) ss << ", ";
-            }
-            ss << ">";
-        }
-        ss << " {";
-        for (const auto& field : fields) {
-            if (field) ss << field->toString(indent) << "; "; else ss << "<null_field>; ";
-        }
-        ss << "})";
-        return ss.str();
-    }
-
-    ImplDeclNode::ImplDeclNode(SourceLocation loc, std::unique_ptr<TypeNode> tr_type, std::unique_ptr<TypeNode> slf_type, std::vector<std::unique_ptr<GenericParamNode>> gen_params, std::vector<std::unique_ptr<FuncDeclNode>> impl_methods, Node* p)
-        : DeclNode(NodeType::IMPL_DECL, std::move(loc), p), trait_type(std::move(tr_type)), self_type(std::move(slf_type)), generic_params(std::move(gen_params)), methods(std::move(impl_methods)) {}
-    void ImplDeclNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string ImplDeclNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "ImplDeclNode(impl ";
-        // Note: original ast.cpp ImplDeclNode had an 'identifier' field, ast.hpp does not. Following ast.hpp.
-        if (!generic_params.empty()) {
-            ss << "<";
-            for (size_t i = 0; i < generic_params.size(); ++i) {
-                if (generic_params[i]) ss << generic_params[i]->toString(indent); else ss << "<null_gen_param>";
-                if (i < generic_params.size() - 1) ss << ", ";
-            }
-            ss << "> ";
-        }
-        if (trait_type) {
-            ss << trait_type->toString(indent) << " for ";
-        }
-        if (self_type) ss << self_type->toString(indent); else ss << "<null_self_type>";
-        ss << " {";
-        for (const auto& member : methods) {
-            if (member) ss << member->toString(indent) << "; "; else ss << "<null_method>; ";
-        }
-        ss << "})";
-        return ss.str();
-    }
-
-    // TraitDeclNode - Assuming definition in ast.hpp
-    // class TraitDeclNode : public DeclNode {
-    // public:
-    //     std::unique_ptr<IdentifierNode> name;
-    //     std::vector<std::unique_ptr<GenericParamNode>> generic_params;
-    //     std::vector<std::unique_ptr<Node>> members; // Associated types, methods signatures
-    //     TraitDeclNode(SourceLocation loc, std::unique_ptr<IdentifierNode> n, std::vector<std::unique_ptr<GenericParamNode>> gp, std::vector<std::unique_ptr<Node>> mem, Node* p = nullptr);
-    //     void accept(Visitor& visitor) override;
-    //     std::string toString(int indent = 0) const override;
-    // };
-    // And NodeType::TRAIT_DECL exists
-    TraitDeclNode::TraitDeclNode(SourceLocation loc, std::unique_ptr<IdentifierNode> n, std::vector<std::unique_ptr<GenericParamNode>> gp, std::vector<std::unique_ptr<Node>> mem, Node* p) : DeclNode(NodeType::TRAIT_DECL, std::move(loc), p), name(std::move(n)), generic_params(std::move(gp)), members(std::move(mem)) {}
-    void TraitDeclNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string TraitDeclNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "TraitDeclNode(trait ";\
-        if (name) ss << name->toString(indent); else ss << "<null_name>";
-     if (!generic_params.empty()) {
-        ss << "<";\
-        for (size_t i = 0; i < generic_params.size(); ++i) {
-            if (generic_params[i]) ss << generic_params[i]->toString(indent); else ss << "<null_gen_param>";
-            if (i < generic_params.size() - 1) ss << ", ";
-        }
-        ss << ">";
-    }
-    ss << " {";\
-    for (const auto& member : members) {
-        if (member) ss << member->toString(indent) << "; "; else ss << "<null_member>; ";
+        if (properties[i].value) ss << properties[i].value->toString(); else ss << "<null_value>";
+        if (i < properties.size() - 1) ss << ", ";
     }
     ss << "})";
     return ss.str();
 }
 
-    ClassDeclNode::ClassDeclNode(SourceLocation loc, std::unique_ptr<IdentifierNode> class_name, std::vector<std::unique_ptr<GenericParamNode>> gen_params, std::vector<std::unique_ptr<DeclNode>> class_members, Node* p)
-        : DeclNode(NodeType::CLASS_DECL, std::move(loc), p), name(std::move(class_name)), generic_params(std::move(gen_params)), members(std::move(class_members)) {}
+void ObjectLiteral::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
 
-    void ClassDeclNode::accept(Visitor& visitor) {
-        visitor.visit(static_cast<DeclNode*>(this));
+
+// Expression Nodes
+// UnaryExpression
+UnaryExpression::UnaryExpression(SourceLocation loc, const vyn::token::Token& op_token, ExprPtr oper)
+    : Expression(loc), op(op_token), operand(std::move(oper)) {}
+
+NodeType UnaryExpression::getType() const { 
+    return NodeType::UNARY_EXPRESSION; 
+}
+
+std::string UnaryExpression::toString() const {
+    std::stringstream ss;
+    ss << "UnaryExpression(" << vyn::token_type_to_string(op.type) << ", "; 
+    if (operand) ss << operand->toString(); else ss << "<null_operand>";
+    ss << ")";
+    return ss.str();
+}
+
+void UnaryExpression::accept(Visitor& visitor) { 
+    visitor.visit(this); 
+}
+
+// BinaryExpression
+BinaryExpression::BinaryExpression(SourceLocation loc, ExprPtr l, const vyn::token::Token& op_token, ExprPtr r)
+    : Expression(loc), left(std::move(l)), op(op_token), right(std::move(r)) {}
+
+NodeType BinaryExpression::getType() const { 
+    return NodeType::BINARY_EXPRESSION; 
+}
+
+std::string BinaryExpression::toString() const {
+    std::stringstream ss;
+    ss << "BinaryExpression(";
+    if (left) ss << left->toString(); else ss << "<null_left>";
+    ss << ", " << vyn::token_type_to_string(op.type) << ", ";
+    if (right) ss << right->toString(); else ss << "<null_right>";
+    ss << ")";
+    return ss.str();
+}
+
+void BinaryExpression::accept(Visitor& visitor) { 
+    visitor.visit(this); 
+}
+
+// AssignmentExpression
+AssignmentExpression::AssignmentExpression(SourceLocation loc, ExprPtr l, const vyn::token::Token& op_token, ExprPtr r)
+    : Expression(loc), left(std::move(l)), op(op_token), right(std::move(r)) {}
+
+NodeType AssignmentExpression::getType() const { 
+    return NodeType::ASSIGNMENT_EXPRESSION; 
+}
+
+std::string AssignmentExpression::toString() const {
+    std::stringstream ss;
+    ss << "AssignmentExpression(";
+    if (left) ss << left->toString(); else ss << "<null_left>";
+    ss << ", " << vyn::token_type_to_string(op.type) << ", ";
+    if (right) ss << right->toString(); else ss << "<null_right>";
+    ss << ")";
+    return ss.str();
+}
+
+void AssignmentExpression::accept(Visitor& visitor) { 
+    visitor.visit(this); 
+}
+
+// CallExpression
+CallExpression::CallExpression(SourceLocation loc, ExprPtr callee_expr, std::vector<ExprPtr> args_list)
+    : Expression(loc), callee(std::move(callee_expr)), arguments(std::move(args_list)) {}
+
+NodeType CallExpression::getType() const { 
+    return NodeType::CALL_EXPRESSION; 
+}
+
+std::string CallExpression::toString() const {
+    std::stringstream ss;
+    ss << "CallExpression(";
+    if (callee) ss << callee->toString(); else ss << "<null_callee>";
+    ss << "(";
+    for (size_t i = 0; i < arguments.size(); ++i) {
+        if (arguments[i]) ss << arguments[i]->toString(); else ss << "<null_arg>";
+        if (i < arguments.size() - 1) ss << ", ";
     }
+    ss << "))";
+    return ss.str();
+}
 
-    std::string ClassDeclNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "ClassDeclNode(class ";\
-        if (name) ss << name->toString(indent); else ss << "<null_name>";
-        if (!generic_params.empty()) {
-            ss << "<";\
-            for (size_t i = 0; i < generic_params.size(); ++i) {
-                if (generic_params[i]) ss << generic_params[i]->toString(indent); else ss << "<null_gen_param>";
-                if (i < generic_params.size() - 1) ss << ", ";
-            }
-            ss << ">";
+void CallExpression::accept(Visitor& visitor) { 
+    visitor.visit(this); 
+}
+
+// MemberExpression (was MemberAccessExpression)
+MemberExpression::MemberExpression(SourceLocation loc, ExprPtr obj, ExprPtr prop, bool comp) 
+    : Expression(loc), object(std::move(obj)), property(std::move(prop)), computed(comp) {} 
+
+NodeType MemberExpression::getType() const { 
+    return NodeType::MEMBER_EXPRESSION; 
+}
+
+std::string MemberExpression::toString() const {
+    std::stringstream ss;
+    ss << "MemberExpression(";
+    if (object) ss << object->toString(); else ss << "<null_object>";
+    ss << (computed ? "[" : ".");
+    if (property) ss << property->toString(); else ss << "<null_property>";
+    if (computed) ss << "]";
+    ss << ")";
+    return ss.str();
+}
+
+void MemberExpression::accept(Visitor& visitor) { 
+    visitor.visit(this); 
+}
+
+// Statement Nodes
+// BlockStatement (was BlockStmtNode)
+BlockStatement::BlockStatement(SourceLocation loc, std::vector<StmtPtr> stmts) 
+    : Statement(loc), body(std::move(stmts)) {} 
+
+NodeType BlockStatement::getType() const { 
+    return NodeType::BLOCK_STATEMENT; 
+}
+
+std::string BlockStatement::toString() const {
+    std::stringstream ss;
+    ss << "BlockStatement({";
+    if (!body.empty()) ss << "\\n"; // Escaped newline
+    for (const auto& stmt : body) {
+        if (stmt) ss << stmt->toString(); else ss << "<null_stmt>";
+        ss << ";\\n"; // Escaped newline
+    }
+    ss << "})";
+    return ss.str();
+}
+
+void BlockStatement::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
+// ExpressionStatement (was ExpressionStmtNode)
+ExpressionStatement::ExpressionStatement(SourceLocation loc, ExprPtr expr) 
+    : Statement(loc), expression(std::move(expr)) {} 
+
+NodeType ExpressionStatement::getType() const { 
+    return NodeType::EXPRESSION_STATEMENT; 
+}
+
+std::string ExpressionStatement::toString() const {
+    std::stringstream ss;
+    ss << "ExpressionStatement(";
+    if (expression) ss << expression->toString(); else ss << "<null_expression>";
+    ss << ")";
+    return ss.str();
+}
+
+void ExpressionStatement::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
+// IfStatement (was IfStmtNode)
+IfStatement::IfStatement(SourceLocation loc, ExprPtr cond, StmtPtr thenB, StmtPtr elseB) 
+    : Statement(loc), test(std::move(cond)), consequent(std::move(thenB)), alternate(std::move(elseB)) {} 
+
+NodeType IfStatement::getType() const { 
+    return NodeType::IF_STATEMENT; 
+}
+
+std::string IfStatement::toString() const {
+    std::stringstream ss;
+    ss << "IfStatement(if ";
+    if (test) ss << test->toString(); else ss << "<null_test>";
+    ss << " then ";
+    if (consequent) ss << consequent->toString(); else ss << "<null_consequent>";
+    if (alternate) {
+        ss << " else " << alternate->toString();
+    }
+    ss << ")";
+    return ss.str();
+}
+
+void IfStatement::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
+// ForStatement (was ForStmtNode) 
+ForStatement::ForStatement(SourceLocation loc, NodePtr i, ExprPtr t, ExprPtr u, StmtPtr b)
+    : Statement(loc), init(std::move(i)), test(std::move(t)), update(std::move(u)), body(std::move(b)) {}
+
+NodeType ForStatement::getType() const {
+    return NodeType::FOR_STATEMENT;
+}
+std::string ForStatement::toString() const {
+    std::stringstream ss;
+    ss << "ForStatement(for ";
+    if (init) ss << init->toString(); else ss << "<null_init>";
+    ss << "; ";
+    if (test) ss << test->toString(); else ss << "<null_test>";
+    ss << "; ";
+    if (update) ss << update->toString(); else ss << "<null_update>";
+    ss << " do ";
+    if (body) ss << body->toString(); else ss << "<null_body>";
+    ss << ")";
+    return ss.str();
+}
+void ForStatement::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
+// WhileStatement (was WhileStmtNode)
+WhileStatement::WhileStatement(SourceLocation loc, ExprPtr cond, StmtPtr b) 
+    : Statement(loc), test(std::move(cond)), body(std::move(b)) {} 
+
+NodeType WhileStatement::getType() const { 
+    return NodeType::WHILE_STATEMENT; 
+}
+
+std::string WhileStatement::toString() const {
+    std::stringstream ss;
+    ss << "WhileStatement(while ";
+    if (test) ss << test->toString(); else ss << "<null_test>";
+    ss << " do ";
+    if (body) ss << body->toString(); else ss << "<null_body>";
+    ss << ")";
+    return ss.str();
+}
+void WhileStatement::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
+// ReturnStatement (was ReturnStmtNode)
+ReturnStatement::ReturnStatement(SourceLocation loc, ExprPtr val) 
+    : Statement(loc), argument(std::move(val)) {} 
+
+NodeType ReturnStatement::getType() const { 
+    return NodeType::RETURN_STATEMENT; 
+}
+
+std::string ReturnStatement::toString() const {
+    std::stringstream ss;
+    ss << "ReturnStatement(return";
+    if (argument) {
+        ss << " " << argument->toString();
+    }
+    ss << ")";
+    return ss.str();
+}
+void ReturnStatement::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
+// BreakStatement (was BreakStmtNode)
+BreakStatement::BreakStatement(SourceLocation loc) 
+    : Statement(loc) {} 
+
+NodeType BreakStatement::getType() const { 
+    return NodeType::BREAK_STATEMENT; 
+}
+
+std::string BreakStatement::toString() const {
+    return "BreakStatement(break)";
+}
+void BreakStatement::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
+// ContinueStatement (was ContinueStmtNode)
+ContinueStatement::ContinueStatement(SourceLocation loc) 
+    : Statement(loc) {} 
+
+NodeType ContinueStatement::getType() const { 
+    return NodeType::CONTINUE_STATEMENT; 
+}
+
+std::string ContinueStatement::toString() const {
+    return "ContinueStatement(continue)";
+}
+void ContinueStatement::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
+// --- Declarations ---
+// VariableDeclaration (was VarDeclStmtNode)
+VariableDeclaration::VariableDeclaration(SourceLocation loc, std::unique_ptr<Identifier> identifier, bool is_const, TypeAnnotationPtr type_ann, ExprPtr initial_value)
+    : Declaration(loc), id(std::move(identifier)), isConst(is_const), typeAnnotation(std::move(type_ann)), init(std::move(initial_value)) {}
+
+NodeType VariableDeclaration::getType() const {
+    return NodeType::VARIABLE_DECLARATION;
+}
+std::string VariableDeclaration::toString() const {
+    std::stringstream ss;
+    ss << "VariableDeclaration(" << (isConst ? "const " : "let "); // Assuming 'let' for non-const
+    if (id) ss << id->toString(); else ss << "<null_id>";
+    if (typeAnnotation) {
+        ss << ": " << typeAnnotation->toString();
+    }
+    if (init) {
+        ss << " = " << init->toString();
+    }
+    ss << ")";
+    return ss.str();
+}
+void VariableDeclaration::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
+// FunctionDeclaration (was FuncDeclNode)
+FunctionDeclaration::FunctionDeclaration(SourceLocation loc, std::unique_ptr<Identifier> identifier, std::vector<FunctionParameter> func_params, std::unique_ptr<BlockStatement> func_body, bool is_async, TypeAnnotationPtr return_type)
+    : Declaration(loc), id(std::move(identifier)), params(std::move(func_params)), body(std::move(func_body)), isAsync(is_async), returnType(std::move(return_type)) {}
+
+NodeType FunctionDeclaration::getType() const {
+    return NodeType::FUNCTION_DECLARATION;
+}
+std::string FunctionDeclaration::toString() const {
+    std::stringstream ss;
+    ss << "FunctionDeclaration(" << (isAsync ? "async " : "") << "fn ";
+    if (id) ss << id->toString(); else ss << "<null_id>";
+    ss << "(";
+    for (size_t i = 0; i < params.size(); ++i) {
+        if (params[i].name) ss << params[i].name->toString(); else ss << "<null_param_name>";
+        if (params[i].typeAnnotation) ss << ": " << params[i].typeAnnotation->toString();
+        if (i < params.size() - 1) ss << ", ";
+    }
+    ss << ")";
+    if (returnType) ss << " -> " << returnType->toString();
+    if (body) ss << " " << body->toString(); else ss << " <no_body_or_extern>"; // extern functions might not have a body
+    ss << ")";
+    return ss.str();
+}
+void FunctionDeclaration::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
+// TypeAliasDeclaration (was TypeAliasDeclNode)
+TypeAliasDeclaration::TypeAliasDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, TypeAnnotationPtr ta)
+    : Declaration(loc), name(std::move(n)), typeAnnotation(std::move(ta)) {}
+
+NodeType TypeAliasDeclaration::getType() const {
+    return NodeType::TYPE_ALIAS_DECLARATION;
+}
+std::string TypeAliasDeclaration::toString() const {
+    std::stringstream ss;
+    ss << "TypeAliasDeclaration(type ";
+    if (name) ss << name->toString(); else ss << "<null_name>";
+    ss << " = ";
+    if (typeAnnotation) ss << typeAnnotation->toString(); else ss << "<null_type_annotation>";
+    ss << ")";
+    return ss.str();
+}
+void TypeAliasDeclaration::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
+// ImportDeclaration (was ImportDeclNode)
+ImportDeclaration::ImportDeclaration(SourceLocation loc, std::unique_ptr<StringLiteral> src, std::vector<ImportSpecifier> specs, std::unique_ptr<Identifier> default_imp, std::unique_ptr<Identifier> namespace_imp)
+    : Declaration(loc), source(std::move(src)), specifiers(std::move(specs)), defaultImport(std::move(default_imp)), namespaceImport(std::move(namespace_imp)) {}
+
+NodeType ImportDeclaration::getType() const {
+    return NodeType::IMPORT_DECLARATION;
+}
+std::string ImportDeclaration::toString() const {
+    std::stringstream ss;
+    ss << "ImportDeclaration(import ";
+    bool needs_comma = false;
+    if (defaultImport) {
+        ss << defaultImport->toString();
+        needs_comma = true;
+    }
+    if (namespaceImport) {
+        if (needs_comma) ss << ", ";
+        ss << "* as " << namespaceImport->toString();
+        needs_comma = true;
+    }
+    if (!specifiers.empty()) {
+        if (needs_comma) ss << ", ";
+        ss << "{";
+        for (size_t i = 0; i < specifiers.size(); ++i) {
+            if (specifiers[i].importedName) ss << specifiers[i].importedName->toString();
+            if (specifiers[i].localName) ss << " as " << specifiers[i].localName->toString();
+            if (i < specifiers.size() - 1) ss << ", ";
         }
-        ss << " {";\
-        for (const auto& member : members) {
-            if (member) ss << member->toString(indent) << "; "; else ss << "<null_member>; ";
+        ss << "}";
+        needs_comma = true;
+    }
+    if (defaultImport || namespaceImport || !specifiers.empty()) {
+         ss << " from ";
+    }
+    if (source) ss << source->toString(); else ss << "<null_source>";
+    ss << ")";
+    return ss.str();
+}
+void ImportDeclaration::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
+// --- Other ---
+// TypeAnnotation 
+// Constructor for simple type: MyType
+TypeAnnotation::TypeAnnotation(SourceLocation loc, std::unique_ptr<Identifier> name)
+    : Node(loc), simpleTypeName(std::move(name)), arrayElementType(nullptr), genericBaseType(nullptr) {}
+
+// Constructor for array type: T[]
+TypeAnnotation::TypeAnnotation(SourceLocation loc, TypeAnnotationPtr elementType, bool /*isArrayMarker*/) 
+    : Node(loc), simpleTypeName(nullptr), arrayElementType(std::move(elementType)), genericBaseType(nullptr) {}
+
+// Constructor for generic type: List<T>
+TypeAnnotation::TypeAnnotation(SourceLocation loc, std::unique_ptr<Identifier> base, std::vector<TypeAnnotationPtr> args)
+    : Node(loc), simpleTypeName(nullptr), arrayElementType(nullptr), genericBaseType(std::move(base)), genericTypeArguments(std::move(args)) {}
+
+
+NodeType TypeAnnotation::getType() const {
+    return NodeType::TYPE_ANNOTATION;
+}
+
+std::string TypeAnnotation::toString() const {
+    std::stringstream ss;
+    if (isSimpleType() && simpleTypeName) {
+        ss << simpleTypeName->toString();
+    } else if (isArrayType() && arrayElementType) {
+        ss << arrayElementType->toString() << "[]";
+    } else if (isGenericType() && genericBaseType) {
+        ss << genericBaseType->toString() << "<";
+        for (size_t i = 0; i < genericTypeArguments.size(); ++i) {
+            if (genericTypeArguments[i]) ss << genericTypeArguments[i]->toString(); else ss << "<null_type_arg>";
+            if (i < genericTypeArguments.size() - 1) ss << ", ";
         }
-        ss << "})";
-        return ss.str();
+        ss << ">";
+    } else {
+        // This case should ideally not be reached if constructors are used properly
+        ss << "<invalid_type_annotation_state>";
     }
+    return ss.str();
+}
 
-    EnumVariantNode::EnumVariantNode(SourceLocation loc, std::unique_ptr<IdentifierNode> n, std::vector<std::unique_ptr<TypeNode>> t_params, Node* p) : Node(NodeType::ENUM_VARIANT, std::move(loc), p), name(std::move(n)), types(std::move(t_params)) {}
-    void EnumVariantNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string EnumVariantNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "EnumVariantNode(";
-        if (name) ss << name->toString(indent); else ss << "<null_name>";
-        if (!types.empty()) {
-            ss << "(";
-            for (size_t i = 0; i < types.size(); ++i) {
-                if (types[i]) ss << types[i]->toString(indent); else ss << "<null_type>";
-                if (i < types.size() - 1) ss << ", ";
-            }
-            ss << ")";
-        }
-        ss << ")";
-        return ss.str();
-    }
+void TypeAnnotation::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
 
-    EnumDeclNode::EnumDeclNode(SourceLocation loc, std::unique_ptr<IdentifierNode> n, std::vector<std::unique_ptr<GenericParamNode>> gp, std::vector<std::unique_ptr<EnumVariantNode>> v, Node* p)
-        : DeclNode(NodeType::ENUM_DECL, std::move(loc), p), name(std::move(n)), generic_params(std::move(gp)), variants(std::move(v)) {}
-    void EnumDeclNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string EnumDeclNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "EnumDeclNode(enum ";\
-        if (name) ss << name->toString(indent); else ss << "<null_name>";
-        if (!generic_params.empty()) {
-            ss << "<";\
-            for (size_t i = 0; i < generic_params.size(); ++i) {
-                if (generic_params[i]) ss << generic_params[i]->toString(indent); else ss << "<null_gen_param>";
-                if (i < generic_params.size() - 1) ss << ", ";
-            }
-            ss << ">";
-        }
-        ss << " {";\
-        for (size_t i = 0; i < variants.size(); ++i) {
-            if (variants[i]) ss << variants[i]->toString(indent); else ss << "<null_variant>";
-            if (i < variants.size() - 1) ss << ", ";
-        }
-        ss << "})";
-        return ss.str();
-    }
+// --- New Declaration Node Implementations ---
 
-    TypeAliasDeclNode::TypeAliasDeclNode(SourceLocation loc, std::unique_ptr<IdentifierNode> n, std::vector<std::unique_ptr<GenericParamNode>> gp, std::unique_ptr<TypeNode> at, Node* p)
-        : DeclNode(NodeType::TYPE_ALIAS_DECL, std::move(loc), p), name(std::move(n)), generic_params(std::move(gp)), aliased_type(std::move(at)) {}
+// FieldDeclaration
+FieldDeclaration::FieldDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, TypeAnnotationPtr ta, ExprPtr init, bool mut)
+    : Declaration(loc), name(std::move(n)), typeAnnotation(std::move(ta)), initializer(std::move(init)), isMutable(mut) {}
 
-    void TypeAliasDeclNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
+NodeType FieldDeclaration::getType() const {
+    return NodeType::FIELD_DECLARATION;
+}
 
-    std::string TypeAliasDeclNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "TypeAliasDeclNode(type ";\
-        if (name) ss << name->toString(indent); else ss << "<null_name>";
-        if (!generic_params.empty()) {
-            ss << "<";\
-            for (size_t i = 0; i < generic_params.size(); ++i) {
-                if (generic_params[i]) ss << generic_params[i]->toString(indent); else ss << "<null_gen_param>";
-                if (i < generic_params.size() - 1) ss << ", ";
-            }
-            ss << ">";
-        }
-        ss << " = ";
-        if (aliased_type) ss << aliased_type->toString(indent); else ss << "<null_aliased_type>";
-        ss << ")";
-        return ss.str();
+std::string FieldDeclaration::toString() const {
+    std::stringstream ss;
+    ss << "FieldDeclaration(" << (isMutable ? "mut " : "let ");
+    if (name) ss << name->toString(); else ss << "<null_name>";
+    if (typeAnnotation) {
+        ss << ": " << typeAnnotation->toString();
+    } else {
+        ss << ": <null_type_annotation>";
     }
+    if (initializer) {
+        ss << " = " << initializer->toString();
+    }
+    ss << ")";
+    return ss.str();
+}
 
-    GlobalVarDeclNode::GlobalVarDeclNode(SourceLocation loc, std::unique_ptr<PatternNode> pat, std::unique_ptr<TypeNode> ta, std::unique_ptr<ExprNode> init, bool is_mut, bool is_cst, Node* p)
-        : DeclNode(NodeType::GLOBAL_VAR_DECL, std::move(loc), p), pattern(std::move(pat)), type_annotation(std::move(ta)), initializer(std::move(init)), is_mutable(is_mut), is_const(is_cst) {}
+void FieldDeclaration::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
 
-    void GlobalVarDeclNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
+// StructDeclaration
+StructDeclaration::StructDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<std::unique_ptr<GenericParamNode>> gps, std::vector<std::unique_ptr<FieldDeclaration>> flds)
+    : Declaration(loc), name(std::move(n)), genericParams(std::move(gps)), fields(std::move(flds)) {}
 
-    std::string GlobalVarDeclNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "GlobalVarDeclNode(";\
-        if (is_const) ss << "const "; else if (is_mutable) ss << "var "; else ss << "let ";
-        if (pattern) ss << pattern->toString(indent); else ss << "<null_pattern>";
-        if (type_annotation) {
-            ss << ": " << type_annotation->toString(indent);
-        }
-        if (initializer) {
-            ss << " = " << initializer->toString(indent);
-        }
-        ss << ")";
-        return ss.str();
-    }
+NodeType StructDeclaration::getType() const {
+    return NodeType::STRUCT_DECLARATION;
+}
 
-    // TypeNameNode - Rewritten to match ast.hpp
-    TypeNameNode::TypeNameNode(SourceLocation loc, const std::string& n, const std::vector<TypeNameNode*>& gArgs, bool isOpt, Node* p)
-        : Node(NodeType::TYPE_NAME, std::move(loc), p), name_str(n), genericArgs(gArgs), isOptional(isOpt) {}
-
-    TypeNameNode::~TypeNameNode() {
-        // If TypeNameNode owns the raw pointers in genericArgs, they should be deleted here.
-        // However, typical C++ ASTs with raw pointers often imply non-owning references,
-        // or ownership is handled elsewhere (e.g., by a central store or the parent node that created them).
-        // For now, assuming non-owning or externally managed. If they are owning, this needs:
-        // for (auto* arg : genericArgs) { delete arg; }
-    }
-
-    void TypeNameNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-
-    std::string TypeNameNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << std::string(indent, ' ') << "TypeNameNode(" << name_str;
-        if (!genericArgs.empty()) {
-            ss << "<";
-            for (size_t i = 0; i < genericArgs.size(); ++i) {
-                if (genericArgs[i]) { // Check for null, though ideally should not happen
-                    ss << genericArgs[i]->toString(0); // Minimal indent for args
-                } else {
-                    ss << "<null_generic_arg>";
-                }
-                if (i < genericArgs.size() - 1) {
-                    ss << ", ";
-                }
-            }
-            ss << ">";
-        }
-        if (isOptional) {
-            ss << "?";
-        }
-        ss << ")";
-        return ss.str();
-    }
-
-    // PointerTypeNode
-    PointerTypeNode::PointerTypeNode(SourceLocation loc, std::unique_ptr<TypeNode> ptt, bool mut, Node* p)
-        : TypeNode(NodeType::POINTER_TYPE, std::move(loc), p), pointedToType(std::move(ptt)), isMutable(mut) {} // Corrected members: pointedToType, isMutable
-    void PointerTypeNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string PointerTypeNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "PointerTypeNode(" << (isMutable ? "mut " : ""); // Corrected member: isMutable
-        if (pointedToType) ss << pointedToType->toString(indent); else ss << "<null_pointed_to_type>"; // Corrected member: pointedToType
-        ss << ")";
-        return ss.str();
-    }
-
-    // ReferenceTypeNode
-    ReferenceTypeNode::ReferenceTypeNode(SourceLocation loc, TypePtr ref_type, bool mut, Node* p) // TypePtr is std::unique_ptr<TypeNode>
-        : TypeNode(NodeType::REFERENCE_TYPE, std::move(loc), p), referenced_type(std::move(ref_type)), is_mutable(mut) {} // Corrected member: referenced_type
-    void ReferenceTypeNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string ReferenceTypeNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "ReferenceTypeNode(" << (is_mutable ? "mut " : "") << "&";
-        if (referenced_type) ss << referenced_type->toString(indent); else ss << "<null_referenced_type>"; // Corrected member: referenced_type
-        ss << ")";
-        return ss.str();
-    }
-
-    // ArrayTypeNode
-    ArrayTypeNode::ArrayTypeNode(SourceLocation loc, std::unique_ptr<TypeNode> et, std::unique_ptr<ExprNode> sz, Node* p)
-        : TypeNode(NodeType::ARRAY_TYPE, std::move(loc), p), elementType(std::move(et)), size(std::move(sz)) {} // Corrected members: elementType, size
-    void ArrayTypeNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string ArrayTypeNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "ArrayTypeNode([";
-        if (elementType) ss << elementType->toString(indent); else ss << "<null_element_type>"; // Corrected member: elementType
-        if (size) { // Corrected member: size
-            ss << "; " << size->toString(indent);
-        }
-        ss << "])";
-        return ss.str();
-    }
-
-    // TupleTypeNode
-    TupleTypeNode::TupleTypeNode(SourceLocation loc, std::vector<std::unique_ptr<TypeNode>> types, Node* p)
-        : TypeNode(NodeType::TUPLE_TYPE, std::move(loc), p), elementTypes(std::move(types)) {} // Corrected member: elementTypes
-    void TupleTypeNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string TupleTypeNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "TupleTypeNode((";
-        for (size_t i = 0; i < elementTypes.size(); ++i) { // Corrected member: elementTypes
-            if (elementTypes[i]) ss << elementTypes[i]->toString(indent); else ss << "<null_type>";
-            if (i < elementTypes.size() - 1) ss << ", ";
-        }
-        ss << "))";
-        return ss.str();
-    }
-
-    // FunctionTypeNode
-    FunctionTypeNode::FunctionTypeNode(SourceLocation loc, std::vector<TypePtr> p_types, TypePtr ret_type, Node* p) // Matched ast.hpp (removed async)
-        : TypeNode(NodeType::FUNCTION_TYPE, std::move(loc), p), param_types(std::move(p_types)), return_type(std::move(ret_type)) {}
-    void FunctionTypeNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string FunctionTypeNode::toString(int indent) const {
-        std::stringstream ss;
-        // Removed is_async as it's not a member in ast.hpp's FunctionTypeNode
-        ss << "FunctionTypeNode(fn(";
-        for (size_t i = 0; i < param_types.size(); ++i) {
-            if (param_types[i]) ss << param_types[i]->toString(indent); else ss << "<null_param_type>";
-            if (i < param_types.size() - 1) ss << ", ";
-        }
-        ss << ") -> ";
-        if (return_type) ss << return_type->toString(indent); else ss << "<null_return_type>";
-        ss << ")";
-        return ss.str();
-    }
-
-    // GenericInstanceTypeNode
-    GenericInstanceTypeNode::GenericInstanceTypeNode(SourceLocation loc, TypePtr b_type, std::vector<TypePtr> t_args, Node* p)
-        : TypeNode(NodeType::GENERIC_INSTANCE_TYPE, std::move(loc), p), base_type(std::move(b_type)), type_arguments(std::move(t_args)) {} // Corrected member: base_type
-    void GenericInstanceTypeNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string GenericInstanceTypeNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "GenericInstanceTypeNode(";
-        if (base_type) ss << base_type->toString(indent); else ss << "<null_base_type>"; // Corrected member: base_type
+std::string StructDeclaration::toString() const {
+    std::stringstream ss;
+    ss << "StructDeclaration(" << (name ? name->toString() : "<null_name>");
+    if (!genericParams.empty()) {
         ss << "<";
-        for (size_t i = 0; i < type_arguments.size(); ++i) {
-            if (type_arguments[i]) ss << type_arguments[i]->toString(indent); else ss << "<null_arg_type>";
-            if (i < type_arguments.size() - 1) ss << ", ";
+        for (size_t i = 0; i < genericParams.size(); ++i) {
+            if (genericParams[i]) ss << genericParams[i]->toString(); else ss << "<null_generic_param>";
+            if (i < genericParams.size() - 1) ss << ", ";
         }
-        ss << ">)";
-        return ss.str();
+        ss << ">";
     }
-
-    // TypeAliasDeclNode - Implementations from ~line 690 are kept.
-    // The definitions starting around line 866 were duplicates and are effectively removed by not including them here.
-    // TypeAliasDeclNode::TypeAliasDeclNode(...) // Already defined correctly earlier
-    // void TypeAliasDeclNode::accept(...) // Already defined correctly earlier
-    // std::string TypeAliasDeclNode::toString(...) // Already defined correctly earlier
-
-    // GlobalVarDeclNode - Implementations from ~line 715 are kept.
-    // The definitions starting around line 882 were duplicates and are effectively removed by not including them here.
-    // GlobalVarDeclNode::GlobalVarDeclNode(...) // Already defined correctly earlier
-    // void GlobalVarDeclNode::accept(...) // Already defined correctly earlier
-    // std::string GlobalVarDeclNode::toString(...) // Already defined correctly earlier
-
-    // IdentifierPatternNode
-    IdentifierPatternNode::IdentifierPatternNode(SourceLocation loc, std::unique_ptr<IdentifierNode> id, bool mut, Node* p)
-        : PatternNode(NodeType::IDENTIFIER_PATTERN, std::move(loc), p), identifier(std::move(id)), isMutable(mut) {} // Corrected member: isMutable
-    void IdentifierPatternNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string IdentifierPatternNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "IdentifierPatternNode(" << (isMutable ? "mut " : ""); // Corrected member: isMutable
-        if (identifier) ss << identifier->toString(indent); else ss << "<null_identifier>";
-        ss << ")";
-        return ss.str();
-    }
-
-    // LiteralPatternNode
-    LiteralPatternNode::LiteralPatternNode(SourceLocation loc, std::unique_ptr<ExprNode> lit, Node* p) // Changed LiteralNode to ExprNode to match ast.hpp
-        : PatternNode(NodeType::LITERAL_PATTERN, std::move(loc), p), literal(std::move(lit)) {}
-    void LiteralPatternNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string LiteralPatternNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "LiteralPatternNode(";
-        if (literal) ss << literal->toString(indent); else ss << "<null_literal>";
-        ss << ")";
-        return ss.str();
-    }
-
-    // WildcardPatternNode
-    WildcardPatternNode::WildcardPatternNode(SourceLocation loc, Node* p)
-        : PatternNode(NodeType::WILDCARD_PATTERN, std::move(loc), p) {}
-    void WildcardPatternNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string WildcardPatternNode::toString(int indent) const {
-        return "WildcardPatternNode(_)";
-    }
-
-    // TuplePatternNode
-    TuplePatternNode::TuplePatternNode(SourceLocation loc, std::vector<std::unique_ptr<PatternNode>> elems, Node* p)
-        : PatternNode(NodeType::TUPLE_PATTERN, std::move(loc), p), elements(std::move(elems)) {}
-    void TuplePatternNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string TuplePatternNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "TuplePatternNode((";\
-        for (size_t i = 0; i < elements.size(); ++i) {
-            if (elements[i]) ss << elements[i]->toString(indent); else ss << "<null_pattern>";
-            if (i < elements.size() - 1) ss << ", ";
+    ss << " {\\\\\\n"; // Escaped newline
+    for (const auto& field : fields) {
+        if (field) {
+            ss << "  " << field->toString() << ";\\\\\\n"; // Escaped newline
+        } else {
+            ss << "  <null_field>;\\\\\\n"; // Escaped newline
         }
-        ss << "))";
-        return ss.str();
     }
+    ss << "})";
+    return ss.str();
+}
 
-    // StructPatternField
-    // Constructor is defined inline in ast.hpp
-    // StructPatternField::StructPatternField(SourceLocation loc, std::unique_ptr<IdentifierNode> n, std::unique_ptr<PatternNode> pat)
-    //    : location(std::move(loc)), name(std::move(n)), pattern(std::move(pat)) {}
+void StructDeclaration::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
 
-    std::string StructPatternField::toString(int indent) const {
-        std::stringstream ss;
-        ss << std::string(indent, ' ');
-        if (!field_name.empty()) ss << field_name; else ss << "<null_field_name>"; // Corrected: use field_name (string)
-        ss << ": ";
-        if (pattern) ss << pattern->toString(0); else ss << "<null_field_pattern>";
-        return ss.str();
-    }
+// ClassDeclaration
+ClassDeclaration::ClassDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<std::unique_ptr<GenericParamNode>> gps, std::vector<DeclPtr> membs)
+    : Declaration(loc), name(std::move(n)), genericParams(std::move(gps)), members(std::move(membs)) {}
 
-    // StructPatternNode
-    StructPatternNode::StructPatternNode(SourceLocation loc, std::unique_ptr<PathNode> path_node, std::vector<StructPatternField> flds, Node* p)
-        : PatternNode(NodeType::STRUCT_PATTERN, std::move(loc), p), struct_path(std::move(path_node)), fields(std::move(flds)) {} // Corrected member: struct_path
-    void StructPatternNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-    std::string StructPatternNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "StructPatternNode(";
-        if (struct_path) ss << struct_path->toString(indent); else ss << "<null_path>"; // Corrected member: struct_path
-        ss << " {";
-        for (size_t i = 0; i < fields.size(); ++i) {
-            ss << fields[i].toString(indent); // Assuming StructPatternField has toString
-            if (i < fields.size() - 1) ss << ", ";
+NodeType ClassDeclaration::getType() const {
+    return NodeType::CLASS_DECLARATION;
+}
+
+std::string ClassDeclaration::toString() const {
+    std::stringstream ss;
+    ss << "ClassDeclaration(" << (name ? name->toString() : "<null_name>");
+    if (!genericParams.empty()) {
+        ss << "<";
+        for (size_t i = 0; i < genericParams.size(); ++i) {
+            if (genericParams[i]) ss << genericParams[i]->toString(); else ss << "<null_generic_param>";
+            if (i < genericParams.size() - 1) ss << ", ";
         }
-        ss << "})";
-        return ss.str();
+        ss << ">";
     }
+    ss << " {\\\\\\n"; // Escaped newline
+    for (const auto& member : members) {
+        if (member) {
+            ss << "  " << member->toString() << ";\\\\\\n"; // Escaped newline
+        } else {
+            ss << "  <null_member>;\\\\\\n"; // Escaped newline
+        }
+    }
+    ss << "})";
+    return ss.str();
+}
 
-    // EnumVariantPatternNode
-    EnumVariantPatternNode::EnumVariantPatternNode(SourceLocation loc, std::unique_ptr<PathNode> path_node, std::vector<std::unique_ptr<PatternNode>> args, Node* p)
-        : PatternNode(NodeType::ENUM_VARIANT_PATTERN, std::move(loc), p), path(std::move(path_node)), arguments(std::move(args)) {}
-    void EnumVariantPatternNode::accept(Visitor& visitor) {
-        visitor.visit(this);
+void ClassDeclaration::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
+// ImplDeclaration
+ImplDeclaration::ImplDeclaration(SourceLocation loc, std::vector<std::unique_ptr<GenericParamNode>> gps, TypeAnnotationPtr self_type, std::vector<std::unique_ptr<FunctionDeclaration>> meths, TypeAnnotationPtr trait_type)
+    : Declaration(loc), genericParams(std::move(gps)), selfType(std::move(self_type)), traitType(std::move(trait_type)), methods(std::move(meths)) {}
+
+NodeType ImplDeclaration::getType() const {
+    return NodeType::IMPL_DECLARATION;
+}
+
+std::string ImplDeclaration::toString() const {
+    std::stringstream ss;
+    ss << "ImplDeclaration(impl";
+    if (!genericParams.empty()) {
+        ss << "<";
+        for (size_t i = 0; i < genericParams.size(); ++i) {
+            if (genericParams[i]) ss << genericParams[i]->toString(); else ss << "<null_generic_param>";
+            if (i < genericParams.size() - 1) ss << ", ";
+        }
+        ss << ">";
     }
-    std::string EnumVariantPatternNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "EnumVariantPatternNode(";\
-        if (path) ss << path->toString(indent); else ss << "<null_path>";
-        if (!arguments.empty()) {
-            ss << "(";\
-            for (size_t i = 0; i < arguments.size(); ++i) {
-                if (arguments[i]) ss << arguments[i]->toString(indent); else ss << "<null_arg_pattern>";
-                if (i < arguments.size() - 1) ss << ", ";
+    if (traitType) {
+        ss << " " << traitType->toString() << " for";
+    }
+    if (selfType) {
+        ss << " " << selfType->toString();
+    } else {
+        ss << " <null_self_type>";
+    }
+    ss << " {\\\\\\n"; // Escaped newline
+    for (const auto& method : methods) {
+        if (method) {
+            ss << "  " << method->toString() << "\\\\\\n"; // Escaped newline
+        } else {
+            ss << "  <null_method>;\\\\\\n"; // Escaped newline
+        }
+    }
+    ss << "})";
+    return ss.str();
+}
+
+void ImplDeclaration::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
+// EnumVariantNode
+EnumVariantNode::EnumVariantNode(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<TypeAnnotationPtr> typs)
+    : Declaration(loc), name(std::move(n)), types(std::move(typs)) {}
+
+NodeType EnumVariantNode::getType() const {
+    return NodeType::ENUM_VARIANT;
+}
+
+std::string EnumVariantNode::toString() const {
+    std::stringstream ss;
+    ss << "EnumVariantNode(";
+    if (name) ss << name->toString(); else ss << "<null_name>";
+    if (!types.empty()) {
+        ss << "(";
+        for (size_t i = 0; i < types.size(); ++i) {
+            if (types[i]) {
+                ss << types[i]->toString();
+            } else {
+                ss << "<null_type_arg>";
             }
-            ss << ")";
+            if (i < types.size() - 1) {
+                ss << ", ";
+            }
         }
         ss << ")";
-        return ss.str();
     }
+    ss << ")";
+    return ss.str();
+}
 
-    // Visitor
-    // Default behavior for visit methods is to do nothing or throw, depending on design.
-    // Here, we'll make them throw an error if not overridden, indicating an unhandled node type.
-    void Visitor::visit(Node* node) {
-        throw std::runtime_error("Visitor::visit(Node*) called - unhandled node type: " /* + node_type_to_string(node->type) - node_type_to_string might be missing */);
-    }
-    void Visitor::visit(IntLiteralNode* node) { visit(static_cast<LiteralNode*>(node)); }
-    void Visitor::visit(FloatLiteralNode* node) { visit(static_cast<LiteralNode*>(node)); }
-    void Visitor::visit(StringLiteralNode* node) { visit(static_cast<LiteralNode*>(node)); }
-    void Visitor::visit(CharLiteralNode* node) { visit(static_cast<LiteralNode*>(node)); }
-    void Visitor::visit(BoolLiteralNode* node) { visit(static_cast<LiteralNode*>(node)); }
-    void Visitor::visit(NullLiteralNode* node) { visit(static_cast<LiteralNode*>(node)); }
-    void Visitor::visit(IdentifierNode* node) { visit(static_cast<ExprNode*>(node)); }
-    void Visitor::visit(PathNode* node) { visit(static_cast<Node*>(node)); } // PathNode is not an ExprNode
-    void Visitor::visit(TupleLiteralNode* node) { visit(static_cast<ExprNode*>(node)); }
-    void Visitor::visit(ArrayLiteralNode* node) { visit(static_cast<ExprNode*>(node)); }
-    void Visitor::visit(StructLiteralNode* node) { visit(static_cast<ExprNode*>(node)); }
-    void Visitor::visit(UnaryOpNode* node) { visit(static_cast<ExprNode*>(node)); }
-    void Visitor::visit(BinaryOpNode* node) { visit(static_cast<ExprNode*>(node)); }
-    void Visitor::visit(CallExprNode* node) { visit(static_cast<ExprNode*>(node)); }
-    void Visitor::visit(ArrayAccessNode* node) { visit(static_cast<ExprNode*>(node)); }
-    void Visitor::visit(MemberAccessNode* node) { visit(static_cast<ExprNode*>(node)); }
-    void Visitor::visit(AssignmentNode* node) { visit(static_cast<ExprNode*>(node)); }
-    void Visitor::visit(IfStmtNode* node) { visit(static_cast<StmtNode*>(node)); }
-    void Visitor::visit(BlockStmtNode* node) { visit(static_cast<StmtNode*>(node)); }
-    void Visitor::visit(ExpressionStmtNode* node) { visit(static_cast<StmtNode*>(node)); }
-    void Visitor::visit(VarDeclStmtNode* node) { visit(static_cast<StmtNode*>(node)); }
-    void Visitor::visit(ParamNode* node) { visit(static_cast<DeclNode*>(node)); }
-    void Visitor::visit(GenericParamNode* node) { visit(static_cast<Node*>(node)); } // GenericParamNode is not a DeclNode
-    void Visitor::visit(FuncDeclNode* node) { visit(static_cast<DeclNode*>(node)); }
-    void Visitor::visit(ReturnStmtNode* node) { visit(static_cast<StmtNode*>(node)); }
-    void Visitor::visit(WhileStmtNode* node) { visit(static_cast<StmtNode*>(node)); }
-    void Visitor::visit(ForStmtNode* node) { visit(static_cast<StmtNode*>(node)); }
-    void Visitor::visit(BreakStmtNode* node) { visit(static_cast<StmtNode*>(node)); }
-    void Visitor::visit(ContinueStmtNode* node) { visit(static_cast<StmtNode*>(node)); }
-    void Visitor::visit(FieldDeclNode* node) { visit(static_cast<DeclNode*>(node)); }
-    void Visitor::visit(StructDeclNode* node) { visit(static_cast<DeclNode*>(node)); }
-    void Visitor::visit(ImplDeclNode* node) { visit(static_cast<DeclNode*>(node)); }
-    void Visitor::visit(TraitDeclNode* node) { visit(static_cast<DeclNode*>(node)); }
-    // void Visitor::visit(ClassDeclNode* node) { visit(static_cast<DeclNode*>(node)); } // REMOVED - Not declared in ast.hpp Visitor
-    void Visitor::visit(EnumVariantNode* node) { visit(static_cast<Node*>(node)); } 
-    void Visitor::visit(TypeNameNode* node) { visit(static_cast<Node*>(node)); } // Corrected: TypeNameNode inherits Node
-    void Visitor::visit(PointerTypeNode* node) { visit(static_cast<TypeNode*>(node)); }
-    void Visitor::visit(ReferenceTypeNode* node) { visit(static_cast<TypeNode*>(node)); }
-    void Visitor::visit(ArrayTypeNode* node) { visit(static_cast<TypeNode*>(node)); }
-    // void Visitor::visit(SliceTypeNode* node) { visit(static_cast<TypeNode*>(node)); } // REMOVED
-    void Visitor::visit(TupleTypeNode* node) { visit(static_cast<TypeNode*>(node)); }
-    void Visitor::visit(FunctionTypeNode* node) { visit(static_cast<TypeNode*>(node)); }
-    void Visitor::visit(GenericInstanceTypeNode* node) { visit(static_cast<TypeNode*>(node)); }
+void EnumVariantNode::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
 
-    // Base class visit methods (these should be called by derived class visit methods)
-    void Visitor::visit(LiteralNode* node) { visit(static_cast<ExprNode*>(node)); }
-    void Visitor::visit(ExprNode* node) { visit(static_cast<Node*>(node)); }
-    void Visitor::visit(StmtNode* node) { visit(static_cast<Node*>(node)); }
-    void Visitor::visit(DeclNode* node) { visit(static_cast<Node*>(node)); }
-    void Visitor::visit(TypeNode* node) { visit(static_cast<Node*>(node)); }
-    void Visitor::visit(PatternNode* node) { visit(static_cast<Node*>(node)); }
+// EnumDeclaration
+EnumDeclaration::EnumDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<std::unique_ptr<GenericParamNode>> gps, std::vector<std::unique_ptr<EnumVariantNode>> vars)
+    : Declaration(loc), name(std::move(n)), genericParams(std::move(gps)), variants(std::move(vars)) {}
 
-    // Implementations for linker errors regarding Visitor methods
-    void Visitor::visit(EnumDeclNode* node) {
-        visit(static_cast<DeclNode*>(node));
-    }
+NodeType EnumDeclaration::getType() const {
+    return NodeType::ENUM_DECLARATION;
+}
 
-    void Visitor::visit(TypeAliasDeclNode* node) {
-        visit(static_cast<DeclNode*>(node));
-    }
-
-    void Visitor::visit(GlobalVarDeclNode* node) {
-        visit(static_cast<DeclNode*>(node));
-    }
-
-    void Visitor::visit(IdentifierTypeNode* node) {
-        visit(static_cast<TypeNode*>(node));
-    }
-
-    void Visitor::visit(OptionalTypeNode* node) {
-        visit(static_cast<TypeNode*>(node));
-    }
-
-    void Visitor::visit(IdentifierPatternNode* node) {
-        visit(static_cast<PatternNode*>(node));
-    }
-
-    void Visitor::visit(LiteralPatternNode* node) {
-        visit(static_cast<PatternNode*>(node));
-    }
-
-    void Visitor::visit(WildcardPatternNode* node) {
-        visit(static_cast<PatternNode*>(node));
-    }
-
-    void Visitor::visit(TuplePatternNode* node) {
-        visit(static_cast<PatternNode*>(node));
-    }
-
-    void Visitor::visit(StructPatternNode* node) {
-        visit(static_cast<PatternNode*>(node));
-    }
-
-    void Visitor::visit(EnumVariantPatternNode* node) {
-        visit(static_cast<Node*>(node)); // EnumVariantNode derives from Node
-    }
-
-    void Visitor::visit(ModuleNode* node) {
-        visit(static_cast<Node*>(node)); // ModuleNode derives from Node
-    }
-
-    // REMOVE DUPLICATE DEFINITIONS FOR BASE TYPE VISITORS
-    // void Visitor::visit(DeclNode* node) {
-    //     visit(static_cast<Node*>(node));
-    // }
-    // void Visitor::visit(TypeNode* node) {
-    //     visit(static_cast<Node*>(node));
-    // }
-    // void Visitor::visit(PatternNode* node) {
-    //     visit(static_cast<Node*>(node));
-    // }
-
-    // Implementation for IdentifierTypeNode
-    // Constructor signature from ast.hpp: IdentifierTypeNode(SourceLocation loc, std::unique_ptr<PathNode> type_path, Node* p = nullptr)
-    IdentifierTypeNode::IdentifierTypeNode(SourceLocation loc, std::unique_ptr<PathNode> type_path, Node* p)
-        : TypeNode(NodeType::IDENTIFIER_TYPE, std::move(loc), p), path(std::move(type_path)) {
-    }
-
-    void IdentifierTypeNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-
-    std::string IdentifierTypeNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "IdentifierTypeNode(" << (path ? path->getPathString() : "<null_path>");
-        // IdentifierTypeNode in ast.hpp does not have generic_args member
-        ss << ")";
-        return ss.str();
-    }
-
-    // Implementation for ModuleNode
-    // Constructor signature from ast.hpp: ModuleNode(SourceLocation loc, std::vector<std::unique_ptr<Node>> b, Node* p = nullptr)
-    ModuleNode::ModuleNode(SourceLocation loc, std::vector<std::unique_ptr<Node>> b, Node* p)
-        : Node(NodeType::MODULE, std::move(loc), p), body(std::move(b)) {
-    }
-
-    void ModuleNode::accept(Visitor& visitor) {
-        visitor.visit(this);
-    }
-
-    std::string ModuleNode::toString(int indent) const {
-        std::stringstream ss;
-        ss << "ModuleNode({";
-        std::string indent_str(indent + 2, ' ');
-        for (const auto& item : body) { // Changed declarations to body
-            ss << "\\n" << indent_str;
-            if (item) ss << item->toString(indent + 2); else ss << "<null_item>"; // Changed decl to item, <null_declaration> to <null_item>
-            ss << ";";
+std::string EnumDeclaration::toString() const {
+    std::stringstream ss;
+    ss << "EnumDeclaration(" << (name ? name->toString() : "<null_name>");
+    if (!genericParams.empty()) {
+        ss << "<";
+        for (size_t i = 0; i < genericParams.size(); ++i) {
+            if (genericParams[i]) ss << genericParams[i]->toString(); else ss << "<null_generic_param>";
+            if (i < genericParams.size() - 1) ss << ", ";
         }
-        if (!body.empty()) { // Changed declarations to body
-            ss << "\\n" << std::string(indent, ' ');
-        }
-        ss << "})";
-        return ss.str();
+        ss << ">";
     }
+    ss << " {\\\\\\n"; // Escaped newline
+    for (const auto& variant : variants) {
+        if (variant) {
+            ss << "  " << variant->toString() << ",\\\\\\n"; // Escaped newline
+        } else {
+            ss << "  <null_variant>,\\\\\\n"; // Escaped newline
+        }
+    }
+    ss << "})";
+    return ss.str();
+}
 
-} // namespace Vyn::AST
+void EnumDeclaration::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
+// GenericParamNode
+GenericParamNode::GenericParamNode(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<TypeAnnotationPtr> bnds)
+    : Node(loc), name(std::move(n)), bounds(std::move(bnds)) {}
+
+NodeType GenericParamNode::getType() const {
+    return NodeType::GENERIC_PARAMETER;
+}
+
+std::string GenericParamNode::toString() const {
+    std::stringstream ss;
+    ss << (name ? name->toString() : "<null_name>");
+    if (!bounds.empty()) {
+        ss << ": ";
+        for (size_t i = 0; i < bounds.size(); ++i) {
+            if (bounds[i]) {
+                ss << bounds[i]->toString();
+            } else {
+                ss << "<null_bound>";
+            }
+            if (i < bounds.size() - 1) {
+                ss << " + "; // Assuming '+' syntax for multiple bounds
+            }
+        }
+    }
+    return ss.str();
+}
+
+void GenericParamNode::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
+} // namespace vyn
+
+/* Remaining original ast.cpp content is commented out below as it does not
+   directly map to the provided ast.hpp or requires more information.
+
+... A lot of commented out code ...
+
+    // // Pattern Nodes
+    // IdentifierPatternNode::IdentifierPatternNode(SourceLocation loc, std::unique_ptr<IdentifierNode> id, bool mut, Node* p)
+    //     : PatternNode(NodeType::IDENTIFIER_PATTERN, std::move(loc), p), identifier(std::move(id)), isMutable(mut) {}
+    // void IdentifierPatternNode::accept(Visitor& visitor) {
+    //     visitor.visit(this);
+    // }
+*/

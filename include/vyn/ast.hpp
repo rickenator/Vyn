@@ -1,893 +1,608 @@
 #ifndef VYN_AST_HPP
-#define VYN_AST_HPP // Added include guard define
+#define VYN_AST_HPP
 
 #include <string>
 #include <vector>
 #include <memory>
-#include <utility> // For std::pair and std::move
+#include <optional> 
+#include <utility>  
 
-// Forward declaration for Vyn::TokenType
-namespace Vyn {
-    enum class TokenType;
-}
+#include "vyn/source_location.hpp" // For vyn::SourceLocation
+#include "vyn/token.hpp"           // For vyn::token::Token
 
-namespace Vyn::AST {
+namespace vyn {
 
-// Forward declarations for all AST node types and Visitor
-class Visitor;
-class Node; class ExprNode; class StmtNode; class DeclNode; class TypeNode; class PatternNode;
-class LiteralNode; // Added
-class IdentifierNode; class PathNode; // Added PathNode
-class IntLiteralNode; class FloatLiteralNode; class StringLiteralNode; class BoolLiteralNode; class CharLiteralNode; class NullLiteralNode; // Added Char/Null
-class ArrayLiteralNode; class TraitDeclNode; class TupleTypeNode; // Added ArrayLiteralNode, TraitDeclNode, TupleTypeNode
-class BinaryOpNode; class UnaryOpNode; class CallNode; class MemberAccessNode; class IndexAccessNode; class IfExprNode; class BlockNode; class ExpressionStmtNode; class VarDeclNode; class FunctionDeclNode; class ReturnStmtNode; class IfStmtNode; class WhileStmtNode; class ForStmtNode; class BreakStmtNode; class ContinueStmtNode; class StructDeclNode; class EnumDeclNode; class FieldDeclNode; class TypeNameNode; class IdentifierPatternNode; class StructPatternNode; class EnumVariantPatternNode; class ClassDeclNode; class MethodDeclNode; class ImportStmtNode; class ModuleNode;
-class TupleLiteralNode; class StructLiteralNode; class GenericParamNode; class ParamNode; class ArrayTypeNode; class PointerTypeNode; class OptionalTypeNode; class EnumVariantNode; class TypeAliasDeclNode; class GlobalVarDeclNode;
-class ReferenceTypeNode; class FunctionTypeNode; class GenericInstanceTypeNode; // Added forward declarations
+    // SourceLocation struct is now in source_location.hpp
+    // Forward declaration of vyn::token::Token is no longer needed.
+
+    // Forward declarations for Visitor pattern
+    class Node;
+    class Expression;
+    class Statement;
+    class Declaration;
+    class Visitor;
+
+    // Forward declarations for new nodes
+    class StructDeclaration;
+    class ClassDeclaration;
+    class FieldDeclaration;
+    class ImplDeclaration;
+    class EnumDeclaration;
+    class EnumVariantNode; // Or just EnumVariant if it\'s a simple struct
+    class GenericParamNode; // New forward declaration
+
+    // Type aliases for smart pointers
+    using NodePtr = std::unique_ptr<Node>;
+    using ExprPtr = std::unique_ptr<Expression>;
+    using StmtPtr = std::unique_ptr<Statement>;
+    using DeclPtr = std::unique_ptr<Declaration>;
+
+    // enum class NodeType must be defined before Visitor
+    enum class NodeType {
+        // Literals
+        IDENTIFIER,
+        INTEGER_LITERAL,
+        FLOAT_LITERAL,
+        STRING_LITERAL,
+        BOOLEAN_LITERAL,
+        ARRAY_LITERAL,
+        OBJECT_LITERAL,
+
+        // Expressions
+        UNARY_EXPRESSION,
+        BINARY_EXPRESSION,
+        CALL_EXPRESSION,
+        MEMBER_EXPRESSION,
+        ASSIGNMENT_EXPRESSION,
+
+        // Statements
+        BLOCK_STATEMENT,
+        EXPRESSION_STATEMENT,
+        IF_STATEMENT,
+        FOR_STATEMENT,
+        WHILE_STATEMENT,
+        RETURN_STATEMENT,
+        BREAK_STATEMENT,
+        CONTINUE_STATEMENT,
+
+        // Declarations
+        VARIABLE_DECLARATION,
+        FUNCTION_DECLARATION,
+        TYPE_ALIAS_DECLARATION,
+        IMPORT_DECLARATION,
+        STRUCT_DECLARATION,    // New
+        CLASS_DECLARATION,     // New
+        FIELD_DECLARATION,     // New
+        IMPL_DECLARATION,      // New
+        ENUM_DECLARATION,      // New
+        ENUM_VARIANT,          // New
+        GENERIC_PARAMETER,     // New
 
 
-// Type Aliases for smart pointers
-using NodePtr = std::unique_ptr<Node>;
-using ExprPtr = std::unique_ptr<ExprNode>;
-using StmtPtr = std::unique_ptr<StmtNode>;
-using DeclPtr = std::unique_ptr<DeclNode>;
-using TypePtr = std::unique_ptr<TypeNode>;
-using PatternPtr = std::unique_ptr<PatternNode>;
-using LiteralPtr = std::unique_ptr<LiteralNode>; // Added for LiteralNode
-using IdentifierPtr = std::unique_ptr<IdentifierNode>; // Added for IdentifierNode
-using PathPtr = std::unique_ptr<PathNode>; // Added for PathNode
+        // Other
+        TYPE_ANNOTATION,
+        MODULE
+    };
 
+    // Visitor Interface
+    class Visitor {
+    public:
+        virtual ~Visitor() = default;
 
-struct SourceLocation {
-    std::string filePath;
-    int line;
-    int column;
+        // Literals
+        virtual void visit(class Identifier* node) = 0;
+        virtual void visit(class IntegerLiteral* node) = 0;
+        virtual void visit(class FloatLiteral* node) = 0;
+        virtual void visit(class StringLiteral* node) = 0;
+        virtual void visit(class BooleanLiteral* node) = 0;
+        virtual void visit(class ArrayLiteral* node) = 0;
+        virtual void visit(class ObjectLiteral* node) = 0;
 
-    SourceLocation(std::string fp = "", int l = 0, int c = 0) : filePath(std::move(fp)), line(l), column(c) {} // Added initializer list
+        // Expressions
+        virtual void visit(class UnaryExpression* node) = 0;
+        virtual void visit(class BinaryExpression* node) = 0;
+        virtual void visit(class CallExpression* node) = 0;
+        virtual void visit(class MemberExpression* node) = 0;
+        virtual void visit(class AssignmentExpression* node) = 0;
+
+        // Statements
+        virtual void visit(class BlockStatement* node) = 0;
+        virtual void visit(class ExpressionStatement* node) = 0;
+        virtual void visit(class IfStatement* node) = 0;
+        virtual void visit(class ForStatement* node) = 0;
+        virtual void visit(class WhileStatement* node) = 0;
+        virtual void visit(class ReturnStatement* node) = 0;
+        virtual void visit(class BreakStatement* node) = 0;
+        virtual void visit(class ContinueStatement* node) = 0;
+
+        // Declarations
+        virtual void visit(class VariableDeclaration* node) = 0;
+        virtual void visit(class FunctionDeclaration* node) = 0;
+        virtual void visit(class TypeAliasDeclaration* node) = 0;
+        virtual void visit(class ImportDeclaration* node) = 0;
+        virtual void visit(class StructDeclaration* node) = 0;    // New
+        virtual void visit(class ClassDeclaration* node) = 0;     // New
+        virtual void visit(class FieldDeclaration* node) = 0;     // New
+        virtual void visit(class ImplDeclaration* node) = 0;      // New
+        virtual void visit(class EnumDeclaration* node) = 0;      // New
+        virtual void visit(class EnumVariantNode* node) = 0;      // New
+        virtual void visit(class GenericParamNode* node) = 0;     // New
+        
+        // Other
+        virtual void visit(class TypeAnnotation* node) = 0;
+        virtual void visit(class Module* node) = 0;
+    };
+
+    // Base AST Node
+    class Node {
+    public:
+        SourceLocation loc; // This is vyn::SourceLocation from the include
+
+        Node(SourceLocation loc) : loc(loc) {}
+        virtual ~Node() = default;
+        virtual NodeType getType() const = 0;
+        virtual std::string toString() const = 0;
+        virtual void accept(Visitor& visitor) = 0;
+    };
+
+    // Base Expression Node
+    class Expression : public Node {
+    public:
+        Expression(SourceLocation loc) : Node(loc) {}
+    };
+
+    // Base Statement Node
+    class Statement : public Node {
+    public:
+        Statement(SourceLocation loc) : Node(loc) {}
+    };
+
+    // Base Declaration Node (Declarations are Statements)
+    class Declaration : public Statement {
+    public:
+        Declaration(SourceLocation loc) : Statement(loc) {}
+    };
+
+    // --- Literals ---
+    class Identifier : public Expression {
+    public:
+        std::string name;
+
+        Identifier(SourceLocation loc, std::string name);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
+
+    class IntegerLiteral : public Expression {
+    public:
+        int64_t value;
+
+        IntegerLiteral(SourceLocation loc, int64_t value);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
+
+    class FloatLiteral : public Expression {
+    public:
+        double value;
+
+        FloatLiteral(SourceLocation loc, double value);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
+
+    class StringLiteral : public Expression {
+    public:
+        std::string value;
+
+        StringLiteral(SourceLocation loc, std::string value);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
+
+    class BooleanLiteral : public Expression {
+    public:
+        bool value;
+
+        BooleanLiteral(SourceLocation loc, bool value);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
+
+    class ArrayLiteral : public Expression {
+    public:
+        std::vector<ExprPtr> elements;
+
+        ArrayLiteral(SourceLocation loc, std::vector<ExprPtr> elements);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
     
-    std::string toString() const { // Added toString() method
-        return filePath + ":" + std::to_string(line) + ":" + std::to_string(column);
-    }
-};
+    // Represents one key-value pair in an object literal
+    struct ObjectProperty {
+        SourceLocation loc; // Location of the property itself (key or key:value)
+        std::unique_ptr<Identifier> key; // Property key (must be an identifier for now, can be extended to StringLiteral or computed)
+        ExprPtr value; // Property value
 
-enum class NodeType {
-    // Literals & Basic
-    IDENTIFIER,
-    PATH,
-    INT_LITERAL,
-    FLOAT_LITERAL,
-    STRING_LITERAL,
-    BOOL_LITERAL,
-    CHAR_LITERAL, // Added
-    NULL_LITERAL, // Added
-    ARRAY_LITERAL, // Added NodeType for ArrayLiteralNode
-
-    // Expressions
-    UNARY_OP,
-    BINARY_OP,
-    CALL_EXPR, // Renamed from CALL for consistency, assuming CallNode is CallExprNode
-    ARRAY_ACCESS,
-    MEMBER_ACCESS,
-    ASSIGNMENT, // Can be an expression or a statement
-
-    // Statements
-    EXPRESSION_STMT,
-    BLOCK_STMT,
-    VAR_DECL_STMT,
-    IF_STMT,
-    FOR_STMT,
-    WHILE_STMT,
-    RETURN_STMT,
-    BREAK_STMT,
-    CONTINUE_STMT,
-
-    // Declarations
-    FUNC_DECL,
-    PARAM,
-    STRUCT_DECL,
-    FIELD_DECL,  // Added NodeType for FieldDeclNode
-    CLASS_DECL,  // Added NodeType for ClassDeclNode
-    IMPL_DECL,
-    GENERIC_PARAM,
-    ENUM_DECL,      // Added
-    ENUM_VARIANT,   // Added
-    TYPE_ALIAS_DECL, // Added
-    GLOBAL_VAR_DECL, // Added
-    TRAIT_DECL,      // Added NodeType for TraitDeclNode
-
-    // Types
-    TYPE_NAME, // This might be IdentifierTypeNode or a specific TypeNameNode
-    ARRAY_TYPE,
-    POINTER_TYPE,
-    OPTIONAL_TYPE,
-    IDENTIFIER_TYPE, // Added for IdentifierTypeNode
-    TUPLE_TYPE,      // Added NodeType for TupleTypeNode
-    REFERENCE_TYPE,        // Added
-    FUNCTION_TYPE,         // Added
-    GENERIC_INSTANCE_TYPE, // Added
-
-    // Literals that are also expressions (or part of expressions)
-    TUPLE_LITERAL,      // Added
-    STRUCT_LITERAL,     // Added
-    // ENUM_LITERAL,       // Added - Consider if this is needed or covered by Path + Call-like syntax
-
-    // Patterns
-    IDENTIFIER_PATTERN,
-    LITERAL_PATTERN,
-    WILDCARD_PATTERN,
-    TUPLE_PATTERN,
-    ENUM_VARIANT_PATTERN,
-    STRUCT_PATTERN, // Added for StructPatternNode
-
-    // Module
-    MODULE,
-
-    // Base/Abstract types - useful for checks but not for concrete nodes
-    NODE,
-    EXPR_NODE,
-    STMT_NODE,
-    DECL_NODE,
-    TYPE_NODE,
-    PATTERN_NODE,
-    LITERAL_NODE // Added
-};
-
-class Node {
-public:
-    NodeType type;
-    SourceLocation location;
-    Node* parent;
-
-    Node(NodeType t, SourceLocation loc, Node* p = nullptr) : type(t), location(std::move(loc)), parent(p) {} // Initializer list
-    virtual ~Node() = default;
-    virtual void accept(Visitor& visitor) = 0;
-    virtual std::string toString(int indent = 0) const = 0;
-};
-
-// Intermediate base classes
-class ExprNode : public Node {
-public:
-    ExprNode(NodeType t, SourceLocation loc, Node* p = nullptr) : Node(t, std::move(loc), p) {}
-};
-
-class StmtNode : public Node {
-public:
-    StmtNode(NodeType t, SourceLocation loc, Node* p = nullptr) : Node(t, std::move(loc), p) {}
-};
-
-class DeclNode : public Node {
-public:
-    DeclNode(NodeType t, SourceLocation loc, Node* p = nullptr) : Node(t, std::move(loc), p) {}
-};
-
-class TypeNode : public Node {
-public:
-    TypeNode(NodeType t, SourceLocation loc, Node* p = nullptr) : Node(t, std::move(loc), p) {}
-};
-
-class PatternNode : public Node {
-public:
-    PatternNode(NodeType t, SourceLocation loc, Node* p = nullptr)
-        : Node(t, std::move(loc), p) {}
-};
-
-// Base class for all literals
-class LiteralNode : public ExprNode {
-public:
-    LiteralNode(NodeType t, SourceLocation loc, Node* p = nullptr)
-        : ExprNode(t, std::move(loc), p) {}
-    // accept and toString are pure virtual, inherited from ExprNode (ultimately Node)
-};
-
-// Moved IdentifierNode definition earlier
-class IdentifierNode : public ExprNode {
-public:
-    std::string name;
-    IdentifierNode(SourceLocation loc, std::string n, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-// Moved PathNode definition earlier
-class PathNode : public Node {
-public:
-    std::vector<std::unique_ptr<IdentifierNode>> segments;
-    // bool is_absolute; // Optional: for paths like ::foo::bar
-
-    PathNode(SourceLocation loc, std::vector<std::unique_ptr<IdentifierNode>> segs, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-    std::string getPathString() const;
-};
+        ObjectProperty(SourceLocation loc, std::unique_ptr<Identifier> key, ExprPtr value)
+            : loc(loc), key(std::move(key)), value(std::move(value)) {}
+    };
 
 
-// Specific Literal Node Definitions
-class IntLiteralNode : public LiteralNode {
-public:
-    long long value;
-    IntLiteralNode(SourceLocation loc, long long val, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
+    class ObjectLiteral : public Expression {
+    public:
+        std::vector<ObjectProperty> properties;
 
-class FloatLiteralNode : public LiteralNode {
-public:
-    double value;
-    FloatLiteralNode(SourceLocation loc, double val, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
+        ObjectLiteral(SourceLocation loc, std::vector<ObjectProperty> properties);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
 
-class StringLiteralNode : public LiteralNode {
-public:
-    std::string value;
-    StringLiteralNode(SourceLocation loc, std::string val, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
+    // --- Expressions ---
+    class UnaryExpression : public Expression {
+    public:
+        vyn::token::Token op; // The operator token (full type known from token.hpp)
+        ExprPtr operand;    // The expression being operated on
 
-class BoolLiteralNode : public LiteralNode {
-public:
-    bool value;
-    BoolLiteralNode(SourceLocation loc, bool val, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
+        // Constructor takes const reference for op, which is then copied to the member
+        UnaryExpression(SourceLocation loc, const vyn::token::Token& op, ExprPtr operand);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
 
-class CharLiteralNode : public LiteralNode { // Added definition
-public:
-    char value;
-    CharLiteralNode(SourceLocation loc, char val, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
+    class BinaryExpression : public Expression {
+    public:
+        ExprPtr left;
+        vyn::token::Token op; // The operator token
+        ExprPtr right;
 
-class NullLiteralNode : public LiteralNode { // Added definition
-public:
-    NullLiteralNode(SourceLocation loc, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
+        BinaryExpression(SourceLocation loc, ExprPtr left, const vyn::token::Token& op, ExprPtr right);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
 
-// Added ArrayLiteralNode definition
-class ArrayLiteralNode : public ExprNode {
-public:
-    std::vector<std::unique_ptr<ExprNode>> elements;
+    class CallExpression : public Expression {
+    public:
+        ExprPtr callee;
+        std::vector<ExprPtr> arguments;
 
-    ArrayLiteralNode(SourceLocation loc, std::vector<std::unique_ptr<ExprNode>> elems, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
+        CallExpression(SourceLocation loc, ExprPtr callee, std::vector<ExprPtr> arguments);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
 
+    class MemberExpression : public Expression {
+    public:
+        ExprPtr object;   // The object whose member is being accessed
+        ExprPtr property; // The property being accessed (Identifier or Expression if computed)
+        bool computed;    // True if property is accessed with [], false for .
 
-// Generic Parameter Node
-class GenericParamNode : public Node { // Inherits Node, so has location
-public:
-    // SourceLocation location; // Removed, inherited from Node
-    std::unique_ptr<IdentifierNode> name;
-    std::vector<std::unique_ptr<TypeNode>> trait_bounds; // e.g. for T: Trait1 + Trait2
+        MemberExpression(SourceLocation loc, ExprPtr object, ExprPtr property, bool computed);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
 
-    GenericParamNode(SourceLocation loc, std::unique_ptr<IdentifierNode> param_name, std::vector<std::unique_ptr<TypeNode>> bounds, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
+    class AssignmentExpression : public Expression {
+    public:
+        ExprPtr left;  // LValue (Identifier or MemberExpression)
+        vyn::token::Token op; // Assignment operator (e.g., =, +=)
+        ExprPtr right; // RValue
 
-// Specific Pattern Nodes
-class IdentifierPatternNode : public PatternNode {
-public:
-    std::unique_ptr<IdentifierNode> identifier;
-    bool isMutable;
+        AssignmentExpression(SourceLocation loc, ExprPtr left, const vyn::token::Token& op, ExprPtr right);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
 
-    IdentifierPatternNode(SourceLocation loc, std::unique_ptr<IdentifierNode> id, bool mut = false, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
+    // --- Statements ---
+    class BlockStatement : public Statement {
+    public:
+        std::vector<StmtPtr> body;
 
-class LiteralPatternNode : public PatternNode {
-public:
-    std::unique_ptr<ExprNode> literal; // e.g., IntLiteralNode, StringLiteralNode, BoolLiteralNode
+        BlockStatement(SourceLocation loc, std::vector<StmtPtr> body);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
 
-    LiteralPatternNode(SourceLocation loc, std::unique_ptr<ExprNode> lit, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
+    class ExpressionStatement : public Statement {
+    public:
+        ExprPtr expression;
 
-class WildcardPatternNode : public PatternNode {
-public:
-    WildcardPatternNode(SourceLocation loc, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
+        ExpressionStatement(SourceLocation loc, ExprPtr expression);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
 
-class TuplePatternNode : public PatternNode {
-public:
-    std::vector<std::unique_ptr<PatternNode>> elements;
+    class IfStatement : public Statement {
+    public:
+        ExprPtr test;
+        StmtPtr consequent;
+        StmtPtr alternate; // Optional, can be nullptr
 
-    TuplePatternNode(SourceLocation loc, std::vector<std::unique_ptr<PatternNode>> elems, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
+        IfStatement(SourceLocation loc, ExprPtr test, StmtPtr consequent, StmtPtr alternate = nullptr);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
 
-class EnumVariantPatternNode : public PatternNode {
-public:
-    std::unique_ptr<PathNode> path;
-    std::vector<std::unique_ptr<PatternNode>> arguments;
+    class ForStatement : public Statement {
+    public:
+        NodePtr init;   // VariableDeclaration or ExpressionStatement or nullptr
+        ExprPtr test;   // Expression or nullptr
+        ExprPtr update; // Expression or nullptr
+        StmtPtr body;
 
-    EnumVariantPatternNode(SourceLocation loc, std::unique_ptr<PathNode> p, std::vector<std::unique_ptr<PatternNode>> args, Node* parent = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
+        ForStatement(SourceLocation loc, NodePtr init, ExprPtr test, ExprPtr update, StmtPtr body);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
 
-struct StructPatternField {
-    SourceLocation location; // This is a helper struct, might keep its own location or ensure it's passed if needed
-    std::string field_name;
-    std::unique_ptr<PatternNode> pattern;
+    class WhileStatement : public Statement {
+    public:
+        ExprPtr test;
+        StmtPtr body;
 
-    StructPatternField(SourceLocation loc, std::string name, std::unique_ptr<PatternNode> pat)
-        : location(std::move(loc)), field_name(std::move(name)), pattern(std::move(pat)) {}
+        WhileStatement(SourceLocation loc, ExprPtr test, StmtPtr body);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
+
+    class ReturnStatement : public Statement {
+    public:
+        ExprPtr argument; // Optional, can be nullptr
+
+        ReturnStatement(SourceLocation loc, ExprPtr argument = nullptr);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
+
+    class BreakStatement : public Statement {
+    public:
+        BreakStatement(SourceLocation loc);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
+
+    class ContinueStatement : public Statement {
+    public:
+        ContinueStatement(SourceLocation loc);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
     
-    std::string toString(int indent = 0) const;
-};
-
-class StructPatternNode : public PatternNode {
-public:
-    std::unique_ptr<PathNode> struct_path;
-    std::vector<StructPatternField> fields;
-
-    StructPatternNode(SourceLocation loc, std::unique_ptr<PathNode> path, std::vector<StructPatternField> flds, Node* p = nullptr);
-    void accept(Visitor& visitor) override;
-    std::string toString(int indent = 0) const override;
-};
-
-// Specific Expression Nodes
-
-class TupleLiteralNode : public ExprNode {
-public:
-    // SourceLocation location; // Removed, inherited
-    std::vector<std::unique_ptr<ExprNode>> elements;
-
-    TupleLiteralNode(SourceLocation loc, std::vector<std::unique_ptr<ExprNode>> elems, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-struct StructLiteralField {
-    SourceLocation location; // Helper struct
-    std::unique_ptr<IdentifierNode> name;
-    std::unique_ptr<ExprNode> value;
-
-    StructLiteralField(SourceLocation loc, std::unique_ptr<IdentifierNode> field_name, std::unique_ptr<ExprNode> field_value);
-    std::string toString(int indent = 0) const;
-};
-
-class StructLiteralNode : public ExprNode {
-public:
-    // SourceLocation location; // Removed, inherited
-    std::unique_ptr<TypeNode> type; 
-    std::vector<StructLiteralField> fields;
-
-    StructLiteralNode(SourceLocation loc, std::unique_ptr<TypeNode> struct_type, std::vector<StructLiteralField> flds, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-class UnaryOpNode : public ExprNode {
-public:
-    Vyn::TokenType op; // Uses forward-declared Vyn::TokenType
-    std::unique_ptr<ExprNode> operand;
-
-    UnaryOpNode(SourceLocation loc, Vyn::TokenType o, std::unique_ptr<ExprNode> oper, Node* p = nullptr); // Changed ::TokenType to Vyn::TokenType
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-// Added full definition for BinaryOpNode
-class BinaryOpNode : public ExprNode {
-public:
-    Vyn::TokenType op; // Uses forward-declared Vyn::TokenType
-    std::unique_ptr<ExprNode> left;
-    std::unique_ptr<ExprNode> right;
-
-    BinaryOpNode(SourceLocation loc, Vyn::TokenType o, std::unique_ptr<ExprNode> l, std::unique_ptr<ExprNode> r, Node* p = nullptr); // Changed ::TokenType to Vyn::TokenType
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-// Assuming CallNode mentioned in Visitor is CallExprNode
-class CallExprNode : public ExprNode { // Renamed from CallNode if it was meant to be this
-public:
-    std::unique_ptr<ExprNode> callee;
-    std::vector<std::unique_ptr<ExprNode>> arguments;
-
-    CallExprNode(SourceLocation loc, std::unique_ptr<ExprNode> cal, std::vector<std::unique_ptr<ExprNode>> args, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-class ArrayAccessNode : public ExprNode { // Assuming IndexAccessNode in Visitor is this
-public:
-    std::unique_ptr<ExprNode> array;
-    std::unique_ptr<ExprNode> index;
-
-    ArrayAccessNode(SourceLocation loc, std::unique_ptr<ExprNode> arr, std::unique_ptr<ExprNode> idx, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-class MemberAccessNode : public ExprNode {
-public:
-    std::unique_ptr<ExprNode> object;
-    std::unique_ptr<IdentifierNode> member;
-
-    MemberAccessNode(SourceLocation loc, std::unique_ptr<ExprNode> obj, std::unique_ptr<IdentifierNode> mem, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-class AssignmentNode : public ExprNode { // Or StmtNode if it can only be a statement
-public:
-    std::unique_ptr<ExprNode> left;
-    std::unique_ptr<ExprNode> right;
-
-    AssignmentNode(SourceLocation loc, std::unique_ptr<ExprNode> l, std::unique_ptr<ExprNode> r, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-// Specific Statement Nodes
-class BlockStmtNode : public StmtNode { // Assuming BlockNode in Visitor is this
-public:
-    std::vector<std::unique_ptr<StmtNode>> statements;
-
-    BlockStmtNode(SourceLocation loc, std::vector<std::unique_ptr<StmtNode>> stmts, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-class ReturnStmtNode : public StmtNode {
-public:
-    std::unique_ptr<ExprNode> value; // Can be nullptr
-
-    ReturnStmtNode(SourceLocation loc, std::unique_ptr<ExprNode> val, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-class IfStmtNode : public StmtNode {
-public:
-    std::unique_ptr<ExprNode> condition;
-    std::unique_ptr<BlockStmtNode> thenBranch;
-    std::unique_ptr<StmtNode> elseBranch; // Can be IfStmtNode or BlockStmtNode, or nullptr
-
-    IfStmtNode(SourceLocation loc, std::unique_ptr<ExprNode> cond, std::unique_ptr<BlockStmtNode> thenB, std::unique_ptr<StmtNode> elseB, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-class ExpressionStmtNode : public StmtNode {
-public:
-    std::unique_ptr<ExprNode> expression;
-
-    ExpressionStmtNode(SourceLocation loc, std::unique_ptr<ExprNode> expr, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-class VarDeclStmtNode : public StmtNode { // Assuming VarDeclNode in Visitor is this
-public:
-    std::unique_ptr<PatternNode> pattern;
-    std::unique_ptr<TypeNode> typeAnnotation; // Optional
-    std::unique_ptr<ExprNode> initializer;    // Optional
-    bool isMut; // true for 'var', false for 'let'
-
-    VarDeclStmtNode(SourceLocation loc, std::unique_ptr<PatternNode> pat, std::unique_ptr<TypeNode> ta, std::unique_ptr<ExprNode> init, bool mut, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-class WhileStmtNode : public StmtNode {
-public:
-    std::unique_ptr<ExprNode> condition;
-    std::unique_ptr<BlockStmtNode> body;
-
-    WhileStmtNode(SourceLocation loc, std::unique_ptr<ExprNode> cond, std::unique_ptr<BlockStmtNode> b, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-class ForStmtNode : public StmtNode {
-public:
-    PatternPtr pattern;
-    ExprPtr iterable;
-    std::unique_ptr<BlockStmtNode> body;
-
-    ForStmtNode(SourceLocation loc, PatternPtr pat, ExprPtr iter, std::unique_ptr<BlockStmtNode> b, Node* p = nullptr);
-    void accept(Visitor& visitor) override;
-    std::string toString(int indent = 0) const override;
-};
-
-class BreakStmtNode : public StmtNode {
-public:
-    BreakStmtNode(SourceLocation loc, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-class ContinueStmtNode : public StmtNode {
-public:
-    ContinueStmtNode(SourceLocation loc, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-
-// Specific Declaration Nodes
-class ParamNode : public DeclNode {
-public:
-    bool isRef;
-    bool isMut;
-    std::unique_ptr<IdentifierNode> name;
-    std::unique_ptr<TypeNode> typeAnnotation;
-
-    ParamNode(SourceLocation loc, bool ref, bool mut, std::unique_ptr<IdentifierNode> n, std::unique_ptr<TypeNode> ta, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-
-class FuncDeclNode : public DeclNode { // Assuming FunctionDeclNode in Visitor is this
-public:
-    std::unique_ptr<IdentifierNode> name;
-    std::vector<std::unique_ptr<GenericParamNode>> generic_params;
-    std::vector<std::unique_ptr<ParamNode>> params;
-    std::unique_ptr<TypeNode> return_type; // Optional
-    std::unique_ptr<BlockStmtNode> body;   // Optional (for extern functions)
-    bool is_async;
-    bool is_extern;
-
-    FuncDeclNode(SourceLocation loc, std::unique_ptr<IdentifierNode> func_name,
-                 std::vector<std::unique_ptr<GenericParamNode>> gen_params,
-                 std::vector<std::unique_ptr<ParamNode>> func_params,
-                 std::unique_ptr<TypeNode> ret_type, std::unique_ptr<BlockStmtNode> func_body,
-                 bool async, bool ext, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-class FieldDeclNode : public DeclNode {
-public:
-    std::unique_ptr<IdentifierNode> name;
-    std::unique_ptr<TypeNode> type_annotation;
-    std::unique_ptr<ExprNode> initializer; // Optional
-    bool is_mutable;
-
-    FieldDeclNode(SourceLocation loc,\
-                  std::unique_ptr<IdentifierNode> field_name,\
-                  std::unique_ptr<TypeNode> type_ann,\
-                  std::unique_ptr<ExprNode> init,\
-                  bool is_mut,\
-                  Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-class StructDeclNode : public DeclNode {
-public:
-    std::unique_ptr<IdentifierNode> name;
-    std::vector<std::unique_ptr<GenericParamNode>> generic_params;
-    std::vector<std::unique_ptr<FieldDeclNode>> fields;
-
-
-    StructDeclNode(SourceLocation loc, std::unique_ptr<IdentifierNode> struct_name,\
-                   std::vector<std::unique_ptr<GenericParamNode>> gen_params,\
-                   std::vector<std::unique_ptr<FieldDeclNode>> struct_fields, 
-                   Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-// Added TraitDeclNode definition
-class TraitDeclNode : public DeclNode {
-public:
-    std::unique_ptr<IdentifierNode> name;
-    std::vector<std::unique_ptr<GenericParamNode>> generic_params;
-    std::vector<std::unique_ptr<Node>> members; // Method signatures, associated types
-
-    TraitDeclNode(SourceLocation loc, std::unique_ptr<IdentifierNode> n,
-                  std::vector<std::unique_ptr<GenericParamNode>> gp,
-                  std::vector<std::unique_ptr<Node>> mem, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-
-class ClassDeclNode : public DeclNode {
-public:
-    std::unique_ptr<IdentifierNode> name;
-    std::vector<std::unique_ptr<GenericParamNode>> generic_params;
-    std::vector<std::unique_ptr<DeclNode>> members; // FieldDeclNode or FuncDeclNode (as MethodDeclNode)
-
-    ClassDeclNode(SourceLocation loc,\
-                  std::unique_ptr<IdentifierNode> class_name,\
-                  std::vector<std::unique_ptr<GenericParamNode>> gen_params,\
-                  std::vector<std::unique_ptr<DeclNode>> class_members,\
-                  Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-class ImplDeclNode : public DeclNode {
-public:
-    std::unique_ptr<TypeNode> trait_type; // Optional
-    std::unique_ptr<TypeNode> self_type;
-    std::vector<std::unique_ptr<GenericParamNode>> generic_params;
-    std::vector<std::unique_ptr<FuncDeclNode>> methods; // Or MethodDeclNode
-
-    ImplDeclNode(SourceLocation loc, std::unique_ptr<TypeNode> tr_type, std::unique_ptr<TypeNode> slf_type,\
-                 std::vector<std::unique_ptr<GenericParamNode>> gen_params,\
-                 std::vector<std::unique_ptr<FuncDeclNode>> impl_methods, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-// Specific Type Nodes
-
-class TypeNameNode : public Node { 
-public:
-    std::string name_str; 
-    std::vector<TypeNameNode*> genericArgs; 
-    bool isOptional;
-
-    TypeNameNode(SourceLocation loc, const std::string& n, const std::vector<TypeNameNode*>& gArgs, bool isOpt, Node* p = nullptr);
-    ~TypeNameNode() override; 
-    void accept(Visitor& visitor) override; 
-    std::string toString(int indent = 0) const override; 
-};
-
-
-class IdentifierTypeNode : public TypeNode {
-public:
-    std::unique_ptr<PathNode> path;
-
-    IdentifierTypeNode(SourceLocation loc, std::unique_ptr<PathNode> type_path, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-// Added TupleTypeNode definition
-class TupleTypeNode : public TypeNode {
-public:
-    std::vector<std::unique_ptr<TypeNode>> elementTypes;
-
-    TupleTypeNode(SourceLocation loc, std::vector<std::unique_ptr<TypeNode>> types, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-class ArrayTypeNode : public TypeNode {
-public:
-    std::unique_ptr<TypeNode> elementType;
-    std::unique_ptr<ExprNode> size; // Optional
-
-    ArrayTypeNode(SourceLocation loc, std::unique_ptr<TypeNode> et, std::unique_ptr<ExprNode> sz, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-class PointerTypeNode : public TypeNode {
-public:
-    std::unique_ptr<TypeNode> pointedToType;
-    bool isMutable;
-
-    PointerTypeNode(SourceLocation loc, std::unique_ptr<TypeNode> ptt, bool mut, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-class OptionalTypeNode : public TypeNode {
-public:
-    std::unique_ptr<TypeNode> wrappedType;
-
-    OptionalTypeNode(SourceLocation loc, std::unique_ptr<TypeNode> wt, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-class ReferenceTypeNode : public TypeNode {
-public:
-    TypePtr referenced_type;
-    bool is_mutable;
-
-    ReferenceTypeNode(SourceLocation loc, TypePtr ref_type, bool mut, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-class FunctionTypeNode : public TypeNode {
-public:
-    std::vector<TypePtr> param_types;
-    TypePtr return_type; 
-
-    FunctionTypeNode(SourceLocation loc, std::vector<TypePtr> p_types, TypePtr ret_type, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-class GenericInstanceTypeNode : public TypeNode {
-public:
-    TypePtr base_type; 
-    std::vector<TypePtr> type_arguments;
-
-    GenericInstanceTypeNode(SourceLocation loc, TypePtr b_type, std::vector<TypePtr> t_args, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-
-// Module Node
-class ModuleNode : public Node {
-public:
-    std::vector<std::unique_ptr<Node>> body;
-
-    ModuleNode(SourceLocation loc, std::vector<std::unique_ptr<Node>> b, Node* p = nullptr);
-    std::string toString(int indent = 0) const override;
-    void accept(Visitor& visitor) override;
-};
-
-
-// Enum Structures
-class EnumVariantNode : public Node { 
-public:
-    std::unique_ptr<IdentifierNode> name;
-    std::vector<std::unique_ptr<TypeNode>> types; 
-
-    EnumVariantNode(SourceLocation loc, std::unique_ptr<IdentifierNode> n, std::vector<std::unique_ptr<TypeNode>> t_params, Node* p = nullptr); 
-    ~EnumVariantNode() override = default;
-
-    void accept(Visitor& visitor) override;
-    std::string toString(int indent = 0) const override;
-};
-
-class EnumDeclNode : public DeclNode {
-public:
-    std::unique_ptr<IdentifierNode> name;
-    std::vector<std::unique_ptr<GenericParamNode>> generic_params;
-    std::vector<std::unique_ptr<EnumVariantNode>> variants;
-
-    EnumDeclNode(SourceLocation loc, std::unique_ptr<IdentifierNode> n,\
-                 std::vector<std::unique_ptr<GenericParamNode>> gp,\
-                 std::vector<std::unique_ptr<EnumVariantNode>> v, Node* p = nullptr); 
-    ~EnumDeclNode() override = default;
-
-    void accept(Visitor& visitor) override;
-    std::string toString(int indent = 0) const override;
-};
-
-class TypeAliasDeclNode : public DeclNode {
-public:
-    std::unique_ptr<IdentifierNode> name;
-    std::vector<std::unique_ptr<GenericParamNode>> generic_params;
-    std::unique_ptr<TypeNode> aliased_type;
-
-    TypeAliasDeclNode(SourceLocation loc, \
-                      std::unique_ptr<IdentifierNode> n,\
-                      std::vector<std::unique_ptr<GenericParamNode>> gp,\
-                      std::unique_ptr<TypeNode> at, Node* p = nullptr); 
-    ~TypeAliasDeclNode() override = default;
-
-    void accept(Visitor& visitor) override;
-    std::string toString(int indent = 0) const override;
-};
-
-class GlobalVarDeclNode : public DeclNode {
-public:
-    std::unique_ptr<PatternNode> pattern;
-    std::unique_ptr<TypeNode> type_annotation; // Optional
-    std::unique_ptr<ExprNode> initializer;     // Optional
-    bool is_mutable;                           // true for 'var', false for 'let' or 'const'
-    bool is_const;                             // true if 'const' keyword is used
-
-    GlobalVarDeclNode(SourceLocation loc,\
-                      std::unique_ptr<PatternNode> pat,\
-                      std::unique_ptr<TypeNode> ta,\
-                      std::unique_ptr<ExprNode> init,\
-                      bool is_mut,\
-                      bool is_cst, Node* p = nullptr); 
-    ~GlobalVarDeclNode() override = default;
-
-    void accept(Visitor& visitor) override;
-    std::string toString(int indent = 0) const override;
-};
-
-// Visitor Base Class Definition
-class Visitor {
-public:
-    virtual ~Visitor() = default;
-
-    // Base AST Node types
-    virtual void visit(Node* node);
-    virtual void visit(ExprNode* node);
-    virtual void visit(StmtNode* node);
-    virtual void visit(DeclNode* node);
-    virtual void visit(PatternNode* node);
-    virtual void visit(LiteralNode* node);
-    virtual void visit(TypeNode* node); // For base TypeNode
-
-    // Literals
-    virtual void visit(IntLiteralNode* node);
-    virtual void visit(FloatLiteralNode* node);
-    virtual void visit(StringLiteralNode* node);
-    virtual void visit(BoolLiteralNode* node);
-    virtual void visit(CharLiteralNode* node);
-    virtual void visit(NullLiteralNode* node);
-    virtual void visit(ArrayLiteralNode* node);
+    // Forward declare TypeAnnotation for use in declarations
+    class TypeAnnotation;
+    using TypeAnnotationPtr = std::unique_ptr<TypeAnnotation>;
+
+
+    // --- Declarations ---
+    class VariableDeclaration : public Declaration {
+    public:
+        std::unique_ptr<Identifier> id;
+        bool isConst;
+        TypeAnnotationPtr typeAnnotation; // Optional
+        ExprPtr init;                     // Optional
+
+        VariableDeclaration(SourceLocation loc, std::unique_ptr<Identifier> id, bool isConst, TypeAnnotationPtr typeAnnotation = nullptr, ExprPtr init = nullptr);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
     
-    virtual void visit(IdentifierNode* node);
-    virtual void visit(PathNode* node);
+    struct FunctionParameter {
+        SourceLocation loc;
+        std::unique_ptr<Identifier> name;
+        TypeAnnotationPtr typeAnnotation; // Optional in some languages, mandatory in Vyn? AST.md implies it's there.
 
-    // Expressions
-    virtual void visit(BinaryOpNode* node); 
-    virtual void visit(UnaryOpNode* node);
-    virtual void visit(CallExprNode* node);
-    virtual void visit(MemberAccessNode* node);
-    virtual void visit(ArrayAccessNode* node);
-    virtual void visit(TupleLiteralNode* node);
-    virtual void visit(StructLiteralNode* node);
-    virtual void visit(AssignmentNode* node);
-    // virtual void visit(IfExprNode* node); // Not in current ast.hpp forward declarations/definitions
+        FunctionParameter(SourceLocation loc, std::unique_ptr<Identifier> name, TypeAnnotationPtr typeAnnotation)
+            : loc(loc), name(std::move(name)), typeAnnotation(std::move(typeAnnotation)) {}
+    };
 
-    // Statements
-    virtual void visit(BlockStmtNode* node); // Ensure UNCOMMENTED
-    virtual void visit(ExpressionStmtNode* node);
-    virtual void visit(VarDeclStmtNode* node); // Ensure UNCOMMENTED
-    virtual void visit(ReturnStmtNode* node);
-    virtual void visit(IfStmtNode* node);
-    virtual void visit(WhileStmtNode* node);
-    virtual void visit(ForStmtNode* node);
-    virtual void visit(BreakStmtNode* node);
-    virtual void visit(ContinueStmtNode* node);
-    // virtual void visit(ImportStmtNode* node); // Not in current ast.hpp forward declarations/definitions
 
-    // Declarations
-    virtual void visit(FuncDeclNode* node); // Ensure UNCOMMENTED
-    virtual void visit(ParamNode* node);
-    virtual void visit(GenericParamNode* node);
-    virtual void visit(StructDeclNode* node);
-    virtual void visit(EnumDeclNode* node);
-    virtual void visit(EnumVariantNode* node);
-    virtual void visit(FieldDeclNode* node);
-    virtual void visit(TraitDeclNode* node);
-    // virtual void visit(ClassDeclNode* node); // Not in current ast.hpp forward declarations/definitions
-    // virtual void visit(MethodDeclNode* node); // Not in current ast.hpp forward declarations/definitions
-    virtual void visit(ImplDeclNode* node);
-    virtual void visit(TypeAliasDeclNode* node);
-    virtual void visit(GlobalVarDeclNode* node);
+    class FunctionDeclaration : public Declaration {
+    public:
+        std::unique_ptr<Identifier> id;
+        std::vector<FunctionParameter> params;
+        std::unique_ptr<BlockStatement> body;
+        TypeAnnotationPtr returnType; // Optional
+        bool isAsync;
+        // bool isGenerator; // Future extension?
 
-    // Types
-    virtual void visit(TypeNameNode* node);
-    virtual void visit(IdentifierTypeNode* node);
-    virtual void visit(ArrayTypeNode* node);
-    virtual void visit(PointerTypeNode* node);
-    virtual void visit(OptionalTypeNode* node);
-    virtual void visit(TupleTypeNode* node);
-    virtual void visit(ReferenceTypeNode* node);        // Added
-    virtual void visit(FunctionTypeNode* node);         // Added
-    virtual void visit(GenericInstanceTypeNode* node);  // Added
-    // visit(TypeNode* node) is with base types
+        FunctionDeclaration(SourceLocation loc, std::unique_ptr<Identifier> id, std::vector<FunctionParameter> params, std::unique_ptr<BlockStatement> body, bool isAsync, TypeAnnotationPtr returnType = nullptr);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
 
-    // Patterns
-    virtual void visit(IdentifierPatternNode* node);
-    virtual void visit(LiteralPatternNode* node);
-    virtual void visit(WildcardPatternNode* node);
-    virtual void visit(TuplePatternNode* node);
-    virtual void visit(StructPatternNode* node);
-    virtual void visit(EnumVariantPatternNode* node);
+    class TypeAliasDeclaration : public Declaration {
+    public:
+        std::unique_ptr<Identifier> name;
+        TypeAnnotationPtr typeAnnotation; // In AST.md this is aliased_type, but parser uses typeAnnotation
+
+        TypeAliasDeclaration(SourceLocation loc, std::unique_ptr<Identifier> name, TypeAnnotationPtr typeAnnotation);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
+
+    // Helper for ImportDeclaration
+    struct ImportSpecifier {
+        SourceLocation loc;
+        std::unique_ptr<Identifier> importedName; // The name as exported by the module
+        std::unique_ptr<Identifier> localName;    // Optional: the alias, as in 'import { x as y }'
+
+        ImportSpecifier(SourceLocation loc, std::unique_ptr<Identifier> importedName, std::unique_ptr<Identifier> localName = nullptr)
+            : loc(loc), importedName(std::move(importedName)), localName(std::move(localName)) {}
+    };
+
+    class ImportDeclaration : public Declaration {
+    public:
+        std::unique_ptr<StringLiteral> source; // Path to the module
+        
+        // For named imports: import { name1, name2 as alias } from "module";
+        std::vector<ImportSpecifier> specifiers;
+        
+        // For default import: import defaultName from "module";
+        std::unique_ptr<Identifier> defaultImport; // Optional
+        
+        // For namespace import: import * as Namespace from "module";
+        std::unique_ptr<Identifier> namespaceImport; // Optional, 'Namespace'
+
+        ImportDeclaration(SourceLocation loc, std::unique_ptr<StringLiteral> source,
+                          std::vector<ImportSpecifier> specifiers = {},
+                          std::unique_ptr<Identifier> defaultImport = nullptr,
+                          std::unique_ptr<Identifier> namespaceImport = nullptr);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
+
+
+    // New Declaration Nodes based on AST.md
+
+    class FieldDeclaration : public Declaration {
+    public:
+        std::unique_ptr<Identifier> name;
+        TypeAnnotationPtr typeAnnotation; // Mandatory for fields
+        ExprPtr initializer;              // Optional
+        bool isMutable;                   // true for \'var\', false for \'let\'/\'const\' (matches AST.md \'is_mutable\')
+
+        FieldDeclaration(SourceLocation loc, std::unique_ptr<Identifier> name, TypeAnnotationPtr typeAnnotation, ExprPtr init = nullptr, bool isMutable = false);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
+
+    class StructDeclaration : public Declaration {
+    public:
+        std::unique_ptr<Identifier> name;
+        std::vector<std::unique_ptr<GenericParamNode>> genericParams; // Uncommented and type updated
+        std::vector<std::unique_ptr<FieldDeclaration>> fields;
+
+        StructDeclaration(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<std::unique_ptr<GenericParamNode>> genericParams, std::vector<std::unique_ptr<FieldDeclaration>> fields); // Updated constructor
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
+
+    class ClassDeclaration : public Declaration {
+    public:
+        std::unique_ptr<Identifier> name;
+        std::vector<std::unique_ptr<GenericParamNode>> genericParams; // Uncommented and type updated
+        std::vector<DeclPtr> members; // Can be FieldDeclaration or FunctionDeclaration
+
+        ClassDeclaration(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<std::unique_ptr<GenericParamNode>> genericParams, std::vector<DeclPtr> members); // Updated constructor
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
+
+    class ImplDeclaration : public Declaration {
+    public:
+        std::vector<std::unique_ptr<GenericParamNode>> genericParams; // Uncommented and type updated
+        TypeAnnotationPtr selfType; // The type being implemented (using TypeAnnotationPtr for flexibility)
+        TypeAnnotationPtr traitType; // Optional: if implementing a trait
+        std::vector<std::unique_ptr<FunctionDeclaration>> methods;
+
+        ImplDeclaration(SourceLocation loc, std::vector<std::unique_ptr<GenericParamNode>> genericParams, TypeAnnotationPtr selfType, std::vector<std::unique_ptr<FunctionDeclaration>> methods, TypeAnnotationPtr traitType = nullptr); // Updated constructor
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
+
+    class EnumVariantNode : public Declaration { // Inherits Declaration for consistency
+    public:
+        std::unique_ptr<Identifier> name;
+        std::vector<TypeAnnotationPtr> types; // For tuple-like parameters
+
+        EnumVariantNode(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<TypeAnnotationPtr> types = {});
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
+
+    class EnumDeclaration : public Declaration {
+    public:
+        std::unique_ptr<Identifier> name;
+        std::vector<std::unique_ptr<GenericParamNode>> genericParams; // Uncommented and type updated
+        std::vector<std::unique_ptr<EnumVariantNode>> variants;
+
+        EnumDeclaration(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<std::unique_ptr<GenericParamNode>> genericParams, std::vector<std::unique_ptr<EnumVariantNode>> variants); // Updated constructor
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
+
+
+    // --- Other ---
+
+    // Generic Parameter Node
+    class GenericParamNode : public Node { // Or Declaration if it makes more sense, Node for now
+    public:
+        std::unique_ptr<Identifier> name;
+        std::vector<TypeAnnotationPtr> bounds; // e.g. T: Bound1 + Bound2
+
+        GenericParamNode(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<TypeAnnotationPtr> bounds = {});
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
+
+    class TypeAnnotation : public Node {
+    public:
+        // One of these will be non-null, defining the type of annotation
+        std::unique_ptr<Identifier> simpleTypeName;      // e.g., 'int', 'MyClass'
+        TypeAnnotationPtr arrayElementType;        // e.g., for 'int[]', this is 'int'
+        
+        std::unique_ptr<Identifier> genericBaseType;   // e.g., for 'List<string>', this is 'List'
+        std::vector<TypeAnnotationPtr> genericTypeArguments; // e.g., for 'List<string>', this is ['string']
+
+        // Constructors to enforce valid states
+        // Simple type: MyType
+        TypeAnnotation(SourceLocation loc, std::unique_ptr<Identifier> name);
+        // Array type: T[] (elementType is T)
+        TypeAnnotation(SourceLocation loc, TypeAnnotationPtr elementType, bool isArrayMarker); // Marker to distinguish from generic
+        // Generic type: List<T> (base is List, args is <T>)
+        TypeAnnotation(SourceLocation loc, std::unique_ptr<Identifier> base, std::vector<TypeAnnotationPtr> args);
+
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+
+        bool isSimpleType() const { return simpleTypeName && !arrayElementType && !genericBaseType; }
+        bool isArrayType() const { return arrayElementType && !simpleTypeName && !genericBaseType; }
+        bool isGenericType() const { return genericBaseType && !simpleTypeName && !arrayElementType; }
+    };
     
-    // Module
-    virtual void visit(ModuleNode* node);
+    // Module (Root of the AST)
+    class Module : public Node {
+    public:
+        std::vector<StmtPtr> body; // Sequence of statements (including declarations)
 
-    // Catch-all for nodes not explicitly handled, or for specific handling in implementations
-};
+        Module(SourceLocation loc, std::vector<StmtPtr> body);
+        NodeType getType() const override;
+        std::string toString() const override;
+        void accept(Visitor& visitor) override;
+    };
 
-} // namespace Vyn::AST
+} // namespace vyn
 
 #endif // VYN_AST_HPP

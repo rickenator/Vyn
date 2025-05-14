@@ -1,20 +1,23 @@
 #include "vyn/lexer.hpp"
-#include "vyn/token.hpp" // Ensure Vyn::token_type_to_string is available
-#include "vyn/ast.hpp"   // Required for Vyn::AST::SourceLocation
+#include "vyn/token.hpp" // Ensure vyn::token_type_to_string is available
+#include "vyn/source_location.hpp"   // Required for vyn::SourceLocation
 #include <stdexcept>
 #include <iostream>
 #include <functional>
+#include <algorithm> // Required for std::find
+#include <unordered_map> // Required for std::unordered_map
 
-Lexer::Lexer(const std::string& source) : source_(source), pos_(0), line_(1), column_(1), indent_levels_({0}), nesting_level_(0) {
+Lexer::Lexer(const std::string& source, const std::string& filePath) 
+    : source_(source), current_file_path_(filePath), pos_(0), line_(1), column_(1), indent_levels_({0}), nesting_level_(0) {
 }
 
-std::vector<Vyn::Token> Lexer::tokenize() {
-  std::vector<Vyn::Token> tokens;
+std::vector<vyn::token::Token> Lexer::tokenize() {
+  std::vector<vyn::token::Token> tokens;
 
   while (pos_ < source_.size()) {
     char c = source_[pos_];
-    int current_line_start_for_token = line_;
-    int current_column_start_for_token = column_;
+    unsigned int current_line_start_for_token = static_cast<unsigned int>(line_);
+    unsigned int current_column_start_for_token = static_cast<unsigned int>(column_);
 
     if (c == '\r') { 
       pos_++;
@@ -46,15 +49,15 @@ std::vector<Vyn::Token> Lexer::tokenize() {
 
     if (c == '/' && pos_ + 1 < source_.size() && source_[pos_ + 1] == '/') {
       std::string comment_text = consume_while([](char c_comment_slash) { return c_comment_slash != '\n'; }); 
-      tokens.emplace_back(Vyn::TokenType::COMMENT, "//" + comment_text, current_line_start_for_token, current_column_start_for_token, Vyn::AST::SourceLocation{source_, current_line_start_for_token, current_column_start_for_token});
+      tokens.emplace_back(vyn::TokenType::COMMENT, "//" + comment_text, vyn::SourceLocation{current_file_path_, current_line_start_for_token, current_column_start_for_token});
       column_ += (2 + comment_text.size()); // Advance column for // and comment text
       continue;
     }
 
     if (is_letter(c)) {
       std::string word = consume_while([this](char c_id) { return is_letter(c_id) || is_digit(c_id) || c_id == '_'; });
-      Vyn::TokenType type = get_keyword_type(word);
-      tokens.emplace_back(type, word, current_line_start_for_token, current_column_start_for_token, Vyn::AST::SourceLocation{source_, current_line_start_for_token, current_column_start_for_token});
+      vyn::TokenType type = get_keyword_type(word);
+      tokens.emplace_back(type, word, vyn::SourceLocation{current_file_path_, current_line_start_for_token, current_column_start_for_token});
       column_ += word.size();
       continue;
     }
@@ -67,7 +70,7 @@ std::vector<Vyn::Token> Lexer::tokenize() {
       // Check for range operator ".."
       // pos_ is at the character immediately after int_part_str
       if (pos_ + 1 < source_.size() && source_[pos_] == '.' && source_[pos_ + 1] == '.') {
-        tokens.emplace_back(Vyn::TokenType::INT_LITERAL, int_part_str, current_line_start_for_token, current_column_start_for_token, Vyn::AST::SourceLocation{source_, current_line_start_for_token, current_column_start_for_token});
+        tokens.emplace_back(vyn::TokenType::INT_LITERAL, int_part_str, vyn::SourceLocation{current_file_path_, current_line_start_for_token, current_column_start_for_token});
         column_ += int_part_str.size();
         continue;
       }
@@ -89,7 +92,7 @@ std::vector<Vyn::Token> Lexer::tokenize() {
              throw std::runtime_error("Invalid number format (multiple dots in float): " + float_str + "." + " at line " + std::to_string(line_) + ", column " + std::to_string(column_ + float_str.size()));
         }
 
-        tokens.emplace_back(Vyn::TokenType::FLOAT_LITERAL, float_str, current_line_start_for_token, current_column_start_for_token, Vyn::AST::SourceLocation{source_, current_line_start_for_token, current_column_start_for_token});
+        tokens.emplace_back(vyn::TokenType::FLOAT_LITERAL, float_str, vyn::SourceLocation{current_file_path_, current_line_start_for_token, current_column_start_for_token});
         column_ += float_str.size();
         continue;
       }
@@ -97,7 +100,7 @@ std::vector<Vyn::Token> Lexer::tokenize() {
           throw std::runtime_error("Invalid number format (trailing dot): " + int_part_str + "." + " at line " + std::to_string(line_) + ", column " + std::to_string(column_ + int_part_str.size()));
       }
       else {
-        tokens.emplace_back(Vyn::TokenType::INT_LITERAL, int_part_str, current_line_start_for_token, current_column_start_for_token, Vyn::AST::SourceLocation{source_, current_line_start_for_token, current_column_start_for_token});
+        tokens.emplace_back(vyn::TokenType::INT_LITERAL, int_part_str, vyn::SourceLocation{current_file_path_, current_line_start_for_token, current_column_start_for_token});
         column_ += int_part_str.size();
         continue;
       }
@@ -110,15 +113,15 @@ std::vector<Vyn::Token> Lexer::tokenize() {
       if (pos_ >= source_.size() || source_[pos_] != '\"') {
           throw std::runtime_error("Unterminated string literal at line " + std::to_string(current_line_start_for_token) + ", column " + std::to_string(current_column_start_for_token));
       }
-      tokens.emplace_back(Vyn::TokenType::STRING_LITERAL, str_value, current_line_start_for_token, current_column_start_for_token, Vyn::AST::SourceLocation{source_, current_line_start_for_token, current_column_start_for_token});
+      tokens.emplace_back(vyn::TokenType::STRING_LITERAL, str_value, vyn::SourceLocation{current_file_path_, current_line_start_for_token, current_column_start_for_token});
       pos_++; // Consume closing quote
       column_ += str_value.size() + 2; // +2 for the quotes
       continue;
     }
 
     // Helper for single/double char tokens
-    auto emit_token = [&](Vyn::TokenType type, const std::string& lexeme_val) {
-        tokens.emplace_back(type, lexeme_val, current_line_start_for_token, current_column_start_for_token, Vyn::AST::SourceLocation{source_, current_line_start_for_token, current_column_start_for_token});
+    auto emit_token = [&](vyn::TokenType type, const std::string& lexeme_val) {
+        tokens.emplace_back(type, lexeme_val, vyn::SourceLocation{current_file_path_, current_line_start_for_token, current_column_start_for_token});
         pos_ += lexeme_val.size();
         column_ += lexeme_val.size();
     };
@@ -128,84 +131,84 @@ std::vector<Vyn::Token> Lexer::tokenize() {
     int original_column = column_;
 
     switch (c) {
-      case '(': emit_token(Vyn::TokenType::LPAREN, "("); nesting_level_++; break; // Qualified TokenType
-      case ')': emit_token(Vyn::TokenType::RPAREN, ")"); nesting_level_--; break; // Qualified TokenType
-      case '[': emit_token(Vyn::TokenType::LBRACKET, "["); nesting_level_++; break; // Qualified TokenType
-      case ']': emit_token(Vyn::TokenType::RBRACKET, "]"); nesting_level_--; break; // Qualified TokenType
-      case '{': emit_token(Vyn::TokenType::LBRACE, "{"); nesting_level_++; break; // Qualified TokenType
-      case '}': emit_token(Vyn::TokenType::RBRACE, "}"); nesting_level_--; break; // Qualified TokenType
-      case ',': emit_token(Vyn::TokenType::COMMA, ","); break; // Qualified TokenType
+      case '(': emit_token(vyn::TokenType::LPAREN, "("); nesting_level_++; break; 
+      case ')': emit_token(vyn::TokenType::RPAREN, ")"); nesting_level_--; break; 
+      case '[': emit_token(vyn::TokenType::LBRACKET, "["); nesting_level_++; break; 
+      case ']': emit_token(vyn::TokenType::RBRACKET, "]"); nesting_level_--; break; 
+      case '{': emit_token(vyn::TokenType::LBRACE, "{"); nesting_level_++; break; 
+      case '}': emit_token(vyn::TokenType::RBRACE, "}"); nesting_level_--; break; 
+      case ',': emit_token(vyn::TokenType::COMMA, ","); break; 
       case '.': 
         if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '.') {
-          emit_token(Vyn::TokenType::DOTDOT, "..");
+          emit_token(vyn::TokenType::DOTDOT, "..");
         } else {
-          emit_token(Vyn::TokenType::DOT, ".");
+          emit_token(vyn::TokenType::DOT, ".");
         }
         break;
       case ':':
         if (pos_ + 1 < source_.size() && source_[pos_ + 1] == ':') {
-          emit_token(Vyn::TokenType::COLONCOLON, "::");
+          emit_token(vyn::TokenType::COLONCOLON, "::");
         } else {
-          emit_token(Vyn::TokenType::COLON, ":");
+          emit_token(vyn::TokenType::COLON, ":");
         }
         break;
       case '=':
         if (pos_ + 1 < source_.size()) {
           if (source_[pos_ + 1] == '=') { 
-            emit_token(Vyn::TokenType::EQEQ, "==");
+            emit_token(vyn::TokenType::EQEQ, "==");
           } else if (source_[pos_ + 1] == '>') { 
-            emit_token(Vyn::TokenType::FAT_ARROW, "=>");
+            emit_token(vyn::TokenType::FAT_ARROW, "=>");
           } else { 
-            emit_token(Vyn::TokenType::EQ, "=");
+            emit_token(vyn::TokenType::EQ, "=");
           }
         } else { 
-          emit_token(Vyn::TokenType::EQ, "=");
+          emit_token(vyn::TokenType::EQ, "=");
         }
         break;
       case '!':
         if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '=') {
-          emit_token(Vyn::TokenType::NOTEQ, "!=");
+          emit_token(vyn::TokenType::NOTEQ, "!=");
         } else {
-          emit_token(Vyn::TokenType::BANG, "!");
+          emit_token(vyn::TokenType::BANG, "!");
         }
         break;
       case '<':
         if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '=') {
-          emit_token(Vyn::TokenType::LTEQ, "<=");
+          emit_token(vyn::TokenType::LTEQ, "<=");
         } else {
-          emit_token(Vyn::TokenType::LT, "<");
+          emit_token(vyn::TokenType::LT, "<");
         }
         break;
       case '>':
         if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '=') {
-          emit_token(Vyn::TokenType::GTEQ, ">=");
+          emit_token(vyn::TokenType::GTEQ, ">=");
         } else {
-          emit_token(Vyn::TokenType::GT, ">");
+          emit_token(vyn::TokenType::GT, ">");
         }
         break;
-      case '+': emit_token(Vyn::TokenType::PLUS, "+"); break; // Qualified TokenType
-      case '*': emit_token(Vyn::TokenType::MULTIPLY, "*"); break; // Qualified TokenType
+      case '+': emit_token(vyn::TokenType::PLUS, "+"); break; 
+      case '*': emit_token(vyn::TokenType::MULTIPLY, "*"); break; 
       case '/': 
         // This case is for division. Comments (//) are handled earlier.
-        emit_token(Vyn::TokenType::DIVIDE, "/"); 
+        emit_token(vyn::TokenType::DIVIDE, "/"); 
         break;
       case '&':
         if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '&') {
-          emit_token(Vyn::TokenType::AND, "&&");
+          emit_token(vyn::TokenType::AND, "&&");
         } else {
-          emit_token(Vyn::TokenType::AMPERSAND, "&");
+          emit_token(vyn::TokenType::AMPERSAND, "&");
         }
         break;
       case '-':
         if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '>') {
-          emit_token(Vyn::TokenType::ARROW, "->");
+          emit_token(vyn::TokenType::ARROW, "->");
         } else {
-          emit_token(Vyn::TokenType::MINUS, "-");
+          emit_token(vyn::TokenType::MINUS, "-");
         }
         break;
-      case ';': emit_token(Vyn::TokenType::SEMICOLON, ";"); break; // Qualified TokenType
-      case '@': emit_token(Vyn::TokenType::AT, "@"); break; // Qualified TokenType
-      case '_': emit_token(Vyn::TokenType::UNDERSCORE, "_"); break; // Qualified TokenType
+      case ';': emit_token(vyn::TokenType::SEMICOLON, ";"); break; 
+      case '@': emit_token(vyn::TokenType::AT, "@"); break; 
+      case '_': emit_token(vyn::TokenType::UNDERSCORE, "_"); break; 
       default:
         // If no token was emitted by the switch, pos_ and column_ were not advanced by emit_token
         // Restore them to ensure the error message is correct and to avoid infinite loops if pos_ didn't change.
@@ -217,32 +220,36 @@ std::vector<Vyn::Token> Lexer::tokenize() {
     }
   }
 
-  int last_line_for_dedent = line_; // Use the line number of the last actual content or EOF
-  int last_col_for_dedent = column_;
-  if (!tokens.empty() && tokens.back().type != Vyn::TokenType::NEWLINE && tokens.back().type != Vyn::TokenType::INDENT && tokens.back().type != Vyn::TokenType::DEDENT) {
+  unsigned int last_line_for_dedent = static_cast<unsigned int>(line_); // Use the line number of the last actual content or EOF
+  // unsigned int last_col_for_dedent = static_cast<unsigned int>(column_); // Not directly used for DEDENT token's own location column.
+  if (!tokens.empty() && tokens.back().type != vyn::TokenType::NEWLINE && tokens.back().type != vyn::TokenType::INDENT && tokens.back().type != vyn::TokenType::DEDENT) {
       last_line_for_dedent = tokens.back().location.line;
-      last_col_for_dedent = tokens.back().location.column + tokens.back().lexeme.length(); // End of last token
+      // The column for DEDENT should be 1, but the location object itself might need to reflect the end of the last token or start of the new line.
+      // For simplicity, using 1 as the column for the DEDENT token itself.
+      // The SourceLocation for DEDENT will point to the start of the line where the DEDENT is conceptually inserted.
   }
 
 
   while (indent_levels_.size() > 1) {
-    tokens.emplace_back(Vyn::TokenType::DEDENT, "", last_line_for_dedent, 1, Vyn::AST::SourceLocation{source_, last_line_for_dedent, 1}); // DEDENTs are at column 1 of their effective line
+    tokens.emplace_back(vyn::TokenType::DEDENT, "", vyn::SourceLocation{current_file_path_, last_line_for_dedent, 1}); // DEDENTs are at column 1 of their effective line
     indent_levels_.pop_back();
   }
 
-  tokens.emplace_back(Vyn::TokenType::END_OF_FILE, "", line_, column_, Vyn::AST::SourceLocation{source_, line_, column_});
+  tokens.emplace_back(vyn::TokenType::END_OF_FILE, "", vyn::SourceLocation{current_file_path_, static_cast<unsigned int>(line_), static_cast<unsigned int>(column_)});
 
   return tokens;
 }
 
-void Lexer::handle_newline(std::vector<Vyn::Token>& tokens) {
+void Lexer::handle_newline(std::vector<vyn::token::Token>& tokens) {
   // Current pos_ is at '\n'. line_ and column_ are for the '\n' itself.
-  int newline_char_line = line_;
-  int newline_char_col = column_;
+  // int newline_char_line = line_; // unused
+  // int newline_char_col = column_; // unused
 
   pos_++; 
   line_++;
   column_ = 1;
+  unsigned int current_line_unsigned = static_cast<unsigned int>(line_);
+
 
   if (nesting_level_ > 0) {
     
@@ -279,7 +286,7 @@ void Lexer::handle_newline(std::vector<Vyn::Token>& tokens) {
 
     if (!is_nested_blank_or_comment) {
         // NEWLINE token refers to the line it *introduces*
-        tokens.emplace_back(Vyn::TokenType::NEWLINE, "", line_, 1, Vyn::AST::SourceLocation{source_, line_, 1});
+        tokens.emplace_back(vyn::TokenType::NEWLINE, "", vyn::SourceLocation{current_file_path_, current_line_unsigned, 1});
     } 
     
     pos_ += spaces_skipped; // Advance main lexer position past the leading spaces
@@ -298,73 +305,117 @@ void Lexer::handle_newline(std::vector<Vyn::Token>& tokens) {
       throw std::runtime_error("Tabs not allowed at line " + std::to_string(line_) +
                                ", column " + std::to_string(1 + indent_count)); 
     } else {
-      break; 
+      break;
     }
-    temp_pos_for_indent_check++;
+    temp_pos_for_indent_check++; // Consume the space/tab
+  }
+  
+  // After counting spaces, check if the line is blank or starts with a comment
+  bool line_is_blank_or_comment = false;
+  if (temp_pos_for_indent_check == source_.size() || // EOF
+      source_[temp_pos_for_indent_check] == '\n' || // Another newline (blank line)
+      source_[temp_pos_for_indent_check] == '\r' || // Carriage return
+      source_[temp_pos_for_indent_check] == '#' || // Hash comment
+      (source_[temp_pos_for_indent_check] == '/' && temp_pos_for_indent_check + 1 < source_.size() && source_[temp_pos_for_indent_check+1] == '/') // Slash comment
+     ) {
+      line_is_blank_or_comment = true;
   }
 
-  bool emitted_indent_dedent = false;
+
+  if (line_is_blank_or_comment) {
+      // For blank lines or lines with only comments, we don\'t emit NEWLINE, INDENT, or DEDENT.
+      // We just advance pos_ and column_ past the counted indent spaces.
+      pos_ += indent_count;
+      column_ += indent_count;
+      // The rest of the line (comment or newline char) will be handled by the main loop.
+      return;
+  }
+
+  // If not blank or comment, then this line has actual code.
+  // Emit NEWLINE for the previous line ending.
+  // The NEWLINE token\'s location is the start of the new line it introduces.
+  tokens.emplace_back(vyn::TokenType::NEWLINE, "", vyn::SourceLocation{current_file_path_, current_line_unsigned, 1});
+
+
   if (indent_count > indent_levels_.back()) {
     indent_levels_.push_back(indent_count);
-    // INDENT token is for the current line (line_) at column 1
-    tokens.emplace_back(Vyn::TokenType::INDENT, "", line_, 1, Vyn::AST::SourceLocation{source_, line_, 1});
-    emitted_indent_dedent = true;
+    tokens.emplace_back(vyn::TokenType::INDENT, "", vyn::SourceLocation{current_file_path_, current_line_unsigned, 1});
   } else if (indent_count < indent_levels_.back()) {
-    bool actually_dedented_something = false;
-    while (indent_levels_.back() > indent_count && indent_levels_.size() > 1) {
+    while (indent_count < indent_levels_.back()) {
+      if (std::find(indent_levels_.begin(), indent_levels_.end(), indent_count) == indent_levels_.end()) {
+          throw std::runtime_error("Indentation error: inconsistent dedent to level " + 
+                                   std::to_string(indent_count) + " at line " + std::to_string(line_) +
+                                   ". Valid previous indent levels: " + [&](){
+                                       std::string s;
+                                       for(size_t l_idx = 0; l_idx < indent_levels_.size(); ++l_idx) {
+                                           s += std::to_string(indent_levels_[l_idx]) + (l_idx < indent_levels_.size() - 1 ? " " : "");
+                                       }
+                                       return s;
+                                   }());
+      }
       indent_levels_.pop_back();
-      // DEDENT token is for the current line (line_) at column 1
-      tokens.emplace_back(Vyn::TokenType::DEDENT, "", line_, 1, Vyn::AST::SourceLocation{source_, line_, 1});
-      actually_dedented_something = true;
-      if (indent_levels_.back() == indent_count) {
-          break;
-      }
+      tokens.emplace_back(vyn::TokenType::DEDENT, "", vyn::SourceLocation{current_file_path_, current_line_unsigned, 1});
     }
-
-    if (indent_levels_.back() != indent_count) {
-      throw std::runtime_error("Indentation error: line " + std::to_string(line_) +
-                               " has indent " + std::to_string(indent_count) +
-                               ", which is not a valid dedent level. Current indent stack top: " +
-                               std::to_string(indent_levels_.back()) + ".");
-    }
-
-    if (actually_dedented_something) {
-        emitted_indent_dedent = true; 
+    if (indent_count != indent_levels_.back()) { // Should not happen if previous check is correct
+        throw std::runtime_error("Indentation error: dedent to unaligned level " + 
+                                 std::to_string(indent_count) + " at line " + std::to_string(line_));
     }
   }
+  // If indent_count == indent_levels_.back(), no change in indentation level.
 
-  bool is_blank_or_comment_line = true;
-  if (temp_pos_for_indent_check < source_.size()) {
-      char first_content_char = source_[temp_pos_for_indent_check];
-      if (first_content_char == '#') { 
-          is_blank_or_comment_line = true;
-      } else if (first_content_char == '/' && temp_pos_for_indent_check + 1 < source_.size() && source_[temp_pos_for_indent_check + 1] == '/') { 
-          is_blank_or_comment_line = true;
-      } else if (first_content_char == '\n' || first_content_char == '\r') { 
-          is_blank_or_comment_line = true;
-      } else {
-          is_blank_or_comment_line = false;
-      }
-  } else { 
-      is_blank_or_comment_line = true;
-  }
-
-  if (!emitted_indent_dedent && !is_blank_or_comment_line) {
-    // NEWLINE token is for the current line (line_) at column 1
-    tokens.emplace_back(Vyn::TokenType::NEWLINE, "", line_, 1, Vyn::AST::SourceLocation{source_, line_, 1});
-  } 
-
-  pos_ += indent_count; 
+  pos_ += indent_count; // Consume the leading spaces
   column_ += indent_count; 
 }
 
-std::string Lexer::consume_while(std::function<bool(char)> pred) {
-  std::string result;
-  while (pos_ < source_.size() && pred(source_[pos_])) {
-    result += source_[pos_];
-    pos_++;
-  }
-  return result;
+vyn::TokenType Lexer::get_keyword_type(const std::string& word) {
+    static const std::unordered_map<std::string, vyn::TokenType> keywords = {
+        {"let", vyn::TokenType::KEYWORD_LET},
+        {"var", vyn::TokenType::KEYWORD_VAR},
+        {"const", vyn::TokenType::KEYWORD_CONST},
+        {"if", vyn::TokenType::KEYWORD_IF},
+        {"else", vyn::TokenType::KEYWORD_ELSE},
+        {"while", vyn::TokenType::KEYWORD_WHILE},
+        {"for", vyn::TokenType::KEYWORD_FOR},
+        {"return", vyn::TokenType::KEYWORD_RETURN},
+        {"break", vyn::TokenType::KEYWORD_BREAK},
+        {"continue", vyn::TokenType::KEYWORD_CONTINUE},
+        {"null", vyn::TokenType::KEYWORD_NULL},
+        {"true", vyn::TokenType::KEYWORD_TRUE},
+        {"false", vyn::TokenType::KEYWORD_FALSE},
+        {"fn", vyn::TokenType::KEYWORD_FN},
+        {"struct", vyn::TokenType::KEYWORD_STRUCT},
+        {"enum", vyn::TokenType::KEYWORD_ENUM},
+        {"trait", vyn::TokenType::KEYWORD_TRAIT},
+        {"impl", vyn::TokenType::KEYWORD_IMPL},
+        {"type", vyn::TokenType::KEYWORD_TYPE},
+        {"module", vyn::TokenType::KEYWORD_MODULE},
+        {"use", vyn::TokenType::KEYWORD_USE},
+        {"pub", vyn::TokenType::KEYWORD_PUB},
+        {"mut", vyn::TokenType::KEYWORD_MUT},
+        {"try", vyn::TokenType::KEYWORD_TRY},
+        {"catch", vyn::TokenType::KEYWORD_CATCH},
+        {"finally", vyn::TokenType::KEYWORD_FINALLY},
+        {"defer", vyn::TokenType::KEYWORD_DEFER},
+        {"match", vyn::TokenType::KEYWORD_MATCH},
+        {"scoped", vyn::TokenType::KEYWORD_SCOPED},
+        {"ref", vyn::TokenType::KEYWORD_REF},
+        {"extern", vyn::TokenType::KEYWORD_EXTERN},
+        {"as", vyn::TokenType::KEYWORD_AS},
+        {"in", vyn::TokenType::KEYWORD_IN},
+        {"class", vyn::TokenType::KEYWORD_CLASS},
+        {"template", vyn::TokenType::KEYWORD_TEMPLATE},
+        {"import", vyn::TokenType::KEYWORD_IMPORT},
+        {"smuggle", vyn::TokenType::KEYWORD_SMUGGLE},
+        {"await", vyn::TokenType::KEYWORD_AWAIT},
+        {"async", vyn::TokenType::KEYWORD_ASYNC},
+        {"operator", vyn::TokenType::KEYWORD_OPERATOR}
+    };
+
+    auto it = keywords.find(word);
+    if (it != keywords.end()) {
+        return it->second;
+    }
+    return vyn::TokenType::IDENTIFIER;
 }
 
 bool Lexer::is_letter(char c) {
@@ -375,38 +426,10 @@ bool Lexer::is_digit(char c) {
   return c >= '0' && c <= '9';
 }
 
-Vyn::TokenType Lexer::get_keyword_type(const std::string& word) {
-  static const std::unordered_map<std::string, Vyn::TokenType> keywords = {
-    {"if", Vyn::TokenType::KEYWORD_IF},
-    {"else", Vyn::TokenType::KEYWORD_ELSE},
-    {"while", Vyn::TokenType::KEYWORD_WHILE},
-    {"for", Vyn::TokenType::KEYWORD_FOR},
-    {"in", Vyn::TokenType::KEYWORD_IN},
-    {"return", Vyn::TokenType::KEYWORD_RETURN},
-    {"break", Vyn::TokenType::KEYWORD_BREAK},
-    {"continue", Vyn::TokenType::KEYWORD_CONTINUE},
-    {"var", Vyn::TokenType::KEYWORD_VAR},
-    {"const", Vyn::TokenType::KEYWORD_CONST},
-    {"fn", Vyn::TokenType::KEYWORD_FN},
-    {"class", Vyn::TokenType::KEYWORD_CLASS},
-    {"template", Vyn::TokenType::KEYWORD_TEMPLATE},
-    {"import", Vyn::TokenType::KEYWORD_IMPORT},
-    {"smuggle", Vyn::TokenType::KEYWORD_SMUGGLE},
-    {"try", Vyn::TokenType::KEYWORD_TRY},
-    {"catch", Vyn::TokenType::KEYWORD_CATCH},
-    {"finally", Vyn::TokenType::KEYWORD_FINALLY},
-    {"defer", Vyn::TokenType::KEYWORD_DEFER},
-    {"await", Vyn::TokenType::KEYWORD_AWAIT},
-    {"async", Vyn::TokenType::KEYWORD_ASYNC},
-    {"match", Vyn::TokenType::KEYWORD_MATCH},
-    {"operator", Vyn::TokenType::KEYWORD_OPERATOR},
-    {"ref", Vyn::TokenType::KEYWORD_REF},
-    {"scoped", Vyn::TokenType::KEYWORD_SCOPED},
-    {"throw", Vyn::TokenType::IDENTIFIER}, 
-    {"throws", Vyn::TokenType::IDENTIFIER},
-    {"println", Vyn::TokenType::IDENTIFIER},
-    {"new", Vyn::TokenType::IDENTIFIER}
-  };
-  auto it = keywords.find(word);
-  return it != keywords.end() ? it->second : Vyn::TokenType::IDENTIFIER;
-}
+/*
+std::string Lexer::token_type_to_string(Vyn::TokenType type)
+This function is now globally available as vyn::token_type_to_string
+from "vyn/token.hpp" and implemented in "vyn/token.cpp".
+The Lexer should use that one if it ever needs to generate a TokenType to a string,
+though typically it just produces tokens with TokenType, not their string representations.
+*/

@@ -5,23 +5,34 @@
 #include <vector>
 #include <functional>
 #include <unordered_map>
-#include "token.hpp" // Provides Vyn::Token and Vyn::TokenType
+#include "token.hpp" // Provides vyn::token::Token and vyn::TokenType
+#include "source_location.hpp" // Provides vyn::SourceLocation
 
 // class Lexer is in the global namespace
 class Lexer {
 public:
-  explicit Lexer(const std::string& source);
-  std::vector<Vyn::Token> tokenize(); // Changed Token to Vyn::Token
+  explicit Lexer(const std::string& source, const std::string& filePath); // Added filePath
+  std::vector<vyn::token::Token> tokenize(); // Changed Token to vyn::token::Token
 
 private:
-  std::string consume_while(std::function<bool(char)> pred);
+  std::string consume_while(std::function<bool(char)> pred) {
+    std::string result;
+    while (pos_ < source_.size() && pred(source_[pos_])) {
+      result += source_[pos_];
+      pos_++;
+      // Do not increment column_ here, it's handled by the caller
+      // or by the specific logic within tokenize() after calling consume_while.
+    }
+    return result;
+  }
   bool is_letter(char c);
   bool is_digit(char c);
-  Vyn::TokenType get_keyword_type(const std::string& word); // Changed TokenType to Vyn::TokenType
-  // Removed: std::string token_type_to_string(Vyn::TokenType type); - Use Vyn::token_type_to_string from token.hpp/token.cpp
-  void handle_newline(std::vector<Vyn::Token>& tokens); // Changed Token to Vyn::Token
+  vyn::TokenType get_keyword_type(const std::string& word); // Changed TokenType to vyn::TokenType
+  // Removed: std::string token_type_to_string(vyn::TokenType type); - Use vyn::token_type_to_string from token.hpp/token.cpp
+  void handle_newline(std::vector<vyn::token::Token>& tokens); // Changed Token to vyn::token::Token
 
   std::string source_;
+  std::string current_file_path_; // Added filePath member
   size_t pos_;
   int line_;
   int column_;
