@@ -84,7 +84,75 @@ Immutable shared data (`our<T const>`) is thread-safe by default.
 
 ---
 
-## 7. Unsafe-Scoped Blocks
+## 7. Concurrency Primitives: Mutex<T>
+
+A `Mutex<T>` provides mutual-exclusion access to `T` in multi-threaded contexts. Internally it uses a queue so threads acquire the lock roughly in FIFO order. Ownership of the lock—the “baton”—is represented by a `LockGuard<T>` which releases the lock when it goes out of scope.
+
+### 7.1 Core APIs
+
+```vyn
+// Create a shared, thread-safe Foo
+var shared_foo: our<Mutex<Foo>> = make_our(Mutex{ value: Foo{/*...*/} })
+
+// 1. Blocking lock (wait indefinitely)
+let guard: LockGuard<Foo> = shared_foo.lock()
+// guard.value.do_something()   // access protected data
+// `guard` drops here → lock released
+
+// 2. Non-blocking attempt
+match shared_foo.try_lock() {
+  Some(guard) => { /* got the baton */ }
+  None        => { /* someone else holds it */ }
+}
+
+// 3. Timed lock
+match shared_foo.lock_timeout(Duration{ ms:500 }) {
+  Some(guard) => { /* acquired within 500 ms */ }
+  None        => { /* timeout → no deadlock hang */ }
+}
+```
+
+*   **`lock()`**: Blocks the calling thread until the lock is available. Returns a `LockGuard<T>` that holds the lock.
+*   **`try_lock()`**: Attempts to acquire the lock immediately. Returns `Some(LockGuard<T>)` on success or `None` if already held.
+*   **`lock_timeout(dur: Duration)`**: Blocks up to `dur`. Returns `Some(LockGuard<T>)` if acquired in time, or `None` on timeout.
+
+### 7.2 Baton Passing & Fairness
+
+Threads queue on contention. When a `LockGuard<T>` is dropped, the next thread in line wakes and receives the baton. Starvation is unlikely under FIFO queuing, but exact fairness guarantees depend on the runtime/OS scheduler.
+
+### 7.3 Poisoning
+
+If a thread panics (or throws an unrecoverable error) while holding the `LockGuard<T>`, the mutex enters a poisoned state. Subsequent `lock()` or `try_lock()` attempts will return a `Result<LockGuard<T>, PoisonError>` (or a similar error-indicating mechanism) so callers can choose to recover or abort, acknowledging the potentially inconsistent state of the protected data.
+
+### 7.4 Deadlock Avoidance
+
+Vyn’s `Mutex<T>` does not automatically detect deadlocks (e.g., lock cycles). To prevent deadlocks:
+
+*   **Lock ordering**: Establish and adhere to a global order in which multiple mutexes are acquired.
+*   **Use timeouts**: Prefer `lock_timeout(...)` over `lock()` when deadlock is a possibility, allowing the program to react to a timeout instead of hanging indefinitely.
+*   **Try-lock loops**: Implement more complex acquisition patterns, such as trying to acquire locks and releasing them if not all can be obtained.
+    ```vyn
+    loop {
+      if let Some(g1) = m1.try_lock() {
+        if let Some(g2) = m2.try_lock() {
+          // Both locks acquired
+          // ... use g1 and g2 ...
+          break // Exit loop
+        }
+        // g1 is dropped here, releasing m1 before retrying
+      }
+      sleep(Duration{ ms:10 }) // Wait before retrying
+    }
+    ```
+*   **Higher-level abstractions**: For closely related data, consider wrapping them in a single `Mutex<(A,B)>` to manage them under one lock, avoiding the need for nested locks.
+
+### 7.5 Summary
+
+The `LockGuard<T>` scope defines the "baton" of lock ownership. Timeouts via `lock_timeout` prevent indefinite blocking. Poisoning signals an unsafe state after a panic during a critical section. Deadlock is a developer responsibility, mitigated by strategies like lock ordering, timeouts, or restructuring lock acquisitions. This design aims to balance simplicity (e.g., `lock()`) with safety features (timeouts, poisoning) and clear semantics for concurrent access.
+
+---
+
+## 8. Unsafe-Scoped Blocks
 
 ```vyn
 fn use_raw()
@@ -100,7 +168,7 @@ fn use_raw()
 
 ---
 
-## 8. Combinations Matrix
+## 9. Combinations Matrix
 
 | Declaration                 | Binding   | Ownership | Data Mutability | Safe?        |
 | --------------------------- | --------- | --------- | --------------- | ------------ |
@@ -123,9 +191,9 @@ fn use_raw()
 
 ---
 
-## 9. Sample Code
+## 10. Sample Code
 
-### 9.1 Unique Ownership (`my<T>`)
+### 10.1 Unique Ownership (`my<T>`)
 
 ```vyn
 var a: my<Foo> = Foo{x:0}
@@ -135,14 +203,14 @@ const b: my<Foo const> = Foo{x:10}
 // b.x = 15        // Error: data is const
 ```
 
-### 9.2 Shared Ownership (`our<T>`)
+### 10.2 Shared Ownership (`our<T>`)
 
 ```vyn
 var s: our<Bar> = make_our(Bar{v:1})
 var ts: our<Mutex<Bar>> = make_our(Mutex(Bar{v:2}))
 ```
 
-### 9.3 Borrowed References (`their<T>`)
+### 10.3 Borrowed References (`their<T>`)
 
 ```vyn
 var owner: my<Baz> = Baz{v:99}
@@ -150,7 +218,7 @@ var br1: their<Baz const> = borrow(owner)    // read-only borrow
 var br2: their<Baz> = borrow_mut(owner)      // mutable borrow
 ```
 
-### 9.4 Raw Pointers (`ptr<T>`)
+### 10.4 Raw Pointers (`ptr<T>`)
 
 ```vyn
 fn alloc_foo() -> ptr<Foo>
@@ -168,7 +236,7 @@ fn main()
 
 ---
 
-## 10. Grammar & EBNF Impact
+## 11. Grammar & EBNF Impact
 
 ```ebnf
 Type       ::= BaseType [ 'const' ]
@@ -182,6 +250,6 @@ BorrowExpr ::= 'borrow' '(' Expr ')'
 
 ---
 
-## 11. Safety Guarantees
+## 12. Safety Guarantees
 
 1. **Unique owner** (`my<T>`) ensures unique ownership. Access to its data is governed by borrow‑checking rules when `their<T>` references are created.
