@@ -35,4 +35,8 @@ target_sources(vyn_parser PRIVATE
 )
 
 # Add debug flags for tests.cpp
-set_source_files_properties(src/tests.cpp PROPERTIES COMPILE_FLAGS "-Wall -Wextra -DDEBUG_TESTS")
+set_source_files_properties(src/tests.cpp PROPERTIES COMPILE_FLAGS "-Wall -Wextra -DDEBUG_TESTS -DVERBOSE")
+
+# Enable verbose debugging for all parser files when needed
+# Uncomment these lines to enable verbose debugging for the entire project
+add_compile_definitions(VERBOSE)

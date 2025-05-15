@@ -7,7 +7,7 @@
 #include <string>
 
 int main(int argc, char** argv) {
-    std::cout << "./vyn_parser: Version: 0.2.8\n" << std::endl;
+    std::cout << "./vyn_parser: Version: 0.3.0\n" << std::endl;
 
     bool run_tests = false;
     bool show_success = false;
