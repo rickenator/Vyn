@@ -21,6 +21,13 @@ vyn::StmtPtr StatementParser::parse() {
     vyn::token::Token current_token = this->peek();
     vyn::SourceLocation loc = this->current_location();
 
+    // If at end of file or block, return nullptr (prevents double-parse at EOF)
+    if (current_token.type == vyn::TokenType::END_OF_FILE ||
+        current_token.type == vyn::TokenType::DEDENT ||
+        current_token.type == vyn::TokenType::RBRACE) {
+        return nullptr;
+    }
+
     if (current_token.type == vyn::TokenType::KEYWORD_IF) {
         return this->parse_if();
     } else if (current_token.type == vyn::TokenType::KEYWORD_WHILE) {
@@ -29,7 +36,7 @@ vyn::StmtPtr StatementParser::parse() {
         return this->parse_for();
     } else if (current_token.type == vyn::TokenType::KEYWORD_RETURN) {
         return this->parse_return();
-    } else if (current_token.type == vyn::TokenType::KEYWORD_LET || current_token.type == vyn::TokenType::KEYWORD_VAR) {
+    } else if (current_token.type == vyn::TokenType::KEYWORD_LET || current_token.type == vyn::TokenType::KEYWORD_VAR || current_token.type == vyn::TokenType::KEYWORD_CONST) {
         return this->parse_var_decl();
     } else if (current_token.type == vyn::TokenType::LBRACE) {
         return this->parse_block();
@@ -39,6 +46,169 @@ vyn::StmtPtr StatementParser::parse() {
     } else if (current_token.type == vyn::TokenType::KEYWORD_CONTINUE) {
         this->consume();
         return std::make_unique<vyn::ContinueStatement>(loc);
+    } else if (current_token.type == vyn::TokenType::KEYWORD_TRY) {
+        this->consume();
+        // Parse the try block (must be a block)
+        std::unique_ptr<vyn::BlockStatement> try_block;
+        if (this->peek().type == vyn::TokenType::LBRACE || this->peek().type == vyn::TokenType::INDENT) {
+            try_block = this->parse_block();
+        } else {
+            throw std::runtime_error("Expected block after 'try' at " + location_to_string(this->current_location()));
+        }
+
+        std::optional<std::string> catch_ident;
+        std::unique_ptr<vyn::BlockStatement> catch_block = nullptr;
+        std::unique_ptr<vyn::BlockStatement> finally_block = nullptr;
+
+        // Parse all catch blocks - currently we only support one in the AST, so we'll combine them
+        std::vector<std::pair<std::string, std::unique_ptr<vyn::BlockStatement>>> catch_blocks;
+        
+        while (this->peek().type == vyn::TokenType::KEYWORD_CATCH) {
+            this->consume(); // consume 'catch'
+            this->skip_comments_and_newlines(); // Skip any whitespace after 'catch'
+            
+            std::string current_catch_ident;
+            std::string error_type;
+            
+            // Optional identifier in parentheses: catch (e) or catch (e: ErrorType)
+            if (this->peek().type == vyn::TokenType::LPAREN) {
+                this->consume(); // consume '('
+                this->skip_comments_and_newlines(); // Skip any whitespace after the opening parenthesis
+                
+                if (this->peek().type != vyn::TokenType::IDENTIFIER) {
+                    throw std::runtime_error("Expected identifier in catch clause at " + location_to_string(this->current_location()));
+                }
+                current_catch_ident = this->consume().lexeme; // consume the identifier
+                
+                // Handle error type specification (e.g., "e: NetworkError")
+                if (this->peek().type == vyn::TokenType::COLON) {
+                    this->consume(); // consume ':'
+                    this->skip_comments_and_newlines();
+                    
+                    // Parse the error type
+                    if (this->peek().type == vyn::TokenType::IDENTIFIER) {
+                        error_type = this->consume().lexeme; // Store the error type
+                    } else {
+                        throw std::runtime_error("Expected error type after ':' in catch clause at " + location_to_string(this->current_location()));
+                    }
+                }
+                
+                this->skip_comments_and_newlines(); // Skip any whitespace before the closing parenthesis
+                this->expect(vyn::TokenType::RPAREN); // consume ')'
+            } 
+            // If there's an identifier directly after 'catch' without parentheses
+            else if (this->peek().type == vyn::TokenType::IDENTIFIER) {
+                current_catch_ident = this->consume().lexeme; // consume the identifier
+            }
+            
+            this->skip_comments_and_newlines(); // Skip any whitespace after catch parameter
+            
+            std::unique_ptr<vyn::BlockStatement> current_catch_block;
+            if (this->peek().type == vyn::TokenType::LBRACE || this->peek().type == vyn::TokenType::INDENT) {
+                current_catch_block = this->parse_block();
+            } else {
+                // Allow a single statement after 'catch' (wrap in BlockStatement)
+                vyn::SourceLocation stmt_loc = this->current_location();
+                auto stmt = this->parse();
+                this->skip_comments_and_newlines();
+                std::vector<vyn::StmtPtr> stmts;
+                if (stmt) stmts.push_back(std::move(stmt));
+                current_catch_block = std::make_unique<vyn::BlockStatement>(stmt_loc, std::move(stmts));
+            }
+            
+            // Store this catch block for later processing
+            catch_blocks.push_back({current_catch_ident, std::move(current_catch_block)});
+        }
+        
+        // Process the catch blocks
+        if (!catch_blocks.empty()) {
+            // Use the identifier from the first catch block
+            catch_ident = catch_blocks[0].first;
+            
+            // For now, we'll just use the first catch block's body
+            catch_block = std::move(catch_blocks[0].second);
+            
+            // In a more complete implementation, we would combine multiple catch blocks
+            // into a single block with conditional logic based on the error type
+        }
+
+        // Optionally parse 'finally' block
+        if (this->peek().type == vyn::TokenType::KEYWORD_FINALLY) {
+            this->consume(); // consume 'finally'
+            this->skip_comments_and_newlines(); // Skip any whitespace after 'finally'
+            
+            if (this->peek().type == vyn::TokenType::LBRACE || this->peek().type == vyn::TokenType::INDENT) {
+                finally_block = this->parse_block();
+            } else {
+                // Allow a single statement after 'finally' (wrap in BlockStatement)
+                vyn::SourceLocation stmt_loc = this->current_location();
+                auto stmt = this->parse();
+                this->skip_comments_and_newlines();
+                std::vector<vyn::StmtPtr> stmts;
+                if (stmt) stmts.push_back(std::move(stmt));
+                finally_block = std::make_unique<vyn::BlockStatement>(stmt_loc, std::move(stmts));
+            }
+        }
+
+        // At least one of catch or finally must be present
+        if (!catch_block && !finally_block) {
+            throw std::runtime_error("'try' must be followed by at least a 'catch' or 'finally' block at " + location_to_string(loc));
+        }
+
+        return std::make_unique<vyn::TryStatement>(loc, std::move(try_block), std::move(catch_ident), std::move(catch_block), std::move(finally_block));
+    } else if (current_token.type == vyn::TokenType::KEYWORD_DEFER) {
+        this->consume();
+        // Defer: treat as an expression statement
+        auto expr = this->expr_parser_.parse();
+        return std::make_unique<vyn::ExpressionStatement>(loc, std::move(expr));
+    } else if (current_token.type == vyn::TokenType::KEYWORD_ASYNC) {
+        // Peek ahead: if next token is 'fn', this is an async function declaration, not an expression
+        if (this->peekNext().type == vyn::TokenType::KEYWORD_FN) {
+            // Do not consume 'async' here; let the declaration parser handle it
+            // We need to delegate to the declaration parser
+            // To do this, construct a DeclarationParser and call parse()
+            DeclarationParser decl_parser(this->tokens_, this->pos_, this->current_file_path_, this->type_parser_, this->expr_parser_, *this);
+            auto decl = decl_parser.parse();
+            this->pos_ = decl_parser.get_current_pos();
+            return decl;
+        } else {
+            this->consume();
+            // Async at statement level: treat as an expression statement (e.g., await inside)
+            auto expr = this->expr_parser_.parse();
+            return std::make_unique<vyn::ExpressionStatement>(loc, std::move(expr));
+        }
+    } else if (current_token.type == vyn::TokenType::KEYWORD_AWAIT) {
+        #ifdef VERBOSE
+        std::cerr << "[STATEMENT_PARSER] Found await keyword at " 
+                  << location_to_string(this->current_location()) 
+                  << std::endl;
+        #endif
+                  
+        // We let the expression parser handle the await token and expression parsing
+        auto expr = this->expr_parser_.parse();
+        
+        #ifdef VERBOSE
+        std::cerr << "[STATEMENT_PARSER] Expression parser returned " 
+                  << (expr ? "valid expression" : "nullptr") 
+                  << std::endl;
+        #endif
+        
+        if (!expr) {
+            std::string error_msg = "Expected expression after await in statement at " + 
+                location_to_string(this->current_location());
+                
+            #ifdef VERBOSE
+            std::cerr << "[STATEMENT_PARSER] ERROR: " << error_msg << std::endl;
+            #endif
+            
+            throw std::runtime_error(error_msg);
+        }
+        
+        #ifdef VERBOSE
+        std::cerr << "[STATEMENT_PARSER] Returning await expression statement" << std::endl;
+        #endif
+        
+        return std::make_unique<vyn::ExpressionStatement>(loc, std::move(expr));
     }
     
     auto expr_stmt = this->parse_expression_statement();
@@ -47,10 +217,12 @@ vyn::StmtPtr StatementParser::parse() {
         return expr_stmt;
     }
 
-    if (current_token.type != vyn::TokenType::END_OF_FILE && current_token.type != vyn::TokenType::DEDENT && current_token.type != vyn::TokenType::RBRACE) {
-        throw std::runtime_error("Unexpected token in StatementParser: " + current_token.lexeme + " at " + location_to_string(loc));
+    // After parsing, check the *current* token, not the stale one from the start
+    vyn::token::Token after_token = this->peek();
+    if (after_token.type != vyn::TokenType::END_OF_FILE && after_token.type != vyn::TokenType::DEDENT && after_token.type != vyn::TokenType::RBRACE) {
+        throw std::runtime_error("Unexpected token in StatementParser: " + after_token.lexeme + " at " + location_to_string(after_token.location));
     }
-    
+
     return nullptr;
 }
 
@@ -58,6 +230,7 @@ std::unique_ptr<vyn::ExpressionStatement> StatementParser::parse_expression_stat
     auto expr_loc_start = this->peek().location; 
     auto expr = this->expr_parser_.parse(); 
     if (!expr) {
+        // If we hit end-of-file or end-of-block, just return nullptr (not an error)
         return nullptr;
     }
     // Use the expression's location for the statement node
@@ -77,23 +250,37 @@ std::unique_ptr<vyn::ExpressionStatement> StatementParser::parse_expression_stat
 
 std::unique_ptr<vyn::BlockStatement> StatementParser::parse_block() {
     vyn::SourceLocation loc = this->current_location();
-    this->expect(vyn::TokenType::LBRACE);
     std::vector<vyn::StmtPtr> statements;
 
-    this->skip_comments_and_newlines();
-    while (this->peek().type != vyn::TokenType::RBRACE && this->peek().type != vyn::TokenType::END_OF_FILE) {
-        auto stmt = this->parse(); 
-        if (stmt) {
-            statements.push_back(std::move(stmt));
-        } else {
-            // If parse() returns nullptr, it means it hit EOF/DEDENT/RBRACE or an error was thrown.
-            // If we are not at RBRACE or EOF, this might indicate an issue or an empty statement that was skipped.
-            // Given parse() throws on unexpected tokens, a nullptr here should mean a valid termination or an already handled error.
-            break; 
+    if (this->peek().type == vyn::TokenType::LBRACE) {
+        this->expect(vyn::TokenType::LBRACE);
+        this->skip_comments_and_newlines();
+        while (this->peek().type != vyn::TokenType::RBRACE && this->peek().type != vyn::TokenType::END_OF_FILE) {
+            auto stmt = this->parse(); 
+            if (stmt) {
+                statements.push_back(std::move(stmt));
+            } else {
+                break; 
+            }
+            this->skip_comments_and_newlines(); 
         }
-        this->skip_comments_and_newlines(); 
+        this->expect(vyn::TokenType::RBRACE);
+    } else if (this->peek().type == vyn::TokenType::INDENT) {
+        this->expect(vyn::TokenType::INDENT);
+        this->skip_comments_and_newlines();
+        while (this->peek().type != vyn::TokenType::DEDENT && this->peek().type != vyn::TokenType::END_OF_FILE) {
+            auto stmt = this->parse();
+            if (stmt) {
+                statements.push_back(std::move(stmt));
+            } else {
+                break;
+            }
+            this->skip_comments_and_newlines();
+        }
+        this->expect(vyn::TokenType::DEDENT);
+    } else {
+        throw std::runtime_error("Expected '{' or INDENT to start a block at " + location_to_string(this->current_location()));
     }
-    this->expect(vyn::TokenType::RBRACE);
     return std::make_unique<vyn::BlockStatement>(loc, std::move(statements));
 }
 
@@ -101,24 +288,43 @@ std::unique_ptr<vyn::IfStatement> StatementParser::parse_if() {
     vyn::SourceLocation loc = this->current_location();
     this->expect(vyn::TokenType::KEYWORD_IF);
 
-    // Condition
-    this->expect(vyn::TokenType::LPAREN); 
+    // Condition - parentheses are optional
+    bool has_parens = false;
+    if (this->match(vyn::TokenType::LPAREN)) {
+        has_parens = true;
+    }
+    
     auto condition = this->expr_parser_.parse();
     if (!condition) {
         throw std::runtime_error("Expected condition in if statement at " + location_to_string(this->current_location()));
     }
-    this->expect(vyn::TokenType::RPAREN);
+    
+    if (has_parens) {
+        this->expect(vyn::TokenType::RPAREN);
+    }
 
-    // Then branch (must be a block)
-    if (this->peek().type != vyn::TokenType::LBRACE) {
-        throw std::runtime_error("Expected block statement for \'then\' branch of if statement at " + location_to_string(this->current_location()));
+    // Then branch (can be a block or a single statement)
+    vyn::StmtPtr then_branch = nullptr;
+    
+    // If it's a block (starts with { or INDENT), parse it as a block
+    if (this->peek().type == vyn::TokenType::LBRACE || this->peek().type == vyn::TokenType::INDENT) {
+        auto then_branch_block = this->parse_block(); // parse_block returns unique_ptr<BlockStatement>
+        if (!then_branch_block) {
+            throw std::runtime_error("Failed to parse 'then' block in if statement at " + location_to_string(loc));
+        }
+        then_branch = std::move(then_branch_block);
+    } else {
+        // Otherwise, parse a single statement and wrap it in a block
+        vyn::SourceLocation stmt_loc = this->current_location();
+        auto stmt = this->parse();
+        if (!stmt) {
+            throw std::runtime_error("Expected statement for 'then' branch of if statement at " + location_to_string(stmt_loc));
+        }
+        
+        std::vector<vyn::StmtPtr> stmts;
+        stmts.push_back(std::move(stmt));
+        then_branch = std::make_unique<vyn::BlockStatement>(stmt_loc, std::move(stmts));
     }
-    auto then_branch_stmt = this->parse_block(); // parse_block returns unique_ptr<BlockStatement>
-    if (!then_branch_stmt) {
-        throw std::runtime_error("Failed to parse \\'then\\' block in if statement at " + location_to_string(loc));
-    }
-    // IfStatement expects StmtPtr, and unique_ptr<BlockStatement> is convertible to unique_ptr<Statement> (StmtPtr)
-    vyn::StmtPtr then_branch = std::move(then_branch_stmt);
 
 
     // Else branch
@@ -126,13 +332,22 @@ std::unique_ptr<vyn::IfStatement> StatementParser::parse_if() {
     if (this->match(vyn::TokenType::KEYWORD_ELSE)) {
         if (this->peek().type == vyn::TokenType::KEYWORD_IF) { 
             else_branch = this->parse_if(); 
-        } else if (this->peek().type == vyn::TokenType::LBRACE) { 
+        } else if (this->peek().type == vyn::TokenType::LBRACE || this->peek().type == vyn::TokenType::INDENT) { 
             else_branch = this->parse_block();
             if (!else_branch) {
-                 throw std::runtime_error("Failed to parse \\'else\\' block in if statement at " + location_to_string(this->current_location()));
+                throw std::runtime_error("Failed to parse 'else' block in if statement at " + location_to_string(this->current_location()));
             }
         } else {
-            throw std::runtime_error("Expected \\'if\\' or block after \\'else\\' at " + location_to_string(this->current_location()));
+            // Parse a single statement for the else branch and wrap it in a block
+            vyn::SourceLocation stmt_loc = this->current_location();
+            auto stmt = this->parse();
+            if (!stmt) {
+                throw std::runtime_error("Expected statement after 'else' at " + location_to_string(stmt_loc));
+            }
+            
+            std::vector<vyn::StmtPtr> stmts;
+            stmts.push_back(std::move(stmt));
+            else_branch = std::make_unique<vyn::BlockStatement>(stmt_loc, std::move(stmts));
         }
     }
 
@@ -231,15 +446,18 @@ std::unique_ptr<vyn::ReturnStatement> StatementParser::parse_return() {
 
 std::unique_ptr<vyn::VariableDeclaration> StatementParser::parse_var_decl() {
     vyn::SourceLocation loc = this->current_location();
-    bool is_const_decl = true; 
+    bool is_const_decl = true;
     if (this->peek().type == vyn::TokenType::KEYWORD_LET) {
-        this->consume(); 
+        this->consume();
         is_const_decl = true;
     } else if (this->peek().type == vyn::TokenType::KEYWORD_VAR) {
-        this->consume(); 
+        this->consume();
         is_const_decl = false;
+    } else if (this->peek().type == vyn::TokenType::KEYWORD_CONST) {
+        this->consume();
+        is_const_decl = true;
     } else {
-        throw std::runtime_error("Expected \\'let\\' or \\'var\\' for variable declaration at " + location_to_string(loc));
+        throw std::runtime_error("Expected 'let', 'var', or 'const' for variable declaration at " + location_to_string(loc));
     }
 
     // VariableDeclaration in ast.hpp takes std::unique_ptr<Identifier> id.
@@ -309,18 +527,18 @@ vyn::ExprPtr StatementParser::parse_pattern() {
     if (token.type == vyn::TokenType::LPAREN) {
         this->consume(); // LPAREN
         vyn::SourceLocation arr_loc = loc;
-        std::vector<vyn::ExprPtr> elements_expr;
-        if (this->peek().type != vyn::TokenType::RPAREN) {
+        std::vector<vyn::ExprPtr> elements_expr; // Changed from PatternPtr to ExprPtr
+        if (!this->check(vyn::TokenType::RBRACKET)) {
             do {
-                auto elem_expr = this->parse_pattern(); 
-                if (!elem_expr) {
-                    throw std::runtime_error("Expected pattern inside tuple/array pattern at " + location_to_string(this->current_location()));
-                }
-                elements_expr.push_back(std::move(elem_expr));
+                // Assuming parse_pattern() can return something convertible to ExprPtr
+                // or parse_expression() should be used if array elements are expressions.
+                // For now, let's assume parse_pattern() is intended and returns ExprPtr.
+                elements_expr.push_back(this->parse_pattern());
             } while (this->match(vyn::TokenType::COMMA));
         }
-        this->expect(vyn::TokenType::RPAREN);
-        return std::make_unique<vyn::ArrayLiteral>(arr_loc, std::move(elements_expr));
+        this->expect(vyn::TokenType::RBRACKET);
+        // Use ArrayLiteralNode as established in expression_parser.cpp
+        return std::make_unique<vyn::ArrayLiteralNode>(arr_loc, std::move(elements_expr));
     }
 
     // 'mut' keyword before an identifier pattern (e.g. `for mut x in ...`, or `let (mut x, y)`)
