@@ -255,8 +255,14 @@ llvm::Value* LLVMCodegen::codegen(Node* node) {
             return codegen(static_cast<UnaryExpression*>(node));
         case NodeType::ASSIGNMENT_EXPRESSION:
             return codegen(static_cast<AssignmentExpression*>(node));
-        case NodeType::CALL_EXPRESSION:
+        case NodeType::CALL_EXPRESSION: {
+            // Special-case: handle AddrOfExpression and FromIntToLocExpression
+            if (auto* addrOf = dynamic_cast<AddrOfExpression*>(node))
+                return codegen(addrOf);
+            if (auto* fromInt = dynamic_cast<FromIntToLocExpression*>(node))
+                return codegen(fromInt);
             return codegen(static_cast<CallExpression*>(node));
+        }
         case NodeType::MEMBER_EXPRESSION:
             return codegen(static_cast<MemberExpression*>(node));
         case NodeType::IDENTIFIER:
@@ -427,6 +433,14 @@ llvm::Value* LLVMCodegen::codegen(UnaryExpression* expr) {
     }
 }
 llvm::Value* LLVMCodegen::codegen(CallExpression* expr) {
+    // Special-case: addr(loc) as raw address extraction
+    if (auto* ident = dynamic_cast<Identifier*>(expr->callee.get())) {
+        if (ident->name == "addr" && expr->arguments.size() == 1) {
+            llvm::Value* locVal = codegen(expr->arguments[0].get());
+            // Assume locVal is a pointer; cast to int64
+            return builder->CreatePtrToInt(locVal, llvm::Type::getInt64Ty(*context), "raw_addr");
+        }
+    }
     llvm::Value* callee = codegen(expr->callee.get());
     std::vector<llvm::Value*> args;
     for (const auto& arg : expr->arguments) {

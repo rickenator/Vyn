@@ -804,5 +804,21 @@ void vyn::TemplateDeclarationNode::accept(vyn::Visitor& visitor) {
     visitor.visit(this);
 }
 
+// --- AddrOfExpression implementation ---
+AddrOfExpression::AddrOfExpression(SourceLocation loc, ExprPtr location)
+    : Expression(loc), location(std::move(location)) {}
+
+NodeType AddrOfExpression::getType() const { return NodeType::CALL_EXPRESSION; }
+std::string AddrOfExpression::toString() const { return "addr(" + (location ? location->toString() : "<null>") + ")"; }
+void AddrOfExpression::accept(Visitor& visitor) { visitor.visit(this); }
+
+// --- FromIntToLocExpression implementation ---
+FromIntToLocExpression::FromIntToLocExpression(SourceLocation loc, ExprPtr address)
+    : Expression(loc), address(std::move(address)) {}
+
+NodeType FromIntToLocExpression::getType() const { return NodeType::CALL_EXPRESSION; }
+std::string FromIntToLocExpression::toString() const { return "from(" + (address ? address->toString() : "<null>") + ")"; }
+void FromIntToLocExpression::accept(Visitor& visitor) { visitor.visit(this); }
+
 // End of namespace
 } // namespace vyn

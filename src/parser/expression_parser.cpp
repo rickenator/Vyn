@@ -38,6 +38,36 @@ namespace vyn {
             consume(); // consume ')'
             return std::make_unique<vyn::PointerDerefExpression>(loc_loc, std::move(ptr_expr));
         }
+        // --- Handle address-of: addr(loc) ---
+        if (token.type == vyn::TokenType::IDENTIFIER && token.lexeme == "addr") {
+            vyn::SourceLocation addr_loc = token.location;
+            consume(); // consume 'addr'
+            if (peek().type != vyn::TokenType::LPAREN) {
+                throw error(peek(), "Expected '(' after 'addr' for address-of");
+            }
+            consume(); // consume '('
+            vyn::ExprPtr loc_expr = parse_expression();
+            if (peek().type != vyn::TokenType::RPAREN) {
+                throw error(peek(), "Expected ')' after location expression in 'addr(...)'");
+            }
+            consume(); // consume ')'
+            return std::make_unique<vyn::AddrOfExpression>(addr_loc, std::move(loc_expr));
+        }
+        // --- Handle from(addr) for integer-to-loc<T> conversion ---
+        if (token.type == vyn::TokenType::IDENTIFIER && token.lexeme == "from") {
+            vyn::SourceLocation from_loc = token.location;
+            consume(); // consume 'from'
+            if (peek().type != vyn::TokenType::LPAREN) {
+                throw error(peek(), "Expected '(' after 'from' for integer-to-loc conversion");
+            }
+            consume(); // consume '('
+            vyn::ExprPtr addr_expr = parse_expression();
+            if (peek().type != vyn::TokenType::RPAREN) {
+                throw error(peek(), "Expected ')' after address expression in 'from(...)'");
+            }
+            consume(); // consume ')'
+            return std::make_unique<vyn::FromIntToLocExpression>(from_loc, std::move(addr_expr));
+        }
 
         #ifdef VERBOSE
         std::cerr << "[PARSE_ATOM] Next token: " << vyn::token_type_to_string(token.type)

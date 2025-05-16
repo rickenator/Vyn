@@ -464,3 +464,61 @@ fn main() {
     // TODO: Integrate with semantic analysis and codegen pipeline
     // Example: int result = run_vyn_code(source); REQUIRE(result == 141);
 }
+
+TEST_CASE("Semantic: loc<T> cannot be assigned from integer literal", "[semantic][pointer][error]") {
+    std::string source = R"(
+fn main() {
+    var p: loc<Int> = 0x1234
+    return 0
+}
+)";
+    // TODO: Integrate with semantic analysis and codegen pipeline
+    // Should fail: direct assignment of integer to loc<T> is not allowed
+    // Example: REQUIRE_THROWS(run_vyn_code(source));
+}
+
+TEST_CASE("Semantic: from(addr) only allowed in unsafe", "[semantic][pointer][unsafe]") {
+    std::string source_ok = R"(
+fn main() {
+    var addr: Int = 0x1234
+    var p: loc<Int>
+    unsafe {
+        p = from(addr)
+    }
+    return 0
+}
+)";
+    // TODO: Integrate with semantic/codegen pipeline
+    // Should succeed: from(addr) in unsafe is allowed
+    // Example: REQUIRE_NOTHROW(run_vyn_code(source_ok));
+
+    std::string source_err = R"(
+fn main() {
+    var addr: Int = 0x1234
+    var p: loc<Int> = from(addr)
+    return 0
+}
+)";
+    // Should fail: from(addr) outside unsafe is not allowed
+    // Example: REQUIRE_THROWS(run_vyn_code(source_err));
+}
+
+TEST_CASE("Codegen: addr(loc) and from(addr) round-trip in unsafe", "[codegen][pointer][unsafe]") {
+    std::string source = R"(
+fn main() {
+    var x: Int = 55
+    var p: loc<Int> = loc(x)
+    var addr: Int
+    var q: loc<Int>
+    unsafe {
+        addr = addr(p)
+        q = from(addr)
+    }
+    at(q) = 99
+    return at(p)
+}
+)";
+    // TODO: Integrate with semantic/codegen pipeline
+    // Should succeed and return 99 if round-trip works
+    // Example: int result = run_vyn_code(source); REQUIRE(result == 99);
+}

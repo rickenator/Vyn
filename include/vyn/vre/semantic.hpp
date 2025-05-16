@@ -37,10 +37,28 @@ public:
     void analyze(Module* root);
     const std::vector<std::string>& getErrors() const { return errors; }
 private:
+    // Lifetime and borrow tracking
+    struct BorrowInfo {
+        std::string ownerName;
+        bool isMutable;
+        Node* borrowNode;
+        // Add lifetime/region info as needed
+    };
+    std::vector<BorrowInfo> activeBorrows;
+    // Unsafe context tracking
+    int unsafeDepth = 0;
+    // ...existing code...
     void analyzeNode(Node* node);
     void analyzeAssignment(AssignmentExpression* expr);
     void analyzeVariableDeclaration(VariableDeclaration* decl);
     void analyzeUnaryExpression(UnaryExpression* expr); // For raw location dereference checks
+    // New helpers for type/lifetime/borrow/unsafe checks
+    void enterUnsafe();
+    void exitUnsafe();
+    bool inUnsafe() const;
+    void checkBorrow(Node* node, const std::string& owner, bool isMutable, TypeNode* type);
+    void checkLifetime(Node* node, const std::string& owner);
+    void checkLocUnsafe(Node* node);
     // ... more as needed ...
     std::unique_ptr<SymbolTable> symbols;
     std::vector<std::string> errors;

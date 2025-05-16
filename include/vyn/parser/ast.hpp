@@ -527,6 +527,28 @@ struct ImportSpecifier {
         void accept(Visitor& visitor) override { visitor.visit(this); }
     };
 
+    // Represents address-of: addr(loc)
+    class AddrOfExpression : public Expression {
+    public:
+        ExprPtr location;
+        AddrOfExpression(SourceLocation loc, ExprPtr location)
+            : Expression(loc), location(std::move(location)) {}
+        NodeType getType() const override { return NodeType::CALL_EXPRESSION; /* or a new NodeType if desired */ }
+        std::string toString() const override { return "addr(" + location->toString() + ")"; }
+        void accept(Visitor& visitor) override { visitor.visit(this); }
+    };
+
+    // Represents conversion from integer to loc<T>: from(addr)
+    class FromIntToLocExpression : public Expression {
+    public:
+        ExprPtr address;
+        FromIntToLocExpression(SourceLocation loc, ExprPtr address)
+            : Expression(loc), address(std::move(address)) {}
+        NodeType getType() const override { return NodeType::CALL_EXPRESSION; /* or a new NodeType if desired */ }
+        std::string toString() const override { return "from(" + (address ? address->toString() : "<null>") + ")"; }
+        void accept(Visitor& visitor) override { visitor.visit(this); }
+    };
+
     // Represents one key-value pair in an object literal
     struct ObjectProperty {
         SourceLocation loc; // Location of the property itself (key or key:value)
