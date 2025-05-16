@@ -6,13 +6,13 @@ This document unifies design decisions and incorporates team feedback on Vyn's m
 
 ## 1. Overview
 
-Vyn’s memory model combines two primary axes for safe bindings plus a third for raw pointers:
+Vyn’s memory model combines two primary axes for safe bindings plus a third for raw locations:
 
 1. **Binding Mutability** (`var` vs `const`)
 2. **Ownership & Data Mutability** (`my<T>` / `our<T>` / `their<T>` with optional `T const`)
-3. **Raw Pointers** (`ptr<T>`, gated by `unsafe { … }`)
+3. **Raw Locations** (`loc<T>`, gated by `unsafe { … }`)
 
-Safe code uses only `my`/`our`/`their`; raw pointers (`ptr<T>`) live behind explicit `unsafe { … }` blocks.
+Safe code uses only `my`/`our`/`their`; raw locations (`loc<T>`) live behind explicit `unsafe { … }` blocks.
 
 ---
 
@@ -39,7 +39,7 @@ const limit: Int = 100  // immutable binding
 * **`my<T>`**: unique-own pointer (like Rust’s `Box<T>`)
 * **`our<T>`**: shared-own pointer (ref-counted, like `Rc<T>`/`Arc<T>`)
 * **`their<T>`**: borrowed pointer (non-owning reference, like `&T`/`&mut T`)
-* **`ptr<T>`**: raw pointer (`T*`), operations gated by `unsafe { … }`
+* **`loc<T>`**: raw location (`T*`), operations gated by `unsafe { … }`
 
 Data mutability is controlled by `const` on the pointee: e.g., `my<Foo const>` means unique-own pointer to immutable data.
 
@@ -80,7 +80,7 @@ Immutable shared data (`our<T const>`) is thread-safe by default.
 * `make_our(expr)`: returns `our<T>` by allocating and ref‑counting
 * `view <expr>`: creates `their<T const>` (immutable view/borrow)
 * `borrow <expr>`: creates `their<T>` (mutable borrow)
-* `alloc(n)` / `free(p)`: raw memory operations for `ptr<T>`
+* `alloc(n)` / `free(l)`: raw memory operations for `loc<T>`
 * **`sizeof(Type)`**: built‑in compile‑time operator returning the size (in bytes) of `Type`
 
 ---
@@ -158,11 +158,11 @@ The `LockGuard<T>` scope defines the "baton" of lock ownership. Timeouts via `lo
 ```vyn
 fn use_raw()
   unsafe {
-    var p: ptr<Foo> = alloc(sizeof(Foo))
-    (*p).field = 42
-    free(p)
+    var l: loc<Foo> = alloc(sizeof(Foo))
+    (*l).field = 42
+    free(l)
   }
-// Outside, `p` can be moved or stored safely
+// Outside, `l` can be moved or stored safely
 ```
 
 **Comment:** Scoped `unsafe { … }` blocks localize undefined behavior risks.
@@ -185,10 +185,10 @@ fn use_raw()
 | `const p: their<Foo>`       | immutable | borrowed  | mutable         | ✔️           |
 | `var p: their<Foo const>`   | mutable   | borrowed  | immutable       | ✔️           |
 | `const p: their<Foo const>` | immutable | borrowed  | immutable       | ✔️           |
-| `var p: ptr<Foo>`           | mutable   | raw       | mutable         | ❌ (`unsafe`) |
-| `const p: ptr<Foo>`         | immutable | raw       | mutable         | ❌ (`unsafe`) |
-| `var p: ptr<Foo const>`     | mutable   | raw       | immutable       | ❌ (`unsafe`) |
-| `const p: ptr<Foo const>`   | immutable | raw       | immutable       | ❌ (`unsafe`) |
+| `var l: loc<Foo>`           | mutable   | raw       | mutable         | ❌ (`unsafe`) |
+| `const l: loc<Foo>`         | immutable | raw       | mutable         | ❌ (`unsafe`) |
+| `var l: loc<Foo const>`     | mutable   | raw       | immutable       | ❌ (`unsafe`) |
+| `const l: loc<Foo const>`   | immutable | raw       | immutable       | ❌ (`unsafe`) |
 
 ---
 
@@ -227,19 +227,19 @@ var v3: their<Baz const> = view v1     // creating an immutable view from an imm
 // var b3: their<Baz> = borrow v1 // This would be a compile-time error if v1 is still live and used.
 ```
 
-### 10.4 Raw Pointers (`ptr<T>`)
+### 10.4 Raw Locations (`loc<T>`)
 
 ```vyn
-fn alloc_foo() -> ptr<Foo>
+fn alloc_foo() -> loc<Foo>
   unsafe {
     return alloc(sizeof(Foo))
   }
 
 fn main()
-  var p: ptr<Foo> = alloc_foo()
+  var l: loc<Foo> = alloc_foo()
   unsafe {
-    (*p).x = 123
-    free(p)
+    (*l).x = 123
+    free(l)
   }
 ```
 
@@ -251,7 +251,7 @@ fn main()
 Type       ::= BaseType [ 'const' ]
 BaseType   ::= IDENTIFIER
              | OwnershipWrapper '<' Type '>'
-OwnershipWrapper ::= 'my' | 'our' | 'their' | 'ptr'
+OwnershipWrapper ::= 'my' | 'our' | 'their' | 'loc'
 
 Expr       ::= ...
              | BorrowExpr

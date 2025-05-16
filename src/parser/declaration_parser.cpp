@@ -1,5 +1,5 @@
+#include "vyn/parser/ast.hpp"
 #include "vyn/parser.hpp"
-#include "vyn/ast.hpp"
 #include <stdexcept> // For std::runtime_error
 #include <vector>
 #include <memory>
@@ -298,7 +298,6 @@ std::unique_ptr<vyn::FunctionDeclaration> DeclarationParser::parse_function() {
             }
         }
         }
-    }
     else if (this->peek().type == vyn::TokenType::LBRACE) {
         vyn::StatementParser stmt_parser(this->tokens_, this->pos_, /*indent_level=*/0, this->current_file_path_, this->type_parser_, this->expr_parser_);
         body = stmt_parser.parse_block();

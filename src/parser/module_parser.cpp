@@ -1,5 +1,4 @@
-#include "vyn/parser.hpp"
-#include "vyn/ast.hpp"
+#include "vyn/parser/ast.hpp"
 #include "vyn/token.hpp"
 #include <vector>
 #include <memory>

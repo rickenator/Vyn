@@ -414,3 +414,53 @@ TEST_CASE("Lexer handles ref and underscore", "[lexer]") {
     REQUIRE(found_ref); // Assert that 'my' was found
     REQUIRE(found_underscore);
 }
+
+// --- Codegen/Runtime Tests ---
+// These tests require a working parser, semantic analyzer, and LLVM codegen backend.
+// If a function like run_vyn_code(source, expected_result) exists, use it. Otherwise, add TODOs for integration.
+
+TEST_CASE("Codegen: Pointer dereference assignment", "[codegen][pointer]") {
+    std::string source = R"(
+fn main() {
+    var x: Int = 42
+    var p: loc<Int> = loc(x)
+    var q: Int
+    at(p) = 99
+    q = at(p)
+
+    return q
+}
+)";
+    // TODO: Integrate with semantic analysis and codegen pipeline
+    // Example: int result = run_vyn_code(source); REQUIRE(result == 99);
+}
+
+TEST_CASE("Codegen: Member access assignment", "[codegen][member]") {
+    std::string source = R"(
+class Point {
+    var x: Int
+    var y: Int
+}
+fn main() {
+    var p = Point { x: 1, y: 2 }
+    p.x = 10
+    p.y = 20
+    return p.x + p.y
+}
+)";
+    // TODO: Integrate with semantic analysis and codegen pipeline
+    // Example: int result = run_vyn_code(source); REQUIRE(result == 30);
+}
+
+TEST_CASE("Codegen: Multidimensional array assignment/access", "[codegen][array]") {
+    std::string source = R"(
+fn main() {
+    var arr: [[Int; 2]; 2] = [[1, 2], [3, 4]]
+    arr[0][1] = 42
+    arr[1][0] = 99
+    return arr[0][1] + arr[1][0]
+}
+)";
+    // TODO: Integrate with semantic analysis and codegen pipeline
+    // Example: int result = run_vyn_code(source); REQUIRE(result == 141);
+}

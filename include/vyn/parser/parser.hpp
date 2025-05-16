@@ -4,8 +4,8 @@
 // Uncomment this line to enable verbose debugging
 // #define VERBOSE
 
-#include "vyn/ast.hpp" // Moved ast.hpp include to the top
-#include "vyn/token.hpp"
+#include "vyn/parser/ast.hpp" // Moved ast.hpp include to new parser/ast.hpp path
+#include "vyn/parser/token.hpp"
 #include <vector>
 #include <memory>
 #include <stdexcept> // For std::runtime_error

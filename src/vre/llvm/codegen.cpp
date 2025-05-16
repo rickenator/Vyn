@@ -412,6 +412,16 @@ llvm::Value* LLVMCodegen::codegen(UnaryExpression* expr) {
             return builder->CreateNeg(operand, "negtmp");
         case token::TokenType::BANG:
             return builder->CreateNot(operand, "nottmp");
+        // --- Raw location dereference: loc(expr) or at(expr) ---
+        case token::TokenType::KEYWORD_LOC: // loc(expr) as dereference
+        case token::TokenType::KEYWORD_AT:  // at(expr) as dereference
+        case token::TokenType::STAR:        // *expr as dereference (if used for loc<T>)
+            // The operand must be a raw location (address). Load the value at that address.
+            // NOTE: Type checking for raw location should be enforced in semantic analysis.
+            // For now, assume operand is an address of the correct type.
+            // The type to load should be inferred from context or type info (not shown here).
+            // For demo, assume i64 (should be improved for real type info).
+            return builder->CreateLoad(llvm::Type::getInt64Ty(*context), operand, "rawloc_deref");
         default:
             return nullptr;
     }
@@ -427,11 +437,34 @@ llvm::Value* LLVMCodegen::codegen(CallExpression* expr) {
     return nullptr;
 }
 llvm::Value* LLVMCodegen::codegen(MemberExpression* expr) {
-    // TODO: Implement member access codegen
-    return nullptr;
+    // Codegen for obj.field access
+    llvm::Value* base = codegen(expr->object.get());
+    if (!base) return nullptr;
+    llvm::StructType* structTy = nullptr;
+    llvm::Value* basePtr = base;
+    if (base->getType()->isPointerTy()) {
+        llvm::Type* elemTy = base->getType()->getPointerElementType();
+        structTy = llvm::dyn_cast<llvm::StructType>(elemTy);
+    }
+    if (!structTy) return nullptr;
+    int fieldIndex = -1;
+    auto it = userTypeMap.find(expr->object->inferredTypeName);
+    if (it != userTypeMap.end()) {
+        const auto& fields = it->second.fields;
+        for (size_t i = 0; i < fields.size(); ++i) {
+            if (fields[i].name == expr->property->name) {
+                fieldIndex = static_cast<int>(i) + 1; // +1 for RTTI field
+                break;
+            }
+        }
+    }
+    if (fieldIndex < 1) return nullptr;
+    llvm::Value* fieldPtr = builder->CreateStructGEP(structTy, basePtr, fieldIndex, "fieldptr");
+    // Load the field value
+    return builder->CreateLoad(fieldPtr->getType()->getPointerElementType(), fieldPtr, expr->property->name);
 }
 llvm::Value* LLVMCodegen::codegen(AssignmentExpression* expr) {
-    // Support assignment to identifiers, member expressions, and array elements
+    // Support assignment to identifiers, member expressions, array elements, and raw location deref
     llvm::Value* varAddr = nullptr;
     // Helper for multidimensional array access: flatten indices
     auto flattenArrayAccess = [&](Node* node, llvm::Value*& basePtr, std::vector<llvm::Value*>& indices) -> bool {
@@ -519,6 +552,17 @@ llvm::Value* LLVMCodegen::codegen(AssignmentExpression* expr) {
         for (auto idx : indices) gepIndices.push_back(idx);
         llvm::Value* elemPtr = builder->CreateGEP(arrTy, basePtr, gepIndices, "elemptr");
         varAddr = elemPtr;
+    } else if (auto* unary = dynamic_cast<UnaryExpression*>(expr->left.get())) {
+        // Assignment to dereferenced raw location: loc(expr) = value or at(expr) = value
+        if (unary->op.type == token::TokenType::KEYWORD_LOC ||
+            unary->op.type == token::TokenType::KEYWORD_AT ||
+            unary->op.type == token::TokenType::STAR) {
+            llvm::Value* ptr = codegen(unary->operand.get());
+            if (!ptr) return nullptr;
+            varAddr = ptr;
+        } else {
+            return nullptr;
+        }
     } else {
         // TODO: Support pointer deref, etc.
         return nullptr;

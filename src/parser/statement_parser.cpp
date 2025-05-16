@@ -1,5 +1,5 @@
+#include "vyn/parser/ast.hpp"
 #include "vyn/parser.hpp"
-#include "vyn/ast.hpp"
 #include <stdexcept> // For std::runtime_error
 #include <vector> // for std::vector
 #include <memory> // for std::unique_ptr

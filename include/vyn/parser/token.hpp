@@ -2,7 +2,7 @@
 #define VYN_TOKEN_HPP
 
 #include <string>
-#include "vyn/source_location.hpp" // For vyn::SourceLocation
+#include "vyn/parser/source_location.hpp" // For vyn::SourceLocation
 
 namespace vyn {
 

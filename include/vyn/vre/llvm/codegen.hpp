@@ -2,7 +2,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include "vyn/ast.hpp" // Use canonical AST include for now
+#include "vyn/parser/ast.hpp" // Use canonical AST include for now
 
 // Forward declare LLVM types
 namespace llvm {

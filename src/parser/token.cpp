@@ -1,5 +1,5 @@
-#include "vyn/token.hpp"
-#include "vyn/ast.hpp" // Required for the definition of SourceLocation
+#include "vyn/parser/token.hpp"
+#include "vyn/parser/ast.hpp" // Required for the definition of SourceLocation
 #include <unordered_map> // Added for std::unordered_map
 #include <string> // Added for std::string
 #include <sstream> // For Token::toString

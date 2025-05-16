@@ -1,6 +1,3 @@
-
-
-
 // All includes at the top
 #include <sstream>
 #include <string>
@@ -9,7 +6,7 @@
 #include <vector>
 #include <algorithm>
 #include <stdexcept>
-#include "vyn/ast.hpp"
+#include "vyn/parser/ast.hpp"
 #include "vyn/token.hpp"
 
 // All code in a single namespace block

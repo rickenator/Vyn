@@ -1,6 +1,6 @@
-#include "vyn/lexer.hpp"
-#include "vyn/token.hpp" // Ensure vyn::token_type_to_string is available
-#include "vyn/source_location.hpp"   // Required for vyn::SourceLocation
+#include "vyn/parser/lexer.hpp"
+#include "vyn/parser/token.hpp" // Ensure vyn::token_type_to_string is available
+#include "vyn/parser/source_location.hpp"   // Required for vyn::SourceLocation
 #include <stdexcept>
 #include <iostream>
 #include <functional>

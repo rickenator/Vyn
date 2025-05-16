@@ -6,7 +6,7 @@
 
 ## 1. Introduction
 
-Welcome to the Vyn Programming Guide. This guide walks you through writing, building, and extending Vyn programs, from your first “Hello, Vyn!” to deep dives into the Vyn language internals and runtime. Version 0.3.0 delivers a robust parser with support for advanced constructs like asynchronous programming, generic templates, operator overloading, and class declarations within templates, validated by a comprehensive test suite (34/34 tests passing).
+Welcome to the Vyn Programming Guide. This guide walks you through writing, building, and extending Vyn programs, from your first “Hello, Vyn!” to deep dives into the Vyn language internals and runtime. Version 0.3.1 delivers a robust parser with support for advanced constructs like asynchronous programming, generic templates, operator overloading, and class declarations within templates, validated by a comprehensive test suite (34/34 tests passing).
 
 ### 1.1 Purpose & Audience
 
@@ -259,6 +259,16 @@ unsafe {
 }
 ```
 
+**Manual Management (`loc<T>`, `unsafe`)**: For low-level control, raw locations (`loc<T>`) can be used within `unsafe` blocks, with manual allocation (`alloc`) and deallocation (`free`) functions. This is intended for specific performance-critical sections or FFI.
+
+  - `loc<T>`: A raw location (like a pointer, but with explicit, safe syntax and semantics).
+  - `loc(expr)` or `at(expr)`: Explicit dereference of a raw location, both as lvalue and rvalue. Both forms are supported for ergonomic and linguistic reasons.
+  - All raw location operations are gated by `unsafe { ... }` blocks, ensuring that unsafe memory access is always explicit and localized.
+
+Safe code uses only `my<T>`, `our<T>`, and `their<T>` for ownership and borrowing. Use of `loc<T>` is reserved for advanced/unsafe scenarios, and is never required for ordinary programming.
+
+See `doc/mem_RFC.md` for full details on the memory model, ownership, and safety guarantees.
+
 These concepts extend to function parameters and struct/class fields, allowing fine-grained control over how data is passed and managed.
 
 ### 3.3 Control Flow (if, for, while, match)
@@ -459,7 +469,15 @@ Vyn's memory management is built upon its ownership and borrowing system (`my<T>
 *   **`our<T>` (Shared Ownership)**: Uses reference counting for automatic memory management when multiple owners are necessary. The resource is freed when the last `our<T>` pointer is dropped.
 *   **`their<T>` (Borrows)**: Non-owning references created by `view` (immutable) and `borrow` (mutable). The compiler enforces lifetime rules to ensure these references do not outlive the data they point to, preventing dangling pointers.
 *   **Planned Default GC**: For scenarios not easily managed by `my`/`our` (e.g., complex object graphs with cycles not broken by `our<Weak<T>>` or for general heap allocations where ownership is diffuse), a garbage collector is planned. It will work alongside the explicit ownership system.
-*   **Manual Management (`ptr<T>`, `unsafe`)**: For low-level control, raw pointers (`ptr<T>`) can be used within `unsafe` blocks, with manual allocation (`alloc`) and deallocation (`free`) functions. This is intended for specific performance-critical sections or FFI.
+*   **Manual Management (`loc<T>`, `unsafe`)**: For low-level control, raw locations (`loc<T>`) can be used within `unsafe` blocks, with manual allocation (`alloc`) and deallocation (`free`) functions. This is intended for specific performance-critical sections or FFI.
+
+    - `loc<T>`: A raw location (like a pointer, but with explicit, safe syntax and semantics).
+    - `loc(expr)` or `at(expr)`: Explicit dereference of a raw location, both as lvalue and rvalue. Both forms are supported for ergonomic and linguistic reasons.
+    - All raw location operations are gated by `unsafe { ... }` blocks, ensuring that unsafe memory access is always explicit and localized.
+
+    Safe code uses only `my<T>`, `our<T>`, and `their<T>` for ownership and borrowing. Use of `loc<T>` is reserved for advanced/unsafe scenarios, and is never required for ordinary programming.
+
+    See `doc/mem_RFC.md` for full details on the memory model, ownership, and safety guarantees.
 *   **Scoped Cleanup**: The planned `scoped { ... }` blocks will offer a way to manage resources with RAII-like semantics, ensuring cleanup at the end of the scope, potentially interacting with the GC by deferring collection for objects created within the scope.
 
 This hybrid approach allows developers to choose the most appropriate memory management strategy for different parts of their application, balancing safety, performance, and convenience.

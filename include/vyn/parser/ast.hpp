@@ -8,8 +8,8 @@
 #include <utility>
 #include <cstdint> // Added for int64_t
 
-#include "vyn/source_location.hpp" // For vyn::SourceLocation
-#include "vyn/token.hpp"           // For vyn::token::Token
+#include "vyn/parser/source_location.hpp" // For vyn::SourceLocation
+#include "vyn/parser/token.hpp"           // For vyn::token::Token
 
 namespace vyn {
 
@@ -514,6 +514,17 @@ struct ImportSpecifier {
         NodeType getType() const override { return NodeType::BORROW_EXPRESSION_NODE; } // Updated NodeType
         void accept(Visitor& visitor) override; 
         std::string toString() const override; 
+    };
+
+    // Represents pointer dereference: at(ptr)
+    class PointerDerefExpression : public Expression {
+    public:
+        ExprPtr pointer;
+        PointerDerefExpression(SourceLocation loc, ExprPtr pointer)
+            : Expression(loc), pointer(std::move(pointer)) {}
+        NodeType getType() const override { return NodeType::CALL_EXPRESSION; /* or a new NodeType if desired */ }
+        std::string toString() const override { return "at(" + pointer->toString() + ")"; }
+        void accept(Visitor& visitor) override { visitor.visit(this); }
     };
 
     // Represents one key-value pair in an object literal

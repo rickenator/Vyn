@@ -1,5 +1,5 @@
+#include "vyn/parser/ast.hpp"
 #include "vyn/parser.hpp"
-#include "vyn/ast.hpp"
 #include <stdexcept>
 #include <string> // Required for std::to_string
 #include <algorithm> // Required for std::any_of, if used by match or other helpers
@@ -20,9 +20,24 @@ namespace vyn {
     }
 
     vyn::ExprPtr ExpressionParser::parse_atom() {
-        // Use the new helper methods that delegate to parent_parser_ref_
-        skip_comments_and_newlines(); // Example of using a delegated method
-        const vyn::token::Token& token = peek(); // Delegated
+        skip_comments_and_newlines();
+        const vyn::token::Token& token = peek();
+
+        // --- Handle explicit pointer dereference: loc(expr) ---
+        if (token.type == vyn::TokenType::IDENTIFIER && token.lexeme == "loc") {
+            vyn::SourceLocation loc_loc = token.location;
+            consume(); // consume 'loc'
+            if (peek().type != vyn::TokenType::LPAREN) {
+                throw error(peek(), "Expected '(' after 'loc' for location dereference");
+            }
+            consume(); // consume '('
+            vyn::ExprPtr ptr_expr = parse_expression();
+            if (peek().type != vyn::TokenType::RPAREN) {
+                throw error(peek(), "Expected ')' after location expression in 'loc(...)'");
+            }
+            consume(); // consume ')'
+            return std::make_unique<vyn::PointerDerefExpression>(loc_loc, std::move(ptr_expr));
+        }
 
         #ifdef VERBOSE
         std::cerr << "[PARSE_ATOM] Next token: " << vyn::token_type_to_string(token.type)
