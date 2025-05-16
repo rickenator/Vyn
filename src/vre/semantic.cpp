@@ -1,7 +1,9 @@
-#include "vyn/vre/semantic.hpp"
-#include <cassert>
+#include "vyn/vre/semantic.hpp" // Moved to vre subdirectory
+#include "vyn/parser/token.hpp"
+#include "vyn/parser/ast.hpp" // Added include for AST nodes
+#include <stdexcept> // For std::runtime_error
 
-using namespace vyn;
+namespace vyn {
 
 SemanticAnalyzer::SemanticAnalyzer() : symbols(std::make_unique<SymbolTable>()) {}
 
@@ -37,7 +39,7 @@ void SemanticAnalyzer::analyzeNode(Node* node) {
 
 void SemanticAnalyzer::analyzeBlockStatement(BlockStatement* block) {
     // Enter new scope for borrows and unsafe
-    std::vector<BorrowInfo> savedBorrows = activeBorrows;
+    ::std::vector<BorrowInfo> savedBorrows = activeBorrows;
     int savedUnsafe = unsafeDepth;
     for (const auto& stmt : block->body) {
         // Detect unsafe block entry (syntactic marker not shown here)
@@ -98,9 +100,10 @@ void SemanticAnalyzer::analyzeAssignment(AssignmentExpression* expr) {
             errors.push_back("Cannot assign to const variable: " + id->name);
         }
     } else if (auto* unary = dynamic_cast<UnaryExpression*>(expr->left.get())) {
-        // Assignment to dereferenced raw location (loc(expr) = ... or at(expr) = ...)
-        if (unary->op.type == token::TokenType::KEYWORD_LOC ||
-            unary->op.type == token::TokenType::KEYWORD_AT) {
+        // Check if it's loc(...) or @(...)
+        if (unary->op.type == vyn::TokenType::KEYWORD_PTR || // Changed KEYWORD_LOC to KEYWORD_PTR
+            unary->op.type == vyn::TokenType::AT) {          // Changed KEYWORD_AT to AT
+            // This is a dereference assignment, e.g., *ptr = value or @loc = value
             checkLocUnsafe(unary);
             if (!isRawLocationType(unary->operand.get())) {
                 errors.push_back("Cannot assign to dereferenced value: operand is not a raw location (loc<T>) at " + unary->loc.toString());
@@ -113,32 +116,22 @@ void SemanticAnalyzer::analyzeAssignment(AssignmentExpression* expr) {
 }
 
 void SemanticAnalyzer::analyzeUnaryExpression(UnaryExpression* expr) {
-    // Check for raw location dereference: loc(expr) or at(expr)
-    if (expr->op.type == token::TokenType::KEYWORD_LOC ||
-        expr->op.type == token::TokenType::KEYWORD_AT) {
+    analyzeNode(expr->operand.get()); // Changed from analyzeExpression to analyzeNode
+
+    // Check for specific unary operations like @ (location) or * (dereference)
+    if (expr->op.type == vyn::TokenType::KEYWORD_PTR || // Changed KEYWORD_LOC to KEYWORD_PTR
+        expr->op.type == vyn::TokenType::AT) {          // Changed KEYWORD_AT to AT
+        // Handle location/dereference operators
         checkLocUnsafe(expr);
-        if (!isRawLocationType(expr->operand.get())) {
-            errors.push_back("Cannot dereference: operand is not a raw location (loc<T>) at " + expr->loc.toString());
-        }
     }
-    // Check for address-of: addr(loc)
-    if (expr->op.type == token::TokenType::IDENTIFIER && expr->op.lexeme == "addr") {
-        checkLocUnsafe(expr);
-        if (!isRawLocationType(expr->operand.get())) {
-            errors.push_back("Argument to addr(...) must be a raw location (loc<T>) at " + expr->loc.toString());
-        }
+    // Check for addr(...)
+    if (expr->op.type == vyn::TokenType::IDENTIFIER && expr->op.lexeme == "addr") {
+        // This is effectively a built-in function call for getting an address
+        checkLocUnsafe(expr); // addr also requires unsafe
     }
-    // Analyze operand
-    if (expr->operand) analyzeNode(expr->operand.get());
 }
 
-// --- Unsafe context helpers ---
-void SemanticAnalyzer::enterUnsafe() { ++unsafeDepth; }
-void SemanticAnalyzer::exitUnsafe() { if (unsafeDepth > 0) --unsafeDepth; }
-bool SemanticAnalyzer::inUnsafe() const { return unsafeDepth > 0; }
-
-// --- Borrow and lifetime checking ---
-void SemanticAnalyzer::checkBorrow(Node* node, const std::string& owner, bool isMutable, TypeNode* type) {
+void SemanticAnalyzer::checkBorrow(Node* node, const ::std::string& owner, bool isMutable, TypeNode* type) {
     // Check for conflicting borrows
     for (const auto& b : activeBorrows) {
         if (b.ownerName == owner) {
@@ -180,3 +173,5 @@ bool SemanticAnalyzer::isRawLocationType(Expression* expr) {
     }
     return false;
 }
+
+} // Add missing closing brace for namespace vyn

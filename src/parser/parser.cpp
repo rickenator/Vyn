@@ -1,7 +1,7 @@
 // Stub file for parser other implementations
-#include "vyn/parser.hpp"
+#include "vyn/parser/parser.hpp"
 #include "vyn/parser/ast.hpp"
-#include "vyn/token.hpp"
+#include "vyn/parser/token.hpp"
 
 #include <stdexcept> // For std::runtime_error
 #include <string> // Required for std::to_string

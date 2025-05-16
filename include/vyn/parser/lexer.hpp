@@ -5,8 +5,8 @@
 #include <vector>
 #include <functional>
 #include <unordered_map>
-#include "token.hpp" // Provides vyn::token::Token and vyn::TokenType
-#include "source_location.hpp" // Provides vyn::SourceLocation
+#include "vyn/parser/token.hpp" // Provides vyn::token::Token and vyn::TokenType
+#include "vyn/parser/source_location.hpp" // Provides vyn::SourceLocation
 
 // class Lexer is in the global namespace
 class Lexer {

@@ -1,5 +1,5 @@
-#include "vyn/parser.hpp"
-#include "vyn/token.hpp" 
+#include "vyn/parser/parser.hpp"
+#include "vyn/parser/token.hpp" 
 #include "vyn/parser/ast.hpp"   
 #include <stdexcept>
 #include <iostream> 

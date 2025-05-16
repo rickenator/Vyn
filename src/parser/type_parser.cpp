@@ -1,4 +1,6 @@
 #include "vyn/parser/ast.hpp"
+#include "vyn/parser/token.hpp"
+#include "vyn/parser/parser.hpp" // Added missing include for parser definitions
 
 namespace vyn {
 

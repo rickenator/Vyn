@@ -1,5 +1,5 @@
 #include "vyn/parser/ast.hpp"
-#include "vyn/parser.hpp"
+#include "vyn/parser/parser.hpp"
 #include <stdexcept>
 #include <string> // Required for std::to_string
 #include <algorithm> // Required for std::any_of, if used by match or other helpers

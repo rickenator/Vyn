@@ -3,7 +3,7 @@
 
 #include "lexer.hpp"
 #include "parser.hpp"
-#include "ast.hpp"
+#include "vyn/parser/ast.hpp"
 #include "token.hpp"
 
 /* // EBNF Grammar of the Vyn Language  // Uncommented

@@ -7,6 +7,14 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Catch2 REQUIRED)
 
+# Find LLVM
+find_package(LLVM REQUIRED CONFIG)
+message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
+message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+include_directories(${LLVM_INCLUDE_DIRS})
+link_directories(${LLVM_LIBRARY_DIRS})
+add_definitions(${LLVM_DEFINITIONS})
+
 # Parser sources
 set(PARSER_SOURCES
     src/parser/ast.cpp
@@ -57,9 +65,31 @@ add_executable(vyn_parser
     ${MAIN_SOURCES}
 )
 
-target_include_directories(vyn_parser PRIVATE include)
+target_include_directories(vyn_parser PRIVATE include ${LLVM_INCLUDE_DIRS})
 
-target_link_libraries(vyn_parser PRIVATE Catch2::Catch2WithMain)
+target_link_libraries(vyn_parser PRIVATE Catch2::Catch2WithMain LLVM)
+# Add all LLVM components needed. For example, if you use Core, IR, AsmParser, etc.
+# This is a common set, adjust as per your needs.
+target_link_libraries(vyn_parser PRIVATE
+    Catch2::Catch2WithMain
+    LLVMSupport
+    LLVMCore
+    LLVMIRReader
+    LLVMAsmParser
+    LLVMBitReader
+    LLVMBitWriter
+    LLVMipo
+    LLVMLinker
+    LLVMTransformUtils
+    LLVMExecutionEngine
+    LLVMRuntimeDyld
+    LLVMTarget
+    LLVMMCJIT
+    LLVMObject
+    LLVMOrcJIT
+    # Add more components if your codegen uses them, e.g., LLVMX86CodeGen, LLVMX86AsmPrinter, etc.
+)
+
 
 # Add debug flags for tests.cpp
 set_source_files_properties(src/tests.cpp PROPERTIES COMPILE_FLAGS "-Wall -Wextra -DDEBUG_TESTS -DVERBOSE")

@@ -7,11 +7,11 @@
 #include <algorithm>
 #include <stdexcept>
 #include "vyn/parser/ast.hpp"
-#include "vyn/token.hpp"
+#include "vyn/parser/token.hpp"
 
-// All code in a single namespace block
 namespace vyn {
 
+// ObjectLiteral destructor
 ObjectLiteral::~ObjectLiteral() = default;
 
 // ObjectLiteral constructor implementation
@@ -46,7 +46,7 @@ std::string TryStatement::toString() const {
 }
 
 void TryStatement::accept(Visitor& visitor) {
-    visitor.visit(this); // This is correct if Visitor has: virtual void visit(class TryStatement* node) = 0;
+    visitor.visit(this);
 }
 // --- ImportDeclaration methods ---
 ImportDeclaration::ImportDeclaration(
@@ -820,5 +820,43 @@ NodeType FromIntToLocExpression::getType() const { return NodeType::CALL_EXPRESS
 std::string FromIntToLocExpression::toString() const { return "from(" + (address ? address->toString() : "<null>") + ")"; }
 void FromIntToLocExpression::accept(Visitor& visitor) { visitor.visit(this); }
 
-// End of namespace
+// --- PointerDerefExpression implementation ---
+vyn::PointerDerefExpression::PointerDerefExpression(SourceLocation loc, ExprPtr pointer)
+    : Expression(loc), pointer(std::move(pointer)) {}
+
+vyn::NodeType vyn::PointerDerefExpression::getType() const {
+    return vyn::NodeType::CALL_EXPRESSION; // Or a new NodeType if desired
+}
+
+std::string vyn::PointerDerefExpression::toString() const {
+    return "at(" + (pointer ? pointer->toString() : "<null>") + ")";
+}
+
+void vyn::PointerDerefExpression::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
+// --- ObjectLiteralNode implementation ---
+vyn::ObjectLiteralNode::ObjectLiteralNode(SourceLocation loc, std::vector<std::pair<std::string, ExprPtr>> properties)
+    : Expression(loc), properties(std::move(properties)) {}
+
+vyn::NodeType vyn::ObjectLiteralNode::getType() const {
+    return vyn::NodeType::OBJECT_LITERAL_NODE;
+}
+
+void vyn::ObjectLiteralNode::accept(Visitor& visitor) {
+    (void)visitor;
+}
+
+std::string vyn::ObjectLiteralNode::toString() const {
+    std::string result = "{";
+    bool first = true;
+    for (const auto& prop : properties) {
+        if (!first) result += ", ";
+        result += prop.first + ": " + (prop.second ? prop.second->toString() : "<null>");
+        first = false;
+    }
+    return result + "}";
+}
+
 } // namespace vyn

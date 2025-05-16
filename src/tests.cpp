@@ -431,8 +431,8 @@ fn main() {
     return q
 }
 )";
-    // TODO: Integrate with semantic analysis and codegen pipeline
-    // Example: int result = run_vyn_code(source); REQUIRE(result == 99);
+    int result = run_vyn_code(source);
+    REQUIRE(result == 99);
 }
 
 TEST_CASE("Codegen: Member access assignment", "[codegen][member]") {
@@ -448,8 +448,8 @@ fn main() {
     return p.x + p.y
 }
 )";
-    // TODO: Integrate with semantic analysis and codegen pipeline
-    // Example: int result = run_vyn_code(source); REQUIRE(result == 30);
+    int result = run_vyn_code(source);
+    REQUIRE(result == 30);
 }
 
 TEST_CASE("Codegen: Multidimensional array assignment/access", "[codegen][array]") {
@@ -461,8 +461,8 @@ fn main() {
     return arr[0][1] + arr[1][0]
 }
 )";
-    // TODO: Integrate with semantic analysis and codegen pipeline
-    // Example: int result = run_vyn_code(source); REQUIRE(result == 141);
+    int result = run_vyn_code(source);
+    REQUIRE(result == 141);
 }
 
 TEST_CASE("Semantic: loc<T> cannot be assigned from integer literal", "[semantic][pointer][error]") {
@@ -472,9 +472,7 @@ fn main() {
     return 0
 }
 )";
-    // TODO: Integrate with semantic analysis and codegen pipeline
-    // Should fail: direct assignment of integer to loc<T> is not allowed
-    // Example: REQUIRE_THROWS(run_vyn_code(source));
+    REQUIRE_THROWS(run_vyn_code(source));
 }
 
 TEST_CASE("Semantic: from(addr) only allowed in unsafe", "[semantic][pointer][unsafe]") {
@@ -488,9 +486,7 @@ fn main() {
     return 0
 }
 )";
-    // TODO: Integrate with semantic/codegen pipeline
-    // Should succeed: from(addr) in unsafe is allowed
-    // Example: REQUIRE_NOTHROW(run_vyn_code(source_ok));
+    REQUIRE_NOTHROW(run_vyn_code(source_ok));
 
     std::string source_err = R"(
 fn main() {
@@ -499,8 +495,7 @@ fn main() {
     return 0
 }
 )";
-    // Should fail: from(addr) outside unsafe is not allowed
-    // Example: REQUIRE_THROWS(run_vyn_code(source_err));
+    REQUIRE_THROWS(run_vyn_code(source_err));
 }
 
 TEST_CASE("Codegen: addr(loc) and from(addr) round-trip in unsafe", "[codegen][pointer][unsafe]") {
@@ -518,7 +513,45 @@ fn main() {
     return at(p)
 }
 )";
-    // TODO: Integrate with semantic/codegen pipeline
-    // Should succeed and return 99 if round-trip works
-    // Example: int result = run_vyn_code(source); REQUIRE(result == 99);
+    int result = run_vyn_code(source);
+    REQUIRE(result == 99);
+}
+
+// Run Vyn code end-to-end: parse, analyze, codegen, JIT, run main(). Throws on error.
+int run_vyn_code(const std::string& source) {
+    // 1. Lex and parse
+    Lexer lexer(source, "test_runtime.vyn");
+    auto tokens = lexer.tokenize();
+    vyn::Parser parser(tokens, "test_runtime.vyn");
+    std::unique_ptr<vyn::Module> ast = parser.parse_module();
+
+    // 2. Semantic analysis
+    vyn::SemanticAnalyzer sema;
+    sema.analyze(ast.get());
+    if (!sema.getErrors().empty()) {
+        throw std::runtime_error("Semantic error: " + sema.getErrors().front());
+    }
+
+    // 3. Codegen
+    vyn::LLVMCodegen codegen("test_module");
+    codegen.generate(ast.get());
+    std::unique_ptr<llvm::Module> llvmMod = codegen.takeModule();
+
+    // 4. JIT setup
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
+    std::string errStr;
+    llvm::EngineBuilder builder(std::move(llvmMod));
+    builder.setErrorStr(&errStr);
+    builder.setEngineKind(llvm::EngineKind::JIT);
+    std::unique_ptr<llvm::ExecutionEngine> engine(builder.create());
+    if (!engine) throw std::runtime_error("LLVM JIT error: " + errStr);
+
+    // 5. Find and run main()
+    llvm::Function* mainFn = engine->FindFunctionNamed("main");
+    if (!mainFn) throw std::runtime_error("No main() function found");
+    std::vector<llvm::GenericValue> noargs;
+    llvm::GenericValue result = engine->runFunction(mainFn, noargs);
+    return result.IntVal.getSExtValue();
 }

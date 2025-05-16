@@ -1,5 +1,6 @@
 #include "vyn/parser/ast.hpp"
-#include "vyn/token.hpp"
+#include "vyn/parser/token.hpp"
+#include "vyn/parser/parser.hpp" // Added missing include for parser definitions
 #include <vector>
 #include <memory>
 #include <stdexcept> // Required for std::runtime_error
