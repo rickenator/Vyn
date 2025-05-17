@@ -1,8 +1,9 @@
-#ifndef VYN_TOKEN_HPP
-#define VYN_TOKEN_HPP
+#ifndef VYN_PARSER_TOKEN_HPP
+#define VYN_PARSER_TOKEN_HPP
 
 #include <string>
-#include "vyn/parser/source_location.hpp" // For vyn::SourceLocation
+#include <utility> // For std::move
+#include "source_location.hpp" // Corrected path
 
 namespace vyn {
 
@@ -59,4 +60,4 @@ namespace token {
 } // namespace token
 } // namespace vyn
 
-#endif // VYN_TOKEN_HPP
+#endif // VYN_PARSER_TOKEN_HPP

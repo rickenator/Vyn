@@ -1,8 +1,20 @@
 #define CATCH_CONFIG_MAIN
 #include "vyn/vyn.hpp"
 #include <catch2/catch_all.hpp>
-#include <iostream> // Added iostream for std::cerr
+#include <iostream>
 #include <string>
+#include <vector>
+#include <memory>
+
+// llvm includes for JIT
+#include <llvm/ExecutionEngine/ExecutionEngine.h>
+#include <llvm/ExecutionEngine/GenericValue.h>
+#include <llvm/IR/Module.h>
+#include <llvm/Support/TargetSelect.h>
+#include <llvm/Support/raw_ostream.h>
+
+// Forward declare run_vyn_code
+int run_vyn_code(const std::string& source);
 
 TEST_CASE("Print parser version", "[parser]") {
     REQUIRE(true); // Placeholder to ensure test runs
@@ -387,7 +399,7 @@ TEST_CASE("Parser handles complex list comprehension", "[parser]") {
 }
 
 TEST_CASE("Parser handles single-line comments", "[parser]") {
-    std::string source = "// This is a comment\\nfn test() {}";
+    std::string source = "// This is a comment\nfn test() {}";
     Lexer lexer(source, "test31.vyn");
     auto tokens = lexer.tokenize();
     vyn::Parser parser(tokens, "test31.vyn");
@@ -404,14 +416,14 @@ TEST_CASE("Parser handles negative numbers", "[parser]") {
 
 TEST_CASE("Lexer handles ref and underscore", "[lexer]") {
     std::string source = "var _x: my<Type> = _";
-    Lexer lexer(source, "test33.vyn");
+    Lexer lexer(source, "test33.vyn"); // Assuming Lexer is global
     auto tokens = lexer.tokenize();
     bool found_ref = false, found_underscore = false;
     for (const auto& token : tokens) {
-        if (token.type == vyn::TokenType::KEYWORD_MY && token.lexeme == "my") found_ref = true; // Check for 'my'
+        if (token.type == vyn::TokenType::KEYWORD_MY && token.lexeme == "my") found_ref = true;
         if (token.type == vyn::TokenType::UNDERSCORE && token.lexeme == "_") found_underscore = true;
     }
-    REQUIRE(found_ref); // Assert that 'my' was found
+    REQUIRE(found_ref);
     REQUIRE(found_underscore);
 }
 
@@ -520,37 +532,63 @@ fn main() {
 // Run Vyn code end-to-end: parse, analyze, codegen, JIT, run main(). Throws on error.
 int run_vyn_code(const std::string& source) {
     // 1. Lex and parse
-    Lexer lexer(source, "test_runtime.vyn");
+    Lexer lexer(source, "test_runtime.vyn"); // Assuming Lexer is global
     auto tokens = lexer.tokenize();
-    vyn::Parser parser(tokens, "test_runtime.vyn");
-    std::unique_ptr<vyn::Module> ast = parser.parse_module();
+    vyn::Parser parser(tokens, "test_runtime.vyn"); // Assuming Parser is global
+    std::unique_ptr<vyn::ast::Module> ast = parser.parse_module(); // ast::Module is in vyn::ast
 
     // 2. Semantic analysis
     vyn::SemanticAnalyzer sema;
     sema.analyze(ast.get());
     if (!sema.getErrors().empty()) {
-        throw std::runtime_error("Semantic error: " + sema.getErrors().front());
+        std::string all_errors;
+        for(const auto& err : sema.getErrors()) {
+            all_errors += err + "\n";
+        }
+        throw std::runtime_error("Semantic error(s): \n" + all_errors);
     }
 
     // 3. Codegen
-    vyn::LLVMCodegen codegen("test_module");
-    codegen.generate(ast.get());
-    std::unique_ptr<llvm::Module> llvmMod = codegen.takeModule();
+    vyn::LLVMCodegen codegen; // Corrected: No arguments for constructor
+    codegen.generate(ast.get(), "test_module.ll"); // Corrected: Added output filename
+    std::unique_ptr<llvm::Module> llvmMod = codegen.releaseModule(); // Corrected: Use releaseModule()
 
     // 4. JIT setup
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmPrinter();
-    llvm::InitializeNativeTargetAsmParser();
+    // llvm::InitializeNativeTargetAsmParser(); // Optional
+
     std::string errStr;
-    llvm::EngineBuilder builder(std::move(llvmMod));
+    llvm::EngineBuilder builder(std::move(llvmMod)); // llvmMod is already a unique_ptr
     builder.setErrorStr(&errStr);
     builder.setEngineKind(llvm::EngineKind::JIT);
     std::unique_ptr<llvm::ExecutionEngine> engine(builder.create());
-    if (!engine) throw std::runtime_error("LLVM JIT error: " + errStr);
+    if (!engine) {
+        std::string module_dump_str;
+        llvm::raw_string_ostream rso(module_dump_str);
+        // Use the llvmMod unique_ptr for dumping, as codegen no longer owns the module
+        if (llvmMod) { 
+             llvmMod->print(rso, nullptr);
+        } else {
+             rso << "Could not retrieve LLVM Module for dumping (it was null).";
+        }
+        rso.flush();
+        throw std::runtime_error("LLVM JIT error: " + errStr);
+    }
 
     // 5. Find and run main()
-    llvm::Function* mainFn = engine->FindFunctionNamed("main");
-    if (!mainFn) throw std::runtime_error("No main() function found");
+    llvm::Function* mainFn = engine->FindFunctionNamed("main"); 
+    if (!mainFn) {
+        std::string module_dump_str;
+        llvm::raw_string_ostream rso(module_dump_str);
+        if (llvmMod) { // Use llvmMod for dumping
+            llvmMod->print(rso, nullptr);
+        } else {
+            rso << "Could not retrieve LLVM Module for dumping (main not found, module was null).";
+        }
+        rso.flush();
+        throw std::runtime_error("No main() function found in LLVM module");
+    }
     std::vector<llvm::GenericValue> noargs;
     llvm::GenericValue result = engine->runFunction(mainFn, noargs);
     return result.IntVal.getSExtValue();

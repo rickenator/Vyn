@@ -1,74 +1,71 @@
 #pragma once
-#include "vyn/parser/ast.hpp"
+#include <vyn/parser/ast.hpp> // Include ast.hpp for full type definitions
 #include <string>
 #include <unordered_map>
 #include <vector>
 #include <memory>
+#include <map> // Added missing include for std::map
 
 namespace vyn {
 
-// Forward declaration
-class Node; // Add forward declaration for Node
-class TypeNode; // Add forward declaration for TypeNode
+// Forward declarations are mostly handled by ast.hpp
+// class TypeNode; // This is vyn::ast::TypeNode, already in ast.hpp
 
-struct BorrowInfo {
-    std::string ownerName;
-    bool isMutable;
-    Node* borrowNode; // The AST node that created the borrow
-    // Potentially add TypeNode* of the borrowed type if needed for more complex checks
+namespace ast { // Forward declare Node from ast namespace if not fully included by ast.hpp somehow, though it should be.
+    class Node;
+    class TypeNode;
+} // namespace ast
+
+enum class SymbolType {
+    VARIABLE,
+    FUNCTION,
+    TYPE
 };
 
-struct SymbolInfo {
-    enum class Kind { Variable, Function, Type };
-    Kind kind;
+struct Symbol {
+    SymbolType type;
     std::string name;
-    bool isConst = false;
-    TypeNode* type = nullptr;
-    // Extend as needed (scope, function params, etc)
+    ast::TypeNode* dataType; // Assuming TypeNode is the correct type for data types. Changed to ast::TypeNode
+    bool isMutable;
+    // Add other relevant symbol information, e.g., scope, definition location
 };
 
-class SymbolTable {
+class Scope {
 public:
-    SymbolTable(SymbolTable* parent = nullptr) : parent(parent) {}
-    void add(const SymbolInfo& sym) { table[sym.name] = sym; }
-    SymbolInfo* lookup(const std::string& name) {
-        auto it = table.find(name);
-        if (it != table.end()) return &it->second;
-        if (parent) return parent->lookup(name);
-        return nullptr;
-    }
+    Scope(Scope* parent = nullptr);
+    Symbol* find(const std::string& name);
+    void insert(const std::string& name, Symbol* symbol);
+    Scope* getParent();
 private:
-    std::unordered_map<std::string, SymbolInfo> table;
-    SymbolTable* parent;
+    std::map<std::string, Symbol*> symbols;
+    Scope* parent;
 };
 
 class SemanticAnalyzer {
 public:
     SemanticAnalyzer();
-    void analyze(Module* root);
-    const std::vector<std::string>& getErrors() const { return errors; }
+    void analyze(ast::Module* root); // Changed to ast::Module
+    std::vector<std::string> getErrors();
+
 private:
-    void analyzeNode(Node* node);
-    void analyzeAssignment(AssignmentExpression* expr);
-    void analyzeVariableDeclaration(VariableDeclaration* decl);
-    void analyzeUnaryExpression(UnaryExpression* expr);
-    void analyzeBorrowExpression(BorrowExprNode* expr);
-    void analyzeBlockStatement(BlockStatement* block);
-
-    void enterUnsafe();
-    void exitUnsafe();
-    bool inUnsafe() const;
-
-    void checkBorrow(Node* node, const std::string& owner, bool isMutable, TypeNode* type);
-    void checkLifetime(Node* node, const std::string& owner);
-    void checkLocUnsafe(Node* node);
-    bool isRawLocationType(Expression* expr);
-
-    // ... more as needed ...
-    std::unique_ptr<SymbolTable> symbols;
+    Scope* currentScope;
     std::vector<std::string> errors;
-    std::vector<BorrowInfo> activeBorrows; // Declare activeBorrows
-    int unsafeDepth = 0;
+    bool inUnsafeBlock = false; // Track if currently inside an unsafe block
+
+    void analyzeNode(ast::Node* node); // Changed to ast::Node
+    void analyzeAssignment(ast::AssignmentExpression* expr); // Changed to ast::AssignmentExpression
+    void analyzeVariableDeclaration(ast::VariableDeclaration* decl); // Changed to ast::VariableDeclaration
+    void analyzeUnaryExpression(ast::UnaryExpression* expr); // Changed to ast::UnaryExpression
+    void analyzeBorrowExpression(ast::BorrowExprNode* expr); // Changed to ast::BorrowExprNode
+    void analyzeBlockStatement(ast::BlockStatement* block); // Changed to ast::BlockStatement
+    // Add other analysis methods for different AST node types
+
+    // Helper methods
+    void enterScope();
+    void exitScope();
+    void checkBorrow(ast::Node* node, const std::string& owner, bool isMutableBorrow, ast::TypeNode* type); // Changed to ast::Node and ast::TypeNode
+    void checkLocUnsafe(ast::Node* node); // Check if loc<T> is in an unsafe block. Changed to ast::Node
+    bool isRawLocationType(ast::Expression* expr); // Changed to ast::Expression
 };
 
 } // namespace vyn

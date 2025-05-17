@@ -1,4 +1,6 @@
 #include "vyn/vyn.hpp"
+#include "vyn/parser/lexer.hpp"   // For Lexer
+#include "vyn/parser/parser.hpp"  // For vyn::Parser
 #include <catch2/catch_session.hpp>
 #include <fstream>
 #include <iostream>
@@ -72,7 +74,7 @@ int main(int argc, char** argv) {
 
     // Parse
     vyn::Parser parser(tokens, filename); // Changed Vyn::Parser to vyn::Parser and pass filename
-    std::unique_ptr<vyn::Module> ast; // Changed Vyn::AST::Node to vyn::Module
+    std::unique_ptr<vyn::ast::Module> ast; // Corrected to vyn::ast::Module
     try {
         ast = parser.parse_module(); // Changed to parse_module()
     } catch (const std::runtime_error& e) {

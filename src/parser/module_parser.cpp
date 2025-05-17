@@ -11,13 +11,13 @@ namespace vyn { // Changed Vyn to vyn
 ModuleParser::ModuleParser(const std::vector<vyn::token::Token>& tokens, size_t& pos, const std::string& file_path, DeclarationParser& declaration_parser) // Changed Vyn::Token to vyn::token::Token
     : BaseParser(tokens, pos, file_path), declaration_parser_(declaration_parser) {}
 
-std::unique_ptr<vyn::Module> ModuleParser::parse() {
+std::unique_ptr<vyn::ast::Module> ModuleParser::parse() {
     vyn::SourceLocation module_loc = this->current_location();
-    std::vector<vyn::StmtPtr> module_body;
+    std::vector<vyn::ast::StmtPtr> module_body; // Changed to ast::StmtPtr
 
     this->skip_comments_and_newlines();
 
-    while (this->peek().type != vyn::TokenType::END_OF_FILE) {
+    while (this->peek().type != vyn::TokenType::END_OF_FILE) { // Corrected namespace to vyn::TokenType
         // Try to parse a declaration first
         auto decl_node = this->declaration_parser_.parse();
         if (decl_node) {
@@ -40,7 +40,7 @@ std::unique_ptr<vyn::Module> ModuleParser::parse() {
         this->skip_comments_and_newlines();
     }
 
-    return std::make_unique<vyn::Module>(module_loc, std::move(module_body));
+    return std::make_unique<vyn::ast::Module>(module_loc, std::move(module_body));
 }
 
 } // End namespace vyn

@@ -7,15 +7,11 @@
 
 namespace vyn {
 
-// Forward declaration
-class Node; // Add forward declaration for Node
-class TypeNode; // Add forward declaration for TypeNode
-
 struct BorrowInfo {
     std::string ownerName;
     bool isMutable;
-    Node* borrowNode; // The AST node that created the borrow
-    // Potentially add TypeNode* of the borrowed type if needed for more complex checks
+    ast::Node* borrowNode; // The AST node that created the borrow
+    // Potentially add ast::TypeNode* of the borrowed type if needed for more complex checks
 };
 
 struct SymbolInfo {
@@ -23,7 +19,7 @@ struct SymbolInfo {
     Kind kind;
     std::string name;
     bool isConst = false;
-    TypeNode* type = nullptr;
+    ast::TypeNode* type = nullptr; // Changed to ast::TypeNode
     // Extend as needed (scope, function params, etc)
 };
 
@@ -45,30 +41,39 @@ private:
 class SemanticAnalyzer {
 public:
     SemanticAnalyzer();
-    void analyze(Module* root);
+    void analyze(ast::Module* root); // Qualified with ast::
     const std::vector<std::string>& getErrors() const { return errors; }
 private:
-    void analyzeNode(Node* node);
-    void analyzeAssignment(AssignmentExpression* expr);
-    void analyzeVariableDeclaration(VariableDeclaration* decl);
-    void analyzeUnaryExpression(UnaryExpression* expr);
-    void analyzeBorrowExpression(BorrowExprNode* expr);
-    void analyzeBlockStatement(BlockStatement* block);
+    void analyzeNode(ast::Node* node); // Qualified with ast::
+    void analyzeAssignment(ast::AssignmentExpression* expr); // Qualified with ast::
+    void analyzeVariableDeclaration(ast::VariableDeclaration* decl); // Qualified with ast::
+    void analyzeUnaryExpression(ast::UnaryExpression* expr); // Qualified with ast::
+    void analyzeBorrowExpression(ast::BorrowExprNode* expr); // Qualified with ast::
+    void analyzeBlockStatement(ast::BlockStatement* block); // Qualified with ast::
+    // Add other specific analyze methods if they exist and need qualification
+    // void analyzeFunctionDeclaration(ast::FunctionDeclaration* decl);
+    // void analyzeReturnStatement(ast::ReturnStatement* stmt);
+    // void analyzeIfStatement(ast::IfStatement* stmt);
+    // void analyzeWhileStatement(ast::WhileStatement* stmt);
+    // void analyzeExpressionStatement(ast::ExpressionStatement* stmt);
+    // void analyzeBinaryExpression(ast::BinaryExpression* expr);
+    // void analyzeCallExpression(ast::CallExpression* expr);
+    // void analyzeMemberAccessExpression(ast::MemberAccessExpression* expr);
+    // void analyzeIndexAccessExpression(ast::IndexAccessExpression* expr);
+    // void analyzeLiteral(ast::Literal* lit);
+    // void analyzeIdentifier(ast::Identifier* id);
+    // void analyzeTypeNode(ast::TypeNode* typeNode); // If it exists
 
-    void enterUnsafe();
-    void exitUnsafe();
-    bool inUnsafe() const;
-
-    void checkBorrow(Node* node, const std::string& owner, bool isMutable, TypeNode* type);
-    void checkLifetime(Node* node, const std::string& owner);
-    void checkLocUnsafe(Node* node);
-    bool isRawLocationType(Expression* expr);
-
-    // ... more as needed ...
-    std::unique_ptr<SymbolTable> symbols;
+    SymbolTable* currentScope;
     std::vector<std::string> errors;
-    std::vector<BorrowInfo> activeBorrows; // Declare activeBorrows
-    int unsafeDepth = 0;
+    std::unordered_map<ast::Node*, ast::TypeNode*> expressionTypes; // Store inferred types
+
+    ast::TypeNode* typeCheck(ast::Node* node); // Helper for type checking, returns type or nullptr
+    void enterScope();
+    void exitScope();
+    void addError(const std::string& message, const ast::Node* node); // Use ast::Node for location
+    bool isLValue(ast::Expression* expr);
+    bool isRawLocationType(ast::Expression* expr); // Qualified with ast::
 };
 
 } // namespace vyn

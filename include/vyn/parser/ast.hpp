@@ -1,26 +1,26 @@
-#ifndef VYN_AST_HPP
-#define VYN_AST_HPP
+#ifndef VYN_PARSER_AST_HPP
+#define VYN_PARSER_AST_HPP
 
 #include <string>
 #include <vector>
 #include <memory>
-#include <optional>
-#include <utility>
-#include <cstdint> // Added for int64_t
-
-#include "vyn/parser/source_location.hpp" // For vyn::SourceLocation
-#include "vyn/parser/token.hpp"           // For vyn::token::Token
+#include <variant>
+#include <optional> // Ensure this is present
+#include "token.hpp" // For Token
+#include "source_location.hpp" // For SourceLocation
 
 namespace vyn {
+namespace ast {
 
-// Forward declarations for Visitor pattern and all AST nodes used as pointer types
+// Forward declarations
 class Node;
+class Module;
+class Identifier;
 class Expression;
 class Statement;
 class Declaration;
 class Visitor;
 class NilLiteral;
-class Identifier;
 class StructDeclaration;
 class ClassDeclaration;
 class FieldDeclaration;
@@ -29,7 +29,7 @@ class EnumDeclaration;
 class EnumVariantNode;
 class GenericParamNode;
 class TypeNode;
-class ArrayLiteralNode;
+class ArrayLiteralNode; // Corrected: Was ArrayLiteral in some places, ensure consistency
 class BorrowExprNode;
 class TryStatement;
 class IntegerLiteral;
@@ -54,12 +54,13 @@ class VariableDeclaration;
 class FunctionDeclaration;
 class TypeAliasDeclaration;
 class ImportDeclaration;
-class Module;
 class TemplateDeclarationNode;
 class PointerDerefExpression;
 class AddrOfExpression;
 class FromIntToLocExpression;
 class ArrayElementExpression; // Added forward declaration
+class LocationExpression; // Added forward declaration for LocationExpression
+class ListComprehension; // Added forward declaration for ListComprehension
 
 // --- Type aliases for smart pointers (must appear after all forward declarations) ---
 using NodePtr = std::unique_ptr<Node>;
@@ -96,6 +97,7 @@ enum class TypeCategory {
     ARRAY,               // e.g., T[]
     TUPLE,               // e.g., (T1, T2)
     FUNCTION_SIGNATURE,  // e.g., fn(T1, T2) -> R
+    OPTIONAL             // e.g., T?
 };
 
 // New Enum for Ownership Kinds (as per RFC)
@@ -135,6 +137,8 @@ enum class NodeType {
     ADDR_OF_EXPRESSION,       // Added
     FROM_INT_TO_LOC_EXPRESSION, // Added
     ARRAY_ELEMENT_EXPRESSION, // Added
+    LOCATION_EXPRESSION, // Added NodeType for LocationExpression
+    LIST_COMPREHENSION, // Added NodeType for ListComprehension
 
     // Statements
     BLOCK_STATEMENT,
@@ -194,6 +198,8 @@ public:
     virtual void visit(AddrOfExpression* node) = 0;
     virtual void visit(FromIntToLocExpression* node) = 0;
     virtual void visit(ArrayElementExpression* node) = 0; // Added
+    virtual void visit(LocationExpression* node) = 0; // Added visit method for LocationExpression
+    virtual void visit(ListComprehension* node) = 0; // Added visit method for ListComprehension
 
     // Statements
     virtual void visit(BlockStatement* node) = 0;
@@ -392,7 +398,7 @@ public:
 class TypeNode : public Node {
 public:
     // Type categories
-    enum class TypeCategory {
+    enum class Category { // Renamed from TypeCategory
         IDENTIFIER,
         TUPLE,
         ARRAY,
@@ -400,7 +406,7 @@ public:
         OWNERSHIP_WRAPPED // For my<T>, their<T>, etc.
     };
 
-    TypeCategory category;
+    Category category; // Use the renamed enum
     SourceLocation loc;
 
     // For IDENTIFIER
@@ -430,7 +436,7 @@ public:
 public: // Changed from private to public
     // Private constructor to enforce use of static factory methods.
     // Implementations will be in ast.cpp
-    TypeNode(SourceLocation loc, TypeCategory category, bool dataIsConst, bool isOptional);
+    TypeNode(SourceLocation loc, Category category, bool dataIsConst, bool isOptional); // Update constructor
 
 public:
     ~TypeNode() override = default;
@@ -464,6 +470,7 @@ public:
     int64_t value;
 
     IntegerLiteral(SourceLocation loc, int64_t value);
+    virtual ~IntegerLiteral(); // Added destructor declaration
     NodeType getType() const override;
     std::string toString() const override;
     void accept(Visitor& visitor) override;
@@ -556,6 +563,39 @@ public:
     const ExprPtr& getAddress() const { return address; }
 };
 
+// New: Represents loc(expression)
+class LocationExpression : public Expression {
+    ExprPtr expression;
+public:
+    LocationExpression(SourceLocation loc, ExprPtr expression);
+    NodeType getType() const override;
+    std::string toString() const override;
+    void accept(Visitor& visitor) override;
+    ExprPtr& getExpression() { return expression; }
+    const ExprPtr& getExpression() const { return expression; }
+};
+
+// --- Full Class Definition for ArrayElementExpression ---
+// Placed after Node, Statement, Declaration, NodeType, Visitor, Identifier are defined.
+class ArrayElementExpression : public Expression {
+public:
+    ExprPtr object; // The array or pointer object
+    ExprPtr index;  // The index expression
+
+    ArrayElementExpression(SourceLocation loc, ExprPtr object, ExprPtr index)
+        : Expression(loc), object(std::move(object)), index(std::move(index)) {}
+
+    NodeType getType() const override { return NodeType::ARRAY_ELEMENT_EXPRESSION; }
+    std::string toString() const override {
+        // Ensure object and index are not null before calling toString on them
+        std::string objStr = object ? object->toString() : "null_obj";
+        std::string idxStr = index ? index->toString() : "null_idx";
+        return objStr + "[" + idxStr + "]";
+    }
+    void accept(Visitor& visitor) override { visitor.visit(this); }
+};
+// --- End of ArrayElementExpression Definition ---
+
 // Represents one key-value pair in an object literal
 struct ObjectProperty {
     SourceLocation loc; // Location of the property itself (key or key:value)
@@ -584,6 +624,20 @@ public:
 class NilLiteral : public Expression {
 public:
     NilLiteral(SourceLocation loc);
+    NodeType getType() const override;
+    std::string toString() const override;
+    void accept(Visitor& visitor) override;
+};
+
+// New: Represents list comprehension: [expr for var in iterable if condition]
+class ListComprehension : public Expression {
+public:
+    ExprPtr elementExpr;        // The expression for each element
+    IdentifierPtr loopVariable;   // The variable in the loop (e.g., 'x' in 'for x in ...')
+    ExprPtr iterableExpr;       // The expression for the iterable (e.g., 'my_list')
+    ExprPtr conditionExpr;      // Optional condition (e.g., 'if x > 0')
+
+    ListComprehension(SourceLocation loc, ExprPtr elementExpr, IdentifierPtr loopVariable, ExprPtr iterableExpr, ExprPtr conditionExpr = nullptr);
     NodeType getType() const override;
     std::string toString() const override;
     void accept(Visitor& visitor) override;
@@ -811,17 +865,7 @@ public:
     void accept(Visitor& visitor) override;
 };
 
-// Represents an object literal like: { key1: value1, key2: value2 }
-class ObjectLiteralNode : public Expression { 
-public:
-    std::vector<std::pair<std::string, ExprPtr>> properties;
-
-    ObjectLiteralNode(SourceLocation loc, std::vector<std::pair<std::string, ExprPtr>> properties);
-    NodeType getType() const override;
-    void accept(Visitor& visitor) override;
-    std::string toString() const override;
-};
-
+} // namespace ast
 } // namespace vyn
 
-#endif // VYN_AST_HPP
+#endif // VYN_PARSER_AST_HPP

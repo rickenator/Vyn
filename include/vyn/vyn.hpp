@@ -1,10 +1,12 @@
 #ifndef VYN_HPP
 #define VYN_HPP
 
-#include "lexer.hpp"
-#include "parser.hpp"
+#include "vyn/parser/lexer.hpp" 
+#include "vyn/parser/parser.hpp" // Corrected path
 #include "vyn/parser/ast.hpp"
-#include "token.hpp"
+#include "vyn/parser/token.hpp"  // Corrected path
+#include "vyn/semantic.hpp" // Added to make SemanticAnalyzer available
+#include "vyn/vre/llvm/codegen.hpp" // Added for LLVMCodegen
 
 /* // EBNF Grammar of the Vyn Language  // Uncommented
 //

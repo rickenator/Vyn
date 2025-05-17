@@ -1,29 +1,24 @@
-#ifndef VYN_SOURCE_LOCATION_HPP
-#define VYN_SOURCE_LOCATION_HPP
+#ifndef VYN_PARSER_SOURCE_LOCATION_HPP
+#define VYN_PARSER_SOURCE_LOCATION_HPP
 
-#include <string> // Required for std::string
-#include <sstream> // Required for std::ostringstream
+#include <string>
+#include <utility> // For std::move
 
 namespace vyn {
-    struct SourceLocation {
-        std::string filePath; // Added filePath
-        unsigned int line;
-        unsigned int column;
 
-        // Default constructor
-        SourceLocation() : filePath(""), line(0), column(0) {}
+struct SourceLocation {
+    std::string filePath;
+    unsigned int line; // Changed to unsigned int
+    unsigned int column; // Changed to unsigned int
 
-        // Constructor to initialize all members
-        SourceLocation(const std::string& fp, unsigned int l, unsigned int c)
-            : filePath(fp), line(l), column(c) {}
+    SourceLocation(std::string filePath = "", unsigned int line = 1, unsigned int column = 1) // Changed to unsigned int
+        : filePath(std::move(filePath)), line(line), column(column) {}
 
-        // Method to convert SourceLocation to string
-        std::string toString() const {
-            std::ostringstream oss;
-            oss << filePath << ":" << line << ":" << column;
-            return oss.str();
-        }
-    };
+    std::string toString() const {
+        return this->filePath + ":" + std::to_string(this->line) + ":" + std::to_string(this->column);
+    }
+};
+
 } // namespace vyn
 
-#endif // VYN_SOURCE_LOCATION_HPP
+#endif // VYN_PARSER_SOURCE_LOCATION_HPP

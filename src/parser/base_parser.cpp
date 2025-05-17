@@ -1,5 +1,5 @@
 #include "vyn/parser/parser.hpp"
-#include "vyn/parser/token.hpp" 
+#include "vyn/parser/token.hpp"
 #include "vyn/parser/ast.hpp"   
 #include <stdexcept>
 #include <iostream> 
@@ -41,7 +41,7 @@ namespace vyn {
             return tokens_.back(); 
         }
         #ifdef VERBOSE
-        std::cerr << "[PEEK] " << vyn::token_type_to_string(tokens_[temp_pos].type) 
+        std::cerr << "[PEEK] " << vyn::token_type_to_string(tokens_[temp_pos].type)
                   << " (" << tokens_[temp_pos].lexeme << ") at " 
                   << tokens_[temp_pos].location.filePath << ":" 
                   << tokens_[temp_pos].location.line << ":" 
@@ -86,7 +86,7 @@ namespace vyn {
         }
         const vyn::token::Token& current_token = tokens_[pos_]; 
         #ifdef VERBOSE
-        std::cerr << "[CONSUME] " << vyn::token_type_to_string(current_token.type) 
+        std::cerr << "[CONSUME] " << vyn::token_type_to_string(current_token.type)
                   << " (" << current_token.lexeme << ") at " 
                   << current_token.location.filePath << ":" 
                   << current_token.location.line << ":" 
@@ -100,7 +100,7 @@ namespace vyn {
         const vyn::token::Token& next_token = peek(); 
         #ifdef VERBOSE
         std::cerr << "[EXPECT] " << vyn::token_type_to_string(type)
-                  << " checking against " << vyn::token_type_to_string(next_token.type) 
+                  << " checking against " << vyn::token_type_to_string(next_token.type)
                   << " (" << next_token.lexeme << ")" << std::endl;
         #endif
         if (next_token.type != type) {
@@ -117,8 +117,36 @@ namespace vyn {
         return consume(); 
     }
 
+    vyn::token::Token BaseParser::expect(vyn::TokenType type, const std::string& lexeme) {
+        const vyn::token::Token& next_token = peek();
+        #ifdef VERBOSE
+        std::cerr << "[EXPECT] " << vyn::token_type_to_string(type)
+                  << " (\"" << lexeme << "\") checking against " << vyn::token_type_to_string(next_token.type)
+                  << " (\"" << next_token.lexeme << "\")" << std::endl;
+        #endif
+        if (next_token.type != type || next_token.lexeme != lexeme) {
+            std::string error_msg = "Expected " + vyn::token_type_to_string(type) +
+                                   " (\"" + lexeme + "\") but found " + vyn::token_type_to_string(next_token.type) +
+                                   " (\"" + next_token.lexeme + "\") at file " + current_file_path_ +
+                                   ", line " + std::to_string(next_token.location.line) +
+                                   ", column " + std::to_string(next_token.location.column);
+            #ifdef VERBOSE
+            std::cerr << "[ERROR] " << error_msg << std::endl;
+            #endif
+            throw std::runtime_error(error_msg);
+        }
+        return consume();
+    }
+
     std::optional<vyn::token::Token> BaseParser::match(vyn::TokenType type) {
         if (check(type)) {
+            return consume();
+        }
+        return std::nullopt;
+    }
+
+    std::optional<vyn::token::Token> BaseParser::match(vyn::TokenType type, const std::string& lexeme) {
+        if (check(type) && peek().lexeme == lexeme) {
             return consume();
         }
         return std::nullopt;
@@ -193,14 +221,14 @@ namespace vyn {
     bool BaseParser::IsOperator(const vyn::token::Token &token) const {
         return token.type == vyn::TokenType::PLUS ||
                token.type == vyn::TokenType::MINUS ||
-               token.type == vyn::TokenType::MULTIPLY ||     
-               token.type == vyn::TokenType::DIVIDE ||       
-               token.type == vyn::TokenType::EQEQ ||         
-               token.type == vyn::TokenType::NOTEQ ||        
-               token.type == vyn::TokenType::LT ||           
-               token.type == vyn::TokenType::LTEQ ||         
-               token.type == vyn::TokenType::GT ||           
-               token.type == vyn::TokenType::GTEQ;          
+               token.type == vyn::TokenType::MULTIPLY ||
+               token.type == vyn::TokenType::DIVIDE ||
+               token.type == vyn::TokenType::EQEQ ||
+               token.type == vyn::TokenType::NOTEQ ||
+               token.type == vyn::TokenType::LT ||
+               token.type == vyn::TokenType::LTEQ ||
+               token.type == vyn::TokenType::GT ||
+               token.type == vyn::TokenType::GTEQ;
     }
 
     bool BaseParser::IsUnaryOperator(const vyn::token::Token &token) const {
@@ -217,7 +245,6 @@ namespace vyn {
         // Adjust if your SourceLocation struct has different members or a different string conversion method.
         // location_str = "line " + std::to_string(token.location.line) + ", column " + std::to_string(token.location.column);
         
-        // Corrected based on the error message: 'to_string' should be 'toString'
         std::string error_message = "Error at " + token.location.toString() + ": " + message + " (found '" + token.lexeme + "')";
         throw std::runtime_error(error_message);
     }

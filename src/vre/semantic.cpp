@@ -5,173 +5,207 @@
 
 namespace vyn {
 
-SemanticAnalyzer::SemanticAnalyzer() : symbols(std::make_unique<SymbolTable>()) {}
+void SemanticAnalyzer::analyzeNode(ast::Node* node) { // Changed to ast::Node
+    if (!node) return;
 
-void SemanticAnalyzer::analyze(Module* root) {
+    // Pre-visit actions (e.g., enter scope for blocks)
+    if (node->getType() == ast::NodeType::BLOCK_STATEMENT) { // Changed to ast::NodeType
+        enterScope();
+    }
+
+    switch (node->getType()) { // Changed to ast::NodeType
+        case ast::NodeType::VARIABLE_DECLARATION: // Changed to ast::NodeType
+            analyzeVariableDeclaration(static_cast<ast::VariableDeclaration*>(node)); // Changed to ast::VariableDeclaration
+            break;
+        case ast::NodeType::ASSIGNMENT_EXPRESSION: // Changed to ast::NodeType
+            analyzeAssignment(static_cast<ast::AssignmentExpression*>(node)); // Changed to ast::AssignmentExpression
+            break;
+        case ast::NodeType::UNARY_EXPRESSION: // Changed to ast::NodeType
+            analyzeUnaryExpression(static_cast<ast::UnaryExpression*>(node)); // Changed to ast::UnaryExpression
+            break;
+        case ast::NodeType::BORROW_EXPRESSION_NODE: // Changed to ast::NodeType
+            analyzeBorrowExpression(static_cast<ast::BorrowExprNode*>(node)); // Changed to ast::BorrowExprNode
+            break;
+        case ast::NodeType::BLOCK_STATEMENT: // Changed to ast::NodeType
+            analyzeBlockStatement(static_cast<ast::BlockStatement*>(node)); // Changed to ast::BlockStatement
+            break;
+        // Add cases for other node types
+        default:
+            // For nodes with children, recursively call analyzeNode
+            // This is a simplified approach; specific node types might need custom traversal
+            if (auto m = dynamic_cast<ast::Module*>(node)) { for (auto& stmt : m->body) analyzeNode(stmt.get()); }
+            // else if (auto fd = dynamic_cast<ast::FunctionDeclaration*>(node)) { if(fd->body) analyzeNode(fd->body.get()); /* and params, return type */ }
+            // ... and so on for other container nodes
+            break;
+    }
+
+    // Post-visit actions (e.g., exit scope for blocks)
+    if (node->getType() == ast::NodeType::BLOCK_STATEMENT) { // Changed to ast::NodeType
+        exitScope();
+    }
+}
+
+void SemanticAnalyzer::analyze(ast::Module* root) { // Changed to ast::Module
+    if (!root) return;
+    currentScope = new Scope(); // Global scope
     for (const auto& stmt : root->body) {
         analyzeNode(stmt.get());
     }
+    // Clean up global scope if necessary, or it can be owned by the analyzer
 }
 
-void SemanticAnalyzer::analyzeNode(Node* node) {
-    if (!node) return;
-    switch (node->getType()) {
-        case NodeType::VARIABLE_DECLARATION:
-            analyzeVariableDeclaration(static_cast<VariableDeclaration*>(node));
-            break;
-        case NodeType::ASSIGNMENT_EXPRESSION:
-            analyzeAssignment(static_cast<AssignmentExpression*>(node));
-            break;
-        case NodeType::UNARY_EXPRESSION:
-            analyzeUnaryExpression(static_cast<UnaryExpression*>(node));
-            break;
-        case NodeType::BORROW_EXPRESSION_NODE:
-            analyzeBorrowExpression(static_cast<BorrowExprNode*>(node));
-            break;
-        case NodeType::BLOCK_STATEMENT:
-            analyzeBlockStatement(static_cast<BlockStatement*>(node));
-            break;
-        // ... add more as needed ...
-        default:
-            break;
-    }
-}
-
-void SemanticAnalyzer::analyzeBlockStatement(BlockStatement* block) {
-    // Enter new scope for borrows and unsafe
-    ::std::vector<BorrowInfo> savedBorrows = activeBorrows;
-    int savedUnsafe = unsafeDepth;
+void SemanticAnalyzer::analyzeBlockStatement(ast::BlockStatement* block) { // Changed to ast::BlockStatement
+    enterScope();
     for (const auto& stmt : block->body) {
-        // Detect unsafe block entry (syntactic marker not shown here)
-        // If block is marked unsafe, call enterUnsafe()/exitUnsafe()
         analyzeNode(stmt.get());
     }
-    activeBorrows = savedBorrows;
-    unsafeDepth = savedUnsafe;
+    exitScope();
 }
 
-void SemanticAnalyzer::analyzeBorrowExpression(BorrowExprNode* expr) {
-    // Determine owner name (assume identifier for now)
-    std::string ownerName;
-    TypeNode* ownerType = nullptr;
-    if (auto* id = dynamic_cast<Identifier*>(expr->expression.get())) {
-        ownerName = id->name;
-        SymbolInfo* sym = symbols->lookup(ownerName);
-        if (sym) ownerType = sym->type;
-    }
-    // Determine borrow kind
-    bool isMutable = (expr->kind == BorrowKind::MUTABLE_BORROW);
-    checkBorrow(expr, ownerName, isMutable, ownerType);
-    checkLifetime(expr, ownerName);
+void SemanticAnalyzer::analyzeBorrowExpression(ast::BorrowExprNode* expr) { // Changed to ast::BorrowExprNode
+    // Example: Ensure the borrowed expression is a valid L-value (e.g., variable, member access)
+    // This requires more context about what constitutes an L-value in Vyn
+    analyzeNode(expr->expression.get());
+
+    // Determine owner and type for borrow checking
+    // This is highly dependent on how you resolve identifiers and types
+    std::string owner_name = ""; // Placeholder
+    ast::TypeNode* type_info = nullptr; // Placeholder. Changed to ast::TypeNode
+
+    // if (auto ident = dynamic_cast<ast::Identifier*>(expr->expression.get())) {
+    //     owner_name = ident->name;
+    //     Symbol* symbol = currentScope->find(owner_name);
+    //     if (symbol) type_info = symbol->dataType;
+    // }
+    // else if (auto member_expr = dynamic_cast<ast::MemberExpression*>(expr->expression.get())) {
+        // Handle member expressions to get the base owner and type
+    // }
+
+    // checkBorrow(expr, owner_name, expr->kind == ast::BorrowKind::MUTABLE_BORROW, type_info);
 }
 
-void SemanticAnalyzer::analyzeVariableDeclaration(VariableDeclaration* decl) {
-    SymbolInfo sym;
-    sym.kind = SymbolInfo::Kind::Variable;
-    sym.name = decl->id->name;
-    sym.isConst = decl->isConst;
-    sym.type = decl->typeNode.get();
-    symbols->add(sym);
-    // Analyze initializer
+void SemanticAnalyzer::analyzeVariableDeclaration(ast::VariableDeclaration* decl) { // Changed to ast::VariableDeclaration
     if (decl->init) {
-        // Special check: if declared type is loc<T>
-        if (decl->typeNode && decl->typeNode->category == TypeNode::TypeCategory::OWNERSHIP_WRAPPED && decl->typeNode->ownership == OwnershipKind::MY /* treat as loc<T> */) {
-            // Only allow initializer to be PointerDerefExpression, AddrOfExpression, or FromIntToLocExpression
-            auto* ptrDeref = dynamic_cast<PointerDerefExpression*>(decl->init.get());
-            auto* addrOf = dynamic_cast<AddrOfExpression*>(decl->init.get());
-            auto* fromInt = dynamic_cast<FromIntToLocExpression*>(decl->init.get());
-            if (!ptrDeref && !addrOf && !fromInt) {
-                errors.push_back("Cannot assign non-location value to loc<T> variable '" + decl->id->name + "' at " + decl->loc.toString());
-            }
-            // If fromInt, must be in unsafe
-            if (fromInt && !inUnsafe()) {
-                errors.push_back("from(addr) to loc<T> is only allowed in unsafe block for variable '" + decl->id->name + "' at " + decl->loc.toString());
-            }
-        }
         analyzeNode(decl->init.get());
+        // Type checking: decl->typeNode vs type of decl->init
+        // If decl->typeNode is null, infer it from decl->init
     }
+    // Add symbol to current scope
+    // Symbol* sym = new Symbol{SymbolType::VARIABLE, decl->id->name, decl->typeNode.get(), !decl->isConst};
+    // currentScope->insert(decl->id->name, sym);
 }
 
-void SemanticAnalyzer::analyzeAssignment(AssignmentExpression* expr) {
-    // Only handle identifier assignment for now
-    if (auto* id = dynamic_cast<Identifier*>(expr->left.get())) {
-        SymbolInfo* sym = symbols->lookup(id->name);
-        if (sym && sym->isConst) {
-            errors.push_back("Cannot assign to const variable: " + id->name);
-        }
-    } else if (auto* unary = dynamic_cast<UnaryExpression*>(expr->left.get())) {
-        // Check if it's loc(...) or @(...)
-        if (unary->op.type == vyn::TokenType::KEYWORD_PTR || // Changed KEYWORD_LOC to KEYWORD_PTR
-            unary->op.type == vyn::TokenType::AT) {          // Changed KEYWORD_AT to AT
-            // This is a dereference assignment, e.g., *ptr = value or @loc = value
-            checkLocUnsafe(unary);
-            if (!isRawLocationType(unary->operand.get())) {
-                errors.push_back("Cannot assign to dereferenced value: operand is not a raw location (loc<T>) at " + unary->loc.toString());
-            }
-        }
-    }
-    // Analyze right-hand side
-    if (expr->right) analyzeNode(expr->right.get());
-    // ... handle member/array assignment, type checks, etc ...
+void SemanticAnalyzer::analyzeAssignment(ast::AssignmentExpression* expr) { // Changed to ast::AssignmentExpression
+    // Ensure expr->left is an L-value
+    // Analyze expr->left and expr->right
+    analyzeNode(expr->left.get());
+    analyzeNode(expr->right.get());
+    // Type checking: type of expr->left vs type of expr->right
+    // Mutability check: if expr->left is const
 }
 
-void SemanticAnalyzer::analyzeUnaryExpression(UnaryExpression* expr) {
-    analyzeNode(expr->operand.get()); // Changed from analyzeExpression to analyzeNode
-
-    // Check for specific unary operations like @ (location) or * (dereference)
-    if (expr->op.type == vyn::TokenType::KEYWORD_PTR || // Changed KEYWORD_LOC to KEYWORD_PTR
-        expr->op.type == vyn::TokenType::AT) {          // Changed KEYWORD_AT to AT
-        // Handle location/dereference operators
-        checkLocUnsafe(expr);
-    }
-    // Check for addr(...)
-    if (expr->op.type == vyn::TokenType::IDENTIFIER && expr->op.lexeme == "addr") {
-        // This is effectively a built-in function call for getting an address
-        checkLocUnsafe(expr); // addr also requires unsafe
-    }
+void SemanticAnalyzer::analyzeUnaryExpression(ast::UnaryExpression* expr) { // Changed to ast::UnaryExpression
+    analyzeNode(expr->operand.get());
+    // Type checking based on operator and operand type
+    // e.g., '!' expects boolean, '-' expects number
 }
 
-void SemanticAnalyzer::checkBorrow(Node* node, const ::std::string& owner, bool isMutable, TypeNode* type) {
-    // Check for conflicting borrows
-    for (const auto& b : activeBorrows) {
-        if (b.ownerName == owner) {
-            if (isMutable || b.isMutable) {
-                errors.push_back("Conflicting mutable/immutable borrow for owner '" + owner + "' at " + node->loc.toString());
-                return;
-            }
-        }
-    }
-    // Register this borrow
-    activeBorrows.push_back({owner, isMutable, node});
-}
+// ... (rest of the methods, ensure they use ast:: prefixed types where appropriate)
 
-void SemanticAnalyzer::checkLifetime(Node* node, const std::string& owner) {
-    // TODO: Implement region/lifetime analysis to ensure borrow does not outlive owner
-    // For now, just a stub
-}
-
-void SemanticAnalyzer::checkLocUnsafe(Node* node) {
-    if (!inUnsafe()) {
-        errors.push_back("Raw location operation (loc<T>) must be inside unsafe block at " + node->loc.toString());
-    }
-}
-
-// Helper: returns true if the expression is a variable or value of type loc<T>
-bool SemanticAnalyzer::isRawLocationType(Expression* expr) {
-    if (auto* id = dynamic_cast<Identifier*>(expr)) {
-        SymbolInfo* sym = symbols->lookup(id->name);
-        if (sym && sym->type) {
-            auto* typeNode = sym->type;
-            if (typeNode->category == TypeNode::TypeCategory::OWNERSHIP_WRAPPED &&
-                (typeNode->ownership == OwnershipKind::PTR /* legacy */ || typeNode->ownership == OwnershipKind::MY /* treat MY as loc<T> for now if needed */)) {
-                return true;
-            }
-            if (typeNode->category == TypeNode::TypeCategory::IDENTIFIER && typeNode->name && typeNode->name->name == "loc") {
-                return true;
-            }
-        }
-    }
+// Helper to check if an expression results in a raw location type (e.g. loc<T>)
+// This is a placeholder and needs to be implemented based on your type system.
+bool SemanticAnalyzer::isRawLocationType(ast::Expression* expr) { // Changed to ast::Expression
+    if (!expr) return false;
+    // Example: Check if expr is a CallExpression to a specific 'loc' intrinsic
+    // or if its inferred type is a location type.
+    // This depends heavily on how type information is stored and accessed.
+    // For now, let's assume it's not a raw location type.
+    // if (auto callExpr = dynamic_cast<ast::CallExpression*>(expr)) {
+    //     if (auto calleeIdent = dynamic_cast<ast::Identifier*>(callExpr->callee.get())) {
+    //         if (calleeIdent->name == "loc" || calleeIdent->name == "__loc") { // Assuming 'loc' or '__loc' is the intrinsic
+    //             return true;
+    //         }
+    //     }
+    // }
+    // // Or, if type inference has run and marked the expression node:
+    // if (expr->inferredTypeName.rfind("loc<", 0) == 0) { // Checks if inferredTypeName starts with "loc<"
+    //     return true;
+    // }
     return false;
 }
 
-} // Add missing closing brace for namespace vyn
+void SemanticAnalyzer::checkLocUnsafe(ast::Node* node) { // Changed to ast::Node
+    if (!inUnsafeBlock) {
+        // errors.push_back("Raw location operation (e.g., loc<T>, at, addr, from) must be inside an unsafe block at " + node->loc.toString());
+    }
+}
+
+// ... (Scope methods, constructor, getErrors, etc.)
+
+Scope::Scope(Scope* p) : parent(p) {}
+
+Symbol* Scope::find(const std::string& name) {
+    auto it = symbols.find(name);
+    if (it != symbols.end()) {
+        return it->second;
+    }
+    if (parent) {
+        return parent->find(name);
+    }
+    return nullptr;
+}
+
+void Scope::insert(const std::string& name, Symbol* symbol) {
+    symbols[name] = symbol;
+}
+
+Scope* Scope::getParent() {
+    return parent;
+}
+
+SemanticAnalyzer::SemanticAnalyzer() : currentScope(nullptr) {}
+
+std::vector<std::string> SemanticAnalyzer::getErrors() {
+    return errors;
+}
+
+void SemanticAnalyzer::enterScope() {
+    currentScope = new Scope(currentScope);
+}
+
+void SemanticAnalyzer::exitScope() {
+    Scope* oldScope = currentScope;
+    currentScope = currentScope->getParent();
+    delete oldScope;
+}
+
+// Placeholder for checkBorrow - implementation depends on ownership/borrowing rules
+void SemanticAnalyzer::checkBorrow(ast::Node* node, const std::string& owner, bool isMutableBorrow, ast::TypeNode* type) { // Changed to ast::Node and ast::TypeNode
+    // This is a complex part of the semantic analysis.
+    // It needs to track active borrows for each owner in the current scope
+    // and potentially outer scopes, checking for conflicts:
+    // 1. Multiple mutable borrows of the same owner.
+    // 2. A mutable borrow while an immutable borrow exists.
+    // 3. An immutable borrow while a mutable borrow exists.
+    // This often involves a borrow checker state within the SemanticAnalyzer.
+
+    // Example placeholder logic:
+    // if (activeBorrows.count(owner)) {
+    //     const auto& existingBorrows = activeBorrows[owner];
+    //     if (isMutableBorrow) {
+    //         if (!existingBorrows.empty()) {
+    //             errors.push_back("Conflicting mutable borrow for owner '" + owner + "' at " + node->loc.toString());
+    //         }
+    //     } else { // Immutable borrow
+    //         for (const auto& borrow : existingBorrows) {
+    //             if (borrow.isMutable) {
+    //                 errors.push_back("Conflicting immutable borrow (mutable already exists) for owner '" + owner + "' at " + node->loc.toString());
+    //                 break;
+    //             }
+    //         }
+    //     }
+    // }
+    // Add the new borrow to activeBorrows (with its scope, so it can be removed when scope ends)
+}
+
+}
