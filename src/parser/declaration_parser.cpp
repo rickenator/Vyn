@@ -1016,7 +1016,7 @@ std::unique_ptr<vyb::ast::VariableDeclaration> DeclarationParser::parse_global_v
 
         this->expect(vyb::TokenType::SEMICOLON);
         return std::make_unique<vyb::ast::VariableDeclaration>(loc, std::move(identifier), is_const_decl,
-                                                           std::move(type_node), std::move(initializer));
+                                                           std::move(type_node), std::shared_ptr<vyb::ast::Expression>(std::move(initializer)));
     } else if (this->match(vyb::TokenType::KEYWORD_CONST)) {
         is_const_decl = true;
         // Legacy const<Type> syntax - parse type in angle brackets
@@ -1048,7 +1048,7 @@ std::unique_ptr<vyb::ast::VariableDeclaration> DeclarationParser::parse_global_v
 
         this->expect(vyb::TokenType::SEMICOLON);
         return std::make_unique<vyb::ast::VariableDeclaration>(loc, std::move(identifier), is_const_decl,
-                                                           std::move(type_node), std::move(initializer));
+                                                           std::move(type_node), std::shared_ptr<vyb::ast::Expression>(std::move(initializer)));
     }
 
     // NEW UNIFIED SYNTAX: name<Type> pattern
@@ -1103,7 +1103,7 @@ std::unique_ptr<vyb::ast::VariableDeclaration> DeclarationParser::parse_global_v
 
     this->expect(vyb::TokenType::SEMICOLON);
     return std::make_unique<vyb::ast::VariableDeclaration>(loc, std::move(identifier), is_const_decl,
-                                                       std::move(type_node), std::move(initializer));
+                                                       std::move(type_node), std::shared_ptr<vyb::ast::Expression>(std::move(initializer)));
 }
 
 // New: Parse Template Declaration

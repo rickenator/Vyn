@@ -1117,9 +1117,9 @@ public:
     std::unique_ptr<Identifier> id;
     bool isConst; // true for 'let', false for 'var'
     TypeNodePtr typeNode; // Optional type annotation
-    ExprPtr init;         // Optional initializer
+    std::shared_ptr<Expression> init;  // Optional initializer (shared_ptr for multi-var support)
 
-    VariableDeclaration(SourceLocation loc, std::unique_ptr<Identifier> id, bool isConst, TypeNodePtr typeNode = nullptr, ExprPtr init = nullptr);
+    VariableDeclaration(SourceLocation loc, std::unique_ptr<Identifier> id, bool isConst, TypeNodePtr typeNode = nullptr, std::shared_ptr<Expression> init = nullptr);
     ~VariableDeclaration() override = default;
     NodeType getType() const override;
     std::string toString() const override;

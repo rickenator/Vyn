@@ -682,7 +682,7 @@ std::unique_ptr<vyb::ast::PassStatement> StatementParser::parse_pass() {
     return std::make_unique<vyb::ast::PassStatement>(pass_loc, std::move(value));
 }
 
-std::unique_ptr<vyb::ast::VariableDeclaration> StatementParser::parse_var_decl() {
+vyb::ast::StmtPtr StatementParser::parse_var_decl() {
     // Declaration start location
     SourceLocation decl_loc = this->current_location();
 
@@ -727,10 +727,10 @@ std::unique_ptr<vyb::ast::VariableDeclaration> StatementParser::parse_var_decl()
             std::move(identifier_node),
             is_const_decl,
             nullptr, // Type will be inferred
-            std::move(initializer)
+            std::shared_ptr<vyb::ast::Expression>(std::move(initializer))
         );
     }
-    // Legacy support: Check for var/const keywords
+    // Legacy support: Check for var keyword
     else if (this->match(vyb::TokenType::KEYWORD_VAR)) {
         is_const_decl = false;
         // Legacy var<Type> syntax - parse type in angle brackets
@@ -789,7 +789,7 @@ std::unique_ptr<vyb::ast::VariableDeclaration> StatementParser::parse_var_decl()
             std::move(identifier_node),
             is_const_decl,
             std::move(type_expr),
-            std::move(initializer)
+            std::shared_ptr<vyb::ast::Expression>(std::move(initializer))
         );
     } else if (this->match(vyb::TokenType::KEYWORD_CONST)) {
         is_const_decl = true;
@@ -799,61 +799,40 @@ std::unique_ptr<vyb::ast::VariableDeclaration> StatementParser::parse_var_decl()
             // Vyb const<Type> syntax - parse type in angle brackets
             this->consume(); // consume '<'
 
-        // Parse comma-separated types for inline tuple syntax
-        std::vector<ast::TypeNodePtr> types;
-        do {
-            ast::TypeNodePtr type_expr = this->type_parser_.parse();
-            if (!type_expr) {
-                throw std::runtime_error("Expected type inside '<>' in variable declaration at " +
-                                       location_to_string(this->peek().location));
+            // Parse comma-separated types for inline tuple syntax
+            std::vector<ast::TypeNodePtr> types;
+            do {
+                ast::TypeNodePtr type_expr = this->type_parser_.parse();
+                if (!type_expr) {
+                    throw std::runtime_error("Expected type inside '<>' in const variable declaration at " +
+                                           location_to_string(this->peek().location));
+                }
+                types.push_back(std::move(type_expr));
+            } while (this->match(vyb::TokenType::COMMA));
+
+            this->expect(vyb::TokenType::GT, "Expected '>' after type in const variable declaration.");
+
+            // If multiple types, create TupleTypeNode; otherwise use single type
+            ast::TypeNodePtr type_expr;
+            if (types.size() == 1) {
+                type_expr = std::move(types[0]);
+            } else {
+                type_expr = std::make_unique<ast::TupleTypeNode>(decl_loc, std::move(types));
             }
-            types.push_back(std::move(type_expr));
-        } while (this->match(vyb::TokenType::COMMA));
 
-        this->expect(vyb::TokenType::GT, "Expected '>' after type in variable declaration.");
+            // Parse variable name
+            vyb::token::Token name_token = this->expect(vyb::TokenType::IDENTIFIER, "Expected variable name.");
+            auto identifier_node = std::make_unique<vyb::ast::Identifier>(name_token.location, name_token.lexeme);
 
-        // If multiple types, create TupleTypeNode; otherwise use single type
-        ast::TypeNodePtr type_expr;
-        if (types.size() == 1) {
-            type_expr = std::move(types[0]);
-        } else {
-            type_expr = std::make_unique<ast::TupleTypeNode>(decl_loc, std::move(types));
-        }
-
-        // Parse variable name
-        vyb::token::Token name_token = this->expect(vyb::TokenType::IDENTIFIER, "Expected variable name.");
-        auto identifier_node = std::make_unique<vyb::ast::Identifier>(name_token.location, name_token.lexeme);
-
-        vyb::ast::ExprPtr initializer = nullptr;
-        SourceLocation end_loc = name_token.location;
-
-        if (this->match(vyb::TokenType::EQ)) {
-            initializer = this->expr_parser_.parse_expression();
-            if (initializer) {
-                end_loc = initializer->loc;
+            vyb::ast::ExprPtr initializer = nullptr;
+            if (this->match(vyb::TokenType::EQ)) {
+                initializer = this->expr_parser_.parse_expression();
             }
-        }
+            if (this->peek().type == vyb::TokenType::SEMICOLON) this->consume();
 
-        if (this->peek().type == vyb::TokenType::SEMICOLON) {
-            end_loc = this->peek().location;
-            this->consume();
-        } else if (this->peek().type == vyb::TokenType::NEWLINE || this->IsAtEnd() ||
-                   this->peek().type == vyb::TokenType::RBRACE || this->peek().type == vyb::TokenType::DEDENT ||
-                   this->peek().type == vyb::TokenType::END_OF_FILE ||
-                   is_statement_start(this->peek().type)) {
-            // Optional semicolon
-        } else {
-            throw std::runtime_error("Expected statement separator after variable declaration at " +
-                                   location_to_string(this->peek().location));
-        }
-
-        return std::make_unique<vyb::ast::VariableDeclaration>(
-            decl_loc,
-            std::move(identifier_node),
-            is_const_decl,
-            std::move(type_expr),
-            std::move(initializer)
-        );
+            return std::make_unique<vyb::ast::VariableDeclaration>(
+                decl_loc, std::move(identifier_node), is_const_decl,
+                std::move(type_expr), std::shared_ptr<vyb::ast::Expression>(std::move(initializer)));
         } else if (this->peek().type == vyb::TokenType::IDENTIFIER) {
             // Relaxed syntax: const TypeName varName = value
             ast::TypeNodePtr type_expr = this->type_parser_.parse();
@@ -866,63 +845,82 @@ std::unique_ptr<vyb::ast::VariableDeclaration> StatementParser::parse_var_decl()
             if (this->peek().type == vyb::TokenType::SEMICOLON) this->consume();
             return std::make_unique<vyb::ast::VariableDeclaration>(
                 decl_loc, std::move(identifier_node), is_const_decl,
-                std::move(type_expr), std::move(initializer));
+                std::move(type_expr), std::shared_ptr<vyb::ast::Expression>(std::move(initializer)));
         } else {
             throw std::runtime_error("Expected '<' or type name after 'const', but found '" +
                 token_type_to_string(this->peek().type) + "' at " + location_to_string(this->peek().location));
         }
     }
 
-    // NEW UNIFIED SYNTAX: name<Type> pattern
-    // Parse the variable name first
-    vyb::token::Token name_token = this->expect(vyb::TokenType::IDENTIFIER, "Expected variable name.");
-    auto identifier_node = std::make_unique<vyb::ast::Identifier>(name_token.location, name_token.lexeme);
+    // NEW UNIFIED SYNTAX: name<Type> pattern (supports multi-var: a<T>, b<U> = expr)
+    // Collect all variable names and their types first
+    struct VarDeclInfo {
+        SourceLocation loc;
+        std::unique_ptr<vyb::ast::Identifier> identifier;
+        ast::TypeNodePtr type_expr;
+    };
 
-    // Parse the type in angle brackets: name<Type>
-    this->expect(vyb::TokenType::LT, "Expected '<' after variable name in unified syntax.");
+    std::vector<VarDeclInfo> var_decls;
 
-    // Parse comma-separated types for inline tuple syntax
-    std::vector<ast::TypeNodePtr> types;
-    do {
-        ast::TypeNodePtr type = this->type_parser_.parse();
-        if (!type) {
-            throw std::runtime_error("Expected type inside '<>' in variable declaration at " +
-                                   location_to_string(this->peek().location));
+    while (true) {
+        // Parse the variable name
+        vyb::token::Token name_token = this->expect(vyb::TokenType::IDENTIFIER, "Expected variable name.");
+        auto identifier_node = std::make_unique<vyb::ast::Identifier>(name_token.location, name_token.lexeme);
+
+        // Parse the type in angle brackets: name<Type>
+        this->expect(vyb::TokenType::LT, "Expected '<' after variable name in unified syntax.");
+
+        // Parse comma-separated types for inline tuple syntax
+        std::vector<ast::TypeNodePtr> types;
+        do {
+            ast::TypeNodePtr type = this->type_parser_.parse();
+            if (!type) {
+                throw std::runtime_error("Expected type inside '<>' in variable declaration at " +
+                                       location_to_string(this->peek().location));
+            }
+            types.push_back(std::move(type));
+        } while (this->match(vyb::TokenType::COMMA));
+
+        // Check for const modifier: name<Type const>
+        if ((this->peek().type == vyb::TokenType::IDENTIFIER && this->peek().lexeme == "const") ||
+            this->peek().type == vyb::TokenType::KEYWORD_CONST) {
+            this->consume(); // consume "const"
+            is_const_decl = true;
         }
-        types.push_back(std::move(type));
-    } while (this->match(vyb::TokenType::COMMA));
 
-    // Check for const modifier: name<Type const>
-    if ((this->peek().type == vyb::TokenType::IDENTIFIER && this->peek().lexeme == "const") ||
-        this->peek().type == vyb::TokenType::KEYWORD_CONST) {
-        this->consume(); // consume "const"
-        is_const_decl = true;
+        this->expect(vyb::TokenType::GT, "Expected '>' after type in variable declaration.");
+
+        // If multiple types, create TupleTypeNode; otherwise use single type
+        ast::TypeNodePtr type_expr;
+        if (types.size() == 1) {
+            type_expr = std::move(types[0]);
+        } else {
+            type_expr = std::make_unique<ast::TupleTypeNode>(decl_loc, std::move(types));
+        }
+
+        var_decls.push_back({decl_loc, std::move(identifier_node), std::move(type_expr)});
+
+        // Check if followed by comma (more variables) or not
+        if (!this->match(vyb::TokenType::COMMA)) {
+            break; // No more variables
+        }
+        // Otherwise continue to parse next variable
     }
 
-    this->expect(vyb::TokenType::GT, "Expected '>' after type in variable declaration.");
-
-    // If multiple types, create TupleTypeNode; otherwise use single type
-    ast::TypeNodePtr type_expr;
-    if (types.size() == 1) {
-        type_expr = std::move(types[0]);
-    } else {
-        type_expr = std::make_unique<ast::TupleTypeNode>(decl_loc, std::move(types));
-    }
-
-
-    // Handle initializer
+    // Parse shared initializer (if present)
     vyb::ast::ExprPtr initializer = nullptr;
-    SourceLocation end_loc = name_token.location; // Default end_loc if no initializer
+    SourceLocation end_loc = decl_loc;
 
     if (this->match(vyb::TokenType::EQ)) {
         initializer = this->expr_parser_.parse_expression();
         if (initializer) {
             end_loc = initializer->loc;
         }
-    } else if (is_const_decl && !initializer) {
-        // Constants usually require an initializer (could enforce later)
+    } else if (is_const_decl && var_decls.size() == 1 && !initializer) {
+        // Single const without initializer - could be forward declaration
     }
 
+    // Consume statement separator
     if (this->peek().type == vyb::TokenType::SEMICOLON) {
         end_loc = this->peek().location;
         this->consume();
@@ -931,21 +929,39 @@ std::unique_ptr<vyb::ast::VariableDeclaration> StatementParser::parse_var_decl()
                this->peek().type == vyb::TokenType::END_OF_FILE ||
                is_statement_start(this->peek().type)) {
         // Optional semicolon - also accept statement starts and end of file
-        // since semicolons are optional and the declaration might be the last thing in the file
     } else {
         throw std::runtime_error("Expected statement separator after variable declaration at " +
                                location_to_string(this->peek().location));
     }
 
-    // Create the VariableDeclaration AST node
-    return std::make_unique<vyb::ast::VariableDeclaration>(
-        decl_loc,
-        std::move(identifier_node),
-        is_const_decl,
-        std::move(type_expr),
-        std::move(initializer)
-    );
+    // Create VariableDeclaration nodes for each variable (all share the same initializer via shared_ptr)
+    if (var_decls.size() == 1) {
+        auto& info = var_decls[0];
+        return std::make_unique<vyb::ast::VariableDeclaration>(
+            info.loc,
+            std::move(info.identifier),
+            is_const_decl,
+            std::move(info.type_expr),
+            std::shared_ptr<vyb::ast::Expression>(std::move(initializer)) // moves unique_ptr into constructor which converts to shared_ptr
+        );
+    }
+
+    // Multi-var: wrap in BlockStatement
+    // Convert initializer to shared_ptr so all vars can share it
+    std::shared_ptr<vyb::ast::Expression> shared_init = initializer ? std::shared_ptr<vyb::ast::Expression>(std::move(initializer)) : nullptr;
+    std::vector<vyb::ast::StmtPtr> body;
+    for (auto& info : var_decls) {
+        body.push_back(std::make_unique<vyb::ast::VariableDeclaration>(
+            info.loc,
+            std::move(info.identifier),
+            is_const_decl,
+            std::move(info.type_expr),
+            shared_init // shared_ptr - all vars share the same expression
+        ));
+    }
+    return std::make_unique<vyb::ast::BlockStatement>(decl_loc, std::move(body));
 }
+
 
 vyb::ast::ExprPtr StatementParser::parse_pattern() {
     // For now, a simple pattern is just an identifier.

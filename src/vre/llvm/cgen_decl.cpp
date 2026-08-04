@@ -1023,6 +1023,12 @@ void LLVMCodegen::visit(vyb::ast::TemplateDeclaration* node) {
 void LLVMCodegen::createFunctionForwardDeclaration(vyb::ast::FunctionDeclaration* node) {
     VYB_CDBG << "DEBUG: Creating forward declaration for function: " << node->id->name << std::endl;
 
+    // Skip generic functions - they are monomorphized on call, not forward-declared
+    if (!node->genericParams.empty()) {
+        VYB_CDBG << "DEBUG: Skipping forward declaration for generic function: " << node->id->name << std::endl;
+        return;
+    }
+
     // Check if function already exists
     llvm::Function* existingFunc = module->getFunction(node->id->name);
     if (existingFunc) {

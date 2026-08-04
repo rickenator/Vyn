@@ -199,7 +199,7 @@ namespace vyb { // Changed Vyb to vyb
         std::unique_ptr<vyb::ast::PanicStatement> parse_panic();
         std::unique_ptr<vyb::ast::ExitStatement> parse_exit();
         std::unique_ptr<vyb::ast::RethrowStatement> parse_rethrow();
-        std::unique_ptr<vyb::ast::VariableDeclaration> parse_var_decl();
+        vyb::ast::StmtPtr parse_var_decl();
         std::unique_ptr<vyb::ast::Node> parse_struct_pattern();
         std::unique_ptr<vyb::ast::Node> parse_tuple_pattern();
     public:

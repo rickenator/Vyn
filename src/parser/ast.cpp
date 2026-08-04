@@ -1102,8 +1102,8 @@ void ImportDeclaration::accept(Visitor& visitor) {
 
 // --- VariableDeclaration ---
 // ... existing code ...
-VariableDeclaration::VariableDeclaration(SourceLocation loc, std::unique_ptr<Identifier> i, bool is_const, TypeNodePtr type_node, ExprPtr val_init)
-    : Declaration(loc), id(std::move(i)), isConst(is_const), typeNode(std::move(type_node)), init(std::move(val_init)) {}
+VariableDeclaration::VariableDeclaration(SourceLocation loc, std::unique_ptr<Identifier> i, bool is_const, TypeNodePtr type_node, std::shared_ptr<Expression> val_init)
+    : Declaration(loc), id(std::move(i)), isConst(is_const), typeNode(std::move(type_node)), init(val_init) {}
 
 NodeType VariableDeclaration::getType() const {
     return NodeType::VARIABLE_DECLARATION;

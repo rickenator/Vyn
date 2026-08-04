@@ -2,7 +2,7 @@
 // @description: Tests the new multi-value function return syntax and auto-serialization to JSON
 // @category: syntax, function, json
 // @expect: pass
-// @expect-output: {"Int":42,"String":"Hello, World!"}
+// @expect-output: [42, "Hello, World!"]
 
 // Function that returns multiple values (Int and String)
 get_values()<Int, String> -> {

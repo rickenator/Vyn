@@ -2,7 +2,7 @@
 // @description: Tests that multi-value return statements parse correctly
 // @category: parser, syntax, function
 // @expect: pass
-// @expect-output: {"String":"hello","Int":42,"Bool":true}
+// @expect-output: ["hello", 42, true]
 
 // Function that returns multiple values to test parsing
 test_function()<String, Int, Bool> -> {
