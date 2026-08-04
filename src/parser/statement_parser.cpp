@@ -228,44 +228,57 @@ std::unique_ptr<vyb::ast::ExpressionStatement> StatementParser::parse_expression
 
 
 std::unique_ptr<vyb::ast::BlockStatement> StatementParser::parse_block() {
-    SourceLocation start_loc = this->expect(vyb::TokenType::LBRACE, "Expected '{' to start a block.").location;
+    SourceLocation start_loc = this->current_location();
     std::vector<vyb::ast::StmtPtr> statements;
-    SourceLocation end_loc = start_loc;
-
-    while (!this->IsAtEnd() && this->peek().type != vyb::TokenType::RBRACE) {
-        // Skip newlines within the block if they are not separating statements meaningfully
-        while (!this->IsAtEnd() && this->peek().type == vyb::TokenType::NEWLINE) {
-            this->consume();
-        }
-        if (this->IsAtEnd() || this->peek().type == vyb::TokenType::RBRACE) {
-            break; // End of block or file
-        }
-        statements.push_back(parse()); // Parse the statement within the block
-        // Ensure that after a statement, we either have another statement, a newline, or the end of the block
-        if (!this->IsAtEnd() && this->peek().type != vyb::TokenType::RBRACE) {
-            if (this->peek().type == vyb::TokenType::SEMICOLON) {
-                this->consume(); // Consume optional semicolon
-            } else if (this->peek().type == vyb::TokenType::NEWLINE) {
-                // Fine, next statement or end of block might be on new line
-            } else if (this->expr_parser_.is_expression_start(this->peek().type) || this->is_statement_start(this->peek().type)) { // Changed here
-                // Next statement starts immediately, this is fine.
+    
+    // Support both brace-style and indentation-style blocks
+    if (this->peek().type == vyb::TokenType::LBRACE) {
+        this->consume(); // Consume '{'
+        
+        while (!this->IsAtEnd() && this->peek().type != vyb::TokenType::RBRACE) {
+            while (!this->IsAtEnd() && this->peek().type == vyb::TokenType::NEWLINE) {
+                this->consume();
             }
-             else if (this->peek().type != vyb::TokenType::RBRACE && !this->is_statement_start(this->peek().type) && !this->expr_parser_.is_expression_start(this->peek().type)) { // Changed here
-                 throw std::runtime_error("Expected newline, semicolon, or end of block after statement at " + location_to_string(this->peek().location) + ", got " + token_type_to_string(this->peek().type));
-             }
+            if (this->IsAtEnd() || this->peek().type == vyb::TokenType::RBRACE) {
+                break;
+            }
+            statements.push_back(parse());
+            if (!this->IsAtEnd() && this->peek().type != vyb::TokenType::RBRACE) {
+                if (this->peek().type == vyb::TokenType::SEMICOLON) {
+                    this->consume();
+                } else if (this->peek().type == vyb::TokenType::NEWLINE) {
+                    // Fine
+                } else if (this->expr_parser_.is_expression_start(this->peek().type) || this->is_statement_start(this->peek().type)) {
+                    // Next statement starts immediately
+                }
+                 else if (this->peek().type != vyb::TokenType::RBRACE && !this->is_statement_start(this->peek().type) && !this->expr_parser_.is_expression_start(this->peek().type)) {
+                     throw std::runtime_error("Expected newline, semicolon, or end of block after statement at " + location_to_string(this->peek().location) + ", got " + token_type_to_string(this->peek().type));
+                 }
+            }
         }
+        
+        this->expect(vyb::TokenType::RBRACE, "Expected '}' to end a block.");
+    } else if (this->peek().type == vyb::TokenType::INDENT) {
+        this->consume(); // Consume INDENT
+        
+        while (!this->IsAtEnd() && this->peek().type != vyb::TokenType::DEDENT && this->peek().type != vyb::TokenType::END_OF_FILE) {
+            while (!this->IsAtEnd() && this->peek().type == vyb::TokenType::NEWLINE) {
+                this->consume();
+            }
+            if (this->IsAtEnd() || this->peek().type == vyb::TokenType::DEDENT) {
+                break;
+            }
+            statements.push_back(parse());
+            this->pos_ = get_current_pos();
+        }
+        
+        if (this->peek().type == vyb::TokenType::DEDENT) {
+            this->consume(); // Consume DEDENT
+        }
+    } else {
+        throw std::runtime_error("Expected '{{' or indentation to start a block at " + location_to_string(this->current_location()));
     }
-
-    if (this->IsAtEnd() && this->peek().type != vyb::TokenType::RBRACE) { // Check before expect
-        // If we are at the end of the file and haven't found an RBRACE,
-        // it means the block was not properly closed.
-        // The error message from expect() might be generic, so let's throw a specific one.
-        // However, the current expect already produces a good message: "Expected '}' ... but found END_OF_FILE"
-        // So, we can just let expect handle it, or customize.
-        // For now, let expect produce its standard error.
-        // If a more specific error is desired for EOF, it can be added here.
-    }
-    end_loc = this->expect(vyb::TokenType::RBRACE, "Expected \'}\' to end a block.").location;
+    
     return std::make_unique<vyb::ast::BlockStatement>(start_loc, std::move(statements));
 }
 
