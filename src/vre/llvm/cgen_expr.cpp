@@ -2071,8 +2071,109 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
     }
 
     // Handle serialization mode intrinsics: lit(), notype(), bare(), deserial()
+    if (identCallee && identCallee->name == "lit" && node->arguments.size() >= 1) {
+        // lit() intrinsic - convert value(s) to their raw string/JSON literal representation
+        // Single arg: returns the literal string
+        // Multiple args: returns a JSON array string like [arg1, arg2, ...]
+        VYB_CDBG << "DEBUG: Processing lit() intrinsic with " << node->arguments.size() << " args" << std::endl;
+
+        auto serializeLitArg = [&](ast::ExprPtr& argExpr) -> llvm::Value* {
+            argExpr->accept(*this);
+            llvm::Value* arg = m_currentLLVMValue;
+            if (!arg) return nullptr;
+            llvm::Type* argType = arg->getType();
+
+            // If the argument is a Vyb string struct { ptr, i64 }, extract the ptr field
+            if (argType->isStructTy() && argType->getStructNumElements() == 2 &&
+                argType->getStructElementType(1)->isIntegerTy(64)) {
+                arg = builder->CreateExtractValue(arg, 0, "lit.strptr");
+                argType = arg->getType();
+            }
+
+            // If the argument is a non-pointer scalar (Int, Float, Bool), convert to string first
+            if (argType->isIntegerTy() && !argType->isIntegerTy(8)) {
+                std::string toStringFuncName = "__vyb_int_to_string";
+                llvm::FunctionType* toStringFuncType = llvm::FunctionType::get(int8PtrType, {int64Type}, false);
+                llvm::Function* toStringFunc = module->getFunction(toStringFuncName);
+                if (!toStringFunc) {
+                    toStringFunc = llvm::Function::Create(toStringFuncType, llvm::Function::ExternalLinkage, toStringFuncName, module.get());
+                }
+                if (argType != int64Type) {
+                    if (argType->isIntegerTy(1)) {
+                        arg = builder->CreateZExt(arg, int64Type, "lit.int64");
+                    } else {
+                        arg = builder->CreateSExt(arg, int64Type, "lit.int64");
+                    }
+                }
+                return builder->CreateCall(toStringFunc, {arg}, "lit_result");
+            } else if (argType->isFloatingPointTy()) {
+                std::string toStringFuncName = "__vyb_float_to_string";
+                llvm::FunctionType* toStringFuncType = llvm::FunctionType::get(int8PtrType, {doubleType}, false);
+                llvm::Function* toStringFunc = module->getFunction(toStringFuncName);
+                if (!toStringFunc) {
+                    toStringFunc = llvm::Function::Create(toStringFuncType, llvm::Function::ExternalLinkage, toStringFuncName, module.get());
+                }
+                if (argType != doubleType) {
+                    arg = builder->CreateFPExt(arg, doubleType, "lit.double");
+                }
+                return builder->CreateCall(toStringFunc, {arg}, "lit_result");
+            }
+
+            // For pointer types (strings), call the lit conversion function
+            llvm::Function* litFunc = getLitConversionFunction();
+            if (!litFunc) {
+                logError(argExpr->loc, "Failed to get lit conversion function");
+                return nullptr;
+            }
+            return builder->CreateCall(litFunc, {arg}, "lit_result");
+        };
+
+        if (node->arguments.size() == 1) {
+            // Single argument: return the literal string directly
+            llvm::Value* result = serializeLitArg(node->arguments[0]);
+            if (!result) return;
+            m_currentLLVMValue = result;
+            return;
+        } else {
+            // Multiple arguments: produce a JSON array string like [arg1, arg2, ...]
+            // Helper to get or declare __vyb_string_concat(char*, char*) -> char*
+            auto getConcatFn = [&]() -> llvm::Function* {
+                llvm::Function* f = module->getFunction("__vyb_string_concat");
+                if (!f) {
+                    llvm::FunctionType* ft = llvm::FunctionType::get(int8PtrType, {int8PtrType, int8PtrType}, false);
+                    f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_string_concat", module.get());
+                }
+                return f;
+            };
+            llvm::Function* concatFn = getConcatFn();
+
+            // Start with "["
+            llvm::Value* jsonStr = builder->CreateGlobalStringPtr("[", "lit.arr.open");
+
+            for (size_t i = 0; i < node->arguments.size(); ++i) {
+                llvm::Value* serialized = serializeLitArg(node->arguments[i]);
+                if (!serialized) return;
+
+                // Add comma separator before all but first element
+                if (i > 0) {
+                    llvm::Value* sep = builder->CreateGlobalStringPtr(", ", "lit.arr.sep");
+                    jsonStr = builder->CreateCall(concatFn, {jsonStr, sep}, "lit.arr.sep.call");
+                }
+
+                // Append the serialized argument
+                jsonStr = builder->CreateCall(concatFn, {jsonStr, serialized}, "lit.arr.elem");
+            }
+
+            // Close with "]"
+            llvm::Value* closeBracket = builder->CreateGlobalStringPtr("]", "lit.arr.close");
+            jsonStr = builder->CreateCall(concatFn, {jsonStr, closeBracket}, "lit.arr.close.call");
+
+            m_currentLLVMValue = jsonStr;
+            return;
+        }
+    }
     if (identCallee && node->arguments.size() == 1) {
-        if (identCallee->name == "lit") {
+        if (identCallee->name == "notype" || identCallee->name == "bare") {
             // lit() intrinsic - convert value to its raw string/JSON literal representation
             VYB_CDBG << "DEBUG: Processing lit() intrinsic" << std::endl;
             node->arguments[0]->accept(*this);
@@ -2870,6 +2971,39 @@ void LLVMCodegen::visit(vyb::ast::AssignmentExpression *node) {
                   " into location of type " + (destPointeeType ? getTypeName(destPointeeType) : "unknown"));
     }
 
+    // Handle compound assignments (+=, -=, *=, /=, %=)
+    if (node->op.type == vyb::TokenType::PLUSEQ) {
+        llvm::Value *lhsVal = builder->CreateLoad(destPointeeType, LHS, "lhs.load");
+        lhsVal = builder->CreateAdd(lhsVal, RHS, "compound.add");
+        builder->CreateStore(lhsVal, LHS);
+        m_currentLLVMValue = lhsVal;
+        return;
+    } else if (node->op.type == vyb::TokenType::MINUSEQ) {
+        llvm::Value *lhsVal = builder->CreateLoad(destPointeeType, LHS, "lhs.load");
+        lhsVal = builder->CreateSub(lhsVal, RHS, "compound.sub");
+        builder->CreateStore(lhsVal, LHS);
+        m_currentLLVMValue = lhsVal;
+        return;
+    } else if (node->op.type == vyb::TokenType::MULTIPLYEQ) {
+        llvm::Value *lhsVal = builder->CreateLoad(destPointeeType, LHS, "lhs.load");
+        lhsVal = builder->CreateMul(lhsVal, RHS, "compound.mul");
+        builder->CreateStore(lhsVal, LHS);
+        m_currentLLVMValue = lhsVal;
+        return;
+    } else if (node->op.type == vyb::TokenType::DIVEQ) {
+        llvm::Value *lhsVal = builder->CreateLoad(destPointeeType, LHS, "lhs.load");
+        lhsVal = builder->CreateSDiv(lhsVal, RHS, "compound.div");
+        builder->CreateStore(lhsVal, LHS);
+        m_currentLLVMValue = lhsVal;
+        return;
+    } else if (node->op.type == vyb::TokenType::MODEQ) {
+        llvm::Value *lhsVal = builder->CreateLoad(destPointeeType, LHS, "lhs.load");
+        lhsVal = builder->CreateSRem(lhsVal, RHS, "compound.rem");
+        builder->CreateStore(lhsVal, LHS);
+        m_currentLLVMValue = lhsVal;
+        return;
+    }
+
     // Create the store instruction with proper alignment
     builder->CreateStore(RHS, LHS);
 
@@ -3122,10 +3256,74 @@ void LLVMCodegen::visit(ast::MemberExpression* node) {
 
     // Evaluate the object expression (should not be treated as LHS)
     bool wasLHS = m_isLHSOfAssignment;
-    m_isLHSOfAssignment = false;  // Object evaluation should load the value normally
-    node->object->accept(*this);
-    m_isLHSOfAssignment = wasLHS;  // Restore LHS flag for field access
-    llvm::Value* objectValue = m_currentLLVMValue;
+    llvm::Value* objectValue = nullptr;
+    llvm::AllocaInst* originalAlloca = nullptr;  // Track original alloca for LHS struct values
+
+    if (m_isLHSOfAssignment) {
+        // Optimization: when on LHS and object is an identifier, get the alloca directly
+        // instead of loading the value. This avoids creating temp allocas that lose writes.
+        // Only apply when the alloca's pointee is a direct struct type (not ownership-wrapped).
+        if (auto* objIdent = dynamic_cast<ast::Identifier*>(node->object.get())) {
+            auto it = namedValues.find(objIdent->name);
+            if (it != namedValues.end()) {
+                if (auto* alloca = llvm::dyn_cast<llvm::AllocaInst>(it->second)) {
+                    // Check if pointee is a direct struct type (not control block)
+                    llvm::Type* pointeeType = alloca->getAllocatedType();
+                    bool isDirectStruct = pointeeType->isStructTy();
+                    // Also check valueTypeMap to ensure it's not an ownership wrapper
+                    auto vtIt = valueTypeMap.find(alloca);
+                    if (vtIt != valueTypeMap.end()) {
+                        if (auto astType = vtIt->second.get()) {
+                            if (auto typeNameNode = dynamic_cast<ast::TypeName*>(astType)) {
+                                std::string tn = typeNameNode->identifier ? typeNameNode->identifier->name : "";
+                                if ((tn == "my" || tn == "our" || tn == "their" || tn == "borrow" || tn == "view") &&
+                                    !typeNameNode->genericArgs.empty()) {
+                                    isDirectStruct = false;  // Ownership wrapper, use normal path
+                                }
+                            }
+                        }
+                    }
+                    if (isDirectStruct) {
+                        objectValue = alloca;
+                        originalAlloca = alloca;
+                    }
+                }
+            }
+            if (!objectValue) {
+                auto funcIt = m_currentFunctionNamedValues.find(objIdent->name);
+                if (funcIt != m_currentFunctionNamedValues.end()) {
+                    if (auto* alloca = llvm::dyn_cast<llvm::AllocaInst>(funcIt->second)) {
+                        llvm::Type* pointeeType = alloca->getAllocatedType();
+                        bool isDirectStruct = pointeeType->isStructTy();
+                        auto vtIt = valueTypeMap.find(alloca);
+                        if (vtIt != valueTypeMap.end()) {
+                            if (auto astType = vtIt->second.get()) {
+                                if (auto typeNameNode = dynamic_cast<ast::TypeName*>(astType)) {
+                                    std::string tn = typeNameNode->identifier ? typeNameNode->identifier->name : "";
+                                    if ((tn == "my" || tn == "our" || tn == "their" || tn == "borrow" || tn == "view") &&
+                                        !typeNameNode->genericArgs.empty()) {
+                                        isDirectStruct = false;
+                                    }
+                                }
+                            }
+                        }
+                        if (isDirectStruct) {
+                            objectValue = alloca;
+                            originalAlloca = alloca;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (!objectValue) {
+        // Fall back to normal evaluation
+        m_isLHSOfAssignment = false;  // Object evaluation should load the value normally
+        node->object->accept(*this);
+        m_isLHSOfAssignment = wasLHS;  // Restore LHS flag for field access
+        objectValue = m_currentLLVMValue;
+    }
 
     if (!objectValue) {
         logError(node->object->loc, "Failed to evaluate object in member expression");
@@ -3253,6 +3451,10 @@ void LLVMCodegen::visit(ast::MemberExpression* node) {
             structPtr = builder->CreateAlloca(structType, nullptr, "temp_struct");
             builder->CreateStore(objectValue, structPtr);
             VYB_CDBG << "DEBUG: Created temporary alloca for struct value: " << getTypeName(structType) << std::endl;
+            // If on LHS and we have the original alloca, store back after field modification
+            if (m_isLHSOfAssignment && originalAlloca) {
+                VYB_CDBG << "DEBUG: Tracking original alloca for struct value back-store" << std::endl;
+            }
         } else {
             logError(node->object->loc, "Property member access on non-struct type");
             m_currentLLVMValue = nullptr;

@@ -246,13 +246,35 @@ std::vector<vyb::token::Token> Lexer::tokenize() {
           emit_token(vyb::TokenType::GT, ">");
         }
         break;
-      case '+': emit_token(vyb::TokenType::PLUS, "+"); break;
-      case '*': emit_token(vyb::TokenType::MULTIPLY, "*"); break;
+      case '+':
+        if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '=') {
+            emit_token(vyb::TokenType::PLUSEQ, "+=");
+        } else {
+            emit_token(vyb::TokenType::PLUS, "+");
+        }
+        break;
+      case '*':
+        if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '=') {
+            emit_token(vyb::TokenType::MULTIPLYEQ, "*=");
+        } else {
+            emit_token(vyb::TokenType::MULTIPLY, "*");
+        }
+        break;
       case '/':
         // This case is for division. Comments (//) are handled earlier.
-        emit_token(vyb::TokenType::DIVIDE, "/");
+        if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '=') {
+            emit_token(vyb::TokenType::DIVEQ, "/=");
+        } else {
+            emit_token(vyb::TokenType::DIVIDE, "/");
+        }
         break;
-      case '%': emit_token(vyb::TokenType::MODULO, "%"); break;
+      case '%':
+        if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '=') {
+            emit_token(vyb::TokenType::MODEQ, "%=");
+        } else {
+            emit_token(vyb::TokenType::MODULO, "%");
+        }
+        break;
       case '&':
         if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '&') {
           emit_token(vyb::TokenType::AND, "&&");
