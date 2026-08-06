@@ -66,13 +66,17 @@ class TestCase:
     priority: str = "normal"  # critical, high, normal, low
     author: Optional[str] = None
     created: Optional[str] = None
+    vyb_args: str = ""
     last_modified: Optional[str] = None
+    env_vars: Dict[str, str] = None
 
     def __post_init__(self):
         if self.category is None:
             self.category = ["uncategorized"]
         if self.tags is None:
             self.tags = []
+        if self.env_vars is None:
+            self.env_vars = {}
 
 
 @dataclass
@@ -172,6 +176,8 @@ class TestDiscovery:
             'priority': r'// @priority:\s*(critical|high|normal|low)$',
             'author': r'// @author:\s*(.*?)$',
             'created': r'// @created:\s*(.*?)$',
+            'vyb-args': r'// @vyb-args:\s*(.*?)$',
+            'env': r'// @env:s*(.*?)$',
         }
 
         for directive, pattern in directives.items():
@@ -214,6 +220,13 @@ class TestDiscovery:
                     test.author = value
                 elif directive == 'created':
                     test.created = value
+                elif directive == 'vyb-args':
+                    test.vyb_args = value
+                elif directive == 'env':
+                    for pair in value.split():
+                        if '=' in pair:
+                            k, v = pair.split('=', 1)
+                            test.env_vars[k] = v
 
         # Auto-categorize based on file path if no explicit category
         if test.category == ["uncategorized"]:
@@ -275,6 +288,9 @@ class TestRunner:
         if test.parse_only:
             cmd.append("--parse-only")
 
+        # Pass additional Vyb arguments if specified
+        if test.vyb_args:
+            cmd.extend(test.vyb_args.split())
         cmd.append(test.filename)
 
         try:
@@ -287,7 +303,8 @@ class TestRunner:
                 capture_output=True,
                 text=True,
                 timeout=test.timeout,
-                cwd=str(vyb_root)  # Run from vyb root directory
+                cwd=str(vyb_root),
+                env={**os.environ, **test.env_vars} if test.env_vars else None,
             )
 
             end_time = time.time()

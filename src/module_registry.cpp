@@ -210,6 +210,7 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                     }
                 }
 
+                if (!options_.skipImportResolution) {
                 ResolvedImportPath importPath = resolveImportPath(importDecl, currentPath);
                 std::string importedSource = readSourceFile(importPath.resolvedPath);
                 std::string importedKey;
@@ -291,6 +292,7 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
 
                 importedRecord.emitted = true;
                 continue;
+                }
             }
 
             std::string name = declarationName(stmt);

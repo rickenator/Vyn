@@ -206,6 +206,7 @@ namespace fs = std::filesystem;
 struct ModuleParseOptions {
     std::vector<fs::path> cliModulePaths;
     fs::path executablePath;
+    bool skipImportResolution = false;
 };
 
 ModuleParseOptions g_module_parse_options;
@@ -214,6 +215,7 @@ std::unique_ptr<vyb::ast::Module> parse_vyb_module(const std::string& source, co
     vyb::ModuleRegistryOptions options;
     options.cliModulePaths = g_module_parse_options.cliModulePaths;
     options.executablePath = g_module_parse_options.executablePath;
+    options.skipImportResolution = g_module_parse_options.skipImportResolution;
     vyb::ModuleRegistry registry(std::move(options));
     return registry.resolveRoot(source, fileName);
 }
@@ -1025,6 +1027,7 @@ int main(int argc, char* argv[]) {
             continue;
         } else if (arg == "--parse-only") {
             parse_only_mode = true;
+            g_module_parse_options.skipImportResolution = true;
             execute_jit = false;  // Don't execute if parse-only
             continue;
         } else if (arg == "--semantic-only") {

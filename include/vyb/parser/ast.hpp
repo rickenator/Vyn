@@ -88,6 +88,7 @@ class RethrowStatement; // Error handling: rethrow current error
 class PanicStatement; // Error handling: unrecoverable panic
 class ExitStatement;  // Process exit with code: exit(n)
 class DeferStatement; // Deferred execution at scope exit
+class TupleDestructureAssignment; // Tuple/multi-var destructuring assignment
 
 // Declarations
 class VariableDeclaration;
@@ -243,6 +244,7 @@ enum class NodeType {
     PANIC_STATEMENT, // Error handling: panic
     EXIT_STATEMENT,  // Process exit with code
     DEFER_STATEMENT, // Deferred execution at scope exit
+    TUPLE_DESTRUCTURE_ASSIGNMENT, // Tuple/multi-var destructuring assignment
 
     // Declarations
     VARIABLE_DECLARATION,
@@ -349,6 +351,9 @@ public:
     virtual void visit(PanicStatement* node) = 0;
     virtual void visit(ExitStatement* node) = 0;
     virtual void visit(DeferStatement* node) = 0;
+
+    // Tuple Destructure Assignment
+    virtual void visit(TupleDestructureAssignment* node) = 0;
 
     // Declarations
     virtual void visit(VariableDeclaration* node) = 0;
@@ -1632,6 +1637,21 @@ public:
 
     DeferStatement(SourceLocation loc, StmtPtr statement);
     ~DeferStatement() override = default;
+    NodeType getType() const override;
+    std::string toString() const override;
+    void accept(Visitor& visitor) override;
+};
+
+// --- Tuple Destructure Assignment ---
+class TupleDestructureAssignment : public Statement {
+public:
+    std::vector<std::unique_ptr<Identifier>> identifiers; // Variables to assign to
+    ExprPtr expression; // Right-hand side expression (must produce a tuple/struct)
+
+    TupleDestructureAssignment(SourceLocation loc,
+                                std::vector<std::unique_ptr<Identifier>> ids,
+                                ExprPtr expr);
+    ~TupleDestructureAssignment() override = default;
     NodeType getType() const override;
     std::string toString() const override;
     void accept(Visitor& visitor) override;

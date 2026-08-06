@@ -2025,5 +2025,32 @@ void DeferStatement::accept(Visitor& visitor) {
     visitor.visit(this);
 }
 
+
+// --- TupleDestructureAssignment implementation ---
+TupleDestructureAssignment::TupleDestructureAssignment(SourceLocation loc,
+                                                       std::vector<std::unique_ptr<Identifier>> ids,
+                                                       ExprPtr expr)
+    : Statement(loc), identifiers(std::move(ids)), expression(std::move(expr)) {}
+
+NodeType TupleDestructureAssignment::getType() const {
+    return NodeType::TUPLE_DESTRUCTURE_ASSIGNMENT;
+}
+
+std::string TupleDestructureAssignment::toString() const {
+    std::stringstream ss;
+    for (size_t i = 0; i < identifiers.size(); ++i) {
+        if (i > 0) ss << ", ";
+        ss << identifiers[i]->name;
+    }
+    ss << " = ";
+    if (expression) {
+        ss << expression->toString();
+    }
+    return ss.str();
+}
+
+void TupleDestructureAssignment::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
 } // namespace ast
 } // namespace vyb

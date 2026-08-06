@@ -511,6 +511,7 @@ public:
     void visit(vyb::ast::PanicStatement* node) override;
     void visit(vyb::ast::ExitStatement* node) override;
     void visit(vyb::ast::DeferStatement* node) override;
+    void visit(vyb::ast::TupleDestructureAssignment* node) override;
 
     void visit(vyb::ast::TypeNode* node) override;
     void visit(vyb::ast::AssertStatement* node) override;

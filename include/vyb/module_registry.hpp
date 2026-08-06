@@ -32,6 +32,7 @@ struct ModuleRecord {
 struct ModuleRegistryOptions {
     std::vector<std::filesystem::path> cliModulePaths;
     std::filesystem::path executablePath;
+    bool skipImportResolution = false;
 };
 
 class ModuleRegistry {

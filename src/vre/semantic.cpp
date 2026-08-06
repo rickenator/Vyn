@@ -6315,4 +6315,93 @@ void SemanticAnalyzer::visit(ast::TypenameExpression* node) {
     node->type = std::shared_ptr<ast::TypeNode>(resultType->clone());
 }
 
-} // Added missing closing brace for namespace vyb
+
+
+// TupleDestructureAssignment: x, y = expr
+void SemanticAnalyzer::visit(ast::TupleDestructureAssignment* node) {
+    if (!node || !node->expression) {
+        addError("Tuple destructure requires an expression.", node);
+        return;
+    }
+    
+    // Analyze RHS expression to get its type
+    node->expression->accept(*this);
+    
+    // Try expressionTypes first, then fall back to expression's own type field
+    ast::TypeNode* rhsType = nullptr;
+    auto it = expressionTypes.find(node->expression.get());
+    if (it != expressionTypes.end() && it->second) {
+        rhsType = it->second;
+    } else if (node->expression->type) {
+        rhsType = node->expression->type.get();
+    }
+    
+    if (!rhsType) {
+        addError("Tuple destructure RHS has no type.", node);
+        return;
+    }
+    
+    // The RHS can be either:
+    // 1. A TupleTypeNode (from multi-value function returns like get_values())
+    // 2. A TypeName referring to a struct (from struct construction)
+    
+    std::vector<ast::TypeNode*> elementTypes;
+    
+    if (auto tupleType = dynamic_cast<ast::TupleTypeNode*>(rhsType)) {
+        // Case 1: TupleTypeNode from multi-value return
+        for (auto& elemType : tupleType->memberTypes) {
+            if (elemType) {
+                elementTypes.push_back(elemType.get());
+            }
+        }
+    } else if (auto typeName = dynamic_cast<ast::TypeName*>(rhsType)) {
+        // Case 2: Struct type - look up fields
+        std::string structName = typeName->identifier ? typeName->identifier->name : "";
+        
+        auto structIt = structFieldTypes.find(structName);
+        if (structIt == structFieldTypes.end()) {
+            addError("Tuple destructure RHS type '" + structName + "' is not a struct or tuple type.", node);
+            return;
+        }
+        
+        const auto& fields = structIt->second;
+        if (fields.size() != node->identifiers.size()) {
+            addError("Tuple destructure: expected " + std::to_string(fields.size()) +
+                     " elements but got " + std::to_string(node->identifiers.size()), node);
+            return;
+        }
+        
+        // Use field types as element types
+        for (auto& [fieldName, fieldType] : fields) {
+            elementTypes.push_back(fieldType);
+        }
+    } else {
+        addError("Tuple destructure RHS must be a tuple or struct type, got " + rhsType->toString(), node);
+        return;
+    }
+    
+    // Validate element count matches
+    if (elementTypes.size() != node->identifiers.size()) {
+        addError("Tuple destructure: expected " + std::to_string(elementTypes.size()) +
+                 " elements but got " + std::to_string(node->identifiers.size()), node);
+        return;
+    }
+    
+    // Validate each identifier and create bindings in current scope
+    for (size_t i = 0; i < node->identifiers.size(); ++i) {
+        std::string varName = node->identifiers[i]->name;
+        
+        // Check if variable already exists in current scope — if so, just skip (assignment target)
+        if (currentScope->lookupDirect(varName)) {
+            continue;
+        }
+        
+        // Create binding in current scope with the element type
+        ast::TypeNode* elemType = elementTypes[i];
+        currentScope->add(SymbolInfo{SymbolInfo::Kind::Variable, varName, false, 
+                                      ast::OwnershipKind::MY, 
+                                      elemType ? elemType->clone().release() : nullptr});
+    }
+}
+
+} // namespace vyb

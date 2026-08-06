@@ -1724,4 +1724,57 @@ void LLVMCodegen::visit(vyb::ast::DeferStatement* node) {
     }
 }
 
+
+
+void LLVMCodegen::visit(vyb::ast::TupleDestructureAssignment* node) {
+    // TupleDestructureAssignment: x, y = expr
+    // RHS produces a struct value (from SequenceExpression codegen).
+    // Extract each element and store to the corresponding variable's alloca.
+    
+    // Evaluate RHS - this produces a struct LLVM value
+    node->expression->accept(*this);
+    llvm::Value* structVal = m_currentLLVMValue;
+    
+    if (!structVal) {
+        logError(node->loc, "Tuple destructure RHS produced no value");
+        return;
+    }
+    
+    // Get the struct type from the value
+    llvm::StructType* structType = llvm::cast<llvm::StructType>(structVal->getType());
+    
+    if (structType->getNumElements() != node->identifiers.size()) {
+        logError(node->loc, "Tuple destructure: expected " + std::to_string(node->identifiers.size()) +
+                 " elements but RHS struct has " + std::to_string(structType->getNumElements()) + " elements");
+        return;
+    }
+    
+    // For each identifier, extract the corresponding element and store to its alloca
+    for (size_t i = 0; i < node->identifiers.size(); ++i) {
+        std::string varName = node->identifiers[i]->name;
+        
+        // Look up or create alloca for this variable
+        llvm::AllocaInst* alloca;
+        auto it = m_currentFunctionNamedValues.find(varName);
+        if (it != m_currentFunctionNamedValues.end()) {
+            alloca = it->second;
+        } else {
+            // Create a new alloca - infer type from the struct element type
+            llvm::Type* elemType = structType->getElementType(static_cast<unsigned>(i));
+            alloca = builder->CreateAlloca(elemType, nullptr, ("tuple_destruct_" + varName).c_str());
+            m_currentFunctionNamedValues[varName] = alloca;
+        }
+        
+        // Extract element i from the struct
+        llvm::Value* elemVal = builder->CreateExtractValue(structVal, {static_cast<unsigned>(i)}, 
+                                                           ("tuple_elem_" + std::to_string(i)).c_str());
+        
+        // Store to the variable's alloca
+        builder->CreateStore(elemVal, alloca);
+    }
+    
+    m_currentLLVMValue = nullptr;
+}
+
 }  // namespace vyb
+

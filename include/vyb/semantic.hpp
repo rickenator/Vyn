@@ -307,6 +307,7 @@ public:
     void visit(ast::PanicStatement* node) override;
     void visit(ast::ExitStatement* node) override;
     void visit(ast::DeferStatement* node) override;
+    void visit(ast::TupleDestructureAssignment* node) override;
 
     // Expressions
     void visit(ast::Identifier* node) override;

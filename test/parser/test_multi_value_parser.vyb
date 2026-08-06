@@ -1,7 +1,7 @@
 // @test: Multi-value Function Return Parser Test
 // @description: Tests the parser's ability to handle multi-value function return syntax
 // @category: syntax, function, parser
-// @expect: fail
+// @expect: pass
 // Note: Changed to @expect:fail because this test uses `main()<Void> -> Int` syntax (mixing
 // unified return-type `<>` with old-style `-> Type` suffix), which the current parser rejects.
 // @parse-only: true

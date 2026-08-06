@@ -193,6 +193,14 @@ vyb::ast::StmtPtr StatementParser::parse() {
                 }
             }
 
+            // Try tuple destructure: x, y = expr
+            if (current_token.type == vyb::TokenType::IDENTIFIER) {
+                auto tuple_stmt = try_parse_tuple_destructure();
+                if (tuple_stmt) {
+                    return tuple_stmt;
+                }
+            }
+
             // Not a declaration, try parsing as an expression statement
             if (this->expr_parser_.is_expression_start(current_token.type)) {
                 return parse_expression_statement();
@@ -975,6 +983,87 @@ vyb::ast::StmtPtr StatementParser::parse_var_decl() {
     return std::make_unique<vyb::ast::BlockStatement>(decl_loc, std::move(body));
 }
 
+
+
+vyb::ast::StmtPtr StatementParser::try_parse_tuple_destructure() {
+    // Detect pattern: IDENTIFIER [, IDENTIFIER]* = expression
+    // This handles untyped tuple destructuring like: x, y = get_values()
+    
+    if (peek().type != vyb::TokenType::IDENTIFIER) {
+        return nullptr;
+    }
+    
+    // Save position in case we need to backtrack
+    size_t saved_pos = this->pos_;
+    
+    // Collect identifiers
+    std::vector<std::unique_ptr<vyb::ast::Identifier>> identifiers;
+    
+    // Parse first identifier
+    token::Token id_token = consume();
+    identifiers.push_back(std::make_unique<vyb::ast::Identifier>(id_token.location, id_token.lexeme));
+    
+    // Look for more identifiers separated by commas
+    while (match(vyb::TokenType::COMMA)) {
+        // Skip optional type annotation <Type> if present
+        if (check(vyb::TokenType::LT)) {
+            // Consume the type annotation - skip until >
+            consume(); // <
+            int depth = 1;
+            while (depth > 0 && !IsAtEnd()) {
+                auto t = consume();
+                if (t.type == vyb::TokenType::LT) depth++;
+                else if (t.type == vyb::TokenType::GT) depth--;
+            }
+        }
+        
+        // Expect identifier after comma (and optional type)
+        if (check(vyb::TokenType::IDENTIFIER)) {
+            id_token = consume();
+            identifiers.push_back(std::make_unique<vyb::ast::Identifier>(id_token.location, id_token.lexeme));
+        } else {
+            // Not a valid tuple destructure pattern
+            this->pos_ = saved_pos;
+            return nullptr;
+        }
+    }
+    
+    // Expect assignment operator
+    if (!match(vyb::TokenType::EQ)) {
+        // Not an assignment, restore position
+        this->pos_ = saved_pos;
+        return nullptr;
+    }
+    
+    // Parse RHS expression
+    vyb::ast::ExprPtr rhs = this->expr_parser_.parse_expression();
+    if (!rhs) {
+        throw std::runtime_error("Expected expression after '=' in tuple destructure at " +
+                                 location_to_string(this->current_location()));
+    }
+    
+    // Consume optional semicolon
+    if (match(vyb::TokenType::SEMICOLON)) {
+        // consumed
+    } else if (IsAtEnd() || peek().type == vyb::TokenType::RBRACE || 
+               peek().type == vyb::TokenType::DEDENT ||
+               is_statement_start(peek().type)) {
+        // Optional semicolon - acceptable terminators
+    } else {
+        throw std::runtime_error("Expected semicolon, newline, '}', or DEDENT after tuple destructure at " +
+                                 location_to_string(this->peek().location));
+    }
+    
+    // Require at least 2 identifiers for tuple destructuring
+    if (identifiers.size() < 2) {
+        this->pos_ = saved_pos;
+        return nullptr;
+    }
+
+    return std::make_unique<vyb::ast::TupleDestructureAssignment>(
+        identifiers[0]->loc, std::move(identifiers), std::move(rhs)
+    );
+}
 
 vyb::ast::ExprPtr StatementParser::parse_pattern() {
     // For now, a simple pattern is just an identifier.
