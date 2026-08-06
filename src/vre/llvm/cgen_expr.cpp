@@ -2726,6 +2726,16 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
 void LLVMCodegen::visit(vyb::ast::LocationExpression *node) {
     // loc(expr) creates a pointer to the expression's memory location
 
+    // Fast path: if expr is an Identifier, return its alloca directly
+    auto ident = dynamic_cast<vyb::ast::Identifier*>(node->expression.get());
+    if (ident) {
+        auto it = namedValues.find(ident->name);
+        if (it != namedValues.end()) {
+            m_currentLLVMValue = it->second;
+            return;
+        }
+    }
+
     // 1. Evaluate the expression to get its value
     node->expression->accept(*this);
     llvm::Value *exprVal = m_currentLLVMValue;

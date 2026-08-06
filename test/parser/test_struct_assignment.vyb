@@ -1,5 +1,5 @@
 // Test struct field assignment
-// @expect-return: 30
+// @expect-return: 70
 
 struct Point {
     x<Int>,

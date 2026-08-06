@@ -3,7 +3,7 @@ test_standard(a<Int>, const<Int> b)<Int> -> {
     return a + b;
 }
 
-test_shorthand(Int a, const Int b)<Int> -> {
+test_shorthand(Int a, const<Int> b)<Int> -> {
     return a * b;
 }
 

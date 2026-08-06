@@ -1,20 +1,15 @@
 struct Person {
-    string name,
-    i64 age,
-    f64 height
+    name<String>,
+    age<Int>,
+    height<Float>
 }
 
 create_person()<Person> -> {
-    person<Person> = {
-        name = "Alice Smith",
-        age = 30,
-        height = 1.75
-    };
+    person<Person> = Person { name = "Alice Smith", age = 30, height = 1.75 };
     return person;
 }
 
-fn main() -> i32 {
-    let person = create_person();
-    __vyb_serialize_to_json(person);
+main()<Int> -> {
+    p<Person> = create_person();
     return 0;
 }

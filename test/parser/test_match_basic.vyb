@@ -1,7 +1,8 @@
 main()<Int> -> {
     x<Int> = 42;
-    match x {
-        42 => 100
+    match (x) {
+        42 -> 100,
+        ? -> 0
     };
     return 0;
 }

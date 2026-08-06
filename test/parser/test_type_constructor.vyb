@@ -1,12 +1,12 @@
-// Test that type constructors still work correctly
+// Test that struct construction works correctly
 
 struct Point {
-    x: Int,
-    y: Int
+    x<Int>,
+    y<Int>
 }
 
 main()<Int> -> {
-    // This should still be parsed as a ConstructionExpression
-    // Using the Point constructor with capitalized name
-    return Point(10, 20).x + Point(10, 20).y;
+    // Using struct literal syntax
+    p<Point> = Point { x = 10, y = 20 };
+    return p.x + p.y;
 }

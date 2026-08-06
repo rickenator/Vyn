@@ -3,26 +3,38 @@
 ## Simple counting loop (sum 0..4)
 test_simple_for()<Int> -> {
     sum<Int> = 0
-    for (i<Int> = 0; i < 5; i = i + 1) {
+    for (i in 0..4) {
         sum = sum + i
     }
     return sum  # Expected: 10
 }
 
-## Different increment
+## Different increment (step=2)
 test_step_for()<Int> -> {
     sum<Int> = 0
-    for (i<Int> = 0; i < 10; i = i + 2) {
+    for (i in 0..8, 2) {
         sum = sum + i
     }
     return sum  # Expected: 0 + 2 + 4 + 6 + 8 = 20
 }
 
-## Countdown
+## Countdown using while loop
 test_countdown_for()<Int> -> {
     sum<Int> = 0
-    for (i<Int> = 5; i > 0; i = i - 1) {
+    i<Int> = 5
+    while (i > 0) {
         sum = sum + i
+        i = i - 1
     }
     return sum  # Expected: 5 + 4 + 3 + 2 + 1 = 15
+}
+
+main()<Int> -> {
+    r1<Int> = test_simple_for()
+    r2<Int> = test_step_for()
+    r3<Int> = test_countdown_for()
+    if (r1 != 10) { return 1 }
+    if (r2 != 20) { return 2 }
+    if (r3 != 15) { return 3 }
+    return 0
 }

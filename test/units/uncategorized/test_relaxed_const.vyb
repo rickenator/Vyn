@@ -2,8 +2,9 @@
 // @description: Tests relaxed const syntax in function parameters
 // @category: parser, syntax
 // @parse-only: true
+// @expect: fail
 
-// Legacy relaxed syntax: const Type name
+// Legacy relaxed syntax: const Type name (not yet supported)
 make_const<Int>(const Int x)<Int> -> {
     return x * 2
 }

@@ -165,17 +165,6 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                     jsonStr = serializeOne(returnValue, origType);
                 } else {
                     // Handle array literal returns in auto-serialization path
-                fprintf(stderr, "DEBUG_ARRAY: isaCA=%d isaPtr=%d type=%s origType=%s isaGV=%d isaUndef=%d isaConstant=%d isaCDA=%d isaCE=%d\n",
-                    (int)llvm::isa<llvm::ConstantArray>(returnValue),
-                    (int)llvm::isa<llvm::PointerType>(returnValue->getType()),
-                    getTypeName(returnValue->getType()).c_str(),
-                    getTypeName(origType).c_str(),
-                    (int)llvm::isa<llvm::GlobalVariable>(returnValue),
-                    (int)llvm::isa<llvm::UndefValue>(returnValue),
-                    (int)llvm::isa<llvm::Constant>(returnValue),
-                    (int)llvm::isa<llvm::ConstantDataArray>(returnValue),
-                    (int)llvm::isa<llvm::ConstantExpr>(returnValue));
-                fflush(stderr);
                 // Handle both ConstantArray/ConstantDataArray values and pointers to arrays
                 llvm::ArrayType* arrType = nullptr;
                 bool isConstantDataArray = llvm::isa<llvm::ConstantDataArray>(returnValue);
@@ -278,6 +267,67 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                     }
                     llvm::Value* close = builder->CreateGlobalStringPtr("]");
                     jsonStr = builder->CreateCall(concat, {jsonStr, close});
+                } else if (llvm::isa<llvm::ArrayType>(returnValue->getType())) {
+                    // Loaded array value (not constant, not pointer) — store to temp alloca then GEP
+                    auto* arrType = llvm::cast<llvm::ArrayType>(returnValue->getType());
+                    unsigned elemCount = arrType->getNumElements();
+                    llvm::Type* elemType = arrType->getElementType();
+                    llvm::Function* concat = getConcatFn();
+                    llvm::Value* arrAlloca = builder->CreateAlloca(arrType, nullptr, "arr_temp");
+                    builder->CreateStore(returnValue, arrAlloca);
+                    jsonStr = builder->CreateGlobalStringPtr("[");
+                    for (unsigned i = 0; i < elemCount; i++) {
+                        llvm::Value* idx0 = builder->getInt32(0);
+                        llvm::Value* idx1 = builder->getInt32(i);
+                        llvm::Value* gep = builder->CreateInBoundsGEP(arrType, arrAlloca, {idx0, idx1}, "arr.gep");
+                        llvm::Value* elem = builder->CreateLoad(elemType, gep, "arr.load");
+                        llvm::Value* elemJson = nullptr;
+                        if (elemType->isIntegerTy(1)) {
+                            llvm::Value* boolVal = builder->CreateICmpNE(elem, llvm::ConstantInt::get(int1Type, 0));
+                            llvm::FunctionType* ft = llvm::FunctionType::get(int8PtrType, {int1Type}, false);
+                            elemJson = builder->CreateCall(getOrDeclFunc("__vyb_bool_to_string", ft), {boolVal});
+                        } else if (elemType->isIntegerTy()) {
+                            llvm::Value* i64Val = builder->CreateSExtOrTrunc(elem, int64Type, "arr_elem.i64");
+                            llvm::FunctionType* ft = llvm::FunctionType::get(int8PtrType, {int64Type}, false);
+                            elemJson = builder->CreateCall(getOrDeclFunc("__vyb_int_to_string", ft), {i64Val});
+                        } else if (elemType->isFloatTy() || elemType->isDoubleTy()) {
+                            llvm::Value* dblVal = elemType->isFloatTy()
+                                ? builder->CreateFPExt(elem, doubleType, "arr_elem.dbl") : elem;
+                            llvm::FunctionType* ft = llvm::FunctionType::get(int8PtrType, {doubleType}, false);
+                            elemJson = builder->CreateCall(getOrDeclFunc("__vyb_float_to_string", ft), {dblVal});
+                        } else {
+                            elemJson = builder->CreateGlobalStringPtr("null");
+                        }
+                        if (i > 0) jsonStr = builder->CreateCall(concat, {jsonStr, builder->CreateGlobalStringPtr(", ")});
+                        jsonStr = builder->CreateCall(concat, {jsonStr, elemJson});
+                    }
+                    jsonStr = builder->CreateCall(concat, {jsonStr, builder->CreateGlobalStringPtr("]")});
+                } else if (llvm::isa<llvm::PointerType>(returnValue->getType())) {
+                    // Fallback: pointer to unknown type — try to load and serialize
+                    llvm::Function* concat = getConcatFn();
+                    jsonStr = builder->CreateGlobalStringPtr("[");
+                    if (origType->isIntegerTy()) {
+                        llvm::Value* loaded = builder->CreateLoad(origType, returnValue, "arr.load");
+                        jsonStr = serializeOne(loaded, origType);
+                    } else if (origType->isFloatTy() || origType->isDoubleTy()) {
+                        llvm::Type* loadType = origType->isFloatTy() ? llvm::Type::getFloatTy(*context) : doubleType;
+                        llvm::Value* loaded = builder->CreateLoad(loadType, returnValue, "arr.load");
+                        jsonStr = serializeOne(loaded, origType);
+                    } else if (origType->isStructTy()) {
+                        llvm::Value* loaded = builder->CreateLoad(origType, returnValue, "struct.load");
+                        auto* st = llvm::cast<llvm::StructType>(origType);
+                        unsigned numElems = st->getNumElements();
+                        jsonStr = builder->CreateGlobalStringPtr("[");
+                        for (unsigned j = 0; j < numElems; j++) {
+                            llvm::Value* elem = builder->CreateExtractValue(loaded, {j}, "elem" + std::to_string(j));
+                            llvm::Value* elemJson = serializeOne(elem, st->getElementType(j));
+                            if (j > 0) jsonStr = builder->CreateCall(concat, {jsonStr, builder->CreateGlobalStringPtr(", ")});
+                            jsonStr = builder->CreateCall(concat, {jsonStr, elemJson});
+                        }
+                        jsonStr = builder->CreateCall(concat, {jsonStr, builder->CreateGlobalStringPtr("]")});
+                    } else {
+                        jsonStr = builder->CreateGlobalStringPtr("null");
+                    }
                 } else if (!origType->isStructTy()) {
                     // Single primitive value (Bool or Float)
                     jsonStr = serializeOne(returnValue, origType);
@@ -288,8 +338,13 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                     llvm::Function* concat = getConcatFn();
                     jsonStr = builder->CreateGlobalStringPtr("[");
                     for (unsigned i = 0; i < numElems; i++) {
-                        llvm::Value* elem = builder->CreateExtractValue(
-                            returnValue, {i}, "elem" + std::to_string(i));
+                        // If returnValue is not actually a struct (type mismatch), serialize directly
+                        llvm::Value* elem;
+                        if (returnValue->getType()->isStructTy()) {
+                            elem = builder->CreateExtractValue(returnValue, {i}, "elem" + std::to_string(i));
+                        } else {
+                            elem = i == 0 ? returnValue : llvm::ConstantInt::get(st->getElementType(0), 0);
+                        }
                         llvm::Value* elemJson = serializeOne(elem, st->getElementType(i));
                         if (i > 0) {
                             llvm::Value* sep = builder->CreateGlobalStringPtr(", ");

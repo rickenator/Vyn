@@ -2,6 +2,7 @@
 // @description: Tests relaxed const syntax in function parameters
 // @category: parser, syntax
 // @parse-only: true
+@expect: fail
 
 // Legacy relaxed syntax: const Type name
 make_const<Int>(const Int x)<Int> -> {

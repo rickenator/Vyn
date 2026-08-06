@@ -1,5 +1,5 @@
 // Simple test file for type alias functionality
-type MyInt = Int;
+type<Int> MyInt;
 
 main()<MyInt> -> {
     x<MyInt> = 47;

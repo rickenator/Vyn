@@ -1,58 +1,25 @@
-// Test file to demonstrate multi-return values and JSON formatting
+// Test file to demonstrate struct syntax and field access
 
 struct Point {
-    x<Int>,     // Type name format
+    x<Int>,
     y<Int>
 }
 
-class Rectangle {
-    width<Int>,   // Type name format
+struct Rectangle {
+    width<Int>,
     height<Int>
 }
 
-struct Person {
-    id<Int>,
-    name<String>,
-    salary<Float>
-}
-
-struct Company {
-    name<String>,
-    employeeCount<Int>,
-    isPublic<Bool>
-}
-
-// Function that returns multiple values (a Point and a Rectangle)
-createShapes()<Point, Rectangle> -> {
-    p<Point> = Point { x=10, y=20 }
-    r<Rectangle> = Rectangle { width=100, height=50 }
-    return p, r  // Return multiple values using comma syntax
-}
-
-// Function that returns multiple values (a Person and a Company)
-createEntities()<Person, Company> -> {
-    person<Person> = Person { id=42, name="Alice", salary=75000.50 }
-    company<Company> = Company { name="Acme Inc", employeeCount=250, isPublic=true }
-    return person, company
-}
-
-// Main function with multiple return values - Vyb runtime will automatically
-// serialize these values to JSON output
-main()<Person, Company> -> {
-    // Receive multiple return values from createShapes()
-    p<Point>, r<Rectangle> = createShapes()
-
-    // Modify the received values
-    p.x = p.x * 2      // Double the x coordinate
-    r.height = r.height + 25  // Add 25 to the height
-
-    // Get another set of multi-return values
-    person<Person>, company<Company> = createEntities()
-
-    // Modify these values too
-    person.salary = person.salary * 1.1  // 10% raise
-    company.employeeCount += 50          // Company growth
-
-    // Return multiple values - the Vyb runtime automatically serializes these to JSON
-    return person, company  // Will produce JSON with Person and Company objects
+main()<Int> -> {
+    p<Point> = Point { x=10, y=20 };
+    r<Rectangle> = Rectangle { width=100, height=50 };
+    
+    // Modify fields
+    p.x = p.x * 2;
+    r.height = r.height + 25;
+    
+    if (p.x != 20) { return 1 }
+    if (r.height != 75) { return 2 }
+    
+    return 0;
 }

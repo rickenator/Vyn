@@ -3,7 +3,9 @@ getMultipleValues()<String, Int> -> {
     return "test", 123;
 }
 
-main()<String, Int> -> {
-    result1<String>, result2<Int> = getMultipleValues();
-    return result1,result2;
+main()<Int> -> {
+    result<Tuple<String, Int>> = getMultipleValues();
+    if (result[0] != "test") { return 1 }
+    if (result[1] != 123) { return 2 }
+    return 0;
 }

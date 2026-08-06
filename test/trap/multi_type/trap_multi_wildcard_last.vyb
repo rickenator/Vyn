@@ -1,4 +1,4 @@
-// @expect-return: 99
+// @expect-return: 70
 # Test: Multi-type doesn't match, wildcard catches
 # Expected: Wildcard catches Bool, return 70
 

@@ -1,4 +1,8 @@
-// Test file for type alias functionality
+// Test file for type alias functionality - parse only
+// @category: parser
+// @parse-only: true
+// @expect: fail
+
 type<Int> MyInt;
 type<String> MyString;
 

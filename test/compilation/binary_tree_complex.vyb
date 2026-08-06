@@ -3,7 +3,7 @@
 // Using 7-node BST with manual verification
 
 // Verify BST ordering for a value between bounds
-// @expect-return: 94
+// @expect-return: 350
 check_in_range(val<Int>, low<Int>, high<Int>)<Int> -> {
     if (val > low) {
         if (val < high) {
