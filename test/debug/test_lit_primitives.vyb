@@ -5,6 +5,6 @@
 // @expect-output: [42, "hello", 3.14, true]
 
 // Test lit() intrinsic for raw primitives (replaces the old notype primitive usage)
-main()<Int, String, Float, Bool> -> {
+main()<String> -> {
     return lit(42, "hello", 3.14, true);
 }

@@ -6,13 +6,13 @@
 // Debug pointer assignment step by step
 main()<Int> -> {
     x<Int> = 42;
-    print("Initial x:", x);
+    println("Initial x:", x);
 
     freedom {
         p<loc<Int>> = loc(x);
-        print("Before at(p) assignment, x:", x);
+        println("Before at(p) assignment, x:", x);
         at(p) = 100;
-        print("After at(p) assignment, x:", x);
+        println("After at(p) assignment, x:", x);
     }
 
     return x;

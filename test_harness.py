@@ -348,23 +348,34 @@ class TestRunner:
 
         # Check @expect-return: N means the test expects stdout to contain exactly N
         if test.expect_return is not None:
-            try:
-                expected_val = int(test.expect_return)
-            except ValueError:
-                expected_val = 0
-            # Get the last line of stdout (Vyb prints main() return value as last line)
-            stdout_lines = [l.strip() for l in process.stdout.strip().split('\n') if l.strip()]
-            if stdout_lines:
-                actual_val = stdout_lines[-1]
-                try:
-                    if int(actual_val) != expected_val:
-                        return False
-                except ValueError:
-                    # If last line isn't a number, check if it matches the string representation
-                    if actual_val != str(expected_val):
-                        return False
+            # Handle boolean values first
+            expected_str = test.expect_return.strip().lower()
+            if expected_str in ('true', 'false'):
+                expected_bool = expected_str == 'true'
+                stdout_lines = [l.strip() for l in process.stdout.strip().split('\n') if l.strip()]
+                if not stdout_lines:
+                    return False
+                actual_val = stdout_lines[-1].lower()
+                if actual_val != str(expected_bool).lower():
+                    return False
             else:
-                return False
+                try:
+                    expected_val = int(test.expect_return)
+                except ValueError:
+                    expected_val = 0
+                # Get the last line of stdout (Vyb prints main() return value as last line)
+                stdout_lines = [l.strip() for l in process.stdout.strip().split('\n') if l.strip()]
+                if stdout_lines:
+                    actual_val = stdout_lines[-1]
+                    try:
+                        if int(actual_val) != expected_val:
+                            return False
+                    except ValueError:
+                        # If last line isn't a number, check if it matches the string representation
+                        if actual_val != str(expected_val):
+                            return False
+                else:
+                    return False
 
         # Check expected output
         if test.expect_output and test.expect_output not in process.stdout:

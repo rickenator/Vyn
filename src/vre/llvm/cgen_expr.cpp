@@ -2092,6 +2092,12 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
 
             // If the argument is a non-pointer scalar (Int, Float, Bool), convert to string first
             if (argType->isIntegerTy() && !argType->isIntegerTy(8)) {
+                // Boolean: output "true" or "false"
+                if (argType->isIntegerTy(1)) {
+                    llvm::Value* trueStr = builder->CreateGlobalStringPtr("true", "lit.bool.true");
+                    llvm::Value* falseStr = builder->CreateGlobalStringPtr("false", "lit.bool.false");
+                    return builder->CreateSelect(arg, trueStr, falseStr, "lit.bool_result");
+                }
                 std::string toStringFuncName = "__vyb_int_to_string";
                 llvm::FunctionType* toStringFuncType = llvm::FunctionType::get(int8PtrType, {int64Type}, false);
                 llvm::Function* toStringFunc = module->getFunction(toStringFuncName);
@@ -2099,11 +2105,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                     toStringFunc = llvm::Function::Create(toStringFuncType, llvm::Function::ExternalLinkage, toStringFuncName, module.get());
                 }
                 if (argType != int64Type) {
-                    if (argType->isIntegerTy(1)) {
-                        arg = builder->CreateZExt(arg, int64Type, "lit.int64");
-                    } else {
-                        arg = builder->CreateSExt(arg, int64Type, "lit.int64");
-                    }
+                    arg = builder->CreateSExt(arg, int64Type, "lit.int64");
                 }
                 return builder->CreateCall(toStringFunc, {arg}, "lit_result");
             } else if (argType->isFloatingPointTy()) {
@@ -2173,7 +2175,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         }
     }
     if (identCallee && node->arguments.size() == 1) {
-        if (identCallee->name == "notype" || identCallee->name == "bare") {
+        if (identCallee->name == "lit") {
             // lit() intrinsic - convert value to its raw string/JSON literal representation
             VYB_CDBG << "DEBUG: Processing lit() intrinsic" << std::endl;
             node->arguments[0]->accept(*this);
@@ -2194,6 +2196,13 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
 
             // If the argument is a non-pointer scalar (Int, Float, Bool), convert to string first
             if (argType->isIntegerTy() && !argType->isIntegerTy(8)) {
+                // Boolean: output "true" or "false"
+                if (argType->isIntegerTy(1)) {
+                    llvm::Value* trueStr = builder->CreateGlobalStringPtr("true", "lit.bool.true");
+                    llvm::Value* falseStr = builder->CreateGlobalStringPtr("false", "lit.bool.false");
+                    m_currentLLVMValue = builder->CreateSelect(arg, trueStr, falseStr, "lit.bool_result");
+                    return;
+                }
                 // Integer: use __vyb_int_to_string (always cast to i64)
                 std::string toStringFuncName = "__vyb_int_to_string";
                 llvm::FunctionType* toStringFuncType = llvm::FunctionType::get(

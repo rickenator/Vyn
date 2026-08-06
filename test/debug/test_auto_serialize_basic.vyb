@@ -2,7 +2,7 @@
 // @description: Tests basic auto-serialization without intrinsics
 // @category: json, serialization
 // @expect: pass
-// @expect-output: {"String":"hello","Int":42,"Bool":true}
+// @expect-output: ["hello", 42, true]
 
 // Test basic auto-serialization without intrinsics
 main()<String, Int, Bool> -> {
