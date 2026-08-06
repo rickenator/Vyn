@@ -90,7 +90,7 @@ void LLVMCodegen::registerVariable(const std::string& name, llvm::Value* allocaI
     var.ownership = ownership;
     var.needsCleanup = needsCleanup;
     var.type = type;
-    var.isVecWithMallocData = needsCleanup; // Vec types that need cleanup have malloc'd data
+    var.isVecWithMallocData = needsCleanup && isVecStructType(type);
 
     if (var.isVecWithMallocData) {
         VYB_CDBG << "DEBUG: Variable '" << name << "' identified as Vec with malloc'd data" << std::endl;
@@ -167,6 +167,12 @@ void LLVMCodegen::cleanupVariable(const ScopeVariable& var) {
             VYB_CDBG << "DEBUG: Cleaning up OUR ownership for variable: " << var.name << std::endl;
 
             // Load the control block pointer from the alloca
+            // For non-pointer types (e.g. our<Int>), there is no control block to clean up
+            if (!var.type->isPointerTy()) {
+                VYB_CDBG << "DEBUG: Skipping OUR cleanup for non-pointer type: " << var.name << std::endl;
+                return;
+            }
+
             llvm::Value* controlBlockPtr = builder->CreateLoad(var.type, var.allocaInst, var.name + "_cb_load");
 
             // Check if control block is null
@@ -290,6 +296,12 @@ void LLVMCodegen::cleanupVariable(const ScopeVariable& var) {
             VYB_CDBG << "DEBUG: Cleaning up MILD ownership for variable: " << var.name << std::endl;
 
             // Load the control block pointer from the alloca
+            // For non-pointer types (e.g. mild<Int>), there is no control block to clean up
+            if (!var.type->isPointerTy()) {
+                VYB_CDBG << "DEBUG: Skipping MILD cleanup for non-pointer type: " << var.name << std::endl;
+                return;
+            }
+
             llvm::Value* controlBlockPtr = builder->CreateLoad(var.type, var.allocaInst, var.name + "_mild_cb_load");
 
             // Check if control block is null
@@ -573,4 +585,14 @@ llvm::Value* LLVMCodegen::generateVecDeepCopy(llvm::Value* vecStructValue,
     newVecStruct = builder->CreateInsertValue(newVecStruct, vecSize,    1, "vdc.new_vec1");
     newVecStruct = builder->CreateInsertValue(newVecStruct, vecCap,     2, "vdc.new_vec2");
     return newVecStruct;
+}
+
+// Vec struct layout: { ptr, i64 (size), i64 (capacity) }
+bool LLVMCodegen::isVecStructType(llvm::Type* type) {
+    auto* st = llvm::dyn_cast<llvm::StructType>(type);
+    if (!st || st->getNumElements() != 3) return false;
+    if (!st->getElementType(0)->isPointerTy()) return false;
+    if (!st->getElementType(1)->isIntegerTy(64)) return false;
+    if (!st->getElementType(2)->isIntegerTy(64)) return false;
+    return true;
 }

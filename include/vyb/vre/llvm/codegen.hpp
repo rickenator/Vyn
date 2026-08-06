@@ -350,6 +350,7 @@ private:
     llvm::Function* getOrCreateMemsetFunction();
     llvm::Function* getOrCreateMemcpyFunction();
     llvm::StructType* getControlBlockType(llvm::Type* objectPtrType);
+    bool isVecStructType(llvm::Type* type); // Check if LLVM type matches Vec{T, i64, i64} layout
     // Deep-copy a Vec struct value (clones malloc'd data so caller and callee are independent).
     // Returns an updated Vec struct value with a freshly malloc'd data buffer.
     llvm::Value* generateVecDeepCopy(llvm::Value* vecStructValue, llvm::Type* elemType, llvm::Type* vecStructType);

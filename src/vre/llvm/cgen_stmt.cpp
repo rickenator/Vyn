@@ -160,7 +160,11 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                 llvm::Type* origType = m_mainAutoSerializeOrigRetType;
                 llvm::Value* jsonStr = nullptr;
 
-                // Handle array literal returns in auto-serialization path
+                // For Int types, serialize directly without array handling
+                if (origType->isIntegerTy() && !llvm::isa<llvm::ArrayType>(returnValue->getType())) {
+                    jsonStr = serializeOne(returnValue, origType);
+                } else {
+                    // Handle array literal returns in auto-serialization path
                 fprintf(stderr, "DEBUG_ARRAY: isaCA=%d isaPtr=%d type=%s origType=%s isaGV=%d isaUndef=%d isaConstant=%d isaCDA=%d isaCE=%d\n",
                     (int)llvm::isa<llvm::ConstantArray>(returnValue),
                     (int)llvm::isa<llvm::PointerType>(returnValue->getType()),
@@ -189,7 +193,7 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                         }
                     }
                 }
-                if (arrType) {
+                if (arrType && (llvm::isa<llvm::ConstantArray>(returnValue) || llvm::isa<llvm::ConstantDataArray>(returnValue) || isPtrToArray)) {
                     unsigned elemCount = arrType->getNumElements();
                     llvm::Type* elemType = arrType->getElementType();
                     llvm::Function* concat = getConcatFn();
@@ -295,6 +299,7 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                     }
                     llvm::Value* close = builder->CreateGlobalStringPtr("]");
                     jsonStr = builder->CreateCall(concat, {jsonStr, close}, "arr.close");
+                    }
                 }
 
                 // Print the JSON output

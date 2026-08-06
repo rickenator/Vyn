@@ -485,16 +485,24 @@ llvm::Type* LLVMCodegen::codegenType(vyb::ast::TypeNode* typeNode) {
                 }
                 VYB_CDBG << "DEBUG: Processing ownership type " << typeNameStr << " with underlying type: "
                           << typeNameNode->genericArgs[0]->toString() << std::endl;
-                // For LLVM code generation, ownership types become pointers to the underlying type
-                // This solves circular reference issues and matches the runtime semantics
+                // For LLVM code generation, ownership types become pointers to the underlying type.
+                // However, for primitive types (Int, Bool, Float), keep the value directly
+                // since there is no heap allocation to manage.
                 llvm::Type* underlyingType = codegenType(typeNameNode->genericArgs[0].get());
                 if (!underlyingType) {
                     logError(typeNode->loc, "Could not determine LLVM type for " + typeNameStr + " underlying type.");
                     return nullptr;
                 }
-                // Create pointer to the underlying type
-                llvmType = llvm::PointerType::getUnqual(underlyingType);
-                VYB_CDBG << "DEBUG: Successfully resolved ownership type " << typeNameStr << " to pointer type" << std::endl;
+                // Only create pointer for non-primitive types (structs, Vec, etc.)
+                if (underlyingType->isIntegerTy() || underlyingType->isFloatTy() || underlyingType->isDoubleTy()) {
+                    // Primitive: store value directly, no pointer needed
+                    llvmType = underlyingType;
+                    VYB_CDBG << "DEBUG: Ownership type " << typeNameStr << " of primitive keeps underlying type" << std::endl;
+                } else {
+                    // Heap type: create pointer to the underlying type
+                    llvmType = llvm::PointerType::getUnqual(underlyingType);
+                    VYB_CDBG << "DEBUG: Successfully resolved ownership type " << typeNameStr << " to pointer type" << std::endl;
+                }
                 break;
             }
 
