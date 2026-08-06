@@ -1,0 +1,9 @@
+// @test: Simple Angle Bracket Syntax
+// @description: Tests basic generic type syntax with angle brackets
+// @category: parser, generics
+// @parse-only: true
+
+main()<Int> -> {
+    x<Int> = 42
+    return x
+}

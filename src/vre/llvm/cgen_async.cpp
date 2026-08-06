@@ -37,18 +37,6 @@ struct AsyncState {
 // Helper functions for async codegen (will be used by LLVMCodegen)
 namespace async_codegen {
 
-// Create the runtime struct type for Future<T>
-llvm::StructType* createFutureStructType(llvm::LLVMContext& context, llvm::Type* resultType) {
-    // Future<T> struct: { T* result, i32 state, i8* runtime_data }
-    std::vector<llvm::Type*> futureFields = {
-        llvm::PointerType::get(resultType, 0),  // T* result
-        llvm::Type::getInt32Ty(context),        // i32 state (0=pending, 1=completed, 2=failed)
-        llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0)  // i8* runtime_data
-    };
-
-    return llvm::StructType::create(context, futureFields, "Future");
-}
-
 // Create async runtime integration functions
 llvm::Function* getOrCreateScheduleTaskFunction(llvm::Module* module, llvm::LLVMContext& context) {
     const std::string funcName = "vyb_schedule_async_task";

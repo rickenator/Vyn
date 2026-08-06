@@ -1,3 +1,14 @@
+// =============================================================================
+// DESIGN: Trait monomorphization (compile-time specialization)
+// Vyb uses compile-time monomorphization for traits - NOT runtime polymorphism.
+// When a trait method is called on a concrete type, a specialized version of the
+// method is generated at compile time. This is similar to Rust's monomorphic
+// dispatch or C++ template instantiation.
+//
+// NO vtables, NO dynamic dispatch, NO trait objects.
+// All trait resolution happens at compile time via type substitution.
+// =============================================================================
+
 #include "vyb/vre/llvm/codegen.hpp"
 #include "vyb/semantic.hpp"
 #include <sstream>

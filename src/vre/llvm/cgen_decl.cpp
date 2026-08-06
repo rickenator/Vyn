@@ -347,6 +347,7 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
 }
 
 void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
+    VYB_CDBG << "DEBUG: FunctionDeclaration: " << node->id->name << std::endl;
     // DEBUG: Show error propagation metadata
     VYB_CDBG << "DEBUG: Function '" << node->id->name << "' - canFail=" << node->canFail
               << ", needsErrorReturn=" << node->needsErrorReturn
@@ -769,8 +770,8 @@ void LLVMCodegen::visit(vyb::ast::StructDeclaration* node) {
 }
 
 void LLVMCodegen::visit(vyb::ast::ClassDeclaration* node) {
-    // Similar to StructDeclaration, but might involve vtables, inheritance, etc. in the future.
-    // For now, treat classes like structs.
+    // Classes are treated like structs. Vyb uses compile-time monomorphization only.
+    // NO vtables, NO virtual methods, NO inheritance. Classes are value types.
     std::string nameStr = node->name->name;
     llvm::StructType* classType = llvm::StructType::create(*context, nameStr);
     currentClassType = classType; // Set for member functions
@@ -780,10 +781,8 @@ void LLVMCodegen::visit(vyb::ast::ClassDeclaration* node) {
     typeInfo.isStruct = false; // It's a class
 
     std::vector<llvm::Type*> fieldTypes;
-    // TODO: Add vtable pointer as the first field if Vyb classes have virtual methods.
-    // llvm::Type* vtablePtrType = llvm::PointerType::getUnqual(llvm::FunctionType::get(voidType, true)->getPointerTo());
-    // fieldTypes.push_back(vtablePtrType);
-    // typeInfo.fieldIndices["_vptr"] = 0; // Example vptr
+    // NOTE: Vyb does not support virtual methods or vtables.
+    // All dispatch is compile-time monomorphic. Classes have no implicit fields.
 
     unsigned fieldIdxOffset = fieldTypes.size(); // Start field indices after any implicit members like vptr
 
@@ -805,7 +804,7 @@ void LLVMCodegen::visit(vyb::ast::ClassDeclaration* node) {
              fieldTypes.push_back(fieldType);
              typeInfo.fieldIndices[fieldDeclNode->id->name] = i + fieldIdxOffset;
         } else if (auto* methodDeclNode = dynamic_cast<ast::FunctionDeclaration*>(node->members[i].get())) {
-            // Method declarations might contribute to vtable or be standalone functions.
+            // Method declarations are standalone functions (no vtable entries).
             // Their codegen is typically handled when visiting the FunctionDeclaration itself,
             // with `currentClassType` set to associate them.
         }

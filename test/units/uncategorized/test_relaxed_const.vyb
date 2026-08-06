@@ -1,0 +1,13 @@
+// @test: Relaxed Const Parameter Syntax
+// @description: Tests relaxed const syntax in function parameters
+// @category: parser, syntax
+// @parse-only: true
+
+// Legacy relaxed syntax: const Type name
+make_const<Int>(const Int x)<Int> -> {
+    return x * 2
+}
+
+main()<Int> -> {
+    return make_const(21)
+}

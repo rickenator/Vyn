@@ -1,0 +1,11 @@
+// @test: Simple Literal Parsing
+// @description: Tests parsing of basic literals (int, string, bool)
+// @category: parser, literals
+// @parse-only: true
+
+main()<Int> -> {
+    a<Int> = 42
+    b<String> = "hello"
+    c<Bool> = true
+    return a
+}

@@ -1,0 +1,14 @@
+// @test: Struct Correct Syntax
+// @description: Tests correct struct declaration syntax
+// @category: parser, structs
+// @parse-only: true
+
+struct Point {
+    x<Int>,
+    y<Int>
+}
+
+main()<Int> -> {
+    p<Point> = Point { x = 10, y = 20 }
+    return p.x + p.y
+}

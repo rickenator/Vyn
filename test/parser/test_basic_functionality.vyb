@@ -1,0 +1,14 @@
+// @test: Basic Functionality
+// @description: Covers variables, arithmetic, if/else, and main return serialization
+// @category: parser, runtime
+// @parse-only: true
+
+main()<Int> -> {
+    x<Int> = 10
+    y<Int> = 20
+    z<Int> = x + y
+    if (z > 25) {
+        return 1
+    }
+    return 0
+}

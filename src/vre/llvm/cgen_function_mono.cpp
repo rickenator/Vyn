@@ -1,7 +1,13 @@
-// Generic function monomorphization: Generate specialized versions of generic functions
-// This file implements monomorphization for generic functions with type parameters.
-// When generic functions like printItem<T> are called with concrete types like printItem(p: Point),
-// this system generates specialized LLVM functions with type parameters substituted.
+// =============================================================================
+// DESIGN: Function monomorphization (compile-time specialization)
+// Vyb uses compile-time monomorphization for generic functions - NOT runtime polymorphism.
+// When a generic function like printItem<T> is called with concrete types,
+// a specialized version is generated at compile time with type parameters substituted.
+// This is similar to Rust's monomorphic dispatch or C++ template instantiation.
+//
+// NO vtables, NO dynamic dispatch, NO trait objects.
+// All generic resolution happens at compile time via type substitution.
+// =============================================================================
 
 #include "vyb/vre/llvm/codegen.hpp"
 #include "vyb/parser/ast.hpp"

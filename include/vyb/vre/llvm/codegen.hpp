@@ -139,6 +139,8 @@ private:
     // its LLVM return type is changed to void and the value is serialized and printed.
     // This member holds the original return type so cgen_stmt knows how to serialize.
     llvm::Type* m_mainAutoSerializeOrigRetType = nullptr;
+    llvm::Type* m_asyncResultType = nullptr;  // Result type T for Future<T> in async context
+    llvm::Type* m_currentCallResultType = nullptr;  // Result type from most recent function call
 
     // Ownership and scope tracking
     struct ScopeVariable {
@@ -361,6 +363,7 @@ private:
         llvm::Value* currentStateValue;
         llvm::BasicBlock* resumeBlock;
         llvm::Value* futureValue;
+        llvm::Type* futureResultType;  // Result type T for Future<T> (opaque pointer tracking)
         int stateCounter;
         bool isAsync;
 
@@ -373,7 +376,7 @@ private:
         AsyncState() : asyncFunction(nullptr), stateMachineFunction(nullptr),
                        stateStructType(nullptr), stateStructInstance(nullptr),
                        currentStateValue(nullptr), resumeBlock(nullptr),
-                       futureValue(nullptr), stateCounter(0), isAsync(false),
+                       futureValue(nullptr), futureResultType(nullptr), stateCounter(0), isAsync(false),
                        stateDebugVar(nullptr), futureDebugVar(nullptr) {}
     };
 

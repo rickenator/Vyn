@@ -1,0 +1,12 @@
+// @test: Very Simple Function Test
+// @description: Tests basic function execution without intrinsics
+// @category: parser, function
+// @parse-only: true
+
+add(a<Int>, b<Int>)<Int> -> {
+    return a + b
+}
+
+main()<Int> -> {
+    return add(1, 2)
+}

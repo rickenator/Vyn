@@ -85,6 +85,7 @@ llvm::StructType* LLVMCodegen::createFutureStructType(llvm::Type* resultType) {
         int8PtrType                                      // i8* runtime_data
     };
 
+    m_asyncResultType = resultType;  // Track result type for opaque pointer handling
     return llvm::StructType::create(*context, futureFields, "Future");
 }
 

@@ -19,7 +19,7 @@ void LLVMCodegen::visit(vyb::ast::BlockStatement* node) {
     // Enter new scope for ownership tracking
     enterScope();
 
-    VYB_CDBG << "DEBUG: BlockStatement visitor called with " << node->body.size() << " statements" << std::endl;
+    
     for (size_t i = 0; i < node->body.size(); ++i) {
         const auto& stmt = node->body[i];
         if (stmt) {
@@ -41,7 +41,7 @@ void LLVMCodegen::visit(vyb::ast::BlockStatement* node) {
     if (builder->GetInsertBlock() && builder->GetInsertBlock()->getTerminator()) {
         // Block is terminated - can't insert cleanup code here
         // This case should be handled by inserting cleanup before return statements
-        VYB_CDBG << "DEBUG: Block terminated, skipping cleanup insertion (cleanup should have happened before terminator)" << std::endl;
+        
         if (!scopeStack.empty()) {
             scopeStack.pop_back();
         }
@@ -97,8 +97,8 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
             // Debug output to see what we're returning
             VYB_CDBG << "DEBUG: ReturnStatement - Type: " << getTypeName(returnValue->getType())
                 << ", Function Return Type: " << (currentFunction ? getTypeName(currentFunction->getReturnType()) : "null") << std::endl;
-            VYB_CDBG << "DEBUG: Return value LLVM type pointer: " << returnValue->getType() << std::endl;
-            VYB_CDBG << "DEBUG: Function return LLVM type pointer: " << (currentFunction ? currentFunction->getReturnType() : nullptr) << std::endl;
+            
+            
 
             // Auto-serialize main() return values when the return type was changed to void.
             // m_mainAutoSerializeOrigRetType is set in cgen_decl.cpp for Bool, Float, and
@@ -120,7 +120,7 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                 // Helper: serialize one LLVM value to a JSON char* string
                 auto serializeOne = [&](llvm::Value* val, llvm::Type* t) -> llvm::Value* {
                     if (!val || !t) {
-                        VYB_CDBG << "DEBUG: serializeOne - null val or type, emitting JSON null" << std::endl;
+                        
                         return builder->CreateGlobalStringPtr("null");
                     }
                     if (t->isIntegerTy(1)) {
@@ -160,7 +160,121 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                 llvm::Type* origType = m_mainAutoSerializeOrigRetType;
                 llvm::Value* jsonStr = nullptr;
 
-                if (!origType->isStructTy()) {
+                // Handle array literal returns in auto-serialization path
+                fprintf(stderr, "DEBUG_ARRAY: isaCA=%d isaPtr=%d type=%s origType=%s isaGV=%d isaUndef=%d isaConstant=%d isaCDA=%d isaCE=%d\n",
+                    (int)llvm::isa<llvm::ConstantArray>(returnValue),
+                    (int)llvm::isa<llvm::PointerType>(returnValue->getType()),
+                    getTypeName(returnValue->getType()).c_str(),
+                    getTypeName(origType).c_str(),
+                    (int)llvm::isa<llvm::GlobalVariable>(returnValue),
+                    (int)llvm::isa<llvm::UndefValue>(returnValue),
+                    (int)llvm::isa<llvm::Constant>(returnValue),
+                    (int)llvm::isa<llvm::ConstantDataArray>(returnValue),
+                    (int)llvm::isa<llvm::ConstantExpr>(returnValue));
+                fflush(stderr);
+                // Handle both ConstantArray/ConstantDataArray values and pointers to arrays
+                llvm::ArrayType* arrType = nullptr;
+                bool isConstantDataArray = llvm::isa<llvm::ConstantDataArray>(returnValue);
+                bool isConstantArray = llvm::isa<llvm::ConstantArray>(returnValue);
+                (void)isConstantDataArray; // suppress unused warning
+                bool isPtrToArray = false;
+                if (isConstantDataArray || isConstantArray) {
+                    arrType = llvm::cast<llvm::ArrayType>(returnValue->getType());
+                } else if (llvm::isa<llvm::PointerType>(returnValue->getType())) {
+                    // Pointer to array: get the pointee type
+                    if (auto* ptrTy = llvm::dyn_cast<llvm::PointerType>(returnValue->getType())) {
+                        if (auto* pt = llvm::dyn_cast<llvm::ArrayType>(ptrTy->getContainedType(0))) {
+                            arrType = pt;
+                            isPtrToArray = true;
+                        }
+                    }
+                }
+                if (arrType) {
+                    unsigned elemCount = arrType->getNumElements();
+                    llvm::Type* elemType = arrType->getElementType();
+                    llvm::Function* concat = getConcatFn();
+                    jsonStr = builder->CreateGlobalStringPtr("[");
+                    for (unsigned i = 0; i < elemCount; i++) {
+                        llvm::Value* elemJson = nullptr;
+                        
+                        if (isConstantDataArray) {
+                            // ConstantDataArray: use getElementAsAPInt for integer elements
+                            auto* cda = llvm::cast<llvm::ConstantDataArray>(returnValue);
+                            llvm::APInt apVal = cda->getElementAsAPInt(i);
+                            llvm::Value* elemVal = llvm::ConstantInt::get(elemType, apVal);
+                            if (elemType->isIntegerTy(1)) {
+                                llvm::Value* boolVal = builder->CreateICmpNE(elemVal, llvm::ConstantInt::get(int1Type, 0));
+                                llvm::FunctionType* ft = llvm::FunctionType::get(int8PtrType, {int1Type}, false);
+                                elemJson = builder->CreateCall(getOrDeclFunc("__vyb_bool_to_string", ft), {boolVal});
+                            } else if (elemType->isIntegerTy()) {
+                                llvm::Value* i64Val = llvm::ConstantInt::get(int64Type, apVal.zext(64));
+                                llvm::FunctionType* ft = llvm::FunctionType::get(int8PtrType, {int64Type}, false);
+                                elemJson = builder->CreateCall(getOrDeclFunc("__vyb_int_to_string", ft), {i64Val});
+                            } else if (elemType->isFloatTy() || elemType->isDoubleTy()) {
+                                llvm::Value* dblVal = elemType->isFloatTy()
+                                    ? builder->CreateFPExt(elemVal, doubleType, "arr_elem.dbl") : elemVal;
+                                llvm::FunctionType* ft = llvm::FunctionType::get(int8PtrType, {doubleType}, false);
+                                elemJson = builder->CreateCall(getOrDeclFunc("__vyb_float_to_string", ft), {dblVal});
+                            } else {
+                                elemJson = builder->CreateGlobalStringPtr("null");
+                            }
+                        } else if (isConstantArray) {
+                            // ConstantArray: use getOperand directly
+                            llvm::Constant* elemConst = llvm::cast<llvm::ConstantArray>(returnValue)->getOperand(i);
+                            if (elemType->isIntegerTy(1)) {
+                                llvm::Value* boolVal = builder->CreateICmpNE(elemConst, llvm::ConstantInt::get(int1Type, 0));
+                                llvm::FunctionType* ft = llvm::FunctionType::get(int8PtrType, {int1Type}, false);
+                                elemJson = builder->CreateCall(getOrDeclFunc("__vyb_bool_to_string", ft), {boolVal});
+                            } else if (elemType->isIntegerTy()) {
+                                llvm::Value* i64Val = nullptr;
+                                if (auto* ci = llvm::dyn_cast<llvm::ConstantInt>(elemConst)) {
+                                    i64Val = llvm::ConstantInt::get(int64Type, ci->getValue().zext(64));
+                                } else if (elemConst->getType()->isIntegerTy()) {
+                                    i64Val = builder->CreateSExtOrTrunc(elemConst, int64Type, "arr_elem.i64");
+                                }
+                                if (!i64Val) i64Val = llvm::ConstantInt::get(int64Type, 0);
+                                llvm::FunctionType* ft = llvm::FunctionType::get(int8PtrType, {int64Type}, false);
+                                elemJson = builder->CreateCall(getOrDeclFunc("__vyb_int_to_string", ft), {i64Val});
+                            } else if (elemType->isFloatTy() || elemType->isDoubleTy()) {
+                                llvm::Value* dblVal = elemType->isFloatTy() 
+                                    ? builder->CreateFPExt(elemConst, doubleType, "arr_elem.dbl") : elemConst;
+                                llvm::FunctionType* ft = llvm::FunctionType::get(int8PtrType, {doubleType}, false);
+                                elemJson = builder->CreateCall(getOrDeclFunc("__vyb_float_to_string", ft), {dblVal});
+                            } else {
+                                elemJson = builder->CreateGlobalStringPtr("null");
+                            }
+                        } else {
+                            // Pointer to array: use GEP + Load
+                            llvm::Value* idx = builder->getInt32(i);
+                            llvm::Value* gep = builder->CreateInBoundsGEP(elemType, returnValue, {idx}, "arr.gep");
+                            llvm::Value* elem = builder->CreateLoad(elemType, gep, "arr.load");
+                            if (elemType->isIntegerTy(1)) {
+                                llvm::Value* boolVal = builder->CreateICmpNE(elem, llvm::ConstantInt::get(int1Type, 0));
+                                llvm::FunctionType* ft = llvm::FunctionType::get(int8PtrType, {int1Type}, false);
+                                elemJson = builder->CreateCall(getOrDeclFunc("__vyb_bool_to_string", ft), {boolVal});
+                            } else if (elemType->isIntegerTy()) {
+                                llvm::Value* i64Val = builder->CreateSExtOrTrunc(elem, int64Type, "arr_elem.i64");
+                                llvm::FunctionType* ft = llvm::FunctionType::get(int8PtrType, {int64Type}, false);
+                                elemJson = builder->CreateCall(getOrDeclFunc("__vyb_int_to_string", ft), {i64Val});
+                            } else if (elemType->isFloatTy() || elemType->isDoubleTy()) {
+                                llvm::Value* dblVal = elemType->isFloatTy()
+                                    ? builder->CreateFPExt(elem, doubleType, "arr_elem.dbl") : elem;
+                                llvm::FunctionType* ft = llvm::FunctionType::get(int8PtrType, {doubleType}, false);
+                                elemJson = builder->CreateCall(getOrDeclFunc("__vyb_float_to_string", ft), {dblVal});
+                            } else {
+                                elemJson = builder->CreateGlobalStringPtr("null");
+                            }
+                        }
+                        
+                        if (i > 0) {
+                            llvm::Value* sep = builder->CreateGlobalStringPtr(", ");
+                            jsonStr = builder->CreateCall(concat, {jsonStr, sep});
+                        }
+                        jsonStr = builder->CreateCall(concat, {jsonStr, elemJson});
+                    }
+                    llvm::Value* close = builder->CreateGlobalStringPtr("]");
+                    jsonStr = builder->CreateCall(concat, {jsonStr, close});
+                } else if (!origType->isStructTy()) {
                     // Single primitive value (Bool or Float)
                     jsonStr = serializeOne(returnValue, origType);
                 } else {
@@ -200,7 +314,7 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                 // If this is a failable function, we need to wrap the return value
                 // in {T, ptr} BEFORE checking type compatibility
                 if (currentFunctionAST && currentFunctionAST->needsErrorReturn) {
-                    VYB_CDBG << "DEBUG: Wrapping return value in {T, nullptr} tuple for failable function" << std::endl;
+                    
 
                     // Create null pointer for error (success case)
                     llvm::Value* nullErrorPtr = llvm::ConstantPointerNull::get(
@@ -214,10 +328,15 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                     resultStruct = builder->CreateInsertValue(resultStruct, nullErrorPtr, {1}, "result.error");
 
                     returnValue = resultStruct;
-                    VYB_CDBG << "DEBUG: Wrapped return value type: " << getTypeName(returnValue->getType()) << std::endl;
+                    
                 }
 
                 // Now check type compatibility (after wrapping if needed)
+                fprintf(stderr, "DEBUG_CHECK: retType=%s valType=%s match=%d\n",
+                    getTypeName(currentFunction->getReturnType()).c_str(),
+                    getTypeName(returnValue->getType()).c_str(),
+                    (int)(returnValue->getType() == currentFunction->getReturnType()));
+                fflush(stderr);
                 if (returnValue->getType() != currentFunction->getReturnType()) {
                     // Special case: returning a single element tuple (Tuple<T>)
                     // If function returns a struct and we have a scalar, wrap it in a struct
@@ -225,24 +344,24 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                         if (structRetType->getNumElements() == 1 &&
                             !returnValue->getType()->isStructTy() &&
                             structRetType->getElementType(0) == returnValue->getType()) {
-                            VYB_CDBG << "DEBUG: Wrapping scalar value in single-element tuple struct" << std::endl;
+                            
 
                             // Create a single-element struct
                             llvm::Value* tupleStruct = llvm::UndefValue::get(structRetType);
                             returnValue = builder->CreateInsertValue(tupleStruct, returnValue, {0}, "tuple_wrap");
 
-                            VYB_CDBG << "DEBUG: Wrapped value type: " << getTypeName(returnValue->getType()) << std::endl;
+                            
                         } else {
                             // Try normal cast
                             llvm::Value* castedValue = tryCast(returnValue, currentFunction->getReturnType(), node->loc);
                             if (castedValue) {
-                                VYB_CDBG << "DEBUG: Successfully cast return value to " << getTypeName(castedValue->getType()) << std::endl;
+                                
                                 returnValue = castedValue;
                             } else {
                                 // For member expressions (e.g., p.x) load the value if needed
                                 if (returnValue->getType()->isPointerTy() &&
                                     !currentFunction->getReturnType()->isPointerTy()) {
-                                    VYB_CDBG << "DEBUG: Loading pointer value for return" << std::endl;
+                                    
 
                                     // For loading, we need to know the element type
                                     llvm::Type* elementType = nullptr;
@@ -254,7 +373,7 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                                     }
 
                                     returnValue = builder->CreateLoad(elementType, returnValue, "member_load");
-                                    VYB_CDBG << "DEBUG: After loading, return value type: " << getTypeName(returnValue->getType()) << std::endl;
+                                    
                                 }
                             }
                         }
@@ -262,13 +381,13 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                         // Not a struct return type, try normal cast
                         llvm::Value* castedValue = tryCast(returnValue, currentFunction->getReturnType(), node->loc);
                         if (castedValue) {
-                            VYB_CDBG << "DEBUG: Successfully cast return value to " << getTypeName(castedValue->getType()) << std::endl;
+                            
                             returnValue = castedValue;
                         } else {
                             // For member expressions (e.g., p.x) load the value if needed
                             if (returnValue->getType()->isPointerTy() &&
                                 !currentFunction->getReturnType()->isPointerTy()) {
-                                VYB_CDBG << "DEBUG: Loading pointer value for return" << std::endl;
+                                
 
                                 // For loading, we need to know the element type
                                 llvm::Type* elementType = nullptr;
@@ -280,7 +399,7 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                                 }
 
                                 returnValue = builder->CreateLoad(elementType, returnValue, "member_load");
-                                VYB_CDBG << "DEBUG: After loading, return value type: " << getTypeName(returnValue->getType()) << std::endl;
+                                
                             }
                         }
                     }
@@ -289,7 +408,7 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                 // IMPORTANT: Clean up current block scope before returning
                 // This prevents the block scope cleanup from happening after the terminator
                 if (!scopeStack.empty()) {
-                    VYB_CDBG << "DEBUG: Cleaning up current scope before return" << std::endl;
+                    
                     // If returning an owning variable, skip its local cleanup because
                     // ownership of that binding is transferred to the caller.
                     if (node->argument) {
@@ -317,11 +436,87 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                 generatePopFrameCall();
 
                 // Return the value (already wrapped if needed)
-                VYB_CDBG << "DEBUG: FINAL return value type before CreateRet: " << getTypeName(returnValue->getType()) << std::endl;
-                VYB_CDBG << "DEBUG: Function return type: " << getTypeName(currentFunction->getReturnType()) << std::endl;
+                
+                
                 // If the function is declared void, discard the return value and emit ret void
                 if (currentFunction->getReturnType()->isVoidTy()) {
                     builder->CreateRetVoid();
+                } else if (returnValue->getType() != currentFunction->getReturnType()) {
+                    // Type mismatch: handle gracefully
+                    fprintf(stderr, "DEBUG_CRASH: RetType=%s ValType=%s IsArray=%d IsPtr=%d\n",
+                        getTypeName(currentFunction->getReturnType()).c_str(),
+                        getTypeName(returnValue->getType()).c_str(),
+                        (int)llvm::isa<llvm::ArrayType>(returnValue->getType()),
+                        (int)llvm::isa<llvm::PointerType>(returnValue->getType()));
+                    fflush(stderr);
+                    if (currentFunction && currentFunction->getName() == "main") {
+                        // For main(), auto-serialize the mismatched return value
+                        
+
+                        // Define helpers inline
+                        auto getOrDeclFunc = [&](const std::string& name, llvm::FunctionType* ft) -> llvm::Function* {
+                            llvm::Function* f = module->getFunction(name);
+                            if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, name, module.get());
+                            return f;
+                        };
+                        auto getConcatFn = [&]() -> llvm::Function* {
+                            llvm::FunctionType* ft = llvm::FunctionType::get(int8PtrType, {int8PtrType, int8PtrType}, false);
+                            return getOrDeclFunc("__vyb_string_concat", ft);
+                        };
+                        auto serializeOne = [&](llvm::Value* val, llvm::Type* t) -> llvm::Value* {
+                            if (!val || !t) return builder->CreateGlobalStringPtr("null");
+                            if (t->isIntegerTy(1)) {
+                                llvm::FunctionType* ft = llvm::FunctionType::get(int8PtrType, {int1Type}, false);
+                                return builder->CreateCall(getOrDeclFunc("__vyb_bool_to_string", ft), {val}, "bool.json");
+                            } else if (t->isIntegerTy()) {
+                                llvm::Value* v64 = builder->CreateSExtOrTrunc(val, int64Type, "to.i64");
+                                llvm::FunctionType* ft = llvm::FunctionType::get(int8PtrType, {int64Type}, false);
+                                return builder->CreateCall(getOrDeclFunc("__vyb_int_to_string", ft), {v64}, "int.json");
+                            } else if (t->isFloatTy() || t->isDoubleTy()) {
+                                llvm::Value* vdbl = t->isFloatTy() ? builder->CreateFPExt(val, doubleType, "to.dbl") : val;
+                                llvm::FunctionType* ft = llvm::FunctionType::get(int8PtrType, {doubleType}, false);
+                                return builder->CreateCall(getOrDeclFunc("__vyb_float_to_string", ft), {vdbl}, "float.json");
+                            }
+                            return builder->CreateGlobalStringPtr("null");
+                        };
+
+                        llvm::Function* concat = getConcatFn();
+                        llvm::Value* jsonStr = nullptr;
+
+                        // Handle array types (including ConstantArray)
+                        if (llvm::isa<llvm::ArrayType>(returnValue->getType())) {
+                            llvm::ArrayType* arrType = llvm::cast<llvm::ArrayType>(returnValue->getType());
+                            unsigned elemCount = arrType->getNumElements();
+                            llvm::Type* elemType = arrType->getElementType();
+                            jsonStr = builder->CreateGlobalStringPtr("[");
+                            for (unsigned i = 0; i < elemCount; i++) {
+                                // Get element via GEP from the array value
+                                llvm::Value* idx = builder->getInt32(i);
+                                llvm::Value* gep = builder->CreateInBoundsGEP(elemType, returnValue, {idx}, "arr.gep");
+                                llvm::Value* elem = builder->CreateLoad(elemType, gep, "arr.load");
+                                llvm::Value* elemJson = serializeOne(elem, elemType);
+                                if (i > 0) {
+                                    llvm::Value* sep = builder->CreateGlobalStringPtr(", ");
+                                    jsonStr = builder->CreateCall(concat, {jsonStr, sep});
+                                }
+                                jsonStr = builder->CreateCall(concat, {jsonStr, elemJson});
+                            }
+                            llvm::Value* close = builder->CreateGlobalStringPtr("]");
+                            jsonStr = builder->CreateCall(concat, {jsonStr, close});
+                        } else {
+                            // Non-array: use serializeOne
+                            jsonStr = serializeOne(returnValue, returnValue->getType());
+                        }
+
+                        if (jsonStr) builder->CreateCall(getVybPrintlnFunction(), {jsonStr});
+                        if (!scopeStack.empty()) exitScope();
+                        generatePopFrameCall();
+                        builder->CreateRetVoid();
+                    } else {
+                        // Non-main function: emit null return to avoid crash
+                        
+                        builder->CreateRet(llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)));
+                    }
                 } else {
                     builder->CreateRet(returnValue);
                 }
@@ -332,7 +527,7 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
             if (currentFunction && currentFunction->getReturnType()->isVoidTy()) {
                 // IMPORTANT: Clean up current block scope before returning
                 if (!scopeStack.empty()) {
-                    VYB_CDBG << "DEBUG: Cleaning up current scope before void return" << std::endl;
+                    
                     exitScope();
                 }
                 // Phase 6.4: Pop call frame before return
@@ -342,7 +537,7 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                 // Return undef if function expects a non-void type and codegen failed
                 // IMPORTANT: Clean up current block scope before returning
                 if (!scopeStack.empty()) {
-                    VYB_CDBG << "DEBUG: Cleaning up current scope before undef return" << std::endl;
+                    
                     exitScope();
                 }
                 // Phase 6.4: Pop call frame before return
@@ -355,7 +550,7 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
         // No argument, so it's a void return
         // IMPORTANT: Clean up current block scope before returning
         if (!scopeStack.empty()) {
-            VYB_CDBG << "DEBUG: Cleaning up current scope before void return (no arg)" << std::endl;
+            
             exitScope();
         }
         // Phase 6.4: Pop call frame before return
@@ -368,6 +563,9 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
             successStruct = builder->CreateInsertValue(successStruct, llvm::ConstantInt::getFalse(*context), {0}, "result.void_dummy");
             successStruct = builder->CreateInsertValue(successStruct, nullErrorPtr, {1}, "result.error");
             builder->CreateRet(successStruct);
+        } else if (currentAsyncState.isAsync) {
+            // Async function with no return value: return null Future pointer
+            builder->CreateRet(llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)));
         } else {
             builder->CreateRetVoid();
         }
@@ -1515,7 +1713,7 @@ void LLVMCodegen::visit(vyb::ast::FailStatement* node) {
 
         // Phase 3: Check if we're in a failable function that can propagate errors
         if (currentFunctionAST && currentFunctionAST->needsErrorReturn) {
-            VYB_CDBG << "DEBUG: Fail statement propagating error to caller in failable function" << std::endl;
+            
             emitPropagatingErrorReturn(errorPtr);
         } else {
             // No trap handler and not a failable function - this is an untrapped error

@@ -258,6 +258,7 @@ void LLVMCodegen::visit(vyb::ast::ArrayLiteral* node) {
 
     llvm::ArrayType* arrayType = llvm::ArrayType::get(elementLlvmType, constantElements.size());
     m_currentLLVMValue = llvm::ConstantArray::get(arrayType, constantElements);
+    VYB_CDBG << "DEBUG: ArrayLiteral produced type=" << getTypeName(m_currentLLVMValue->getType()) << std::endl;
 }
 
 // --- Expressions ---
@@ -2615,6 +2616,34 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         m_currentLLVMValue = nullptr; // No value for void calls
     } else {
         llvm::Value* callResult = builder->CreateCall(calleeFunc, argValues, "calltmp");
+
+        // Track Future<T> result type for opaque pointer handling in await expressions
+        if (calleeFunc->getReturnType()->isStructTy()) {
+            auto* structRetType = llvm::cast<llvm::StructType>(calleeFunc->getReturnType());
+            // Future<T> struct has 4 fields: {T*, i32, i64, i8*}
+            if (structRetType->getNumElements() == 4) {
+                // Look up the function declaration to get the return type annotation
+                if (auto* calleeIdent = dynamic_cast<ast::Identifier*>(node->callee.get())) {
+                    if (m_currentVybModule) {
+                        for (const auto& stmt : m_currentVybModule->body) {
+                            auto* decl = dynamic_cast<ast::FunctionDeclaration*>(stmt.get());
+                            if (decl && decl->id && decl->id->name == calleeIdent->name && decl->returnTypeNode) {
+                                // Check if return type is Future<T>
+                                if (auto* futureType = dynamic_cast<ast::FutureType*>(decl->returnTypeNode.get())) {
+                                    if (futureType->resultType) {
+                                        m_currentCallResultType = codegenType(futureType->resultType.get());
+                                        VYB_CDBG << "DEBUG: Set m_currentCallResultType to " 
+                                                 << getTypeName(m_currentCallResultType)
+                                                 << " for Future call to " << calleeIdent->name << std::endl;
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // Phase 4: Check if this is a call to a semantically failable function.
         bool calleeNeedsErrorReturn = false;
@@ -5129,9 +5158,29 @@ void LLVMCodegen::visit(ast::AwaitExpression* node) {
     // Insert continuation debug marker
     insertContinuationDebugMarker(currentState, node->loc);
 
-    // For simplicity, just return the input future value for now
-    // This doesn't implement proper suspension/resumption semantics yet
-    m_currentLLVMValue = futureValue;
+    // Extract the .result field (first element) from the Future struct.
+    // Async functions return Future<T> by value, so futureValue is a struct.
+    // Field 0 is T* (pointer to result), so we load it to get T.
+    llvm::Value* resultPtr = nullptr;
+    if (futureValue->getType()->isStructTy()) {
+        // Struct value — extract field 0 directly
+        resultPtr = builder->CreateExtractValue(futureValue, 0, "await.result");
+    } else {
+        // Fallback: if it's not a struct, just use the value as-is
+        m_currentLLVMValue = futureValue;
+        return;
+    }
+    // Load the actual result value from the T* pointer to get T.
+    // With LLVM 18 opaque pointers, we can't get the element type from the pointer itself.
+    // Use m_currentCallResultType which was set when the Future-producing call was evaluated.
+    if (resultPtr && resultPtr->getType()->isPointerTy()) {
+        llvm::Type* resultValueType = m_currentCallResultType ? m_currentCallResultType : int64Type;
+        m_currentLLVMValue = builder->CreateLoad(resultValueType, resultPtr, "await.deref");
+        // Clear after use to avoid stale values
+        m_currentCallResultType = nullptr;
+    } else {
+        m_currentLLVMValue = resultPtr;
+    }
 }
 
 // Array serialization helper function

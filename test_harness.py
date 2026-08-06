@@ -364,7 +364,8 @@ class TestRunner:
                 return False
 
         # Check @expect-return: N means the test expects stdout to contain exactly N
-        if test.expect_return is not None:
+        # Skip return check for parse-only tests (no execution happens)
+        if not test.parse_only and test.expect_return is not None:
             # Handle boolean values first
             expected_str = test.expect_return.strip().lower()
             if expected_str in ('true', 'false'):
