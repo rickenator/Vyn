@@ -2436,10 +2436,15 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
     if (identCallee && genericFunctionTemplates.find(identCallee->name) != genericFunctionTemplates.end()) {
         VYB_CDBG << "DEBUG: Detected call to generic function: " << identCallee->name << std::endl;
 
-        // Infer concrete type arguments from call site
-        std::vector<std::string> concreteTypeArgs;
+        // Get the template to know how many type parameters we need
+        ast::FunctionDeclaration* templateFunc = genericFunctionTemplates[identCallee->name];
+        size_t numTypeParams = templateFunc->genericParams.size();
 
-        // For each argument, get its type
+        // Infer concrete type arguments from call site
+        // Strategy: match each argument to its corresponding type parameter
+        // by checking if the argument's type matches the parameter's declared type pattern
+        std::vector<std::string> concreteTypeArgs(numTypeParams, "");
+
         for (size_t i = 0; i < node->arguments.size(); ++i) {
             // Evaluate argument to infer type
             node->arguments[i]->accept(*this);
@@ -2472,11 +2477,30 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
 
             VYB_CDBG << "DEBUG: Argument " << i << " has type: " << argTypeName << std::endl;
 
-            // For the first type parameter, use the first argument's type
-            // This is a simplified approach - full implementation needs to match
-            // type parameters to arguments based on function signature
-            if (i == 0) {
-                concreteTypeArgs.push_back(argTypeName);
+            // Match argument to type parameter by position
+            // If function has N type params and M args, map arg[i] to param[min(i, N-1)]
+            // For multi-param functions, we need to match each arg to its corresponding param
+            if (i < numTypeParams) {
+                concreteTypeArgs[i] = argTypeName;
+            } else if (numTypeParams > 0 && i >= numTypeParams) {
+                // Extra arguments beyond type params — check if any remaining params are still empty
+                for (size_t p = 0; p < numTypeParams; ++p) {
+                    if (concreteTypeArgs[p].empty()) {
+                        concreteTypeArgs[p] = argTypeName;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Fill any remaining empty type params with a default (shouldn't happen for valid code)
+        for (size_t p = 0; p < numTypeParams; ++p) {
+            if (concreteTypeArgs[p].empty()) {
+                logError(node->loc, "Could not infer type for generic parameter '" +
+                         (templateFunc->genericParams[p] && templateFunc->genericParams[p]->name ?
+                          templateFunc->genericParams[p]->name->name : "unknown") + "'");
+                m_currentLLVMValue = nullptr;
+                return;
             }
         }
 

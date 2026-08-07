@@ -3,6 +3,8 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-06: **Sealed monomorphization design** (I-010). Created `doc/MONOMORPHIZATION_DESIGN.md` documenting the permanent decision: compile-time monomorphization for all generics, aspects + bind for polymorphism, no vtables/dynamic dispatch/trait objects. Updated TODO.md with sealed status. Fixed multi-argument type inference in generic function calls — each argument now maps to its corresponding type parameter by position instead of only using the first argument. Fixed trap/ensure result passing via alloca-based merging (eliminated PHI node predecessor mismatch). Removed DEBUG_CHECK and DEBUG_CRASH fprintf(stderr) debug prints. All 213 tests pass.
+
 This log consolidates what still needs to be implemented after scanning the
 repository docs, future-feature tests, and relevant compiler/runtime sources.
 It is intentionally source-biased: when docs conflict, source code and

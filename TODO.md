@@ -30,7 +30,7 @@ is the working audit for what needs to be implemented next.
 | Ownership types (runtime enforcement) | ~45% | Full move/copy/drop checking |
 | `mild<T>` weak references | ~60% | Minimal control blocks done; Option-like failed upgrade and full copy/drop semantics remain |
 | Aspect/bind system | ~72% | Aspect objects/dyn dispatch, inheritance, qualified disambiguation |
-| Generic monomorphization | ~72% | Bounds-checked instantiation, broader nested/member templates |
+| Generic monomorphization | ~85% | **SEALED**: Compile-time only. See doc/MONOMORPHIZATION_DESIGN.md |
 | Async/await | ~80% | Real scheduler/executor |
 | Error propagation (`fail`/`trap`) | ~80% | Standard error aspects, `rethrow`, ensure contracts |
 | Lambda/closure codegen | ~50% | Full closure struct, captured-var codegen |
@@ -46,6 +46,11 @@ is the working audit for what needs to be implemented next.
 | Self-hosting compiler | ~0% | Long-term goal |
 
 **Overall: approximately 60-65% complete toward a production 1.0 release.**
+
+### Design Decisions — SEALED
+
+- **Monomorphization vs Polymorphism**: Vyb uses compile-time monomorphization for all generics. No vtables, no dynamic dispatch, no trait objects. Aspects + bind provide polymorphism via static dispatch. See `doc/MONOMORPHIZATION_DESIGN.md`.
+- **Aspects over Classes**: Structs for data, aspects for behavior contracts, bind for implementation. No class inheritance. See `doc/TRAIT_SYSTEM_DESIGN.md` and `doc/WHY_TRAITS_NOT_CLASSES.md`.
 
 ### Recently Completed
 - [x] **`defer` statement** — LIFO scope-exit deferred execution
