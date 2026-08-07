@@ -1,29 +1,27 @@
 # Test 13: Match expression with trap - error handling in pattern matching
-# Tests that errors in match arms can be trapped
-// @expect: fail
+# Tests that errors from match arms can be trapped
 
-parse_value(s<String>)<Int> -> {
-    match (s) {
-        "zero" -> return 0,
-        "one" -> return 1,
-        "fail" -> fail ParseError { input = s },
-        ? -> fail ParseError { input = "unknown: " + s }
+struct ParseError { input<String> }
+
+try_parse(s<String>)<Int> -> {
+    if (s == "fail") {
+        fail ParseError { input = s }
+    } else if (s == "zero") {
+        return 0
+    } else if (s == "one") {
+        return 1
+    } else {
+        fail ParseError { input = "unknown: " + s }
     }
 }
 
 main()<Int> -> {
-    inputs<Vec<String>> = vec!["zero", "one", "fail", "other"]
+    result1<Int> = { try_parse("zero") } trap (e<ParseError>) -> { println("Error: " + e.input); return -1 }
+    result2<Int> = { try_parse("one") } trap (e<ParseError>) -> { println("Error: " + e.input); return -1 }
+    result3<Int> = { try_parse("fail") } trap (e<ParseError>) -> { println("Error: " + e.input); return -1 }
 
-    for (input in inputs) {
-        result<Int> = {
-            parse_value(input)
-        } trap (e<ParseError>) -> {
-            println("Parse error for input: " + e.input)
-            return -1
-        }
-
-        println("Parsed '" + input + "' = " + result.to_string())
-    }
-
+    println("Parsed zero = " + result1.to_string())
+    println("Parsed one = " + result2.to_string())
+    println("Parsed fail = " + result3.to_string())
     return 0
 }

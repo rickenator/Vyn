@@ -911,6 +911,10 @@ regular_array_literal:
                     // Default to block for other cases
                     is_block = true;
                 }
+            } else {
+                // Non-identifier token after brace (number, bool, string, operator, etc.)
+                // Cannot be a struct field name, so treat as block
+                is_block = true;
             }
 
             // Restore position

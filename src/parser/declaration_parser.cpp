@@ -1101,7 +1101,11 @@ std::unique_ptr<vyb::ast::VariableDeclaration> DeclarationParser::parse_global_v
                                 location_to_string(this->current_location()));
     }
 
-    this->expect(vyb::TokenType::SEMICOLON);
+    // Optional semicolon - just consume if present, otherwise leave for next declaration parser
+    if (this->peek().type == vyb::TokenType::SEMICOLON) {
+        this->consume();
+    }
+
     return std::make_unique<vyb::ast::VariableDeclaration>(loc, std::move(identifier), is_const_decl,
                                                        std::move(type_node), std::shared_ptr<vyb::ast::Expression>(std::move(initializer)));
 }

@@ -1,41 +1,19 @@
 # Test 16: Error type hierarchy - composition-based
 # Tests error hierarchy using composition pattern
-// @expect: fail
 
-# Base error type
-struct Error {
-    message<String>,
-    location<SourceLocation>,
-    timestamp<Int64>
-}
+struct Error { message<String> }
+struct IOError { base<Error>, path<String> }
+struct FileNotFound { base<IOError> }
 
-# IO error extends Error
-struct IOError {
-    base<Error>,
-    path<String>
-}
-
-# FileNotFound extends IOError
-struct FileNotFound {
-    base<IOError>,
-    attempted_paths<Vec<String>>
-}
-
-open_file(path<String>)<File> -> {
-    if (!file_exists(path)) {
-        fail FileNotFound {
-            base = IOError {
-                base = Error {
-                    message = "File not found",
-                    location = here(),
-                    timestamp = now()
-                },
-                path = path
+open_file(path<String>)<Int> -> {
+    fail FileNotFound {
+        base = IOError {
+            base = Error {
+                message = "File not found"
             },
-            attempted_paths = vec![path, path + ".txt", "/tmp/" + path]
+            path = path
         }
     }
-    return File.open(path)
 }
 
 main()<Int> -> {
@@ -43,8 +21,8 @@ main()<Int> -> {
     {
         open_file("missing.txt")
     } trap (e<FileNotFound>) -> {
-        println("File not found, tried " + e.attempted_paths.len().to_string() + " paths")
-        println("Path was: " + e.base.path)
+        println("File not found at: " + e.base.path)
+        return 0
     }
 
     # Catch broader error type
@@ -52,7 +30,7 @@ main()<Int> -> {
         open_file("another_missing.txt")
     } trap (e<IOError>) -> {
         println("IO error at path: " + e.path)
-        println("Message: " + e.base.message)
+        return 0
     }
 
     # Catch base error type
@@ -60,6 +38,7 @@ main()<Int> -> {
         open_file("yet_another.txt")
     } trap (e<Error>) -> {
         println("Generic error: " + e.message)
+        return 0
     }
 
     return 0

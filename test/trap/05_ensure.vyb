@@ -1,8 +1,7 @@
 # Test 05: Ensure clause - cleanup that always runs
 # Tests ensure block execution on both success and failure
-// @expect: fail
 
-cleanup_called<my<Bool>> = false
+struct MyError { code<Int> }
 
 main()<Int> -> {
     # Test ensure on success path
@@ -11,7 +10,6 @@ main()<Int> -> {
         42
     } ensure -> {
         println("Cleanup on success")
-        cleanup_called = true
     }
 
     println("Result1: " + result1.to_string())

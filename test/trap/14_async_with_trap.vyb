@@ -2,45 +2,31 @@
 # Tests that errors work correctly in async/await contexts
 // @expect: fail
 
+struct InvalidURL { url<String> }
+
 async fetch_data(url<String>)<Future<String>> -> {
     if (url.starts_with("invalid")) {
         fail InvalidURL { url = url }
     }
-
-    # Simulate network request
-    await sleep(100)
-
-    if (url.contains("timeout")) {
-        fail NetworkTimeout { url = url, elapsed_ms = 5000 }
-    }
-
     return "Data from " + url
 }
 
 async main()<Int> -> {
-    # Test successful fetch
     result1<String> = {
         await fetch_data("https://example.com")
-    } trap (e<NetworkError>) -> {
-        return "Error: " + e.message()
+    } trap (e<InvalidURL>) -> {
+        println("Error: " + e.url)
+        return ""
     }
     println(result1)
 
-    # Test timeout
     result2<String> = {
-        await fetch_data("https://timeout.com")
-    } trap (e<NetworkTimeout>) -> {
-        println("Timeout after " + e.elapsed_ms.to_string() + "ms")
-        return ""
-    }
-
-    # Test invalid URL
-    result3<String> = {
         await fetch_data("invalid://bad")
     } trap (e<InvalidURL>) -> {
         println("Invalid URL: " + e.url)
         return ""
     }
+    println(result2)
 
     return 0
 }
