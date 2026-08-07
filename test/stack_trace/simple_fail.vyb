@@ -1,4 +1,5 @@
 // Simple test: just a fail statement
+// @expect: fail
 
 failer()<Int> -> {
     println("About to fail")

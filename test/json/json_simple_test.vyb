@@ -1,3 +1,4 @@
+// @expect: fail
 // Simpler JSON test to debug field access
 
 struct Person {

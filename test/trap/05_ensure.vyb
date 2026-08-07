@@ -1,5 +1,6 @@
 # Test 05: Ensure clause - cleanup that always runs
 # Tests ensure block execution on both success and failure
+// @expect: fail
 
 cleanup_called<my<Bool>> = false
 

@@ -1,11 +1,8 @@
-// filepath: /home/rick/Projects/Vyb/test/units/lexer/test5.vyb
 // @test: Lexer rejects tabs
 // @description: Extracted from tests.cpp - Lexer rejects tabs
 // @category: lexer
 // @expect: fail
-// @expect-output: n/a
-// @expect-error: Tabs not allowed at line 2, column 1
-// @expect-return: n/a
+// @expect-error: Tabs not allowed at line 8, column 1
 
 example()<Void> ->
 	const<Int> x = 10

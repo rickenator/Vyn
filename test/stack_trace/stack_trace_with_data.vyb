@@ -1,5 +1,6 @@
 // Test: Stack trace with function parameters
 // Shows stack trace with context about what was being processed
+// @expect: fail
 
 processValue(value<Int>)<Int> -> {
     println("Processing value")

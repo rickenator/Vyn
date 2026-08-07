@@ -1,5 +1,4 @@
-// @expect: fail
-# Test file with just string to isolate segfault
+# Test file with just string - no segfault
 y<String> = "hello";
 
 main()<Void> -> {

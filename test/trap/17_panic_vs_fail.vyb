@@ -1,5 +1,6 @@
 # Test 17: Panic vs Fail - difference in behavior
 # Tests the distinction between recoverable fail and unrecoverable panic
+// @expect: fail
 
 check_invariant(value<Int>)<Void> -> {
     # Panic for "should never happen" conditions

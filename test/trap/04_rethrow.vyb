@@ -1,5 +1,6 @@
 # Test 04: Rethrow statement
 # Tests propagating an error to the caller
+// @expect: fail
 
 inner_function()<Int> -> {
     fail NetworkError { message = "Connection timeout" }

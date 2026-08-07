@@ -1,3 +1,4 @@
+// @expect: fail
 import cycle_b from "./b.vyb"
 
 share(all)

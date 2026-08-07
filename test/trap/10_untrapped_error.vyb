@@ -1,5 +1,6 @@
 # Test 10: Untrapped error - should invoke runtime handler
 # Tests that untrapped errors are caught by the runtime and reported
+// @expect: fail
 
 risky_operation()<Int> -> {
     fail UnhandledError { message = "This error has no trap!" }

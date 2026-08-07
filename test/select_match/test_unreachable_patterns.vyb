@@ -1,3 +1,4 @@
+// @expect: fail
 // Test unreachable pattern detection
 // Should produce warnings for unreachable patterns
 

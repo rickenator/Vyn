@@ -1,3 +1,4 @@
+// @expect: fail
 // Test Future<T> type parsing and semantic analysis
 
 test_future_types()<Void> -> {

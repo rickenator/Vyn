@@ -1,5 +1,6 @@
 // Test: Multiple error paths with different failure points
 // Shows stack traces from different locations in the call tree
+// @expect: fail
 
 willFail(shouldFail<Int>)<Int> -> {
     if shouldFail == 1 {

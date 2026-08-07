@@ -1,5 +1,6 @@
 # Test 09: Rethrow with error transformation
 # Tests transforming an error before propagating it
+// @expect: fail
 
 low_level_operation()<Int> -> {
     fail LowLevelError { errno = 42, message = "Disk read failed" }

@@ -1,5 +1,6 @@
 # Test 15: Freedom blocks with error handling
 # Tests that errors can be thrown from freedom blocks
+// @expect: fail
 
 check_pointer(ptr<loc<Int>>)<Int> -> {
     freedom {

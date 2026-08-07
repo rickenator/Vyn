@@ -1,5 +1,6 @@
 // Test: Nested function calls with stack trace
 // This demonstrates a 3-level call stack when an error occurs
+// @expect: fail
 
 level3()<Int> -> {
     println("At level 3 - about to fail")

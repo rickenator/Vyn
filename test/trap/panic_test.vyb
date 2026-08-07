@@ -1,4 +1,5 @@
 # Semantic Test: Panic statement validation
+// @expect: fail
 
 critical_failure(condition<Bool>)<Int> -> {
     if (condition) {

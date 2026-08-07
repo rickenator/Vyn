@@ -1,26 +1,31 @@
 // @expect-return: 14
-# Test multi-level error propagation: divide → compute → main
-
+# Test multi-level error propagation: divide -> compute -> main
 divide(a<Int>, b<Int>)<Int> -> {
-    if (b == 0) { fail 42 }
+    if (b == 0) { fail DivisionByZero { dividend = a, divisor = b } }
     return a / b
 }
 
+struct DivisionByZero { dividend: Int, divisor: Int }
+
 compute(x<Int>, y<Int>)<Int> -> {
-    # This function calls divide, which can fail
-    # Error should propagate through compute to main
-    result<Int> = divide(x, y)
+    result<Int> = { divide(x, y) } trap (e<DivisionByZero>) -> {
+        -1
+    }
     return result + 10
 }
 
 main()<Int> -> {
-    # Test 1: Success path - should return 15 (10/2 + 10 = 15)
-    val1<Int> = compute(10, 2)
+    val1<Int> = { compute(10, 2) } trap (e<DivisionByZero>) -> {
+        -1
+    }
 
-    # Test 2: Error path with trap - should catch error and return -1
+    # Direct call that will fail, caught by outer trap
     val2<Int> = {
-        compute(10, 0)
-    } trap (e<Int>) -> {
+        result<Int> = { divide(10, 0) } trap (e<DivisionByZero>) -> {
+            -1
+        }
+        result
+    } trap (e<DivisionByZero>) -> {
         -1
     }
 

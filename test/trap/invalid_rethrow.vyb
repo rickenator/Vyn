@@ -1,4 +1,5 @@
 # Semantic Test: Invalid rethrow outside trap clause
+// @expect: fail
 
 struct MyError {
     code<Int>

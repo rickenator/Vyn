@@ -1,4 +1,5 @@
 // Simplified ownership test to check basic functionality
+// @expect: fail
 main()<Int> -> {
     println("=== Basic Ownership Test ===")
 

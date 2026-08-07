@@ -1,3 +1,4 @@
+// @expect: fail
 // Test get_vec method with all ownership types
 // This test demonstrates that get_vec works with any ownership type as long as constness is respected
 

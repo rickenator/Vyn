@@ -1,5 +1,7 @@
+// @expect: fail
 // Phase 6.5: Wildcard trap with specific trap handlers
 // Specific traps first, wildcard as catch-all
+# @expect: fail
 
 divide(a<Int>, b<Int>)<Int> -> {
     if (b == 0) {

@@ -1,12 +1,16 @@
-// @expect-return: 115
+// @expect: fail
 # Test if the problem is the first call or interaction
 divide(a<Int>, b<Int>)<Int> -> {
-    if (b == 0) { fail 42 }
+    if (b == 0) { fail DivisionByZero { dividend = a, divisor = b } }
     return a / b
 }
 
+struct DivisionByZero { dividend: Int, divisor: Int }
+
 compute(x<Int>, y<Int>)<Int> -> {
-    result<Int> = divide(x, y)
+    result<Int> = { divide(x, y) } trap (e<DivisionByZero>) -> {
+        -1
+    }
     return result + 10
 }
 

@@ -1,5 +1,6 @@
 # Test 03: Panic statement
 # Tests unrecoverable panic that crashes immediately
+// @expect: fail
 
 main()<Int> -> {
     println("Before panic")

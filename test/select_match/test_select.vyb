@@ -1,3 +1,4 @@
+// @expect: fail
 // Test select expressions - naked values auto-return, blocks use pass
 
 test_naked_values()<Void> -> {

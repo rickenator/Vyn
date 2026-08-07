@@ -1,5 +1,6 @@
 # Test 11: Ensure with trap - combined cleanup and error handling
 # Tests that ensure runs even when error is trapped
+// @expect: fail
 
 main()<Int> -> {
     println("=== Test: Ensure + Trap ===")

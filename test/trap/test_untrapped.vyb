@@ -1,4 +1,5 @@
 # Test untrapped error - should call __vyb_runtime_untrapped_error
+// @expect: fail
 
 divide(a<Int>, b<Int>)<Int> -> {
     if (b == 0) { fail 42 }

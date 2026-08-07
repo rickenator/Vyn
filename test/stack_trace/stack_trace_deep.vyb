@@ -1,5 +1,6 @@
 // Test: Deep call stack (5 levels)
 // Demonstrates stack trace with more depth
+// @expect: fail
 
 level5()<Int> -> {
     println("Level 5: Deepest call - failing here")

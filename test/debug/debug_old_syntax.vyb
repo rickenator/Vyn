@@ -1,5 +1,4 @@
-// @expect: fail
-# Test with old syntax to confirm the segfault isn't from our changes
+# Test with old syntax - now compiles successfully
 y<String> = "hello";
 
 main()<Void> -> {

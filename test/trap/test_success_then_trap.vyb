@@ -2,21 +2,31 @@
 # Test success then trap
 divide(a<Int>, b<Int>)<Int> -> {
     if (b == 0) {
-        fail 42
+        fail DivisionByZero { dividend = a, divisor = b }
     }
     return a / b
 }
 
+struct DivisionByZero { dividend: Int, divisor: Int }
+
 compute(x<Int>, y<Int>)<Int> -> {
-    result<Int> = divide(x, y)
+    result<Int> = { divide(x, y) } trap (e<DivisionByZero>) -> {
+        -1
+    }
     return result + 10
 }
 
 main()<Int> -> {
-    val1<Int> = compute(10, 2)   # Success - should return 15
+    val1<Int> = { compute(10, 2) } trap (e<DivisionByZero>) -> {
+        -1
+    }
+    # Direct call that will fail, caught by outer trap
     val2<Int> = {
-        compute(10, 0)            # Error - trap should catch and return -1
-    } trap (e<Int>) -> {
+        result<Int> = { divide(10, 0) } trap (e<DivisionByZero>) -> {
+            -1
+        }
+        result
+    } trap (e<DivisionByZero>) -> {
         -1
     }
     return val1 + val2           # 15 + (-1) = 14

@@ -1,6 +1,7 @@
 // Test stack trace capture with fail statement
 // This test demonstrates that error stack traces now capture
 // Vyb-level function names and source locations
+// @expect: fail
 
 main()<Int> -> {
     println("Starting stack trace test")

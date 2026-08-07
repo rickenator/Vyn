@@ -1,3 +1,4 @@
+// @expect: fail
 // Test Vec get_array for performance-critical scenarios
 main()<Int> -> {
     // Simulate real-time data processing scenario

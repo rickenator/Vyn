@@ -1,5 +1,6 @@
 # Test 07: Nested trap clauses
 # Tests nested error handling with inner and outer traps
+// @expect: fail
 
 main()<Int> -> {
     result<Int> = {

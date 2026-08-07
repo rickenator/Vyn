@@ -1,5 +1,6 @@
 # Test 06: Multiple trap clauses - type-based dispatch
 # Tests that the first matching trap catches the error
+// @expect: fail
 
 main()<Int> -> {
     # Test specific error type

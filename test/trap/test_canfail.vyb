@@ -1,15 +1,17 @@
 // @expect-return: 5
 # Test that functions with fail are marked canFail
-# This test just verifies the semantic phase marks the function properly
-
 divide(a<Int>, b<Int>)<Int> -> {
     if (b == 0) {
-        fail 42
+        fail DivisionByZero { dividend = a, divisor = b }
     }
     return a / b
 }
 
+struct DivisionByZero { dividend: Int, divisor: Int }
+
 main()<Int> -> {
-    result<Int> = divide(10, 2)
+    result<Int> = { divide(10, 2) } trap (e<DivisionByZero>) -> {
+        -1
+    }
     return result
 }

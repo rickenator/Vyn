@@ -1,5 +1,6 @@
 // Test unmatched error propagation
 // When a trap clause doesn't match the error type, it should propagate to outer handler
+// @expect: fail
 
 ErrorA = { code<Int> }
 ErrorB = { message<Int> }

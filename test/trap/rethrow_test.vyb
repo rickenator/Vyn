@@ -1,4 +1,5 @@
 # Semantic Test: Rethrow statement validation
+// @expect: fail
 
 struct NetworkError {
     code<Int>,

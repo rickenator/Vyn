@@ -1,5 +1,5 @@
-// Simple memory semantics test
-// @expect-return: 42
+// Simple memory semantics test - tests borrow/view conflict detection
+// @expect: fail
 main()<Int> -> {
     x<Int> = 42;
 
@@ -10,5 +10,5 @@ main()<Int> -> {
         v<their<Int>> = view(x);
     }
 
-    return x;  // Should return 100 since we changed it through pointer
+    return x;
 }

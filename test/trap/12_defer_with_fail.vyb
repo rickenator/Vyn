@@ -1,5 +1,6 @@
 # Test 12: Defer statements with fail - cleanup on error
 # Tests that defer cleanup runs even when function fails
+// @expect: fail
 
 process_file(path<String>)<Int> -> {
     file<File> = File.open(path)

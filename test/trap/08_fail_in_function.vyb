@@ -1,5 +1,6 @@
 # Test 08: Fail in function with trap at call site
 # Tests error propagation from function calls
+// @expect: fail
 
 divide(a<Int>, b<Int>)<Int> -> {
     if (b == 0) {

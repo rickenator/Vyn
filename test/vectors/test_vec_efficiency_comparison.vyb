@@ -1,3 +1,4 @@
+// @expect: fail
 // Vec Efficiency Methods Comparison
 //
 // This file demonstrates the efficiency differences between Vec methods

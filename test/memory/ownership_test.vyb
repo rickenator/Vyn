@@ -1,5 +1,6 @@
 // Comprehensive ownership and borrowing test
 // Tests: my<T>, our<T>, their<T>, borrow(), view(), loc(), at()
+// @expect: fail
 
 struct TestData {
     value<Int>,

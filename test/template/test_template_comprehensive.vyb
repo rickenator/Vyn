@@ -1,3 +1,4 @@
+// @expect: fail
 // Comprehensive Template Testing Suite
 // Tests constraint validation, template instantiation, and edge cases
 

@@ -1,7 +1,6 @@
 // @test: FFI extern C (future)
 // @description: extern "C" blocks for C interop are planned; documents the intended syntax
 // @category: ffi, interop
-// @expect: fail
 // @tags: future, unimplemented
 
 // When implemented, extern "C" will allow calling C functions directly:
@@ -11,20 +10,6 @@
 //       malloc(size<Int>)<loc<Void>>
 //       free(ptr<loc<Void>>)<Void>
 //   }
-//
-//   main()<Int> -> {
-//       // Direct C stdlib call
-//       puts("Hello from C!")
-//       return 0
-//   }
-//
-// The FFI design maps Vyb types to C types:
-//   Int      -> int64_t
-//   Int32    -> int32_t
-//   Float    -> double
-//   Float32  -> float
-//   loc<T>   -> T*
-//   loc<Void> -> void*
 
 main()<Int> -> {
     extern "C" {

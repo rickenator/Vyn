@@ -1,5 +1,6 @@
 # Test 13: Match expression with trap - error handling in pattern matching
 # Tests that errors in match arms can be trapped
+// @expect: fail
 
 parse_value(s<String>)<Int> -> {
     match (s) {

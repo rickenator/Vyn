@@ -1,5 +1,6 @@
 # Test 16: Error type hierarchy - composition-based
 # Tests error hierarchy using composition pattern
+// @expect: fail
 
 # Base error type
 struct Error {

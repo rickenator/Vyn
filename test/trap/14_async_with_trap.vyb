@@ -1,5 +1,6 @@
 # Test 14: Async functions with error handling
 # Tests that errors work correctly in async/await contexts
+// @expect: fail
 
 async fetch_data(url<String>)<Future<String>> -> {
     if (url.starts_with("invalid")) {

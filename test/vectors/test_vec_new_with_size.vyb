@@ -1,3 +1,4 @@
+// @expect-return: 0
 // Test Vec::new() and Vec::new(size) constructors with reference model semantics
 // This test also verifies Int32 and Float32 type support
 
