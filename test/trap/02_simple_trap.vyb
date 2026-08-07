@@ -1,11 +1,12 @@
 # Test 02: Simple trap - catching a failure
 # Tests basic trap clause that handles a specific error type
-// @expect: fail
+
+struct MyError { code<Int> }
 
 main()<Int> -> {
     result<Int> = {
         fail MyError { code = 42 }
-        return 100  # Never reached
+        return 100
     } trap (e<MyError>) -> {
         println("Caught error with code: " + e.code.to_string())
         return -1

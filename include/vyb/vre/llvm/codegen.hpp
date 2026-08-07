@@ -163,9 +163,14 @@ private:
         llvm::Value* errorSlot;              // Heap-allocated slot for error pointer
         ast::TypeNode* errorType;            // Expected error type
         std::string errorVarName;            // Name of error variable
+        llvm::BasicBlock* ensureBlock;       // Ensure block to run before resuming (if any)
+        llvm::AllocaInst* resultAlloca;      // Result alloca for storing handler return values
     };
     std::vector<TrapContext> trapStack;      // Stack of active trap contexts
+    bool inTrapHandler = false;           // True when executing trap handler body
+    int currentTrapHandlerIndex = -1;     // Index of current trap handler being executed
     std::vector<llvm::BasicBlock*> ensureBlocks; // Ensure cleanup blocks to execute
+    std::vector<llvm::Value*> trapHandlerReturnValues; // Return values from trap handlers (for PHI node)
     llvm::AllocaInst* currentErrorSlot = nullptr; // Current error being handled
 
     // Stack trace capture for error handling (Phase 6.4)

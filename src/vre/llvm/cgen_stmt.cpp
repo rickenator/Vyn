@@ -392,11 +392,6 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                 }
 
                 // Now check type compatibility (after wrapping if needed)
-                fprintf(stderr, "DEBUG_CHECK: retType=%s valType=%s match=%d\n",
-                    getTypeName(currentFunction->getReturnType()).c_str(),
-                    getTypeName(returnValue->getType()).c_str(),
-                    (int)(returnValue->getType() == currentFunction->getReturnType()));
-                fflush(stderr);
                 if (returnValue->getType() != currentFunction->getReturnType()) {
                     // Special case: returning a single element tuple (Tuple<T>)
                     // If function returns a struct and we have a scalar, wrap it in a struct
@@ -503,12 +498,6 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                     builder->CreateRetVoid();
                 } else if (returnValue->getType() != currentFunction->getReturnType()) {
                     // Type mismatch: handle gracefully
-                    fprintf(stderr, "DEBUG_CRASH: RetType=%s ValType=%s IsArray=%d IsPtr=%d\n",
-                        getTypeName(currentFunction->getReturnType()).c_str(),
-                        getTypeName(returnValue->getType()).c_str(),
-                        (int)llvm::isa<llvm::ArrayType>(returnValue->getType()),
-                        (int)llvm::isa<llvm::PointerType>(returnValue->getType()));
-                    fflush(stderr);
                     if (currentFunction && currentFunction->getName() == "main") {
                         // For main(), auto-serialize the mismatched return value
                         
@@ -638,7 +627,9 @@ void LLVMCodegen::visit(vyb::ast::ExpressionStatement* node) {
         node->expression->accept(*this);
         // The value of the expression is m_currentLLVMValue, but it's not used by the statement itself.
     }
-    m_currentLLVMValue = nullptr; // Expression statement doesn't produce a value for further expressions
+    if (!inTrapHandler) {
+        m_currentLLVMValue = nullptr; // Expression statement doesn't produce a value for further expressions
+    }
 }
 
 void LLVMCodegen::visit(vyb::ast::IfStatement* node) {

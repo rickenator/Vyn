@@ -1170,7 +1170,21 @@ void SemanticAnalyzer::visit(ast::TypeAliasDeclaration* node) {
 
 // --- Type and expression analysis ---
 
-void SemanticAnalyzer::visit(ast::UnaryExpression* node) {}
+void SemanticAnalyzer::visit(ast::UnaryExpression* node) {
+    if (!node || !node->operand) {
+        return;
+    }
+    // Visit the operand to get its type
+    node->operand->accept(*this);
+    
+    // The result type of a unary expression is the same as the operand type
+    if (expressionTypes.count(node->operand.get())) {
+        expressionTypes[node] = expressionTypes[node->operand.get()];
+    } else if (node->operand->type) {
+        expressionTypes[node] = node->operand->type.get();
+        node->type = std::shared_ptr<ast::TypeNode>(node->operand->type->clone());
+    }
+}
 void SemanticAnalyzer::visit(ast::BinaryExpression* node) {
     if (!node || !node->left || !node->right) {
         addError("Malformed binary expression.", node);

@@ -187,6 +187,28 @@ void LLVMCodegen::visit(vyb::ast::Module* node) {
         }
     }
 
+
+    // FIRST-ALIAS PASS: Process type alias declarations before function forward declarations
+    // so that type aliases are available when resolving function return types.
+    VYB_CDBG << "DEBUG: First-alias pass - processing type alias declarations" << std::endl;
+    for (size_t i = 0; i < node->body.size(); ++i) {
+        const auto& stmt = node->body[i];
+        if (stmt && stmt->getType() == vyb::ast::NodeType::TYPE_ALIAS_DECLARATION) {
+            VYB_CDBG << "DEBUG: Processing type alias declaration statement " << i << std::endl;
+            stmt->accept(*this);
+        }
+    }
+
+    // Also process enum declarations (they may be referenced in function signatures)
+    VYB_CDBG << "DEBUG: First-enum pass - processing enum declarations" << std::endl;
+    for (size_t i = 0; i < node->body.size(); ++i) {
+        const auto& stmt = node->body[i];
+        if (stmt && stmt->getType() == vyb::ast::NodeType::ENUM_DECLARATION) {
+            VYB_CDBG << "DEBUG: Processing enum declaration statement " << i << std::endl;
+            stmt->accept(*this);
+        }
+    }
+
     // SECOND PASS: Create forward declarations for all functions
     VYB_CDBG << "DEBUG: Second pass - creating function forward declarations" << std::endl;
     for (size_t i = 0; i < node->body.size(); ++i) {

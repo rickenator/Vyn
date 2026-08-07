@@ -4373,6 +4373,9 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
     llvm::BasicBlock* ensureBB = hasEnsure ? llvm::BasicBlock::Create(*context, "block.ensure", func) : nullptr;
     llvm::BasicBlock* continueBB = llvm::BasicBlock::Create(*context, "block.continue", func);
 
+    // Create alloca for block result (used when hasTrap || hasEnsure)
+    llvm::AllocaInst* blockResultAlloca = builder->CreateAlloca(builder->getInt64Ty(), nullptr, "block.result.alloca");
+
     // Create error slot and landing pad if we have trap clauses
     llvm::Value* errorSlot = nullptr;
     llvm::BasicBlock* landingPadBB = nullptr;
@@ -4474,6 +4477,12 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
     // If block didn't terminate, branch to ensure/continue and record exit block
     if (!builder->GetInsertBlock()->getTerminator()) {
         normalExitBB = builder->GetInsertBlock();
+
+        // Store block result in alloca for PHI merge (when hasTrap || hasEnsure)
+        if (blockResultAlloca && blockResult) {
+            builder->CreateStore(blockResult, blockResultAlloca);
+        }
+
         if (hasEnsure) {
             builder->CreateBr(ensureBB);
         } else {
@@ -4737,6 +4746,13 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
                 }
                 builder->CreateCall(freeErrFn, {errorPtr});
 
+                // Store handler result in alloca for merge point
+                if (blockResultAlloca) {
+                    llvm::Type* resType = clauseResult ? clauseResult->getType() : builder->getInt64Ty();
+                    llvm::Value* storeVal = clauseResult ? clauseResult : llvm::ConstantInt::get(resType, 0);
+                    builder->CreateStore(storeVal, blockResultAlloca);
+                }
+
                 llvm::BasicBlock* handlerExitBB = builder->GetInsertBlock();
                 if (hasEnsure) {
                     builder->CreateBr(ensureBB);
@@ -4795,8 +4811,12 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
     // Continue block
     builder->SetInsertPoint(continueBB);
 
-    // Create PHI node to merge results from different paths
-    if (hasTrap && (blockResult || !trapExits.empty())) {
+    // Merge results from different paths
+    if (blockResultAlloca) {
+        // Alloca-based result passing - all paths stored to the same alloca
+        m_currentLLVMValue = builder->CreateLoad(builder->getInt64Ty(), blockResultAlloca, "block.result.load");
+    } else if (hasTrap && (blockResult || !trapExits.empty())) {
+        // PHI-based result passing (fallback for edge cases without alloca)
         // Determine result type
         llvm::Type* resultType = blockResult ? blockResult->getType() :
                                  !trapExits.empty() && trapExits[0].second ? trapExits[0].second->getType() : nullptr;
