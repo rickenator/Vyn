@@ -27,7 +27,7 @@ is the working audit for what needs to be implemented next.
 | Type system (primitives + generics) | ~75% | Higher-kinded types |
 | Struct system | ~85% | repr(C) for FFI |
 | Ownership types (syntax + parsing) | ~80% | Semantic enforcement |
-| Ownership types (runtime enforcement) | ~45% | Full move/copy/drop checking |
+| Ownership types (runtime enforcement) | ~45% | Full move/copy/drop checking; a first-pass compile-time move/use-after-move checker for `my<T>` is in progress (uncommitted) |
 | `mild<T>` weak references | ~60% | Minimal control blocks done; Option-like failed upgrade and full copy/drop semantics remain |
 | Aspect/bind system | ~72% | Aspect objects/dyn dispatch, inheritance, qualified disambiguation |
 | Generic monomorphization | ~85% | **SEALED**: Compile-time only. See doc/MONOMORPHIZATION_DESIGN.md |
@@ -240,7 +240,7 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
 - [ ] **`vyb bindgen`** — Tool to generate Vyb bindings from C headers (v0.6+)
 
 ### 3. Ownership Types — Runtime Enforcement (HIGH PRIORITY)
-- [ ] **`my<T>` move semantics** — Enforce single-owner at compile time; error on copy
+- [ ] **`my<T>` move semantics** — Enforce single-owner at compile time; error on copy. *Status: first-pass compile-time move tracking is in progress (working tree, uncommitted, tests in `test/ownership/move_*.vyb` incomplete).*
 - [ ] **`our<T>` reference counting** — Minimal control-block strong_count exists for `our()`/`grab()`/scope cleanup; full copy/assignment/parameter semantics remain
 - [x] **`their<T>` borrow checker (lexical phase)** — borrow/view require lvalues, reject overlapping mutable/view borrows, reject assignment while borrowed
 - [x] **`mild<T>` control block (minimal runtime)** — `soft()` increments weak_count, `released()` observes release after strong owner scope exit, and live `grab()` upgrades by incrementing strong_count

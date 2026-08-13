@@ -63,7 +63,7 @@ The compiler validates at the call site that the concrete type satisfies all bou
 
 When a generic function is called, the compiler:
 
-1. **Infers** concrete types from argument types (first argument determines first type parameter)
+1. **Infers** concrete types from argument types (each call argument maps to its type parameter by position)
 2. **Validates** aspect bounds against the concrete types
 3. **Generates** a specialized function with substituted types
 4. **Caches** the result to avoid duplicate code
@@ -178,7 +178,7 @@ The **more specific** (bounded) bind takes precedence when its conditions are me
 | Generic bind (bind<T>) | ✅ Working | `bind<T> Trait -> Vec<T>` works |
 | Bounded generic bind | ✅ Working | `bind<T<Display>> Trait -> Box<T>` works |
 | Associated types in aspects | ✅ Working | `type Item` in aspect, `type Item = T` in bind |
-| Multi-argument type inference | ⚠️ Partial | Only first argument used; needs improvement |
+| Multi-argument type inference | ✅ Working | Each call argument maps to its type parameter by position (fixed 2026-08-06) |
 | Nested generic monomorphization | ⚠️ Partial | `Vec<Box<Int>>` works but parser has edge cases |
 | Generic bind method resolution | ✅ Working | Aspect methods on generic types resolve correctly |
 
@@ -186,11 +186,10 @@ The **more specific** (bounded) bind takes precedence when its conditions are me
 
 These are implementation improvements, **not** design changes:
 
-1. **Multi-argument type inference** — Match type parameters to arguments by position and aspect bounds
-2. **Generic bind selection** — Properly pick bounded vs unbounded binds at call sites
-3. **Nested generic parser support** — Handle `>>>` vs `>> >` ambiguity in parser
-4. **Aspect metadata generation** — Include aspect info in type metadata for serialization
-5. **Error messages** — Better diagnostics when bounds are not satisfied
+1. **Generic bind selection** — Properly pick bounded vs unbounded binds at call sites
+2. **Nested generic parser support** — Handle `>>>` vs `>> >` ambiguity in parser
+3. **Aspect metadata generation** — Include aspect info in type metadata for serialization
+4. **Error messages** — Better diagnostics when bounds are not satisfied
 
 ## This Document Is Sealed
 
