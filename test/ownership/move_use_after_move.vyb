@@ -1,0 +1,10 @@
+// Test: Use after move should be rejected by semantic analyzer
+// @expect: fail
+// @expect-error: Use after move
+main()<Int> -> {
+    x<my<Int>> = my(42)
+    y<my<Int>> = x  // x is moved here
+    z<Int> = y      // OK: y is still valid
+    w<Int> = x      // ERROR: use after move - x was moved to y
+    return 0
+}

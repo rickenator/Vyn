@@ -41,6 +41,40 @@ static bool isBuiltinVecType(ast::TypeNode* typeNode) {
            !typeName->genericArgs.empty();
 }
 
+// Ownership-wrapped types whose runtime representation is a plain scalar value.
+// At codegen time, ownership wrappers over primitives keep the underlying type
+// (e.g. my<Int> is just an i64), so semantic analysis treats them as transparent.
+static const std::set<std::string> ownershipWrapperTypes = {
+    "my", "our", "their", "mild", "view", "borrow"
+};
+
+static const std::set<std::string> primitiveValueTypes = {
+    "Int", "Int8", "Int16", "Int32", "Int64",
+    "UInt8", "UInt16", "UInt32", "UInt64",
+    "Float", "Float32", "Float64", "Bool", "Char", "Rune",
+    "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64",
+    "CChar", "CUChar", "CShort", "CUShort", "CInt", "CUInt", "CLong", "CULong",
+    "CSize", "CSSize", "CFloat", "CDouble", "CVoid", "CString"
+};
+
+// If `type` is an ownership wrapper over a primitive value type, return the
+// underlying primitive type; otherwise return `type` unchanged.
+static ast::TypeNode* unwrapPrimitiveOwnershipType(ast::TypeNode* type) {
+    if (!type) return nullptr;
+    auto* typeName = dynamic_cast<ast::TypeName*>(type);
+    if (!typeName || !typeName->identifier || typeName->genericArgs.size() != 1 ||
+        !ownershipWrapperTypes.count(typeName->identifier->name)) {
+        return type;
+    }
+    ast::TypeNode* inner = typeName->genericArgs[0].get();
+    auto* innerName = dynamic_cast<ast::TypeName*>(inner);
+    if (innerName && innerName->identifier &&
+        primitiveValueTypes.count(innerName->identifier->name)) {
+        return inner;
+    }
+    return type;
+}
+
 static std::string reprCUnsupportedReason(ast::TypeNode* typeNode) {
     if (!typeNode) {
         return "has no declared type";
@@ -229,6 +263,7 @@ void SemanticAnalyzer::addError(const std::string& message, const ast::Node* nod
 void SemanticAnalyzer::enterScope() {
     currentScope = new SymbolTable(currentScope);
     borrowScopes.emplace_back();
+    moveScopes.emplace_back();
 }
 
 void SemanticAnalyzer::exitScope() {
@@ -239,6 +274,7 @@ void SemanticAnalyzer::exitScope() {
     }
     if (!borrowScopes.empty()) {
         borrowScopes.pop_back();
+        moveScopes.pop_back();
     }
 }
 
@@ -405,6 +441,7 @@ void SemanticAnalyzer::recordBorrow(const std::string& rootName, ast::BorrowKind
     }
     if (borrowScopes.empty()) {
         borrowScopes.emplace_back();
+    moveScopes.emplace_back();
     }
 
     BorrowState active = aggregateBorrowState(rootName);
@@ -427,6 +464,38 @@ void SemanticAnalyzer::recordBorrow(const std::string& rootName, ast::BorrowKind
     }
     borrowScopes.back()[rootName].immutableBorrows++;
 }
+
+// Move tracking helpers
+bool SemanticAnalyzer::hasOwnershipKindMY(SymbolInfo* sym) const {
+    if (!sym || !sym->type) return false;
+    // Check if the type name starts with "my<" - this indicates MY ownership
+    std::string typeStr = sym->type->toString();
+    return typeStr.rfind("my<", 0) == 0;
+}
+
+ast::OwnershipKind SemanticAnalyzer::getOwnershipKind(SymbolInfo* sym) const {
+    if (!sym) return ast::OwnershipKind::MY;
+    return sym->ownershipKind;
+}
+
+void SemanticAnalyzer::recordMove(const std::string& varName) {
+    if (!moveScopes.empty()) {
+        moveScopes.back()[varName].isMoved = true;
+    }
+}
+
+bool SemanticAnalyzer::isMoved(const std::string& varName) const {
+    // Walk scopes from innermost to outermost
+    for (auto it = moveScopes.rbegin(); it != moveScopes.rend(); ++it) {
+        auto vit = it->find(varName);
+        if (vit != it->end()) {
+            return vit->second.isMoved;
+        }
+    }
+    return false;
+}
+
+
 
 bool SemanticAnalyzer::isRawLocationType(ast::Expression* expr) {
     auto it = expressionTypes.find(expr);
@@ -524,9 +593,19 @@ void SemanticAnalyzer::visit(ast::Identifier* node) {
         expressionTypes[node] = nullptr;
         return;
     }
-    expressionTypes[node] = symbol->type;
-    if (symbol->type) {
-        node->type = std::shared_ptr<ast::TypeNode>(symbol->type->clone());
+    // Reading an ownership-wrapped primitive (my<Int>, our<Int>, ...) yields the
+    // underlying primitive type, matching the inline value representation in codegen.
+    ast::TypeNode* readType = symbol->type ? unwrapPrimitiveOwnershipType(symbol->type) : nullptr;
+    expressionTypes[node] = readType;
+
+    // Move tracking: reject use of MY-owned variables that have been moved from
+    if (hasOwnershipKindMY(symbol) && isMoved(node->name)) {
+        addError("Use after move: '" + node->name + "' has been moved and is no longer valid.", node);
+        expressionTypes[node] = nullptr;
+        return;
+    }
+    if (readType) {
+        node->type = std::shared_ptr<ast::TypeNode>(readType->clone());
 
     } else {
         VYB_CDBG << "DEBUG: No type found for identifier '" << node->name << "'" << std::endl;
@@ -1056,6 +1135,15 @@ void SemanticAnalyzer::visit(ast::VariableDeclaration* node) {
             }
         }
 
+        // Move tracking: a variable declaration initialized from a MY-owned
+        // value transfers ownership out of the source (matching assignment).
+        if (auto* initIdent = dynamic_cast<ast::Identifier*>(node->init.get())) {
+            SymbolInfo* initSymbol = currentScope->lookup(initIdent->name);
+            if (initSymbol && hasOwnershipKindMY(initSymbol)) {
+                recordMove(initIdent->name);
+            }
+        }
+
         if (auto* borrowExpr = dynamic_cast<ast::BorrowExpression*>(node->init.get())) {
             recordBorrow(borrowedRootName(borrowExpr->expression.get()), borrowExpr->kind, borrowExpr);
         } else if (auto* callExpr = dynamic_cast<ast::CallExpression*>(node->init.get())) {
@@ -1579,6 +1667,16 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                     expressionTypes[node] = returnType;
                     node->type = std::shared_ptr<ast::TypeNode>(returnType->clone());
                 }
+
+            // Move tracking: mark MY-owned argument identifiers as moved when passed to function
+            for (auto& arg : node->arguments) {
+                if (auto* argIdent = dynamic_cast<ast::Identifier*>(arg.get())) {
+                    SymbolInfo* argSymbol = currentScope->lookup(argIdent->name);
+                    if (argSymbol && hasOwnershipKindMY(argSymbol)) {
+                        recordMove(argIdent->name);
+                    }
+                }
+            }
                 return;
             }
         }
@@ -1591,6 +1689,16 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             ast::TypeNode* returnType = declaredReturn->type ? declaredReturn->type.get() : declaredReturn;
             expressionTypes[node] = returnType;
             node->type = std::shared_ptr<ast::TypeNode>(returnType->clone());
+
+            // Move tracking: mark MY-owned argument identifiers as moved when passed to function
+            for (auto& arg : node->arguments) {
+                if (auto* argIdent = dynamic_cast<ast::Identifier*>(arg.get())) {
+                    SymbolInfo* argSymbol = currentScope->lookup(argIdent->name);
+                    if (argSymbol && hasOwnershipKindMY(argSymbol)) {
+                        recordMove(argIdent->name);
+                    }
+                }
+            }
             return;
         }
     }
@@ -2812,6 +2920,16 @@ void SemanticAnalyzer::visit(ast::AssignmentExpression* node) {
 
     if (leftType) {
       node->type = std::shared_ptr<ast::TypeNode>(leftType->clone());
+    }
+
+    // Move tracking: if RHS is a MY-owned identifier being assigned to LHS, mark RHS as moved
+    if (auto* rhsIdent = dynamic_cast<ast::Identifier*>(node->right.get())) {
+        if (auto* lhsIdent = dynamic_cast<ast::Identifier*>(node->left.get())) {
+            SymbolInfo* rhsSymbol = currentScope->lookup(rhsIdent->name);
+            if (rhsSymbol && hasOwnershipKindMY(rhsSymbol)) {
+                recordMove(rhsIdent->name);
+            }
+        }
     }
 }
 
@@ -5037,6 +5155,14 @@ bool SemanticAnalyzer::areTypesCompatible(ast::TypeNode* targetType, ast::TypeNo
     // If they are the exact same type object.
     if (targetType == valueType) {
         return true;
+    }
+
+    // Ownership wrappers over primitives are transparent: my<Int>, Int, and
+    // our<Int> all lower to the same scalar at codegen time.
+    ast::TypeNode* unwrappedTarget = unwrapPrimitiveOwnershipType(targetType);
+    ast::TypeNode* unwrappedValue = unwrapPrimitiveOwnershipType(valueType);
+    if (unwrappedTarget != targetType || unwrappedValue != valueType) {
+        return areTypesCompatible(unwrappedTarget, unwrappedValue);
     }
 
     ast::TypeNode::Category categoryTarget = targetType->getCategory();

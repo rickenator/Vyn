@@ -456,6 +456,17 @@ private:
         int immutableBorrows = 0;
     };
     std::vector<std::unordered_map<std::string, BorrowState>> borrowScopes;
+    // Move tracking: per-scope map of variable name -> whether it has been moved from
+    struct MoveState {
+        bool isMoved = false;
+    };
+    std::vector<std::unordered_map<std::string, MoveState>> moveScopes;
+
+    // Helper methods for move tracking
+    void recordMove(const std::string& varName);
+    bool isMoved(const std::string& varName) const;
+    bool hasOwnershipKindMY(SymbolInfo* sym) const;
+    ast::OwnershipKind getOwnershipKind(SymbolInfo* sym) const;
 
     // Helper for transitive error propagation
     bool checkCallsFailableFunction(ast::Node* node);

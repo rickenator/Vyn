@@ -1538,6 +1538,16 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         llvm::Value* structValue = m_currentLLVMValue;
         llvm::Type* structType = structValue->getType();
 
+        // Primitive ownership values are stored inline (e.g. my<Int> is just an
+        // i64) - pass the value through rather than allocating a heap box or
+        // control block, matching the value-typed ownership representation.
+        if (structType->isIntegerTy() || structType->isFloatTy() || structType->isDoubleTy()) {
+            m_currentLLVMValue = structValue;
+            VYB_CDBG << "DEBUG: Ownership constructor " << identCallee->name
+                      << "() over primitive passes value through" << std::endl;
+            return;
+        }
+
         if (identCallee->name == "my") {
             // For my(), allocate memory on heap and store the struct value
             if (!structType->isStructTy()) {

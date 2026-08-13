@@ -1,0 +1,9 @@
+// Test: OUR ownership does not trigger move semantics
+// @expect: pass
+// @expect-return: 42
+main()<Int> -> {
+    x<our<Int>> = our(42)
+    y<Int> = x
+    z<Int> = x  // Can still access x because OUR is shared
+    return y
+}

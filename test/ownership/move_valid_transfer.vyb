@@ -1,0 +1,8 @@
+// Test: Valid MY ownership transfer - move is allowed, use-after-move is not
+// @expect: pass
+// @expect-return: 42
+main()<Int> -> {
+    x<my<Int>> = my(42)
+    y<Int> = x  // x is moved to y, y now owns the value
+    return y
+}
