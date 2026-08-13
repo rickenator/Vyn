@@ -1,12 +1,12 @@
 // Test: Function call consumes MY-owned argument
 // @expect: fail
 // @expect-error: Use after move
-consume_val<x<my<Int>>><Void> -> {
+consume_val(x<my<Int>>)<Void> -> {
     println(x)
 }
 
 main()<Int> -> {
-    x<my<Int>> = my(Int(42))
+    x<my<Int>> = my(42)
     consume_val(x)  // x is consumed here
     println(x)  // ERROR: use after move
     return 0
