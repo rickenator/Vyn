@@ -1,0 +1,39 @@
+# core::aspects - Standard polymorphic contracts
+#
+# The six canonical core aspects define Vyb's standard behavior contracts:
+# stringification (Display), debugging output (Debug), value cloning (Clone),
+# and equality/comparison/hashing (Equatable / Comparable / Hashable). They are
+# the aspect-side surface that collections (e.g. HashMap<K, V> with
+# `Hashable + Equatable` bounds), the Iterator protocol, and generic algorithms
+# constrain against. Comparable refines Equatable, so any type that binds
+# Comparable must also bind Equatable.
+
+share(all)
+aspect Display {
+    display(self)<String> -> { }
+}
+
+share(all)
+aspect Debug {
+    debug(self)<String> -> { }
+}
+
+share(all)
+aspect Clone {
+    clone(self)<Self> -> { }
+}
+
+share(all)
+aspect Equatable {
+    equals(self, other<Self>)<Bool> -> { }
+}
+
+share(all)
+aspect Hashable {
+    hash(self)<Int> -> { }
+}
+
+share(all)
+aspect Comparable : Equatable {
+    compare(self, other<Self>)<Int> -> { }
+}

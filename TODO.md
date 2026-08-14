@@ -263,7 +263,7 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
 ### 4. Standard Library Expansion (HIGH PRIORITY)
 - [x] **`Option<T>`** — `Some(value)` / `None` for nullable values; built-in generic enum (transitional `core::option::OptionInt` bridge retained for source-compat)
 - [x] **`Result<T, E>`** — `Ok(value)` / `Err(error)` for fallible operations; built-in generic enum (`core::result` placeholder module retained for source-compat)
-- [ ] **Core aspects** — `Display`, `Debug`, `Clone`, `Equatable`, `Comparable`, `Hashable`
+- [ ] **Core aspects** — `Display`, `Debug`, `Clone`, `Equatable`, `Comparable`, `Hashable` (*in progress:* the `core::aspects` stdlib module declares all six contracts with `Comparable : Equatable`, re-exported via `core::prelude`/prelude and bindable to structs with unqualified dispatch and generic bounds — `test/aspect/test_core_aspects_bindings.vyb`; remaining: bindings for built-in primitives, which requires allowing primitives as impl targets)
 - [x] **String methods** — `.len()`, `.contains()`, `.starts_with()`, `.ends_with()`, `.to_upper()`, `.to_lower()`, `.substring()`, `.char_at()`, `.trim()`, `.replace()`, `String::from_bytes()`
 - [ ] **String methods (remaining)** — `.split()`, `.format()`
 - [ ] **String formatting** — Format strings or `fmt()` intrinsic
@@ -697,5 +697,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: August 2026*
 *Current Version: Vyb v0.5.4 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 805 tests passing (harness, 100%)*
+*Overall Status: ~60-65% complete toward 1.0 — 806 tests passing (harness, 100%)*
 *SUGGESTIONS.md merged into this document.*

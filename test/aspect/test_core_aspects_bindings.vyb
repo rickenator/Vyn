@@ -1,0 +1,54 @@
+// @test: core::aspects stdlib module bindings
+// @description: The core::aspects module declares the standard polymorphic contracts (Display, Debug, Clone, Equatable, Hashable, Comparable) that a type can bind and dispatch unqualified, including Comparable's Equatable super-aspect requirement and generic bounds over core aspects.
+// @category: aspect, stdlib, core-aspects, generics, bounds
+// @expect: pass
+// @expect-return: 0
+
+import core::aspects
+
+struct Point {
+    x<Int>
+}
+
+bind Display -> Point {
+    display(self<Point>)<String> -> { return "P" }
+}
+
+bind Debug -> Point {
+    debug(self<Point>)<String> -> { return "dbg" }
+}
+
+bind Clone -> Point {
+    clone(self<Point>)<Point> -> { return Point { x = self.x } }
+}
+
+bind Equatable -> Point {
+    equals(self<Point>, other<Point>)<Bool> -> { return self.x == other.x }
+}
+
+bind Hashable -> Point {
+    hash(self<Point>)<Int> -> { return self.x }
+}
+
+bind Comparable -> Point {
+    compare(self<Point>, other<Point>)<Int> -> { return self.x - other.x }
+}
+
+describe<T<Display>>(thing<T>)<String> -> {
+    return thing.display()
+}
+
+sortable<T<Comparable>>(a<T>, b<T>)<Int> -> {
+    return a.compare(b)
+}
+
+main()<Int> -> {
+    a<Point> = Point { x = 1 }
+    b<Point> = Point { x = 1 }
+    c<Point> = a.clone()
+    if (describe(a) == "P" && a.equals(b) && a.compare(b) == 0 &&
+        sortable(a, b) == 0 && c.equals(a)) {
+        return 0
+    }
+    return 1
+}

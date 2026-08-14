@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Core aspects stdlib contracts** — a new `core::aspects` stdlib module declares
+  the six canonical polymorphic contracts (`Display`, `Debug`, `Clone`, `Equatable`,
+  `Hashable`, `Comparable`), with `Comparable : Equatable` as a super-aspect. The
+  aspects are `share(all)`-exported and re-exposed through `core::prelude` /
+  the root `prelude`, so a type can `bind` them and dispatch unqualified
+  (`thing.display()`, `a.equals(b)`, `a.compare(b)`, `a.clone()`), and generic
+  functions can constrain with core-aspect bounds (`<T<Display>>`, `<T<Comparable>>`).
+  Built-in primitive bindings (binds targeting `Int`/`String`/`Float`/`Bool`/`Char`)
+  are a follow-on (binds to primitives as impl targets are not yet supported).
+
 - **Unqualified method dispatch on bounded type parameters** — inside a generic
   function, an unqualified dot call like `thing.show()` on a receiver typed as a
   bounded type parameter (`thing<T<Display>>` / `thing<T<Named>>`) now resolves
