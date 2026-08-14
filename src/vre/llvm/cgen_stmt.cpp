@@ -819,8 +819,8 @@ void LLVMCodegen::visit(vyb::ast::PassStatement* node) {
         }
 
         if (passValue && currentYield.resultAlloca) {
-            // Store the value in the result alloca
-            builder->CreateStore(passValue, currentYield.resultAlloca);
+            // Store the value in the result alloca (wrapping char* -> String if needed)
+            storeIntoResultSlot(passValue, currentYield.resultAlloca, node->loc);
 
             // Branch to the end block
             builder->CreateBr(currentYield.endBlock);
@@ -1477,7 +1477,7 @@ void LLVMCodegen::codegenMatch(vyb::ast::MatchStatement* node, llvm::AllocaInst*
             // arm's resulting value into the shared result slot.
             if (resultAlloca && m_currentLLVMValue &&
                 !builder->GetInsertBlock()->getTerminator()) {
-                builder->CreateStore(m_currentLLVMValue, resultAlloca);
+                storeIntoResultSlot(m_currentLLVMValue, resultAlloca, node->loc);
             }
         }
         // Scoped destructured field bindings per case arm.

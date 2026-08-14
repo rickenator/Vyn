@@ -1,0 +1,40 @@
+// @test: match/select arms returning String from a method call keep the length
+// @description: a match/select arm whose value is a primitive .to_string() (a raw
+//   char*) stored into a String-typed result slot is wrapped into a { ptr, len }
+//   struct (previously the length field was left zero, breaking == and .len()).
+// @category: match, select, string, to_string, codegen
+// @expect: pass
+// @expect-return: -77
+// @execute-jit: true
+
+enum Shape { Circle(Float), Square }
+
+match_label(s<Shape>)<String> -> {
+    return match (s) {
+        Circle(r) -> r.to_string()
+        Square -> "sq"
+    }
+}
+
+select_label(s<Shape>)<String> -> {
+    return select(s) -> {
+        Circle(r) -> r.to_string()
+        Square -> "sq"
+    }
+}
+
+main()<Int> -> {
+    c<Shape> = Shape::Circle(2.5)
+    q<Shape> = Shape::Square
+
+    mc<String> = match_label(c)
+    mq<String> = match_label(q)
+    sc<String> = select_label(c)
+    sq<String> = select_label(q)
+
+    if (mc == "2.5" && mc.len() == 3 && mq == "sq" &&
+        sc == "2.5" && sc.len() == 3 && sq == "sq") {
+        return -77
+    }
+    return 1
+}

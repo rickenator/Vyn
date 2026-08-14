@@ -5278,7 +5278,7 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
                     // Naked expression - auto-store result
                     result->accept(*this);
                     if (resultAlloca && m_currentLLVMValue) {
-                        builder->CreateStore(m_currentLLVMValue, resultAlloca);
+                        storeIntoResultSlot(m_currentLLVMValue, resultAlloca, node->loc);
                     }
                     // Auto-branch to end for naked expressions
                     if (!builder->GetInsertBlock()->getTerminator()) {
@@ -5437,7 +5437,7 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
                     // Naked expression - auto-store and branch
                     result->accept(*this);
                     if (resultAlloca && m_currentLLVMValue) {
-                        builder->CreateStore(m_currentLLVMValue, resultAlloca);
+                        storeIntoResultSlot(m_currentLLVMValue, resultAlloca, node->loc);
                     }
                     if (!builder->GetInsertBlock()->getTerminator()) {
                         builder->CreateBr(endSelectBB);

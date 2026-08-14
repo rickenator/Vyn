@@ -247,6 +247,13 @@ private:
 
     llvm::Value* tryCast(llvm::Value* value, llvm::Type* targetType, const vyb::SourceLocation& loc);
 
+    // Store a produced value into a result slot, wrapping a raw char* (e.g. the
+    // result of a primitive .to_string()) into a String { ptr, i64 } struct so the
+    // length field is set. Without the wrap, a char* stored into a String slot
+    // leaves the length at zero and the String compares unequal / reports length 0.
+    void storeIntoResultSlot(llvm::Value* value, llvm::AllocaInst* slot,
+                             const vyb::SourceLocation& loc);
+
     // Generic trait method monomorphization
     struct TypePattern {
         std::string base;                    // e.g., "Box"

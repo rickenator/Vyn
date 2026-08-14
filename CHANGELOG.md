@@ -48,6 +48,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `bind HasArea -> Shape { ... }`, matched over `Circle(r)` / `Rect(w,h)`).
 
 ### Fixed
+- A `match`/`select` arm whose value is a primitive `.to_string()` now stores a
+  proper `{ ptr, len }` String into the expression's result slot (wrapping the
+  raw `char*` with a `strlen`-computed length). Previously the raw pointer was
+  stored and the length field stayed zero, so a String produced this way printed
+  correctly but `.len()` returned 0 and `==` against a literal compared unequal.
+  Affects `match` and `select` returning a String in this pattern.
 - `select` now supports data-carrying enum variants directly: arms like
   `Circle(r) ->`, `Rect(w, h) ->`, and `Unit ->` dispatch on the runtime tag and
   bind payload fields as arm-scoped locals, matching the `match` behavior.

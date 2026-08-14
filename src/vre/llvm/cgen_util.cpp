@@ -190,6 +190,40 @@ llvm::Value* LLVMCodegen::tryCast(llvm::Value* value, llvm::Type* targetType, co
     return nullptr;
 }
 
+void LLVMCodegen::storeIntoResultSlot(llvm::Value* value, llvm::AllocaInst* slot,
+                                      const vyb::SourceLocation& loc) {
+    (void)loc;
+    if (!value || !slot) return;
+    llvm::Type* slotTy = slot->getAllocatedType();
+    llvm::Value* toStore = value;
+
+    // A raw char* (e.g. the result of a primitive .to_string()) stored into a
+    // String { ptr, i64 } result slot must be wrapped with a strlen-computed
+    // length; otherwise the length field stays zero and the String compares
+    // unequal / reports length 0.
+    if (value->getType()->isPointerTy() && slotTy->isStructTy()) {
+        llvm::StructType* st = llvm::dyn_cast<llvm::StructType>(slotTy);
+        if (st && st->getNumElements() == 2 &&
+            st->getElementType(0)->isPointerTy() &&
+            st->getElementType(1)->isIntegerTy(64)) {
+            llvm::Type* i8Ptr = llvm::PointerType::get(*context, 0);
+            llvm::Type* i64Ty = llvm::Type::getInt64Ty(*context);
+            llvm::Function* strlenFunc = module->getFunction("strlen");
+            if (!strlenFunc) {
+                strlenFunc = llvm::Function::Create(
+                    llvm::FunctionType::get(i64Ty, {i8Ptr}, false),
+                    llvm::Function::ExternalLinkage, "strlen", module.get());
+            }
+            llvm::Value* len = builder->CreateCall(strlenFunc, {value}, "slot.strlen");
+            toStore = llvm::UndefValue::get(slotTy);
+            toStore = builder->CreateInsertValue(toStore, value, 0, "slot.ptr");
+            toStore = builder->CreateInsertValue(toStore, len, 1, "slot.len");
+        }
+    }
+
+    builder->CreateStore(toStore, slot);
+}
+
 llvm::Value* LLVMCodegen::createEntryBlockAlloca(llvm::Function* func, const std::string& varName, llvm::Type* type) {
     if (!func) {
         // logError (some location, "Cannot create alloca: not in a function context.");
