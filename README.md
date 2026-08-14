@@ -8,7 +8,7 @@
 
 ## 1. Introduction
 
-Welcome to the Vyb Programming Guide. This guide walks you through writing, building, and extending Vyb programs, from your first "Hello, Vyb!" to deep dives into the Vyb language internals and runtime. **Version 0.5.3** (freedom-1.0 series, in development) delivers a robust systems programming language with an LLVM backend, native code compilation to standalone executables, a sized type system, pattern matching with `match` and `select` expressions, comprehensive control flow including `defer`, `break`/`continue`, resizable `Vec<T>` collections, string methods, a math library, runtime type introspection (`typeof`/`typename`), unified name-first function syntax, compile-time monomorphized generics, aspect/bind polymorphism, a `fail`/`trap` error system, C-like enums, and comprehensive auto-serialization capabilities.
+Welcome to the Vyb Programming Guide. This guide walks you through writing, building, and extending Vyb programs, from your first "Hello, Vyb!" to deep dives into the Vyb language internals and runtime. **Version 0.5.4** (freedom-1.0 series, in development) delivers a robust systems programming language with an LLVM backend, native code compilation to standalone executables, a sized type system, pattern matching with `match` and `select` expressions, comprehensive control flow including `defer`, `break`/`continue`, resizable `Vec<T>` collections, string methods, a math library, runtime type introspection (`typeof`/`typename`), unified name-first function syntax, compile-time monomorphized generics, aspect/bind polymorphism, a `fail`/`trap` error system, C-like enums, and comprehensive auto-serialization capabilities.
 
 ### 1.1 Purpose & Audience
 
@@ -49,7 +49,7 @@ Vyb is a statically typed, compiled systems language targeting native code via L
 * **Concurrency Built In**: Async/await today; actors, channels, and typed streams planned.
 * **Native Compilation**: Full JIT (LLVM ORC), AOT (object files), and executable generation pipeline.
 
-**Current Version:** 0.5.3 (freedom-1.0 series, in development) 🚀 **AOT COMPILATION + CROSS-PLATFORM SUPPORT**
+**Current Version:** 0.5.4 (freedom-1.0 series, in development) 🚀 **AOT COMPILATION + CROSS-PLATFORM SUPPORT**
 
 ## Quick Start
 
@@ -266,7 +266,7 @@ This unique `import`/`smuggle` distinction makes Vyb's module system both secure
 
 ## In This Release
 
-Vyb **v0.5.3** (freedom-1.0 series, in development) is a mature systems programming language with **native executable generation** and a broad core feature set. It remains under active development toward the 1.0 milestone; see `doc/FEATURE_STATUS.md` for the current feature matrix.
+Vyb **v0.5.4** (freedom-1.0 series, in development) is a mature systems programming language with **native executable generation** and a broad core feature set. It remains under active development toward the 1.0 milestone; see `doc/FEATURE_STATUS.md` for the current feature matrix.
 
 ### ✅ **Recent Milestones**
 These features were completed in the current release cycle and are fully tested:
