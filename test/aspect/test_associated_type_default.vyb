@@ -1,0 +1,25 @@
+// @test: default associated type satisfies a bind without explicit assignment
+// @description: aspect Item = Int provides a default a bind may inherit instead of assigning type Item explicitly
+// @category: aspect, associated types, defaults
+// @expect: pass
+// @expect-return: 42
+
+aspect Iterator {
+    type Item = Int
+    next(self)<Self::Item>
+}
+
+struct CounterIter {
+    value<Int>
+}
+
+bind Iterator -> CounterIter {
+    next(self)<Int> -> {
+        return self.value
+    }
+}
+
+main()<Int> -> {
+    iter<CounterIter> = CounterIter { value = 42 }
+    return iter.next()
+}

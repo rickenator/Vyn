@@ -204,8 +204,21 @@ struct TraitInfo {
     std::vector<std::string> genericParams;
     std::vector<std::string> superTraits; // Aspect inheritance
     std::vector<std::string> associatedTypes;
+    // Default types for associated types, index-aligned with associatedTypes
+    // (nullptr = no default declared).
+    std::vector<ast::TypeNode*> associatedTypeDefaults;
     std::vector<TraitMethod> methods;
     ast::AspectDeclaration* declaration; // Original AST node
+
+    // Returns the declared default type for an associated type, or nullptr.
+    ast::TypeNode* getAssociatedTypeDefault(const std::string& assocName) const {
+        for (size_t i = 0; i < associatedTypes.size() && i < associatedTypeDefaults.size(); ++i) {
+            if (associatedTypes[i] == assocName) {
+                return associatedTypeDefaults[i];
+            }
+        }
+        return nullptr;
+    }
 
     TraitInfo(ast::AspectDeclaration* decl) : declaration(decl) {
         if (decl->name) {
@@ -226,9 +239,15 @@ struct TraitInfo {
             }
         }
 
-        for (const auto& associatedType : decl->associatedTypes) {
+        for (size_t i = 0; i < decl->associatedTypes.size(); ++i) {
+            const auto& associatedType = decl->associatedTypes[i];
             if (associatedType) {
                 associatedTypes.push_back(associatedType->name);
+                ast::TypeNode* def = nullptr;
+                if (i < decl->associatedTypeDefaults.size()) {
+                    def = decl->associatedTypeDefaults[i].get();
+                }
+                associatedTypeDefaults.push_back(def);
             }
         }
 

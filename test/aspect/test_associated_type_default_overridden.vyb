@@ -1,0 +1,30 @@
+// @test: bind overrides a default associated type
+// @description: An explicit type Item assignment in a bind takes precedence over the aspect's default
+// @category: aspect, associated types, defaults
+// @expect: pass
+// @expect-return: 0
+
+aspect Named {
+    type Item = Int
+    next(self)<Self::Item>
+}
+
+struct S {
+    v<String>
+}
+
+bind Named -> S {
+    type Item = String
+    next(self)<String> -> {
+        return self.v
+    }
+}
+
+main()<Int> -> {
+    s<S> = S { v = "hi" }
+    r<String> = s.next()
+    if (r == "hi") {
+        return 0
+    }
+    return 1
+}

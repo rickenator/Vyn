@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   functions: `Aspect::method(thing)` where `thing<T<Aspect>>` resolves the return
   type from the bound aspect's signature and dispatches to the correct concrete
   bind for each instantiation.
+- Default associated types: an aspect may declare `type Item = Int`, and a bind
+  for that aspect can omit the explicit `type Item = ...` assignment and inherit
+  the default. An explicit assignment still takes precedence. A missing assignment
+  without a declared default remains a semantic error.
 - Aspect inheritance (super-aspects): `aspect Comparable : Equatable` declares a
   super-aspect. Super-aspect names are validated against defined aspects, cyclic
   super-aspect dependencies are rejected, and binding a sub-aspect requires the

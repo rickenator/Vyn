@@ -182,7 +182,7 @@ is the working audit for what needs to be implemented next.
 
 ### Aspect System — Completion (HIGH PRIORITY)
 - [x] Phases 1-4: Declarations, method calls, generic impls, type param substitution
-- [x] **Associated types (first practical slice)** — `aspect Iterator { type Item }` declarations, `bind` assignments (`type Item = Int`), and semantic validation for missing/unknown/duplicate assignments are implemented. Remaining work: defaults, where-style constraints, dyn-dispatch integration.
+- [x] **Associated types (first practical slice + defaults)** — `aspect Iterator { type Item }` declarations, `bind` assignments (`type Item = Int`), semantic validation for missing/unknown/duplicate assignments, and default associated types (`type Item = Int` in the aspect, inherited when a bind omits the assignment) are implemented. Remaining work: where-style constraints, dyn-dispatch integration.
 - [ ] **Aspect objects / dynamic dispatch** — `dyn Aspect` for runtime polymorphism
 - [x] **Aspect inheritance** — `aspect Comparable : Equatable` super-aspects: declared super-aspects are validated against defined aspects, cyclic dependencies are rejected, and binding a sub-aspect requires the same type to also bind each super-aspect (order-independent).
 - [x] **Qualified aspect-method disambiguation** — `DisplayA::show(thing)` selects a specific aspect whenever multiple bound aspects declare the same method name for a type; unqualified ambiguous dot-calls (`thing.show()`) remain rejected. Bind method symbols are emitted per `Type_Trait_Method` so distinct implementations coexist. Also works on bounded type parameters (`Aspect::show(thing)` for `thing<T<Aspect>>` inside generic functions).
@@ -647,5 +647,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: August 2026*
 *Current Version: Vyb v0.5.3 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 748 tests passing (harness, 100%)*
+*Overall Status: ~60-65% complete toward 1.0 — 750 tests passing (harness, 100%)*
 *SUGGESTIONS.md merged into this document.*

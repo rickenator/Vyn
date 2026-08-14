@@ -818,6 +818,7 @@ std::unique_ptr<vyb::ast::Declaration> DeclarationParser::parse_trait_declaratio
 
     // Parse trait members
     std::vector<std::unique_ptr<ast::Identifier>> associated_types;
+    std::vector<ast::TypeNodePtr> associated_type_defaults;
     std::vector<std::unique_ptr<ast::FunctionDeclaration>> methods;
 
     while (this->peek().type != vyb::TokenType::RBRACE && this->peek().type != vyb::TokenType::END_OF_FILE) {
@@ -830,6 +831,16 @@ std::unique_ptr<vyb::ast::Declaration> DeclarationParser::parse_trait_declaratio
             }
 
             associated_types.push_back(std::make_unique<ast::Identifier>(associated_type_loc, this->consume().lexeme));
+
+            // Optional default: type Item = Int
+            ast::TypeNodePtr assoc_default = nullptr;
+            if (this->match(vyb::TokenType::EQ)) {
+                assoc_default = this->type_parser_.parse();
+                if (!assoc_default) {
+                    throw std::runtime_error("Expected type after '=' for associated type in aspect '" + name->name + "' at " + location_to_string(this->current_location()));
+                }
+            }
+            associated_type_defaults.push_back(std::move(assoc_default));
         } else {
             // Parse method declaration (may or may not have a body for default implementations)
             auto method = this->parse_function();
@@ -848,7 +859,7 @@ std::unique_ptr<vyb::ast::Declaration> DeclarationParser::parse_trait_declaratio
 
     this->expect(vyb::TokenType::RBRACE);
 
-    return std::make_unique<ast::AspectDeclaration>(loc, std::move(name), std::move(generic_params), std::move(super_types), std::move(associated_types), std::move(methods));
+    return std::make_unique<ast::AspectDeclaration>(loc, std::move(name), std::move(generic_params), std::move(super_types), std::move(associated_types), std::move(associated_type_defaults), std::move(methods));
 }
 
 // ImplDeclNode not in ast.hpp. Assuming a Declaration type for it.

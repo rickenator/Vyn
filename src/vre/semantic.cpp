@@ -6517,6 +6517,21 @@ void SemanticAnalyzer::registerTraitImpl(ast::BindDeclaration* implDecl) {
                 associatedMap[assocBinding.name->name] = assocBinding.valueType.get();
             }
         }
+
+        // Fill in aspect-declared default types for any associated types the
+        // bind did not explicitly assign.
+        auto traitIt = traitRegistry.find(traitName);
+        if (traitIt != traitRegistry.end() && traitIt->second) {
+            for (const auto& declaredAssoc : traitIt->second->associatedTypes) {
+                if (associatedMap.find(declaredAssoc) != associatedMap.end()) {
+                    continue;
+                }
+                ast::TypeNode* assocDefault = traitIt->second->getAssociatedTypeDefault(declaredAssoc);
+                if (assocDefault) {
+                    associatedMap[declaredAssoc] = assocDefault;
+                }
+            }
+        }
     }
 }
 
@@ -6637,8 +6652,14 @@ bool SemanticAnalyzer::validateTraitImpl(const std::string& typeName,
 
     for (const auto& declaredAssoc : traitInfo->associatedTypes) {
         if (associatedTypeBindingNames.find(declaredAssoc) == associatedTypeBindingNames.end()) {
-            addError("Missing associated type assignment '" + declaredAssoc + "' in bind '" + traitName + " -> " + typeName + "'.", bindDecl);
-            return false;
+            // An undeclared associated type may be satisfied by the aspect's
+            // default type (e.g. `type Item = Int` in the aspect declaration).
+            ast::TypeNode* assocDefault = traitInfo->getAssociatedTypeDefault(declaredAssoc);
+            if (!assocDefault) {
+                addError("Missing associated type assignment '" + declaredAssoc + "' in bind '" + traitName + " -> " + typeName + "'.", bindDecl);
+                return false;
+            }
+            associatedTypeBindingNames[declaredAssoc] = assocDefault->toString();
         }
     }
 

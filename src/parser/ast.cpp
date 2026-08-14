@@ -1685,8 +1685,8 @@ void MatchStatement::accept(Visitor& visitor) {
 }
 
 // --- AspectDeclaration ---
-AspectDeclaration::AspectDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<std::unique_ptr<GenericParameter>> gp, std::vector<std::unique_ptr<Identifier>> sup_types, std::vector<std::unique_ptr<Identifier>> assoc_types, std::vector<std::unique_ptr<FunctionDeclaration>> meths)
-    : Declaration(loc), name(std::move(n)), genericParams(std::move(gp)), superTypes(std::move(sup_types)), associatedTypes(std::move(assoc_types)), methods(std::move(meths)) {}
+AspectDeclaration::AspectDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<std::unique_ptr<GenericParameter>> gp, std::vector<std::unique_ptr<Identifier>> sup_types, std::vector<std::unique_ptr<Identifier>> assoc_types, std::vector<TypeNodePtr> assoc_defaults, std::vector<std::unique_ptr<FunctionDeclaration>> meths)
+    : Declaration(loc), name(std::move(n)), genericParams(std::move(gp)), superTypes(std::move(sup_types)), associatedTypes(std::move(assoc_types)), associatedTypeDefaults(std::move(assoc_defaults)), methods(std::move(meths)) {}
 
 NodeType AspectDeclaration::getType() const {
     return NodeType::ASPECT_DECLARATION;
@@ -1703,9 +1703,13 @@ std::string AspectDeclaration::toString() const {
         }
     }
     ss << " {\n";
-    for (const auto& associatedType : associatedTypes) {
-        if (associatedType) {
-            ss << "  type " << associatedType->toString() << "\n";
+    for (size_t i = 0; i < associatedTypes.size(); ++i) {
+        if (associatedTypes[i]) {
+            ss << "  type " << associatedTypes[i]->toString();
+            if (i < associatedTypeDefaults.size() && associatedTypeDefaults[i]) {
+                ss << " = " << associatedTypeDefaults[i]->toString();
+            }
+            ss << "\n";
         }
     }
     for (const auto& method : methods) {
