@@ -1202,6 +1202,11 @@ public:
     std::unique_ptr<Identifier> name;
     std::vector<std::unique_ptr<GenericParameter>> genericParams;
     std::vector<std::unique_ptr<FieldDeclaration>> fields;
+    // Declared constructors (`constructor(cap<Int>) -> { ... }` inside the struct
+    // body). Each is stored as a FunctionDeclaration that lower to a synthetic
+    // generic function (`__ctor_<Struct>_<N>`) sharing the struct's generic
+    // parameters, so `HashMap<K,V>(n)` dispatches like any other generic call.
+    std::vector<std::unique_ptr<FunctionDeclaration>> constructors;
     bool reprC = false;
 
     StructDeclaration(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<std::unique_ptr<GenericParameter>> genericParams, std::vector<std::unique_ptr<FieldDeclaration>> fields, bool reprC = false);

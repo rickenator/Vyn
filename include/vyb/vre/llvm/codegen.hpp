@@ -194,6 +194,9 @@ private:
     // Generic function templates
     std::map<std::string, vyb::ast::FunctionDeclaration*> genericFunctionTemplates; // Store generic function AST nodes (e.g., printItem<T>)
     std::map<std::string, llvm::Function*> monomorphizedFunctions; // Cache instantiated functions (e.g., "printItem_Point" -> Function*)
+    // Declared struct constructors: struct name -> list of (arity, ctor fn name).
+    // `HashMap<K,V>(n)` dispatches to the matching constructor generic function.
+    std::map<std::string, std::vector<std::pair<unsigned, std::string>>> structConstructors;
 
     // Enum variant integer constants: "EnumName::VariantName" -> constant i64
     std::map<std::string, llvm::Constant*> enumVariantValues;
@@ -283,6 +286,9 @@ private:
                                                const std::vector<std::string>& concreteTypeArgs);
     std::string mangleGenericFunctionName(const std::string& baseName,
                                           const std::vector<std::string>& typeArgs);
+    // Register a struct's declared constructors as synthetic generic functions
+    // (`__ctor_<Struct>_<N>`) and record their arities for construction dispatch.
+    void registerStructConstructors(vyb::ast::StructDeclaration* node);
 
     // Helper methods for monomorphization with type substitution
     llvm::Type* resolveTypeForMonomorphization(const TypePattern& pattern,

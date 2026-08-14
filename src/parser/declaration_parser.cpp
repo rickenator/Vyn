@@ -726,8 +726,136 @@ std::unique_ptr<vyb::ast::Declaration> DeclarationParser::parse_struct() {
     this->expect(vyb::TokenType::LBRACE);
 
     std::vector<std::unique_ptr<ast::FieldDeclaration>> fields;
+    std::vector<std::unique_ptr<ast::FunctionDeclaration>> constructors;
+
+    // Clone a vector of generic parameters so each constructor can carry the
+    // struct's own type parameters independently.
+    auto cloneGenericParams =
+        [](const std::vector<std::unique_ptr<ast::GenericParameter>>& src) {
+            std::vector<std::unique_ptr<ast::GenericParameter>> out;
+            out.reserve(src.size());
+            for (const auto& gp : src) {
+                if (!gp) { out.emplace_back(); continue; }
+                std::vector<ast::TypeNodePtr> bounds;
+                for (const auto& b : gp->bounds) bounds.push_back(b ? b->clone() : nullptr);
+                out.push_back(std::make_unique<ast::GenericParameter>(
+                    gp->loc,
+                    std::make_unique<ast::Identifier>(gp->name->loc, gp->name->name),
+                    std::move(bounds)));
+            }
+            return out;
+        };
 
     while (this->peek().type != vyb::TokenType::RBRACE && this->peek().type != vyb::TokenType::END_OF_FILE) {
+        // Declared constructor: `constructor(param<Type>, ...) <RetType> -> { ... }`
+        // inside the struct body. Constructors are lowered to synthetic generic
+        // functions named `__ctor_<Struct>_<N>` that share the struct's type
+        // parameters, so `HashMap<K,V>(n)` can dispatch like any generic call.
+        if (this->peek().type == vyb::TokenType::IDENTIFIER &&
+            this->peek().lexeme == "constructor") {
+            // Guard against a field literally named `constructor`: only treat it
+            // as a constructor clause when it is immediately followed by `(`.
+            size_t look = this->pos_;
+            while (look < this->tokens_.size() &&
+                   (this->tokens_[look].type == vyb::TokenType::COMMENT ||
+                    this->tokens_[look].type == vyb::TokenType::NEWLINE ||
+                    this->tokens_[look].type == vyb::TokenType::INDENT ||
+                    this->tokens_[look].type == vyb::TokenType::DEDENT)) {
+                ++look;
+            }
+            // `pos_` currently sits on the `constructor` identifier; advance past
+            // it and any interleaving whitespace to inspect what follows.
+            if (look < this->tokens_.size() && this->tokens_[look].type == vyb::TokenType::IDENTIFIER) {
+                ++look;
+            }
+            while (look < this->tokens_.size() &&
+                   (this->tokens_[look].type == vyb::TokenType::COMMENT ||
+                    this->tokens_[look].type == vyb::TokenType::NEWLINE ||
+                    this->tokens_[look].type == vyb::TokenType::INDENT ||
+                    this->tokens_[look].type == vyb::TokenType::DEDENT)) {
+                ++look;
+            }
+            if (look < this->tokens_.size() &&
+                this->tokens_[look].type == vyb::TokenType::LPAREN) {
+                SourceLocation ctor_loc = this->current_location();
+                this->consume(); // 'constructor'
+                this->expect(vyb::TokenType::LPAREN);
+                std::vector<vyb::ast::FunctionParameter> ctor_params;
+                if (this->peek().type != vyb::TokenType::RPAREN) {
+                    do {
+                        ctor_params.push_back(this->parse_function_parameter_struct());
+                    } while (this->match(vyb::TokenType::COMMA));
+                }
+                this->expect(vyb::TokenType::RPAREN);
+
+                ast::TypeNodePtr ctor_ret = nullptr;
+                if (this->match(vyb::TokenType::LT)) {
+                    ctor_ret = this->type_parser_.parse();
+                    this->expect(vyb::TokenType::GT);
+                } else {
+                    // A constructor returns the struct it belongs to: default the
+                    // return type to the struct type with the struct's own generic
+                    // parameters as its type arguments (e.g. `HashMap<K,V>`).
+                    std::vector<ast::TypeNodePtr> self_args;
+                    for (const auto& gp : generic_params) {
+                        if (gp && gp->name) {
+                            self_args.push_back(std::make_unique<ast::TypeName>(
+                                gp->loc, std::make_unique<ast::Identifier>(gp->loc, gp->name->name)));
+                        }
+                    }
+                    ctor_ret = std::make_unique<ast::TypeName>(
+                        ctor_loc, std::make_unique<ast::Identifier>(ctor_loc, name->name),
+                        std::move(self_args));
+                }
+
+                if (this->match(vyb::TokenType::ARROW)) {
+                    /* optional arrow before the body */
+                }
+
+                std::unique_ptr<ast::BlockStatement> ctor_body = nullptr;
+                if (this->peek().type == vyb::TokenType::LBRACE) {
+                    vyb::StatementParser stmt_parser(this->tokens_, this->pos_, 0,
+                        this->current_file_path_, this->type_parser_, this->expr_parser_, this);
+                    ctor_body = stmt_parser.parse_block();
+                    this->pos_ = stmt_parser.get_current_pos();
+                } else if (this->peek().type == vyb::TokenType::INDENT) {
+                    this->consume();
+                    std::vector<ast::StmtPtr> statements;
+                    while (!this->IsAtEnd() && this->peek().type != vyb::TokenType::DEDENT &&
+                           this->peek().type != vyb::TokenType::END_OF_FILE) {
+                        while (!this->IsAtEnd() && this->peek().type == vyb::TokenType::NEWLINE) this->consume();
+                        if (this->IsAtEnd() || this->peek().type == vyb::TokenType::DEDENT) break;
+                        vyb::StatementParser stmt_parser(this->tokens_, this->pos_, 0,
+                            this->current_file_path_, this->type_parser_, this->expr_parser_, this);
+                        statements.push_back(stmt_parser.parse());
+                        this->pos_ = stmt_parser.get_current_pos();
+                    }
+                    if (this->peek().type == vyb::TokenType::DEDENT) this->consume();
+                    ctor_body = std::make_unique<ast::BlockStatement>(
+                        this->current_location(), std::move(statements));
+                }
+
+                std::string ctor_name = "__ctor_" + name->name + "_" + std::to_string(constructors.size());
+                constructors.push_back(std::make_unique<vyb::ast::FunctionDeclaration>(
+                    ctor_loc,
+                    std::make_unique<ast::Identifier>(ctor_loc, ctor_name),
+                    std::move(ctor_params),
+                    std::move(ctor_body),
+                    false,               // not async
+                    std::move(ctor_ret), // return type
+                    true,                // has body
+                    cloneGenericParams(generic_params),
+                    false));             // not variadic
+
+                this->skip_comments_and_newlines();
+                if (this->peek().type == vyb::TokenType::COMMA) {
+                    this->consume();
+                    this->skip_comments_and_newlines();
+                }
+                continue;
+            }
+        }
+
         SourceLocation field_loc = this->current_location();
 
         if (this->peek().type != vyb::TokenType::IDENTIFIER) {
@@ -780,13 +908,18 @@ std::unique_ptr<vyb::ast::Declaration> DeclarationParser::parse_struct() {
         if (this->match(vyb::TokenType::COMMA)) {
              this->skip_comments_and_newlines();
              if (this->peek().type == vyb::TokenType::RBRACE) break;
-        } else if (this->peek().type != vyb::TokenType::RBRACE) {
+        } else if (this->peek().type != vyb::TokenType::RBRACE &&
+                   !(this->peek().type == vyb::TokenType::IDENTIFIER &&
+                     this->peek().lexeme == "constructor")) {
             throw std::runtime_error("Expected comma or closing brace after struct field in \'" + name->name + "\' at " + location_to_string(this->current_location()));
         }
     }
     this->expect(vyb::TokenType::RBRACE);
 
-    return std::make_unique<ast::StructDeclaration>(loc, std::move(name), std::move(generic_params), std::move(fields), reprC);
+    auto structDecl = std::make_unique<ast::StructDeclaration>(
+        loc, std::move(name), std::move(generic_params), std::move(fields), reprC);
+    structDecl->constructors = std::move(constructors);
+    return structDecl;
 }
 
 

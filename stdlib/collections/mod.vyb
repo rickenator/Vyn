@@ -11,14 +11,20 @@
 #     chain) indexes the keys so a lookup only scans the single bucket the key
 #     hashes to instead of the whole map. Buckets start at 16 and double (with a
 #     full re-hash) once the load exceeds 2 keys per bucket, keeping average
-#     lookup O(1). Provides `put`, `get` (returning `Option<V>`),
-#     `contains_key` and `size`. Build one with `make_hash_map<K, V>()`.
+#     lookup O(1). Provides `put` (returns `Bool`: false only when a fixed map
+#     is at capacity and the key is new), `get` (returning `Option<V>`),
+#     `contains_key` and `size`. Build one with `HashMap<K, V>()` (empty),
+#     `HashMap<K, V>(cap)` (pre-sized, still auto-grows), or
+#     `HashMap<K, V>(cap, true)` (fixed at `cap` entries, no re-hash, bounded
+#     memory for embedded targets).
 #   - `HashSet<K>`: a set of distinct keys backed by a `values` vector plus the
 #     same auto-growing bucket/chain index. Provides `insert` (returns `Bool`),
-#     `contains` and `size`. Build one with `make_hash_set<K>()`.
-#   - `make_hash_map<K,V>()` / `make_hash_set<K>()`: the constructors return a
-#     fully initialized (bucket-indexed) instance. They are the supported way to
-#     build these collections because the bucket metadata must be set up.
+#     `contains` and `size`. Build one with `HashSet<K>()`, `HashSet<K>(cap)`,
+#     or the fixed `HashSet<K>(cap, true)`.
+#   - `HashMap<K,V>()` / `HashSet<K>()` (and their `(cap)` / `(cap, true)`
+#     capacity forms) are declared struct constructors: they return a fully initialized
+#     (bucket-indexed) instance, keeping the `Vec()` / `Vec(n)` construction
+#     idiom consistent across the standard library.
 #
 # Import the whole module with `import collections` (the carried generic bind
 # methods reference the shared `samekey` / `hashkey` probes and `bucket_for`, so
@@ -60,12 +66,57 @@ struct HashMap<K, V> {
     keys<Vec<K>>,
     vals<Vec<V>>,
     head<Vec<Int>>,
-    next<Vec<Int>>
+    next<Vec<Int>>,
+    meta<Vec<Int>>
+
+    # Empty map starting at the default bucket count.
+    constructor() {
+        m<HashMap<K, V>> = HashMap<K, V>(0)
+        return m
+    }
+
+    # Map pre-sized for `cap` entries but still auto-grows: bucket count stays a
+    # power of two (at least 16) so the load factor is <= 2, meaning no re-hash
+    # is needed until `cap` keys are inserted. Trade upfront memory to skip the
+    # early grow/re-hash resize storms when the size is known.
+    constructor(cap<Int>) {
+        return HashMap<K, V>(cap, false)
+    }
+
+    # Fixed-capacity map: holds at most `cap` entries with provably bounded
+    # memory (never re-hashes or reallocs once built). `put` returns `false`
+    # when the map is at capacity and the key is new; updating an existing key
+    # still succeeds (`true`) even at capacity.
+    constructor(cap<Int>, fixed<Bool>) {
+        nb<Int> = 16
+        two<Int> = 32
+        while (two < cap) {
+            nb = nb * 2
+            two = two * 2
+        }
+        head<Vec<Int>> = Vec<Int>()
+        i<Int> = 0
+        while (i < nb) {
+            head.push(-1)
+            i = i + 1
+        }
+        # `meta` stores [capacity, fixed(0|1)]. Kept as a Vec<Int> (rather than
+        # scalar fields) so the by-ref receiver lays the struct out correctly;
+        # scalar trailing fields currently mis-resolve in by-ref member access.
+        meta<Vec<Int>> = Vec<Int>()
+        meta.push(cap)
+        fix<Int> = 0
+        if (fixed) {
+            fix = 1
+        }
+        meta.push(fix)
+        return HashMap<K, V> { keys = Vec<K>(), vals = Vec<V>(), head = head, next = Vec<Int>(), meta = meta }
+    }
 }
 
 share(all)
 aspect MapOps {
-    put(self<their<HashMap<K, V>>>, key<K>, val<V>)<Void>
+    put(self<their<HashMap<K, V>>>, key<K>, val<V>)<Bool>
     get(self<their<HashMap<K, V>>>, key<K>)<Option<V>>
     contains_key(self<their<HashMap<K, V>>>, key<K>)<Bool>
     size(self<their<HashMap<K, V>>>)<Int>
@@ -73,16 +124,20 @@ aspect MapOps {
 
 share(all)
 bind<K<Hashable, Equatable>, V> MapOps -> HashMap<K, V> {
-    put(self<their<HashMap<K, V>>>, key<K>, val<V>)<Void> -> {
+    put(self<their<HashMap<K, V>>>, key<K>, val<V>)<Bool> -> {
         nb<Int> = self.head.len()
         b<Int> = bucket_for(hashkey(key), nb)
         i<Int> = self.head.get(b)
         while (i != -1) {
             if (samekey(self.keys.get(i), key)) {
                 self.vals.set(i, val)
-                return
+                return true
             }
             i = self.next.get(i)
+        }
+        # Fixed maps never auto-grow: refuse a new key at full capacity.
+        if (self.meta.get(1) == 1 && self.keys.len() >= self.meta.get(0)) {
+            return false
         }
         self.keys.push(key)
         self.vals.push(val)
@@ -91,7 +146,7 @@ bind<K<Hashable, Equatable>, V> MapOps -> HashMap<K, V> {
         self.head.set(b, idx)
         # Grow and re-hash once each bucket holds more than ~2 keys on average,
         # doubling the bucket count. Chains are rebuilt from the full key list.
-        if (self.keys.len() > self.head.len() * 2) {
+        if (self.meta.get(1) == 0 && self.keys.len() > self.head.len() * 2) {
             new_nb<Int> = self.head.len() * 2
             grow<Int> = self.head.len()
             while (grow < new_nb) {
@@ -117,7 +172,7 @@ bind<K<Hashable, Equatable>, V> MapOps -> HashMap<K, V> {
                 reb = reb + 1
             }
         }
-        return
+        return true
     }
     get(self<their<HashMap<K, V>>>, key<K>)<Option<V>> -> {
         nb<Int> = self.head.len()
@@ -148,31 +203,51 @@ bind<K<Hashable, Equatable>, V> MapOps -> HashMap<K, V> {
     }
 }
 
-# Number of buckets each collection is pre-sized with. A power of two (16) keeps
-# the modulo cheap; loads above a few elements per bucket can be reindexed by
-# growing `head` in a future iteration.
-share(all)
-bucket_count()<Int> -> {
-    return 16
-}
-
-share(all)
-make_hash_map<K, V>()<HashMap<K, V>> -> {
-    head<Vec<Int>> = Vec<Int>()
-    i<Int> = 0
-    nb<Int> = bucket_count()
-    while (i < nb) {
-        head.push(-1)
-        i = i + 1
-    }
-    return HashMap<K, V> { keys = Vec<K>(), vals = Vec<V>(), head = head, next = Vec<Int>() }
-}
-
 share(all)
 struct HashSet<K> {
     values<Vec<K>>,
     head<Vec<Int>>,
-    next<Vec<Int>>
+    next<Vec<Int>>,
+    meta<Vec<Int>>
+
+    # Empty set starting at the default bucket count.
+    constructor() {
+        s<HashSet<K>> = HashSet<K>(0)
+        return s
+    }
+
+    # Set pre-sized for `cap` entries (see HashMap's constructor semantics).
+    constructor(cap<Int>) {
+        return HashSet<K>(cap, false)
+    }
+
+    # Fixed-capacity set: at most `cap` distinct values, never re-hashes or
+    # reallocs once built. `insert` returns `false` when the set is full and the
+    # value is new (or on a duplicate).
+    constructor(cap<Int>, fixed<Bool>) {
+        nb<Int> = 16
+        two<Int> = 32
+        while (two < cap) {
+            nb = nb * 2
+            two = two * 2
+        }
+        head<Vec<Int>> = Vec<Int>()
+        i<Int> = 0
+        while (i < nb) {
+            head.push(-1)
+            i = i + 1
+        }
+        # See HashMap: `meta` holds [capacity, fixed(0|1)] as a Vec so the by-ref
+        # receiver lays the struct out correctly.
+        meta<Vec<Int>> = Vec<Int>()
+        meta.push(cap)
+        fix<Int> = 0
+        if (fixed) {
+            fix = 1
+        }
+        meta.push(fix)
+        return HashSet<K> { values = Vec<K>(), head = head, next = Vec<Int>(), meta = meta }
+    }
 }
 
 share(all)
@@ -194,11 +269,15 @@ bind<K<Hashable, Equatable>> SetOps -> HashSet<K> {
             }
             i = self.next.get(i)
         }
+        # Fixed sets never auto-grow: refuse a new value at full capacity.
+        if (self.meta.get(1) == 1 && self.values.len() >= self.meta.get(0)) {
+            return false
+        }
         self.values.push(value)
         idx<Int> = self.values.len() - 1
         self.next.push(self.head.get(b))
         self.head.set(b, idx)
-        if (self.values.len() > self.head.len() * 2) {
+        if (self.meta.get(1) == 0 && self.values.len() > self.head.len() * 2) {
             new_nb<Int> = self.head.len() * 2
             grow<Int> = self.head.len()
             while (grow < new_nb) {
@@ -241,18 +320,6 @@ bind<K<Hashable, Equatable>> SetOps -> HashSet<K> {
     size(self<their<HashSet<K>>>)<Int> -> {
         return self.values.len()
     }
-}
-
-share(all)
-make_hash_set<K>()<HashSet<K>> -> {
-    head<Vec<Int>> = Vec<Int>()
-    i<Int> = 0
-    nb<Int> = bucket_count()
-    while (i < nb) {
-        head.push(-1)
-        i = i + 1
-    }
-    return HashSet<K> { values = Vec<K>(), head = head, next = Vec<Int>() }
 }
 
 share(all)

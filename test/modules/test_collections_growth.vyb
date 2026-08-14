@@ -1,8 +1,9 @@
 // @test: stdlib collections HashMap/HashSet auto-grow and rehash
 // @description: inserting past the load-factor threshold (2 keys per bucket,
 //   starting from 16 buckets) doubles the bucket count and re-hashes every key,
-//   so all keys stay retrievable after multiple growth steps. `make_hash_map` /
-//   `make_hash_set` are used so the bucket metadata is initialized.
+//   so all keys stay retrievable after multiple growth steps. The declared
+//   constructors pre-size the bucket metadata; the `(100)` capacity form
+//   pre-allocates enough buckets for the loop's 100 keys without a re-hash.
 // @category: modules, collections, generics, hash, growth, rehash
 // @expect: pass
 // @expect-output: ok
@@ -12,7 +13,7 @@
 import collections
 
 main()<Int> -> {
-    m<HashMap<String, Int>> = make_hash_map<String, Int>()
+    m<HashMap<String, Int>> = HashMap<String, Int>(100)
     i<Int> = 0
     while (i < 100) {
         k<String> = "key" + i.to_string()
@@ -34,7 +35,7 @@ main()<Int> -> {
         return 3
     }
 
-    s<HashSet<String>> = make_hash_set<String>()
+    s<HashSet<String>> = HashSet<String>(100)
     t<Int> = 0
     while (t < 100) {
         s.insert(t.to_string())

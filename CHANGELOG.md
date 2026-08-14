@@ -33,9 +33,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the whole map. `HashSet<K>` uses the same bucket/chain index over its
   `values` vector. Buckets start at 16 and **auto-grow (doubling) with a full
   re-hash** once the load exceeds 2 keys per bucket, keeping average lookup
-  O(1). Construct with the new `make_hash_map<K,V>()` / `make_hash_set<K>()`
-  (they initialize the bucket metadata); the old struct-literal construction
-  shape no longer applies. Covered by `test/modules/test_collections_growth.vyb`.
+  O(1). Construct with the new `HashMap<K,V>()` / `HashSet<K>()` declared
+  constructors, the pre-sizing `HashMap<K,V>(cap)` / `HashSet<K>(cap)` forms
+  that skip early re-hash storms, or the **fixed-capacity** `HashMap<K,V>(cap, true)`
+  / `HashSet<K>(cap, true)` forms that never re-hash or realloc — provably
+  bounded memory for embedded targets. A fixed `put`/`insert` returns `false`
+  when at capacity; `HashMap.put` now returns `Bool` (true on insert/update,
+  false only when a fixed map is full and the key is new). The old
+  `make_hash_map` / `make_hash_set` helpers are removed. Covered by
+  `test/modules/test_collections_growth.vyb` and
+  `test/modules/test_struct_constructors.vyb`.
+- **Generic struct constructors** — `struct` declarations can now carry
+  `constructor(...)` clauses inside the body (e.g. `HashMap<K,V>()`, `Vec(n)`-style
+  capacity forms, or user types like `Pair<A>(x, y)`). Each constructor lowers to a
+  synthetic generic function (`__ctor_<Struct>_<N>`) sharing the struct's type
+  parameters, so `HashMap<K,V>(n)` dispatches through the same compile-time
+  monomorphization pipeline as a generic function call. A bare `Type()` without
+  explicit type arguments currently still parses as a function call, so this
+  constructor syntax is intended for generic struct types.
 - **Returning a struct that embeds a `Vec` no longer frees the Vec's data** —
   returning an object literal (or construction) that places an owning variable
   into a field, e.g. a constructor building `HashMap { head = d, ... }`, now

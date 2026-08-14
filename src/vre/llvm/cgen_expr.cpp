@@ -4207,6 +4207,33 @@ void LLVMCodegen::visit(ast::ConstructionExpression* node) {
         }
     }
 
+    // Declared struct constructor: `HashMap<K,V>(n)` with a matching arity routes
+    // to the synthetic `__ctor_HashMap_<N>` generic function. Struct names are not
+    // generic-fn templates, so this never collides with the branch above. When a
+    // generic-function monomorphization is active, the struct's own type params
+    // (K, V) are substituted so a constructor can chain to another constructor.
+    if (auto* tname = dynamic_cast<ast::TypeName*>(node->constructedType.get())) {
+        if (tname->identifier) {
+            std::string structName = tname->identifier->name;
+            auto cit = structConstructors.find(structName);
+            if (cit != structConstructors.end()) {
+                for (const auto& entry : cit->second) {
+                    if (entry.first == (unsigned)node->arguments.size()) {
+                        VYB_CDBG << "DEBUG: ConstructionExpression is a struct constructor call: "
+                                 << structName << " arity " << entry.first << std::endl;
+                        auto calleeId = std::make_unique<ast::Identifier>(tname->identifier->loc, entry.second);
+                        auto callExpr = std::make_unique<ast::CallExpression>(node->loc, std::move(calleeId), std::move(node->arguments));
+                        if (!tname->genericArgs.empty()) {
+                            callExpr->explicitTypeArgs = applyTypeSubstitutions(tname->genericArgs);
+                        }
+                        this->visit(static_cast<ast::CallExpression*>(callExpr.get()));
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
     // Get the type being constructed
     llvm::Type* constructedLLVMType = codegenType(node->constructedType.get());
     if (!constructedLLVMType) {

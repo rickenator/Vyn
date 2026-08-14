@@ -5249,6 +5249,13 @@ void SemanticAnalyzer::visit(ast::StructDeclaration* node) {
         }
     }
 
+    // Analyze any declared constructors inside the struct's type-parameter scope
+    // (when present) so their params and bodies can resolve the struct's type
+    // parameters (e.g. `constructor(cap<Int>) -> HashMap<K,V> { ... }`).
+    for (const auto& ctor : node->constructors) {
+        if (ctor) ctor->accept(*this);
+    }
+
     // Store field information in the semantic analyzer (we'll need to add this storage)
     structFieldTypes[structName] = fieldTypes;
 

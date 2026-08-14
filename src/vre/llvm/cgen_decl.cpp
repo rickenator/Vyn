@@ -775,6 +775,7 @@ void LLVMCodegen::visit(vyb::ast::StructDeclaration* node) {
                   << node->genericParams.size() << " type parameters" << std::endl;
         // Store the AST node for later monomorphization when instantiated (e.g., Box<Int>)
         genericStructTemplates[nameStr] = node;
+        registerStructConstructors(node);
         m_currentLLVMValue = nullptr;
         return; // Don't generate LLVM type yet
     }
@@ -821,7 +822,21 @@ void LLVMCodegen::visit(vyb::ast::StructDeclaration* node) {
     // Generate type metadata for JSON serialization
     generateTypeMetadata(nameStr, node);
 
+    registerStructConstructors(node);
     m_currentLLVMValue = nullptr; // structType is an llvm::Type*, not llvm::Value*
+}
+
+void LLVMCodegen::registerStructConstructors(vyb::ast::StructDeclaration* node) {
+    const std::string& structName = node->name->name;
+    for (unsigned ci = 0; ci < node->constructors.size(); ++ci) {
+        ast::FunctionDeclaration* ctor = node->constructors[ci].get();
+        if (!ctor) continue;
+        std::string ctorName = "__ctor_" + structName + "_" + std::to_string(ci);
+        // Ensure the name is consistent regardless of how the parser named it.
+        if (ctor->id) ctor->id->name = ctorName;
+        genericFunctionTemplates[ctorName] = ctor;
+        structConstructors[structName].push_back({ (unsigned)ctor->params.size(), ctorName });
+    }
 }
 
 void LLVMCodegen::visit(vyb::ast::ClassDeclaration* node) {

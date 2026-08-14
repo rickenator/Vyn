@@ -1,7 +1,8 @@
 // @test: stdlib collections HashMap and HashSet
 // @description: `import collections` brings HashMap<String, Int> / HashSet<String>
-//   via make_hash_map / make_hash_set with by-ref-binding methods. The maps use a
-//   hash-bucket (chained) key index: HashMap provides put / get (returning
+//   via declared constructors HashMap<String, Int>() / HashSet<String>() with
+//   by-ref-binding methods. The maps use a hash-bucket (chained) key index:
+//   HashMap provides put / get (returning
 //   Option<V>) / contains_key / size and persists in-place via the by-ref
 //   receiver; get results are drained with `.value`. HashSet provides insert /
 //   contains / size with duplicate suppression. Use the whole-module import so
@@ -15,7 +16,7 @@
 import collections
 
 main()<Int> -> {
-    m<HashMap<String, Int>> = make_hash_map<String, Int>()
+    m<HashMap<String, Int>> = HashMap<String, Int>()
     m.put("alpha", 1)
     m.put("beta", 2)
     m.put("gamma", 3)
@@ -27,7 +28,7 @@ main()<Int> -> {
     found<Option<Int>> = m.get("alpha")
     missing<Option<Int>> = m.get("delta")
 
-    s<HashSet<String>> = make_hash_set<String>()
+    s<HashSet<String>> = HashSet<String>()
     if (!s.insert("x") || !s.insert("y") || !s.insert("z") || s.insert("x")) {
         return 3
     }

@@ -1,0 +1,97 @@
+// @test: generic struct declared constructors
+// @description: `HashMap<K, V>(n)` / `HashSet<K>(n)` and user generic structs can
+//   declare `constructor(...)` clauses inside the struct body. These lower to
+//   synthetic generic functions (`__ctor_<Struct>_<N>`) so construction rides the
+//   existing generic monomorphization pipeline, matching the `Vec()` / `Vec(n)`
+//   idiom. The `(cap)` form pre-sizes buckets to skip early re-hash resize storms.
+// @category: modules, generics, struct, constructor, collections
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import collections
+
+# User generic struct with a declared constructor.
+struct Pair<A> {
+    first<A>,
+    second<A>,
+
+    constructor(f<A>, s<A>) {
+        return Pair<A> { first = f, second = s }
+    }
+}
+
+main()<Int> -> {
+    p<Pair<Int>> = Pair<Int>(7, 9)
+    if (p.first != 7 || p.second != 9) {
+        return 1
+    }
+
+    q<Pair<String>> = Pair<String>("hi", "yo")
+    if (q.first != "hi" || q.second != "yo") {
+        return 2
+    }
+
+    # Empty constructors (default bucket count).
+    m0<HashMap<String, Int>> = HashMap<String, Int>()
+    m0.put("a", 1)
+    if (m0.get("a").value != 1) {
+        return 3
+    }
+
+    # Capacity constructors pre-size buckets; no re-hash until `cap` keys.
+    m1<HashMap<String, Int>> = HashMap<String, Int>(40)
+    i<Int> = 0
+    while (i < 40) {
+        k<String> = "key" + i.to_string()
+        m1.put(k, i)
+        i = i + 1
+    }
+    if (m1.size() != 40 || m1.get("key39").value != 39) {
+        return 4
+    }
+
+    s<HashSet<String>> = HashSet<String>(100)
+    if (!s.insert("x") || s.insert("x") || !s.contains("x")) {
+        return 5
+    }
+    if (s.size() != 1) {
+        return 6
+    }
+
+    # Fixed-capacity map: put returns true until full, then false for new keys,
+    # while updating an existing key still succeeds at capacity. `put` otherwise
+    # returns true on a growable map.
+    f<HashMap<String, Int>> = HashMap<String, Int>(3, true)
+    if (!f.put("a", 1) || !f.put("b", 2) || !f.put("c", 3)) {
+        return 7
+    }
+    if (f.put("d", 4)) {
+        return 8
+    }
+    if (!f.put("a", 9)) {
+        return 9
+    }
+    if (f.size() != 3 || f.get("a").value != 9 || f.contains_key("d")) {
+        return 10
+    }
+
+    # Fixed-capacity set: insert returns false at full capacity.
+    fs<HashSet<String>> = HashSet<String>(2, true)
+    if (!fs.insert("x") || !fs.insert("y") || fs.insert("z")) {
+        return 11
+    }
+    if (fs.size() != 2 || !fs.contains("x") || fs.contains("z")) {
+        return 12
+    }
+
+    # `put` returns true on a growable map (so callers can rely on it).
+    g<HashMap<String, Int>> = HashMap<String, Int>()
+    if (!g.put("k", 1)) {
+        return 13
+    }
+
+    println("ok")
+    return 0
+}
