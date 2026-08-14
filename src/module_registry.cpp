@@ -86,6 +86,8 @@ std::string takeIdentifierAfterKeyword(const std::string& line, const std::strin
     return pos > start ? line.substr(start, pos - start) : "";
 }
 
+std::string bindKeyFromLine(const std::string& line);
+
 std::string declarationNameFromLine(const std::string& line) {
     std::string name = takeIdentifierAfterKeyword(line, "struct");
     if (!name.empty()) return name;
@@ -103,6 +105,8 @@ std::string declarationNameFromLine(const std::string& line) {
     if (!name.empty() && line.find('"') == std::string::npos) return name;
     name = takeIdentifierAfterKeyword(line, "async");
     if (!name.empty() && line.find('(') != std::string::npos) return name;
+    name = bindKeyFromLine(line);
+    if (!name.empty()) return name;
 
     if (!line.empty() && (std::isalpha(static_cast<unsigned char>(line[0])) || line[0] == '_')) {
         size_t pos = 1;
@@ -121,6 +125,43 @@ std::string declarationNameFromLine(const std::string& line) {
 
 bool isImportLine(const std::string& line) {
     return startsWithWord(line, "import") || startsWithWord(line, "smuggle");
+}
+
+// Produces a stable per-(target,trait) key for a `bind` declaration so binds can
+// be carried across module imports and visibility/dedup tracked like other shared
+// declarations. Matches SemanticAnalyzer-style bind identity (target -> trait).
+std::string bindKeyFromLine(const std::string& line) {
+    if (!startsWithWord(line, "bind")) {
+        return "";
+    }
+    std::string rest = trimCopy(line.substr(4));
+    // Skip generic parameters, e.g. `bind<T> Iterator -> Boxer<T>`.
+    if (!rest.empty() && rest[0] == '<') {
+        size_t close = rest.find('>');
+        if (close == std::string::npos) {
+            return "";
+        }
+        rest = trimCopy(rest.substr(close + 1));
+    }
+    // Trait name.
+    std::string trait;
+    while (rest.size() > 0 &&
+           (std::isalnum(static_cast<unsigned char>(rest[0])) || rest[0] == '_')) {
+        trait += rest[0];
+        rest = rest.substr(1);
+    }
+    rest = trimCopy(rest);
+    if (!startsWithWord(rest, "->")) {
+        return "";
+    }
+    rest = trimCopy(rest.substr(2));
+    // Target type runs up to the opening brace.
+    size_t brace = rest.find('{');
+    std::string target = trimCopy(brace == std::string::npos ? rest : rest.substr(0, brace));
+    if (trait.empty() || target.empty()) {
+        return "";
+    }
+    return "bind:" + target + ":" + trait;
 }
 
 } // namespace
@@ -238,10 +279,45 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                     requestedNames.insert(importedName);
                     requestedRenames[importedName] = specifier.localName ? specifier.localName->name : importedName;
                 }
+                // Immutable snapshot for filtering carried binds: requestedNames shrinks
+                // as aspects are spliced, but binds must not leak in just because the
+                // requested set emptied mid-splice.
+                const std::unordered_set<std::string> requestedForBinds = requestedNames;
 
                 for (auto& importedStmt : importedRecord.module->body) {
                     if (isMainFunction(importedStmt)) {
                         throw std::runtime_error("Imported module must not define main(): " + importedRecord.sourcePath.string());
+                    }
+
+                    // Binds carry impl methods for (target, aspect) pairs. They have no
+                    // symbol name to alias, so they are handled distinctly: carried when the
+                    // module is imported whole or the requested aspect is in the specifier
+                    // list, without consuming a requested-name slot (the aspect declaration
+                    // itself must still be imported).
+                    if (auto* bind = dynamic_cast<ast::BindDeclaration*>(importedStmt.get())) {
+                        std::string bindKey = declarationName(importedStmt);
+                        if (bindKey.empty()) {
+                            continue;
+                        }
+                        std::string bindTrait = bind->traitType ? bind->traitType->toString() : "";
+                        if (!requestedForBinds.empty() &&
+                            (bindTrait.empty() || requestedForBinds.find(bindTrait) == requestedForBinds.end())) {
+                            continue;
+                        }
+                        if (!declarationVisible(bindKey, importedRecord, metadata.bundles, importDecl)) {
+                            continue;
+                        }
+                        if (seenNames.find(bindKey) != seenNames.end()) {
+                            throw std::runtime_error("Duplicate bind after splice: '" + bindKey +
+                                                     "' while importing '" + importPath.importSpelling + "' from " +
+                                                     importPath.importerFile + ":" + std::to_string(importPath.line));
+                        }
+                        seenNames.insert(bindKey);
+                        if (!importShare.empty()) {
+                            currentRecord.sharesByName[bindKey] = importShare;
+                        }
+                        resolvedBody.push_back(std::move(importedStmt));
+                        continue;
                     }
 
                     std::string name = declarationName(importedStmt);
@@ -596,6 +672,12 @@ std::string ModuleRegistry::declarationName(const ast::StmtPtr& stmt) {
     }
     if (auto* cls = dynamic_cast<ast::ClassDeclaration*>(stmt.get())) {
         return cls->name ? cls->name->name : "";
+    }
+    if (auto* bind = dynamic_cast<ast::BindDeclaration*>(stmt.get())) {
+        if (bind->selfType && bind->traitType) {
+            return "bind:" + bind->selfType->toString() + ":" + bind->traitType->toString();
+        }
+        return "bind";
     }
     return "";
 }

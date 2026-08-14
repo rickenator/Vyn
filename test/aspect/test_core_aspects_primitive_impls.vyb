@@ -1,0 +1,30 @@
+// @test: core aspects pre-wired for primitive scalar types
+// @description: Importing core::aspects brings pre-wired Display/Clone/Equatable/Comparable/Hashable implementations for Int, Float, and Bool/String, usable unqualified and through generic bounds (bind declarations carry across the module import).
+// @category: aspect, stdlib, core-aspects, primitives, module
+// @expect: pass
+// @expect-return: 0
+
+import core::aspects
+
+describe<T<Display>>(thing<T>)<String> -> {
+    return thing.display()
+}
+
+isSame<T<Equatable>>(a<T>, b<T>)<Bool> -> {
+    return a.equals(b)
+}
+
+main()<Int> -> {
+    i<Int> = 7
+    f<Float> = 2.5
+    b<Bool> = true
+    s<String> = "hi"
+    if (i.display() == "7" && f.display() == "2.5" && b.display() == "true" &&
+        s.display() == "hi" && i.clone() == 7 && s.clone() == "hi" &&
+        i.equals(7) && f.equals(2.5) && b.equals(true) && s.equals("hi") &&
+        i.compare(5) == 2 && i.hash() == 7 && describe(i) == "7" &&
+        isSame(i, 7) && isSame(s, "hi")) {
+        return 0
+    }
+    return 1
+}

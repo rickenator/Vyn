@@ -37,3 +37,73 @@ share(all)
 aspect Comparable : Equatable {
     compare(self, other<Self>)<Int> -> { }
 }
+
+# ---------------------------------------------------------------------------
+# Standard implementations for built-in scalar types.
+#
+# These pre-wired binds let the core contracts work out of the box for the
+# common scalar types whenever this module (or the prelude) is imported, so
+# e.g. `x.display()`, `a.equals(b)` and `a.compare(b)` resolve for Int/Float/
+# Bool/String without authoring a bind. Bound (target, aspect) pairs are carried
+# across module imports like any shared declaration.
+# ---------------------------------------------------------------------------
+
+share(all)
+bind Display -> Int {
+    display(self<Int>)<String> -> { return self.to_string() }
+}
+
+share(all)
+bind Display -> Float {
+    display(self<Float>)<String> -> { return self.to_string() }
+}
+
+share(all)
+bind Display -> Bool {
+    display(self<Bool>)<String> -> { return self.to_string() }
+}
+
+share(all)
+bind Display -> String {
+    display(self<String>)<String> -> { return self }
+}
+
+share(all)
+bind Clone -> Int {
+    clone(self<Int>)<Int> -> { return self }
+}
+
+share(all)
+bind Clone -> String {
+    clone(self<String>)<String> -> { return self }
+}
+
+share(all)
+bind Equatable -> Int {
+    equals(self<Int>, other<Int>)<Bool> -> { return self == other }
+}
+
+share(all)
+bind Equatable -> Float {
+    equals(self<Float>, other<Float>)<Bool> -> { return self == other }
+}
+
+share(all)
+bind Equatable -> Bool {
+    equals(self<Bool>, other<Bool>)<Bool> -> { return self == other }
+}
+
+share(all)
+bind Equatable -> String {
+    equals(self<String>, other<String>)<Bool> -> { return self == other }
+}
+
+share(all)
+bind Comparable -> Int {
+    compare(self<Int>, other<Int>)<Int> -> { return self - other }
+}
+
+share(all)
+bind Hashable -> Int {
+    hash(self<Int>)<Int> -> { return self }
+}

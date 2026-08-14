@@ -10,6 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Binds carry across module imports** — `bind` declarations in an imported
+  module are now carried to the importer (like shared structs/aspects/functions),
+  so a library can ship aspect implementations that take effect on import. Binds
+  are tracked by an immutable `(target, aspect)` key, respect `share(...)`, and
+  are included for whole-module imports or for the requested specifier aspects
+  without consuming the aspect's requested-name slot. Visibility requires a
+  `share(all)` (or bundle) on the bind, matching the existing share model.
+
+- **Pre-wired core aspects for built-in scalars** — `core::aspects` now ships
+  `Display`/`Clone`/`Equatable`/`Comparable`/`Hashable` implementations for
+  `Int`, `Float`, `Bool`, and `String` (Display/Equatable; Clone for Int/String;
+  Comparable + Hashable for Int). Because binds carry across imports,
+  `import core::aspects` (or `import core::prelude`) makes `x.display()`,
+  `a.equals(b)`, `a.compare(b)`, and `a.clone()` work on those types with no
+  user-authored binds. `core::prelude`'s `core::aspects` re-export was fixed to
+  `share(all)` so the aspects and their binds re-export correctly.
+
 - **Aspect binds to primitive scalar targets** — a `bind` may now target a
   primitive scalar type (`Int`, `Float`, `Bool`, `Char`, sized ints) in addition
   to structs. Primitive-bound methods dispatch unqualified (`v.display()`,

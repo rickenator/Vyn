@@ -1,10 +1,28 @@
 // @test: aspect binds target primitive scalar types
-// @description: A bind can target a primitive scalar (Int, Float, Bool, Char) — not just a struct — dispatching unqualified and through generic bounds, including the core::aspects contracts.
+// @description: A bind can target a primitive scalar (Int, Bool) — not just a struct — dispatching unqualified and through generic bounds. Self-contained (does not rely on the stdlib pre-wired binds).
 // @category: aspect, bind, primitives, bounds
 // @expect: pass
 // @expect-return: 0
 
-import core::aspects
+aspect Display {
+    display(self)<String> -> { }
+}
+
+aspect Equatable {
+    equals(self, other<Self>)<Bool> -> { }
+}
+
+aspect Comparable : Equatable {
+    compare(self, other<Self>)<Int> -> { }
+}
+
+aspect Clone {
+    clone(self)<Self> -> { }
+}
+
+aspect Toggle {
+    toggle(self)<Bool>
+}
 
 bind Display -> Int {
     display(self<Int>)<String> -> { return "n" + self.to_string() }
@@ -22,11 +40,7 @@ bind Clone -> Int {
     clone(self<Int>)<Int> -> { return self }
 }
 
-aspect Scalar {
-    toggle(self)<Bool>
-}
-
-bind Scalar -> Bool {
+bind Toggle -> Bool {
     toggle(self<Bool>)<Bool> -> { return !self }
 }
 
