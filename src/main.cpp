@@ -4,6 +4,7 @@
 #include "vyb/semantic.hpp"       // For vyb::SemanticAnalyzer
 #include "vyb/module_registry.hpp"
 #include "vyb/vre/llvm/codegen.hpp" // For vyb::LLVMCodegen
+#include "vyb/bindgen.hpp"      // For vyb::bindgen::generateBindings
 #include <catch2/catch_session.hpp>
 #include <fstream>
 #include <iostream>
@@ -1009,6 +1010,49 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
 
 int main(int argc, char* argv[]) {
     Catch::Session session; // Catch2 entry point
+
+    // `vyb bindgen <header.h> [-o out.vyb]` -- generate Vyb FFI bindings from a C header.
+    if (argc >= 2 && std::string(argv[1]) == "bindgen") {
+        if (argc < 3) {
+            std::cerr << "Usage: " << argv[0] << " bindgen <header.h> [-o out.vyb]" << std::endl;
+            return 1;
+        }
+        std::string headerPath = argv[2];
+        std::string outputPath;
+        for (int i = 3; i < argc; ++i) {
+            if (std::string(argv[i]) == "-o" && i + 1 < argc) {
+                outputPath = argv[++i];
+            }
+        }
+        std::ifstream headerFile(headerPath);
+        if (!headerFile) {
+            std::cerr << "Error: could not open C header '" << headerPath << "'" << std::endl;
+            return 1;
+        }
+        std::string source((std::istreambuf_iterator<char>(headerFile)),
+                           std::istreambuf_iterator<char>());
+        headerFile.close();
+
+        std::vector<std::string> bindgenWarnings;
+        std::string bindings = vyb::bindgen::generateBindings(source, &bindgenWarnings);
+        for (const auto& warning : bindgenWarnings) {
+            std::cerr << "warning: " << warning << std::endl;
+        }
+
+        if (!outputPath.empty()) {
+            std::ofstream outFile(outputPath);
+            if (!outFile) {
+                std::cerr << "Error: could not write '" << outputPath << "'" << std::endl;
+                return 1;
+            }
+            outFile << bindings;
+            outFile.close();
+            std::cout << "Wrote bindings to " << outputPath << std::endl;
+        } else {
+            std::cout << bindings;
+        }
+        return 0;
+    }
 
     std::vector<std::string> catch_args;
     catch_args.push_back(argv[0]); // Program name

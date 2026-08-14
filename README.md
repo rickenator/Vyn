@@ -785,9 +785,9 @@ Vyb's native bridge to C libraries is the highest-priority upcoming feature:
 | **LLVM intrinsics** | ✅ Complete | `malloc`, `free`, `memset`, `printf`-style print all registered in JIT |
 | **C stdlib (math)** | ✅ Complete | `libm` linked; `sqrt`, `sin`, `cos`, `pow`, etc. all working |
 | **C stdlib (I/O)** | ✅ Complete | `libc` linked; I/O built on top of C runtime |
-| **`extern "C"` blocks** | 🔜 Planned | Declare C functions callable from Vyb; maps types: `Int`→`int64_t`, `loc<T>`→`T*` |
-| **`#[repr(C)]` structs** | 🔜 Planned | Force C-compatible struct layout for FFI |
-| **`vyb bindgen`** | 🔜 Future | Auto-generate Vyb bindings from C headers |
+| **`extern "C"` blocks** | ✅ Complete | Declare C functions callable from Vyb (incl. variadic `printf(fmt, ...)`); maps `loc<T>`→`T*` and C aliases (`CInt`, `CString`, `CSize`, …) |
+| **`#[repr(C)]` structs** | ✅ Complete | Force C-compatible struct layout for FFI |
+| **`vyb bindgen` (MVP)** | ✅ | `vyb bindgen <header.h>` emits importable extern/`repr(C)`/enum bindings from a C subset; libclang-based full parsing is v0.6+ |
 
 **Design goal**: Once `extern "C"` lands, the entire POSIX API becomes available with a thin Vyb wrapper, enabling networking, file I/O, threading, and more without any language-level changes. See `doc/FFI_DESIGN.md` for the complete design.
 
@@ -2599,7 +2599,7 @@ freedom {
 Vyb (freedom-1.0 series) compiles through JIT, AOT object files, and native executables via LLVM. The items below track what shipped in recent milestones and what still stands on the path to 1.0.
 
 ### 🔜 **Near-Term Priorities (v0.5)**
-1. ✅ **FFI / `extern "C"`** (landed): `extern "C"` blocks, C type aliases, `#[repr(C)]` struct layout, freedom-gated JIT calls, and native `--link` support. Variadic C functions and `vyb bindgen` remain. See `doc/FFI_DESIGN.md`.
+1. ✅ **FFI / `extern "C"`** (landed): `extern "C"` blocks, C type aliases, `#[repr(C)]` struct layout, freedom-gated JIT calls, native `--link` support, variadic C functions, and the `vyb bindgen` MVP (`vyb bindgen some.h`). Full libclang-based bindgen remains for v0.6+. See `doc/FFI_DESIGN.md`.
 2. ✅ **Module System** (landed): `import`/`smuggle`/`bundle`/`share`, module-path resolution, and stdlib auto-discovery. See `doc/bundles_and_sharing.md`.
 3. 🚧 **Lambda/Closure Codegen**: Parsing and indirect calls work; full captured-env closure structs are still pending. `|x<Int>| -> x * 2`.
 4. ✅ **Error Propagation Phases 2-5** (landed): `fail` propagation through call stacks and wildcard `trap (e<?>)`.

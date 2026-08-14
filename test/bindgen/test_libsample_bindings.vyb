@@ -1,0 +1,19 @@
+// @test: vyb bindgen generated bindings
+// @description: importing share(all) extern + repr(C) bindings generated from libsample.h
+// @category: ffi, bindgen
+// @expect: pass
+// @expect-output: hey from bindgen
+// @expect-return: 0
+// @tags: ffi, bindgen, extern, repr-c
+
+import libsample
+
+main()<Int> -> {
+    freedom {
+        n<CSize> = strlen("abcd")
+        println_int(n)
+        puts("hey from bindgen")
+        p<Point> = Point { x = 1, y = 2 }
+    }
+    return 0
+}
