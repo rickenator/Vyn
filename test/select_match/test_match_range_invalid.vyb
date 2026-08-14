@@ -1,0 +1,15 @@
+// @test: range patterns reject inverted ranges
+// @description: A range whose start is greater than its end can never match and is a semantic error
+// @category: pattern matching, match, ranges
+// @expect: fail
+// @expect-error: start greater than end
+
+main()<Int> -> {
+    v<Int> = 5
+    match (v) {
+        6..2 -> {
+            return 10
+        }
+    }
+    return -1
+}

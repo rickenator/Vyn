@@ -1207,6 +1207,31 @@ void LLVMCodegen::visit(vyb::ast::MatchStatement* node) {
                     isMatch = llvm::ConstantInt::getTrue(*context);
                     pendingStructPattern = sp;
                 }
+            } else if (auto* range = dynamic_cast<ast::RangeExpression*>(casePattern.get())) {
+                // Range pattern `start..end` (inclusive): matchValue in [start, end].
+                if (!matchValue->getType()->isIntegerTy() &&
+                    !matchValue->getType()->isFloatingPointTy()) {
+                    logError(range->loc, "Range pattern requires integer or float values");
+                    isMatch = llvm::ConstantInt::getFalse(*context);
+                } else {
+                    bool isInt = matchValue->getType()->isIntegerTy();
+                    range->start->accept(*this);
+                    llvm::Value* startValue = m_currentLLVMValue;
+                    range->end->accept(*this);
+                    llvm::Value* endValue = m_currentLLVMValue;
+                    if (!startValue || !endValue) {
+                        logError(range->loc, "Failed to evaluate range pattern bounds");
+                        isMatch = llvm::ConstantInt::getFalse(*context);
+                    } else {
+                        llvm::Value* ge = isInt
+                            ? builder->CreateICmpSGE(matchValue, startValue, "match.range.ge")
+                            : builder->CreateFCmpOGE(matchValue, startValue, "match.range.fge");
+                        llvm::Value* le = isInt
+                            ? builder->CreateICmpSLE(matchValue, endValue, "match.range.le")
+                            : builder->CreateFCmpOLE(matchValue, endValue, "match.range.fle");
+                        isMatch = builder->CreateAnd(ge, le, "match.range.and");
+                    }
+                }
             } else if (isComparisonPattern) {
                 // Handle comparison pattern
                 auto* compPattern = static_cast<vyb::ast::ComparisonPattern*>(casePattern.get());

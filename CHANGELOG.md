@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Inclusive range patterns in `match` arms: `1..10 ->` matches a value within
+  `[start, end]` (integer or float). A range whose start is greater than its end
+  is statically rejected as never-matchable.
 - Struct destructuring in `match` arms: a `Point { x, y }` pattern binds each
   listed field as a local variable in the arm body (extracted from the matched
   struct value). Field names are validated against the struct, and a struct

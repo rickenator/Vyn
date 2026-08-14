@@ -1,0 +1,21 @@
+// @test: inclusive range patterns in match arms
+// @description: `start..end` (inclusive) matches a value within [start, end]
+// @category: pattern matching, match, ranges
+// @expect: pass
+// @expect-return: 20
+
+main()<Int> -> {
+    v<Int> = 5
+    match (v) {
+        1..3 -> {
+            return 10
+        },
+        4..6 -> {
+            return 20
+        },
+        ? -> {
+            return 30
+        }
+    }
+    return -1
+}

@@ -192,7 +192,7 @@ is the working audit for what needs to be implemented next.
 - [x] Literal patterns, wildcard `?`, comparison operators
 - [x] **Struct destructuring** — `Point { x, y } ->` in match arms: a struct pattern binds each listed field as a local variable in the arm body (extracted from the matched struct value). Field names are validated against the struct, and a struct pattern whose type can never match the match expression's static type is rejected.
 - [ ] **Enum/sum type variant patterns** — `Some(value) ->`, `None ->`
-- [ ] **Range patterns** — `1..10 ->` in match arms
+- [x] **Range patterns** — `1..10 ->` in match arms: an inclusive `[start, end]` bound check compiled for integer/float match values; inverted (`start > end`) ranges are rejected as never-matchable.
 - [ ] **Guard clauses** — `pattern if condition ->`
 - [ ] **Exhaustiveness checking** — Compiler rejects non-exhaustive match
 - [ ] **`match` as expression** — Return a value from match directly
@@ -663,5 +663,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: August 2026*
 *Current Version: Vyb v0.5.3 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 761 tests passing (harness, 100%)*
+*Overall Status: ~60-65% complete toward 1.0 — 764 tests passing (harness, 100%)*
 *SUGGESTIONS.md merged into this document.*

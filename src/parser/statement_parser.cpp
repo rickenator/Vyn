@@ -1338,7 +1338,17 @@ vyb::ast::StmtPtr StatementParser::parse_match() {
             if (!pattern) {
                 throw error(peek(), "Expected pattern in match arm.");
             }
-            if (auto* obj = dynamic_cast<vyb::ast::ObjectLiteral*>(pattern.get())) {
+            // Range pattern: `start..end` (inclusive). Parse the upper bound
+            // here since parse_primary stops before binary operators.
+            if (peek().type == vyb::TokenType::DOTDOT) {
+                consume(); // consume '..'
+                auto endExpr = expr_parser_.parse_primary();
+                if (!endExpr) {
+                    throw error(peek(), "Expected end value after '..' in range pattern.");
+                }
+                pattern = std::make_unique<vyb::ast::RangeExpression>(
+                    pattern->loc, std::move(pattern), std::move(endExpr));
+            } else if (auto* obj = dynamic_cast<vyb::ast::ObjectLiteral*>(pattern.get())) {
                 if (obj->typePath && !obj->properties.empty()) {
                     bool allShorthand = true;
                     for (const auto& prop : obj->properties) {

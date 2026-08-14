@@ -4350,6 +4350,16 @@ void SemanticAnalyzer::visit(ast::MatchStatement* node) {
                     }
                 }
             }
+        } else if (auto* rng = dynamic_cast<ast::RangeExpression*>(pattern.get())) {
+            // Range pattern `start..end` (inclusive). Validate the bounds and
+            // flag a range that can never match (start > end).
+            if (rng->start) rng->start->accept(*this);
+            if (rng->end) rng->end->accept(*this);
+            auto* startLit = rng->start ? dynamic_cast<ast::IntegerLiteral*>(rng->start.get()) : nullptr;
+            auto* endLit = rng->end ? dynamic_cast<ast::IntegerLiteral*>(rng->end.get()) : nullptr;
+            if (startLit && endLit && startLit->value > endLit->value) {
+                addError("Range pattern '..' has start greater than end and can never match.", rng);
+            }
         } else {
             // Other pattern types
             pattern->accept(*this);
