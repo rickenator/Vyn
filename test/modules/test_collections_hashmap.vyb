@@ -1,0 +1,43 @@
+// @test: stdlib collections HashMap and HashSet
+// @description: `import collections` brings HashMap<String, Int> and
+//   HashSet<String> with by-ref-binding methods. HashMap provides put / get
+//   (returning Option<V>) / contains_key / size with linear equals lookup and
+//   persists in-place via the by-ref receiver; get results are drained with
+//   `.value`. HashSet provides insert / contains / size with duplicate
+//   suppression. Use the whole-module import so the carried generic bind methods
+//   and their equality probe resolve.
+// @category: modules, collections, aspect, bind, generics, option
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import collections
+
+main()<Int> -> {
+    m<HashMap<String, Int>> = HashMap<String, Int> { keys = Vec<String>(), vals = Vec<Int>() }
+    m.put("alpha", 1)
+    m.put("beta", 2)
+    m.put("alpha", 99)
+    if (m.size() != 2 || !m.contains_key("beta") || m.contains_key("gamma")) {
+        return 1
+    }
+
+    found<Option<Int>> = m.get("alpha")
+    missing<Option<Int>> = m.get("gamma")
+
+    s<HashSet<String>> = HashSet<String> { values = Vec<String>() }
+    if (!s.insert("x") || !s.insert("y") || s.insert("x")) {
+        return 3
+    }
+    if (s.size() != 2 || !s.contains("x") || s.contains("missing")) {
+        return 4
+    }
+
+    if (found.value != 99 || missing.value != 0) {
+        return 2
+    }
+    println_int(found.value)
+    println("ok")
+    return 0
+}

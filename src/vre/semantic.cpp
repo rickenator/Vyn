@@ -23,7 +23,7 @@ namespace vyb {
 
 static bool isBuiltinVecMethodName(const std::string& methodName) {
     return methodName == "push" || methodName == "pop" || methodName == "len" ||
-           methodName == "get" || methodName == "push_array" ||
+           methodName == "get" || methodName == "set" || methodName == "push_array" ||
            methodName == "to_array" || methodName == "get_array" ||
            methodName == "clear" || methodName == "is_empty" ||
            methodName == "capacity" || methodName == "concat" ||
@@ -204,7 +204,42 @@ static ast::TypeNodePtr substituteGenericArgsForValidation(
     return typeNode->clone();
 }
 
-// Scope class implementation
+// Parse a concrete Vyb type string (e.g. "Option<Int>", "Box<Vec<Int>>", "Int")
+// into a structured TypeName tree. Generic bind/concrete-aspect return types are
+// resolved to strings and previously wrapped as a single flat Identifier (literally
+// named "Option<Int>"), which breaks structural type comparison against a properly
+// parsed "Option<Int>" (an Identifier "Option" with one generic arg). Building the
+// tree preserves the correct shape so `areTypesCompatible` and codegen agree.
+static std::unique_ptr<ast::TypeNode> concreteTypeStringToNode(const std::string& str);
+
+static std::unique_ptr<ast::TypeNode> concreteTypeStringToNodeImpl(const std::string& str, size_t& i) {
+    while (i < str.size() && (str[i] == ' ' || str[i] == '\t')) ++i;
+    size_t start = i;
+    while (i < str.size() && (isalnum(static_cast<unsigned char>(str[i])) || str[i] == '_')) ++i;
+    std::string name = str.substr(start, i - start);
+    std::vector<ast::TypeNodePtr> args;
+    while (i < str.size() && (str[i] == ' ' || str[i] == '\t')) ++i;
+    if (i < str.size() && str[i] == '<') {
+        ++i;
+        while (true) {
+            while (i < str.size() && (str[i] == ' ' || str[i] == '\t' || str[i] == ',')) ++i;
+            if (i < str.size() && str[i] == '>') { ++i; break; }
+            args.push_back(concreteTypeStringToNodeImpl(str, i));
+            while (i < str.size() && str[i] != '>' && str[i] != ',') ++i;
+        }
+    }
+    return std::make_unique<ast::TypeName>(
+        SourceLocation(), std::make_unique<ast::Identifier>(SourceLocation(), name),
+        std::move(args));
+}
+
+static std::unique_ptr<ast::TypeNode> concreteTypeStringToNode(const std::string& str) {
+    size_t i = 0;
+    return concreteTypeStringToNodeImpl(str, i);
+}
+
+
+
 Scope::Scope(Scope* parent_scope) : parent(parent_scope) {}
 
 SymbolInfo* Scope::find(const std::string& name) {
@@ -2441,8 +2476,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                         if (resolved.empty()) {
                                             addCandidate(traitName, method->returnTypeNode.get());
                                         } else {
-                                            auto resolvedNode = std::make_unique<ast::TypeName>(
-                                                node->loc, std::make_unique<ast::Identifier>(node->loc, resolved));
+                                            auto resolvedNode = concreteTypeStringToNode(resolved);
                                             ast::TypeNode* ptr = resolvedNode.get();
                                             resolvedReturnTypes.push_back(std::move(resolvedNode));
                                             addCandidate(traitName, ptr, true);
@@ -2459,8 +2493,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                                 std::string rtStr = traitMethod.returnType ? traitMethod.returnType->toString() : "";
                                                 std::string resolved = resolveConcreteAssocReturnType(rtStr, traitName);
                                                 if (!resolved.empty()) {
-                                                    auto resolvedNode = std::make_unique<ast::TypeName>(
-                                                        node->loc, std::make_unique<ast::Identifier>(node->loc, resolved));
+                                                    auto resolvedNode = concreteTypeStringToNode(resolved);
                                                     ast::TypeNode* ptr = resolvedNode.get();
                                                     resolvedReturnTypes.push_back(std::move(resolvedNode));
                                                     addCandidate(traitName, ptr, true);
@@ -2489,8 +2522,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                                 if (resolved.empty()) {
                                                     addCandidate(traitName, method->returnTypeNode.get());
                                                 } else {
-                                                    auto resolvedNode = std::make_unique<ast::TypeName>(
-                                                        node->loc, std::make_unique<ast::Identifier>(node->loc, resolved));
+                                                    auto resolvedNode = concreteTypeStringToNode(resolved);
                                                     ast::TypeNode* ptr = resolvedNode.get();
                                                     resolvedReturnTypes.push_back(std::move(resolvedNode));
                                                     addCandidate(traitName, ptr, true);
@@ -2509,8 +2541,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                                         if (resolved.empty()) {
                                                             addCandidate(traitName, traitMethod.returnType);
                                                         } else {
-                                                            auto resolvedNode = std::make_unique<ast::TypeName>(
-                                                                node->loc, std::make_unique<ast::Identifier>(node->loc, resolved));
+                                                            auto resolvedNode = concreteTypeStringToNode(resolved);
                                                             ast::TypeNode* ptr = resolvedNode.get();
                                                             resolvedReturnTypes.push_back(std::move(resolvedNode));
                                                             addCandidate(traitName, ptr, true);
@@ -3443,6 +3474,27 @@ void SemanticAnalyzer::visit(ast::MemberExpression* node) {
         expressionTypes[node] = tagTy;
         node->type = std::shared_ptr<ast::TypeNode>(tagTy->clone());
         return;
+    }
+
+    // `.value` accessor on the built-in `Option<T>` / `Result<T,E>` enums:
+    // reads the payload of the primary (success) data variant (`Some(T)` for
+    // Option, `Ok(T)` for Result) as its payload type `T`. The object here is a
+    // value of the concrete enum type (e.g. `m.get(k)` → `Option<Int>`), not a
+    // qualified/`GenericInstantiationExpression` variant constructor, which is
+    // handled earlier in this visitor. Codegen compiles it to a guarded extract
+    // of the tagged-union payload.
+    if (fieldName == "value") {
+        if (auto* objEnumType = dynamic_cast<ast::TypeName*>(it->second)) {
+            if (objEnumType->identifier) {
+                const std::string env = objEnumType->identifier->name;
+                if ((env == "Option" || env == "Result") && !objEnumType->genericArgs.empty()) {
+                    ast::TypeNode* pal = objEnumType->genericArgs[0].get();
+                    expressionTypes[node] = pal;
+                    node->type = std::shared_ptr<ast::TypeNode>(pal->clone());
+                    return;
+                }
+            }
+        }
     }
 
     // Special handling for built-in types with methods (Vec, Future, etc.)
@@ -7397,6 +7449,20 @@ void SemanticAnalyzer::handleVecMethodCall(ast::CallExpression* node, const std:
         expressionTypes[node] = intType.get();
         node->type = std::shared_ptr<ast::TypeNode>(std::move(intType));
 
+    } else if (methodName == "set") {
+        // set(index, value) -> void (overwrite element in place)
+        if (node->arguments.size() != 2) {
+            addError("Vec::set expects exactly 2 arguments (index, value)", node);
+            return;
+        }
+        if (isConstVec) {
+            addError("Cannot call mutating method 'set' on const Vec: " + objectName, node);
+            return;
+        }
+        if (node->arguments[0]) node->arguments[0]->accept(*this);
+        if (node->arguments[1]) node->arguments[1]->accept(*this);
+        node->type = nullptr;
+
     } else if (methodName == "get_array") {
         // get_array(pre_allocated_array) -> Int (number of elements copied)
         if (node->arguments.size() != 1) {
@@ -7495,6 +7561,16 @@ void SemanticAnalyzer::handleVecMethodCallOnMember(ast::CallExpression* node, as
             expressionTypes[node] = node->type.get();
         }
 
+    } else if (methodName == "set") {
+        // set(index, value) -> void (overwrite element in place)
+        if (node->arguments.size() != 2) {
+            addError("Vec::set expects exactly 2 arguments (index, value)", node);
+            return;
+        }
+        if (node->arguments[0]) node->arguments[0]->accept(*this);
+        if (node->arguments[1]) node->arguments[1]->accept(*this);
+        node->type = nullptr;
+
     } else if (methodName == "clear") {
         // clear() -> void
         if (node->arguments.size() != 0) {
@@ -7513,6 +7589,41 @@ void SemanticAnalyzer::handleVecMethodCallOnMember(ast::CallExpression* node, as
         auto boolType = std::make_unique<ast::TypeName>(node->loc, std::move(boolId));
         expressionTypes[node] = boolType.get();
         node->type = std::shared_ptr<ast::TypeNode>(std::move(boolType));
+
+    } else if (methodName == "remove_at" || methodName == "remove") {
+        // remove_at(index) -> T (removed element). Mutating: valid with a mutable member.
+        if (node->arguments.size() != 1) {
+            addError("Vec::" + methodName + " expects exactly 1 argument (index)", node);
+            return;
+        }
+        if (node->arguments[0]) node->arguments[0]->accept(*this);
+        if (elementType) {
+            node->type = std::shared_ptr<ast::TypeNode>(elementType->clone());
+            expressionTypes[node] = node->type.get();
+        }
+
+    } else if (methodName == "capacity") {
+        // capacity() -> Int
+        if (node->arguments.size() != 0) {
+            addError("Vec::capacity expects no arguments", node);
+            return;
+        }
+        auto capId = std::make_unique<ast::Identifier>(node->loc, "Int");
+        auto capType = std::make_unique<ast::TypeName>(node->loc, std::move(capId));
+        expressionTypes[node] = capType.get();
+        node->type = std::shared_ptr<ast::TypeNode>(std::move(capType));
+
+    } else if (methodName == "contains") {
+        // contains(element) -> Bool
+        if (node->arguments.size() != 1) {
+            addError("Vec::contains expects exactly 1 argument", node);
+            return;
+        }
+        if (node->arguments[0]) node->arguments[0]->accept(*this);
+        auto containId = std::make_unique<ast::Identifier>(node->loc, "Bool");
+        auto containType = std::make_unique<ast::TypeName>(node->loc, std::move(containId));
+        expressionTypes[node] = containType.get();
+        node->type = std::shared_ptr<ast::TypeNode>(std::move(containType));
 
     } else {
         addError("Unknown Vec method: " + methodName, node);

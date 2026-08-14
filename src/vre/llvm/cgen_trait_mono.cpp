@@ -329,7 +329,16 @@ llvm::Function* LLVMCodegen::monomorphizeTraitMethod(const std::string& concrete
 
                     llvm::BasicBlock* entry = llvm::BasicBlock::Create(*context, "entry", specializedFunc);
                     builder->SetInsertPoint(entry);
-                    size_t savedScopeDepth = scopeStack.size();
+                    // Isolate this monomorphized bind method's scope tracking from
+                    // the caller's: a method body with early `return`s inside loops
+                    // (common in by-ref collection methods) can over-pop the shared
+                    // scope stack otherwise, corrupting the caller's declarations.
+                    // Mirror the wholesale save/clear/restore used by
+                    // monomorphizeFunction rather than the depth-guard that cannot
+                    // recover from an underflow below the caller's baseline.
+                    auto savedMethodScopeStack = std::move(scopeStack);
+                    scopeStack.clear();
+                    size_t savedScopeDepth = 0;
                     enterScope();
                     generatePushFrameCall(specializedName, methodAST->loc);
 
@@ -429,6 +438,9 @@ llvm::Function* LLVMCodegen::monomorphizeTraitMethod(const std::string& concrete
                             builder->SetInsertPoint(savedInsertBlock);
                         }
                     }
+                    // Restore the caller's scope stack wholesale before returning to
+                    // it, discarding any scopes this method's body left behind.
+                    scopeStack = std::move(savedMethodScopeStack);
 
                     m_currentImplTypeNode = origImplTypeNode;
                     m_currentImplTraitName = origImplTraitName;

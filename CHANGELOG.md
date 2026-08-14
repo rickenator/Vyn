@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`Option<T>` / `Result<T,E>` expose a native `.value` payload accessor** — a
+  value of the built-in generic enums now supports `.value`, reading the payload
+  of the primary (success) data variant (`Some(T)` for Option, `Ok(T)` for
+  Result) as `T`. It compiles to a guarded extract of the tagged-union payload:
+  when the runtime variant is the primary one the payload is returned, otherwise
+  a default `T` is produced (matching the house "return default on invalid
+  access" style of `Vec.get`). This lets `m.get(k).value` drain a `HashMap`
+  lookup without an explicit `match`, while `match`/`select` remain the
+  exhaustiveness-checked path. Covered by `test/units/test_enum_value_accessor.vyb` and
+  `test/modules/test_collections_hashmap.vyb`.
+- **`stdlib/collections` ships real `HashMap<K,V>` and `HashSet<K>`** — two
+  keyed collections built on `Vec` plus the `Hashable`/`Equatable` core aspects,
+  with in-place mutation via by-ref (`self<their<...>>`) bind receiver methods.
+  `HashMap` provides `put`, `get` (returning `Option<V>`), `contains_key`, and
+  `size`; `HashSet` provides `insert`, `contains`, and `size`. Linearly-scanning
+  `equals` lookup keeps them O(n) pending a hash-bucket layout. Import with
+  `import collections` and construct via struct literals
+  (`HashMap<String, Int> { keys = Vec<String>(), vals = Vec<Int>() }`).
+  Covered by `test/modules/test_collections_hashmap.vyb`.
+
 ### Changed
 - **C-like enums are now first-class typed values** — `enum Color { Red, Green,
   Blue }` no longer lowers each variant to a raw `i64`. Variants are distinct
@@ -31,6 +52,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test/ffi/enum_by_value.vyb`.
 
 ### Fixed
+- **Monomorphized bind methods no longer corrupt the caller's scope stack** — a
+  by-ref bind method whose body returns from inside a loop (common in collection
+  methods like `HashMap.get`) could over-pop the shared codegen scope stack while
+  it was emitted lazily inside the caller, leaving a subsequent variable
+  declaration with "no active scope" and skipping its ownership cleanup. Bind
+  method emission now isolates scope tracking the same way monomorphized
+  functions already did (save/clear/restore) instead of relying on a depth guard
+  that cannot recover from an underflow below the caller's baseline.
+- **Cross-module generic binds with nested-bound type parameters are carried** —
+  `bindKeyFromLine` skipped generic parameters using the *first* `'>'`, which
+  broke on a bound that itself wraps a generic (e.g.
+  `bind<K<Hashable, Equatable>, V> MapOps -> HashMap<K, V>`), so those binds ran
+  as if un-`share`d and were silently dropped on import. It now skips balanced
+  angle brackets, so the standard-library `HashMap`/`HashSet` binds (and any
+  similar user bind) retain visibility across `import`.
 - **By-ref bind receivers now work — `self<their<T>>` mutates in place** — a bind
   method whose receiver is declared by reference lowers `self` to a pointer to the
   caller's object, and the call site passes the receiver's address instead of a

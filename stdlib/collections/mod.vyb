@@ -2,12 +2,124 @@
 #
 # The built-in `Vec<T>` (constructed with the vybish `Vec()` / `Vec(n)` calls)
 # already ships `push`, `pop`, `len`, `get`, `get_vec`, `clear`, `is_empty`,
-# `contains`, `remove_at`, and the array conversion helpers. This module is the
-# surface where `HashMap` / `HashSet` and the higher-order `Vec<T>` expansion
-# (`map`, `filter`, `reduce`, `find`, `sort`) will land once the dedicated
-# compiler features are implemented (see TODO: Standard Library Expansion).
+# `contains`, `remove_at`, and the array conversion helpers. This module layers
+# the first real keyed/set collections on top of `Vec` and the canonical
+# `Hashable` / `Equatable` core aspects:
+#
+#   - `HashMap<K, V>`: a keyed map backed by parallel `keys` / `vals` vectors
+#     with linear `equals` lookup. Provides `put`, `get` (returning `Option<V>`),
+#     `contains_key` and `size`. Lookup is O(n) pending a hash-bucket layout.
+#   - `HashSet<K>`: a set of distinct keys backed by a single `values` vector.
+#     Provides `insert`, `contains` and `size`. Membership is O(n) for now.
+#
+# Import the whole module with `import collections` (the carried generic bind
+# methods reference the shared `samekey` equality probe, so a narrow named import
+# of just `HashMap`/`MapOps` would drop that dependency and the binds would not
+# resolve). Construct instances with struct literals, e.g.
+#   `m<HashMap<String, Int>> = HashMap<String, Int> { keys = Vec<String>(), vals = Vec<Int>() }`
+# Drain `get` results with `match` / `select` on the `Option<V>`, or read the
+# primary payload directly with `.value` (returns a default when the key is absent).
+
+import core::aspects
+
+# Equality probe for bounded key types. The `equals` method is resolved via the
+# `Equatable` bound on a declared type parameter, which is the reliable path for
+# unqualified aspect dispatch inside generic bind bodies.
+share(all)
+samekey<K<Equatable>>(a<K>, b<K>)<Bool> -> {
+    return a.equals(b)
+}
+
+share(all)
+struct HashMap<K, V> {
+    keys<Vec<K>>,
+    vals<Vec<V>>
+}
+
+share(all)
+aspect MapOps {
+    put(self<their<HashMap<K, V>>>, key<K>, val<V>)<Void>
+    get(self<their<HashMap<K, V>>>, key<K>)<Option<V>>
+    contains_key(self<their<HashMap<K, V>>>, key<K>)<Bool>
+    size(self<their<HashMap<K, V>>>)<Int>
+}
+
+share(all)
+bind<K<Hashable, Equatable>, V> MapOps -> HashMap<K, V> {
+    put(self<their<HashMap<K, V>>>, key<K>, val<V>)<Void> -> {
+        i<Int> = 0
+        for (i = 0; i < self.keys.len(); i = i + 1) {
+            if (samekey(self.keys.get(i), key)) {
+                self.vals.set(i, val)
+                return
+            }
+        }
+        self.keys.push(key)
+        self.vals.push(val)
+        return
+    }
+    get(self<their<HashMap<K, V>>>, key<K>)<Option<V>> -> {
+        i<Int> = 0
+        for (i = 0; i < self.keys.len(); i = i + 1) {
+            if (samekey(self.keys.get(i), key)) {
+                return Option<V>::Some(self.vals.get(i))
+            }
+        }
+        return Option<V>::None
+    }
+    contains_key(self<their<HashMap<K, V>>>, key<K>)<Bool> -> {
+        i<Int> = 0
+        for (i = 0; i < self.keys.len(); i = i + 1) {
+            if (samekey(self.keys.get(i), key)) {
+                return true
+            }
+        }
+        return false
+    }
+    size(self<their<HashMap<K, V>>>)<Int> -> {
+        return self.keys.len()
+    }
+}
+
+share(all)
+struct HashSet<K> {
+    values<Vec<K>>
+}
+
+share(all)
+aspect SetOps {
+    insert(self<their<HashSet<K>>>, value<K>)<Bool>
+    contains(self<their<HashSet<K>>>, value<K>)<Bool>
+    size(self<their<HashSet<K>>>)<Int>
+}
+
+share(all)
+bind<K<Hashable, Equatable>> SetOps -> HashSet<K> {
+    insert(self<their<HashSet<K>>>, value<K>)<Bool> -> {
+        i<Int> = 0
+        for (i = 0; i < self.values.len(); i = i + 1) {
+            if (samekey(self.values.get(i), value)) {
+                return false
+            }
+        }
+        self.values.push(value)
+        return true
+    }
+    contains(self<their<HashSet<K>>>, value<K>)<Bool> -> {
+        i<Int> = 0
+        for (i = 0; i < self.values.len(); i = i + 1) {
+            if (samekey(self.values.get(i), value)) {
+                return true
+            }
+        }
+        return false
+    }
+    size(self<their<HashSet<K>>>)<Int> -> {
+        return self.values.len()
+    }
+}
 
 share(all)
 collections_status_message()<String> -> {
-    return "collections: built-in Vec<T>; HashMap/HashSet and higher-order expansion pending"
+    return "collections: built-in Vec<T> plus HashMap / HashSet keyed collections"
 }

@@ -45,6 +45,8 @@ void LLVMCodegen::handleVecMethod(vyb::ast::CallExpression* node, const std::str
         handleVecLen(node, vecPtr, vecStructType);
     } else if (methodName == "get") {
         handleVecGet(node, vecPtr, vecStructType);
+    } else if (methodName == "set") {
+        handleVecSet(node, vecPtr, vecStructType);
     } else if (methodName == "push_array") {
         handleVecPushArray(node, vecPtr, vecStructType);
     } else if (methodName == "to_array") {
@@ -376,6 +378,48 @@ void LLVMCodegen::handleVecGet(vyb::ast::CallExpression* node, llvm::Value* vecP
 
         VYB_CDBG << "DEBUG: Vec::get() called - element retrieved" << std::endl;
     }
+}
+
+void LLVMCodegen::handleVecSet(vyb::ast::CallExpression* node, llvm::Value* vecPtr, llvm::Type* vecStructType) {
+    if (node->arguments.size() != 2) {
+        logError(node->loc, "Vec::set expects exactly 2 arguments (index, value)");
+        m_currentLLVMValue = nullptr;
+        return;
+    }
+
+    node->arguments[0]->accept(*this);
+    llvm::Value* index = m_currentLLVMValue;
+    node->arguments[1]->accept(*this);
+    llvm::Value* value = m_currentLLVMValue;
+    if (!index || !value) {
+        logError(node->loc, "Failed to evaluate index/value for Vec::set");
+        m_currentLLVMValue = nullptr;
+        return;
+    }
+
+    // Determine the element type from the value argument so element size is right.
+    llvm::Type* elementLLVMType = llvm::Type::getInt64Ty(*context);
+    uint64_t elementSizeBytes = 8;
+    if (node->arguments[1]->type) {
+        llvm::Type* t = codegenType(node->arguments[1]->type.get());
+        if (t) {
+            elementLLVMType = t;
+            llvm::DataLayout dataLayout(module.get());
+            elementSizeBytes = dataLayout.getTypeAllocSize(elementLLVMType);
+        }
+    }
+
+    llvm::Value* dataPtr = builder->CreateLoad(
+        llvm::PointerType::get(*context, 0),
+        builder->CreateStructGEP(vecStructType, vecPtr, 0, "vec.set.data_ptr"),
+        "vec.set.data");
+
+    llvm::Value* elementSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), elementSizeBytes);
+    llvm::Value* offset = builder->CreateMul(index, elementSize, "vec.set.offset");
+    llvm::Value* elementPtr = builder->CreateGEP(llvm::Type::getInt8Ty(*context), dataPtr, offset, "vec.set.element_ptr");
+    builder->CreateStore(value, elementPtr);
+
+    m_currentLLVMValue = nullptr;
 }
 
 void LLVMCodegen::handleVecPushArray(vyb::ast::CallExpression* node, llvm::Value* vecPtr, llvm::Type* vecStructType) {
@@ -1019,6 +1063,8 @@ void LLVMCodegen::handleVecMethodOnValue(vyb::ast::CallExpression* node, llvm::V
         handleVecCapacity(node, vecPtr, vecStructType);
     } else if (methodName == "concat") {
         handleVecConcat(node, vecPtr, vecStructType);
+    } else if (methodName == "set") {
+        handleVecSet(node, vecPtr, vecStructType);
     } else if (methodName == "contains") {
         handleVecContains(node, vecPtr, vecStructType);
     } else if (methodName == "remove_at" || methodName == "remove") {

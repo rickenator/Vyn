@@ -135,13 +135,24 @@ std::string bindKeyFromLine(const std::string& line) {
         return "";
     }
     std::string rest = trimCopy(line.substr(4));
-    // Skip generic parameters, e.g. `bind<T> Iterator -> Boxer<T>`.
+    // Skip generic parameters, e.g. `bind<T> Iterator -> Boxer<T>` or
+    // `bind<K<Hashable, Equatable>, V> MapOps -> HashMap<K, V>`. Balanced-angle
+    // scanning handles type-parameter bounds that themselves wrap a generic
+    // (nested `<...>`), e.g. the inner `<Hashable, Equatable>` in the bound.
     if (!rest.empty() && rest[0] == '<') {
-        size_t close = rest.find('>');
-        if (close == std::string::npos) {
+        size_t depth = 0;
+        size_t i = 0;
+        for (; i < rest.size(); ++i) {
+            if (rest[i] == '<') ++depth;
+            else if (rest[i] == '>') {
+                --depth;
+                if (depth == 0) { ++i; break; }
+            }
+        }
+        if (depth != 0) {
             return "";
         }
-        rest = trimCopy(rest.substr(close + 1));
+        rest = trimCopy(rest.substr(i));
     }
     // Trait name.
     std::string trait;
@@ -376,6 +387,7 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                             continue;
                         }
                         std::string bindTrait = bind->traitType ? bind->traitType->toString() : "";
+
                         if (!requestedForBinds.empty() &&
                             (bindTrait.empty() || requestedForBinds.find(bindTrait) == requestedForBinds.end())) {
                             continue;

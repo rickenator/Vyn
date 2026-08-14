@@ -828,9 +828,25 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 if (auto varIdent = dynamic_cast<ast::Identifier*>(memberExpr->property.get())) {
                     if (genericEnumTemplates.count(enIdent->name) || enIdent->name == "Option" ||
                         enIdent->name == "Result") {
-                        std::string mangled = mangleGenericTypeName(enIdent->name, gi->genericArguments);
+                        // Inside a monomorphized generic bind body the enclosing type
+                        // params (e.g. `V` in `Option<V>::Some(...)`) are active via
+                        // currentTypeSubstitutions; substitute them into the concrete
+                        // enum instantiation so `Option<V>` becomes `Option<Int>`
+                        // instead of an unresolved `Option_V`.
+                        std::vector<ast::TypeNodePtr> concreteEnumArgs;
+                        concreteEnumArgs.reserve(gi->genericArguments.size());
+                        for (const auto& arg : gi->genericArguments) {
+                            std::string s = arg->toString();
+                            if (!currentTypeSubstitutions.empty()) {
+                                for (const auto& kv : currentTypeSubstitutions) {
+                                    s = replaceTypeTokens(s, kv.first, kv.second);
+                                }
+                            }
+                            concreteEnumArgs.push_back(typePatternToTypeNode(TypePattern::parse(s), gi->loc));
+                        }
+                        std::string mangled = mangleGenericTypeName(enIdent->name, concreteEnumArgs);
                         if (!taggedEnumInfo.count(mangled)) {
-                            monomorphizeEnum(enIdent->name, gi->genericArguments);
+                            monomorphizeEnum(enIdent->name, concreteEnumArgs);
                         }
                         std::vector<llvm::Value*> payloadVals;
                         for (auto& arg : node->arguments) {
@@ -2528,7 +2544,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                     methodName == "clear" || methodName == "is_empty" || methodName == "capacity" ||
                     methodName == "remove_at" || methodName == "get_vec"))) {
                     // These methods are Vec-specific or we couldn't determine type
-                    if (methodName == "push" || methodName == "pop" || methodName == "len" || methodName == "get" ||
+                    if (methodName == "push" || methodName == "pop" || methodName == "len" || methodName == "get" || methodName == "set" ||
                         methodName == "push_array" || methodName == "to_array" || methodName == "get_array" ||
                         methodName == "clear" || methodName == "is_empty" || methodName == "capacity" ||
                         methodName == "concat" || methodName == "contains" || methodName == "remove_at" ||
@@ -2541,7 +2557,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
 
             // Handle Vec method calls on member expressions (e.g., tree.nodes.push())
             // The object is itself a member expression
-            if (methodName == "push" || methodName == "pop" || methodName == "len" || methodName == "get" ||
+            if (methodName == "push" || methodName == "pop" || methodName == "len" || methodName == "get" || methodName == "set" ||
                 methodName == "push_array" || methodName == "to_array" || methodName == "get_array" ||
                 methodName == "clear" || methodName == "is_empty" || methodName == "capacity" ||
                 methodName == "concat" || methodName == "contains" || methodName == "remove_at" ||
@@ -3508,8 +3524,19 @@ void LLVMCodegen::visit(ast::MemberExpression* node) {
                 if (auto* propIdent = dynamic_cast<ast::Identifier*>(node->property.get())) {
                     if (genericEnumTemplates.count(baseIdent->name) || baseIdent->name == "Option" ||
                         baseIdent->name == "Result") {
-                        std::string mangled = mangleGenericTypeName(baseIdent->name, gi->genericArguments);
-                        if (!taggedEnumInfo.count(mangled)) monomorphizeEnum(baseIdent->name, gi->genericArguments);
+                        std::vector<ast::TypeNodePtr> concreteEnumArgs;
+                        concreteEnumArgs.reserve(gi->genericArguments.size());
+                        for (const auto& arg : gi->genericArguments) {
+                            std::string s = arg->toString();
+                            if (!currentTypeSubstitutions.empty()) {
+                                for (const auto& kv : currentTypeSubstitutions) {
+                                    s = replaceTypeTokens(s, kv.first, kv.second);
+                                }
+                            }
+                            concreteEnumArgs.push_back(typePatternToTypeNode(TypePattern::parse(s), gi->loc));
+                        }
+                        std::string mangled = mangleGenericTypeName(baseIdent->name, concreteEnumArgs);
+                        if (!taggedEnumInfo.count(mangled)) monomorphizeEnum(baseIdent->name, concreteEnumArgs);
                         auto tagEnumIt = taggedEnumInfo.find(mangled);
                         const TaggedEnumInfo& tei = tagEnumIt->second;
                         if (tei.variantPayloadTypes.count(propIdent->name)) {
@@ -3661,6 +3688,53 @@ void LLVMCodegen::visit(ast::MemberExpression* node) {
                         m_currentLLVMValue = builder->CreateExtractValue(objectValue, 0, "enum.tag");
                     }
                     return;
+                }
+            }
+        }
+    }
+
+    // `.value` accessor on the built-in `Option<T>` / `Result<T,E>` enums:
+    // reads the payload of the primary (success) data variant (`Some(T)` for
+    // Option, `Ok(T)` for Result) as its payload type `T`. Guards on the runtime
+    // tag so reading the "wrong" variant (None / Err) yields a default T rather
+    // than uninitialized union bytes, matching the house "return default on
+    // invalid access" style used by Vec.get.
+    if (!node->computed) {
+        if (auto* valPropIdent = dynamic_cast<ast::Identifier*>(node->property.get())) {
+            if (valPropIdent->name == "value") {
+                if (auto* objTn = dynamic_cast<ast::TypeName*>(node->object->type.get())) {
+                    const std::string vb = objTn->identifier ? objTn->identifier->name : "";
+                    const bool isOption = vb == "Option";
+                    const bool isResult = vb == "Result";
+                    if ((isOption || isResult) && objTn->genericArgs.size() >= 1) {
+                        if (const TaggedEnumInfo* tei = findTaggedEnum(node->object->type.get())) {
+                            const std::string prim = isOption ? "Some" : "Ok";
+                            auto payIt = tei->variantPayloadTypes.find(prim);
+                            if (payIt != tei->variantPayloadTypes.end() && payIt->second &&
+                                payIt->second->getNumElements() > 0) {
+                                llvm::StructType* payloadTy = payIt->second;
+                                llvm::Type* eltTy = payloadTy->getElementType(0);
+                                llvm::Value* enumVal = objectValue;
+                                if (enumVal->getType()->isPointerTy()) {
+                                    llvm::Type* enumTy = codegenType(node->object->type.get());
+                                    enumVal = builder->CreateLoad(enumTy, enumVal, "enum.value.load");
+                                }
+                                auto tagIt = tei->variantTags.find(prim);
+                                if (!enumVal || tagIt == tei->variantTags.end()) {
+                                    logError(node->loc, "Cannot resolve .value on " + vb);
+                                    m_currentLLVMValue = nullptr;
+                                    return;
+                                }
+                                llvm::Value* tagVal = builder->CreateExtractValue(enumVal, 0, "enum.value.tag");
+                                llvm::Value* primTag = llvm::ConstantInt::get(int64Type, tagIt->second, true);
+                                llvm::Value* isPrim = builder->CreateICmpEQ(tagVal, primTag, "enum.value.isprimary");
+                                llvm::Value* payload = extractEnumVariantField(enumVal, payloadTy, 0);
+                                llvm::Value* defVal = llvm::Constant::getNullValue(eltTy);
+                                m_currentLLVMValue = builder->CreateSelect(isPrim, payload, defVal, "enum.value");
+                                return;
+                            }
+                        }
+                    }
                 }
             }
         }
