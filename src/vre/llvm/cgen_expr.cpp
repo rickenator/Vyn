@@ -4720,6 +4720,12 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
             if (trapClause->handler) {
                 // Treat handler like a block expression - capture last expression value
                 if (auto* blockStmt = dynamic_cast<ast::BlockStatement*>(trapClause->handler.get())) {
+                    // The handler body is its own scope. Without this, a `return`
+                    // inside the handler pops the enclosing function's scope while
+                    // surrounding codegen (e.g. the enclosing variable declaration)
+                    // is still in progress. (Matches BlockStatement scoping.)
+                    size_t savedHandlerScopeDepth = scopeStack.size();
+                    enterScope();
                     // Execute all statements
                     for (size_t j = 0; j < blockStmt->body.size(); j++) {
                         const auto& stmt = blockStmt->body[j];
@@ -4745,6 +4751,12 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
                             clauseResult = nullptr;
                             break;
                         }
+                    }
+                    // Clean up any handler scope the loop left behind, but never
+                    // pop below the scope the handler started from (a handler
+                    // `return` will have already popped its own scope).
+                    if (scopeStack.size() > savedHandlerScopeDepth) {
+                        exitScope();
                     }
                 } else {
                     // Non-block handler - just visit it
