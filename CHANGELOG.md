@@ -31,6 +31,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test/ffi/enum_by_value.vyb`.
 
 ### Fixed
+- **Bounded type parameters propagate into inner generic calls** — a generic
+  function whose declared type parameter carries its own bound (e.g.
+  `hashit<K<Hashable>>`) can now forward that parameter by value into another
+  bounded generic helper (`both<K<Hashable>, L<Hashable>>` → `hashit(a)`).
+  Bounds validation recognizes that a bounded type parameter itself satisfies
+  the helper's requirement (no spurious "Type 'K' does not satisfy Hashable"),
+  and at the call site the concrete type substitutions are threaded into the
+  inner helper's type arguments so it monomorphizes against the concrete type
+  (`both("alpha", "beta")` drives `hashit_String`, not `hashit_K`). Covered by
+  `test/units/test_bounded_param_nested_dispatch.vyb`.
 - **Generic functions returning generic struct/enum types monomorphize to the
   concrete type** — a call like `make_box<Int>(7)` (or the inferred
   `make_box("hi")`) now resolves its return type to `Box<Int>`/`Box<String>`

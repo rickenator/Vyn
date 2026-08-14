@@ -2042,6 +2042,22 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             return false;
         };
 
+        // Does a type parameter name in the current scope carry the bound itself?
+        // (e.g. inside `bind<K<Hashable>, V> ... -> Map<K,V>`, `K` satisfies a
+        // Hashable bound because its own declaration is bounded; `hashkey<K<Hashable>>(ck)`
+        // with `ck:K` then validates.)
+        auto typeParamHasBound = [&](const std::string& typeParamName,
+                                     const std::string& aspectName) -> bool {
+            SymbolInfo* sym = currentScope->lookup(typeParamName);
+            if (!sym || sym->kind != SymbolInfo::Kind::TYPE_PARAMETER) {
+                return false;
+            }
+            for (const auto& b : sym->bounds) {
+                if (b == aspectName) return true;
+            }
+            return false;
+        };
+
         // Build inferred substitutions + validate bounds + substitute the return type.
         auto resolveGenericCallReturnType =
             [&](ast::FunctionDeclaration* funcDecl) -> ast::TypeNodePtr {
@@ -2083,7 +2099,8 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                     for (const auto& bound : gp->bounds) {
                         if (!bound) continue;
                         std::string boundName = bound->toString();
-                        if (!hasAspectBind(concreteTypeStr, boundName)) {
+                        if (!hasAspectBind(concreteTypeStr, boundName) &&
+                            !typeParamHasBound(concreteTypeStr, boundName)) {
                             addError("Type '" + concreteTypeStr + "' does not satisfy aspect bound '" +
                                      boundName + "' on type parameter '" + gp->name->name +
                                      "' for function '" + (funcDecl->id ? funcDecl->id->name : "<anonymous>") +

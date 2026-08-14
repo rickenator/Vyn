@@ -2643,6 +2643,16 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 return;
             }
         }
+        // Resolve bind/generic-body type parameters (e.g. K -> String) in the
+        // inferred/explicit concrete type args before monomorphizing, so a helper
+        // called with a type-param argument (e.g. `hashkey(ck)` with `ck<K>` in a
+        // `bind<K<Hashable>, V>` body) monomorphizes against the bind's concrete
+        // instantiation instead of an unresolved `K`.
+        for (auto& argStr : concreteTypeArgs) {
+            for (const auto& kv : currentTypeSubstitutions) {
+                argStr = replaceTypeTokens(argStr, kv.first, kv.second);
+            }
+        }
         }
         // Monomorphize the generic function
         llvm::Function* monomorphizedFunc = monomorphizeGenericFunction(identCallee->name, concreteTypeArgs);

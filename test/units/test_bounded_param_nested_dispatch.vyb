@@ -1,0 +1,29 @@
+// @test: bounded type parameter dispatched to an inner bounded generic call
+// @description: a generic function whose bounded type parameter (K<Hashable>)
+//   is passed by value to another bounded generic helper resolves that helper's
+//   type parameter from the surrounding parameter's own bound (Type 'K' satisfies
+//   a 'Hashable' requirement because K itself is declared bounded), and the inner
+//   helper monomorphizes against the concrete type at the call site.
+// @category: generics, aspect, bounds, monomorphization
+// @expect: pass
+// @expect-return: 0
+// @execute-jit: true
+
+import core::aspects
+
+hashit<K<Hashable>>(k<K>)<Int> -> { return k.hash() }
+
+// both is itself bounded in K and L; forwarding a<K> (a bound param) into
+// hashit must validate via K's own Hashable bound and not an error.
+both<K<Hashable>, L<Hashable>>(a<K>, b<L>)<Int> -> {
+    return hashit(a) + hashit(b)
+}
+
+main()<Int> -> {
+    r1<Int> = both("alpha", "beta")
+    r2<Int> = both("alpha", "beta")
+    if (r1 == r2 && both(7, 9) == hashit(7) + hashit(9)) {
+        return 0
+    }
+    return 1
+}
