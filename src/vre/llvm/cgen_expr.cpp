@@ -4059,6 +4059,23 @@ void LLVMCodegen::visit(ast::ConstructionExpression* node) {
 
     VYB_CDBG << "DEBUG: ConstructionExpression processing type: " << node->constructedType->toString() << std::endl;
 
+    // Explicitly-typed bare Vec constructor: `Vec<T>()` / `Vec<T>(n)`. A typed
+    // construction parses `Vec<Int>` as a TypeName (not the bare `Vec` identifier),
+    // so it lands here rather than in CallExpression's `emitVecConstructor` path.
+    // Route it through the same emitter so the result is the real
+    // `{ ptr, size, cap }` struct *value* — not a pointer to an uninitialized
+    // alloca (which would break the assignment cast and segfault in a field init).
+    if (auto* tname = dynamic_cast<ast::TypeName*>(node->constructedType.get())) {
+        if (tname->identifier && tname->identifier->name == "Vec") {
+            VYB_CDBG << "DEBUG: ConstructionExpression is a typed Vec constructor" << std::endl;
+            auto calleeId = std::make_unique<ast::Identifier>(node->loc, "Vec");
+            auto callExpr = std::make_unique<ast::CallExpression>(node->loc, std::move(calleeId), std::move(node->arguments));
+            emitVecConstructor(callExpr.get());
+            node->arguments = std::move(callExpr->arguments);
+            return;
+        }
+    }
+
     // If the "constructed type" is actually a generic function template invoked with
     // explicit type arguments (e.g. `probe<Int>(0, 0)`), this is a generic function
     // call rather than struct construction. Dispatch it through the call path so the

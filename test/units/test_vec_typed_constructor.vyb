@@ -1,0 +1,36 @@
+// @test: explicitly-typed Vec constructor Vec<T>() and Vec<T>(n)
+// @description: `Vec<Int>()` / `Vec<Int>(n)` — the explicitly-typed bare Vec
+//   constructor — builds the real `{ ptr, size, cap }` struct value (not a pointer
+//   to an uninitialized alloca), in a standalone variable and in a struct field,
+//   for both integer and string element types.
+// @category: vec, constructor, stdlib
+// @expect: pass
+// @expect-return: -77
+// @execute-jit: true
+
+struct Map2 {
+    keys<Vec<Int>>,
+    vals<Vec<Int>>
+}
+
+main()<Int> -> {
+    a<Vec<Int>> = Vec<Int>()
+    a.push(10)
+    a.push(20)
+
+    b<Vec<Int>> = Vec<Int>(4)
+    len_b<Int> = b.len()
+    zero<Int> = b.get(2)
+
+    c<Vec<String>> = Vec<String>()
+    c.push("hello")
+
+    m<Map2> = Map2 { keys = Vec<Int>(), vals = Vec<Int>() }
+    m.keys.push(1)
+    m.keys.push(2)
+
+    if (a.len() == 2 && len_b == 4 && zero == 0 && c.len() == 1 && m.keys.len() == 2) {
+        return -77
+    }
+    return 1
+}

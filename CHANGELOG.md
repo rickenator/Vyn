@@ -31,6 +31,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test/ffi/enum_by_value.vyb`.
 
 ### Fixed
+- **Explicitly-typed `Vec` constructor `Vec<T>()` / `Vec<T>(n)` now works** — a
+  typed construction (`Vec<Int>()`) parses `Vec<Int>` as a type name, so it was
+  routed through generic struct-construction codegen, which returned a pointer to
+  an uninitialized alloca instead of the `{ ptr, size, cap }` struct *value*.
+  That broke the assignment cast (`Unsupported or invalid cast from type ptr to
+  { ptr, i64, i64 }`) and segfaulted when used on a struct field. Typed Vec
+  constructions now route through the same emitter as bare `Vec()` / `Vec(n)`, so
+  `Vec<Int>()`, `Vec<Int>(n)`, and `Vec<String>()` all build a real empty /
+  pre-allocated vector in a standalone variable or a struct field. Covered by
+  `test/units/test_vec_typed_constructor.vyb`.
 - **Bounded type parameters propagate into inner generic calls** — a generic
   function whose declared type parameter carries its own bound (e.g.
   `hashit<K<Hashable>>`) can now forward that parameter by value into another
