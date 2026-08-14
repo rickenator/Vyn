@@ -527,59 +527,54 @@ Simple aspect receivers use `self`; the compiler treats it as the bound `Self` t
 #### **Complete Aspect Example**
 
 ```vyb
-# Define an aspect (interface) with method signatures
+# Define an aspect (interface): method signatures only, no state
 aspect Display {
-    show(self)<String> -> { }
-    format(self, prefix<String>)<String> -> { }
+    show(self)<String> ->
+    format(self, prefix<String>)<String> ->
 }
 
-# Define a generic struct
-struct Box<T> {
-    value<T>
-}
-
-# Bind the aspect to a concrete type
-bind Display -> Box<Int> {
-    show(self)<String> -> {
-        return "Box with integer"
-    }
-
-    format(self, prefix<String>)<String> -> {
-        return prefix + ": Box[Int]"
-    }
-}
-
-# Bind the aspect to another type
+# A concrete struct - just data
 struct Point {
     x<Int>,
     y<Int>
 }
 
+# Bind the aspect to the type, implementing the methods against the data
 bind Display -> Point {
     show(self)<String> -> {
-        return "Point"
+        return "Point at (" + self.x + ", " + self.y + ")"
     }
 
     format(self, prefix<String>)<String> -> {
-        return prefix + ": (x,y)"
+        return prefix + ": (" + self.x + "," + self.y + ")"
     }
 }
 
-# Generic function using aspect bounds
-printItem<T<Display>>(item<T>)<Void> -> {
-    description<String> = item.show()
-    formatted<String> = item.format("Item")
-    println(description)
-    println(formatted)
+# Another type can bind the same aspect
+struct Rectangle {
+    width<Int>,
+    height<Int>
+}
+
+bind Display -> Rectangle {
+    show(self)<String> -> {
+        return "Rectangle " + self.width + "x" + self.height
+    }
+
+    format(self, prefix<String>)<String> -> {
+        return prefix + ": " + self.width + "x" + self.height
+    }
 }
 
 main()<Int> -> {
-    box<Box<Int>> = Box<Int> { value = 42 }
     point<Point> = Point { x = 10, y = 20 }
+    rect<Rectangle> = Rectangle { width = 5, height = 7 }
 
-    # Aspect methods work through generic functions
-    printItem(box)    # Prints: "Box with integer" and "Item: Box[Int]"
-    printItem(point)  # Prints: "Point" and "Item: (x,y)"
+    # Dot-call the bound aspect methods - they read the struct's own fields
+    println(point.show())         # "Point at (10, 20)"
+    println(point.format("Item")) # "Item: (10,20)"
+    println(rect.show())          # "Rectangle 5x7"
+    println(rect.format("Item"))  # "Item: 5x7"
 
     return 0
 }
