@@ -4533,30 +4533,34 @@ void SemanticAnalyzer::visit(ast::MatchStatement* node) {
         if (variantsIt != enumVariantPayloadTypes.end() && !variantsIt->second.empty()) {
             const auto& variants = variantsIt->second;
             std::set<std::string> covered;
-            for (auto& c : node->cases) {
-                if (!c.first) { covered.insert("__wildcard__"); break; }
+            for (size_t i = 0; i < node->cases.size(); ++i) {
+                auto& pat = node->cases[i].first;
+                if (!pat) { covered.insert("__wildcard__"); break; }
+                // A guarded arm covers only the subset where its guard is true,
+                // so it does not establish unconditional coverage of its variant.
+                bool guarded = (i < node->guards.size() && node->guards[i]);
+                if (guarded) continue;
                 std::string vname;
-                if (auto* ctor = dynamic_cast<ast::ConstructionExpression*>(c.first.get())) {
+                if (auto* ctor = dynamic_cast<ast::ConstructionExpression*>(pat.get())) {
                     auto* tv = ctor->constructedType
                         ? dynamic_cast<ast::TypeName*>(ctor->constructedType.get()) : nullptr;
                     if (tv && tv->identifier) vname = tv->identifier->name;
-                } else if (auto* idp = dynamic_cast<ast::Identifier*>(c.first.get())) {
+                } else if (auto* idp = dynamic_cast<ast::Identifier*>(pat.get())) {
                     vname = idp->name;
                 }
-                // A guarded variant arm counts as covering its variant for now
-                // (mirrors codegen), so a partially-matched guarded set is caught.
                 if (variants.count(vname)) covered.insert(vname);
             }
             if (!covered.count("__wildcard__") && covered.size() < variants.size()) {
-                std::string missing;
+                std::string uncovered;
                 for (auto& kv : variants) {
                     if (!covered.count(kv.first)) {
-                        if (!missing.empty()) missing += ", ";
-                        missing += kv.first;
+                        if (!uncovered.empty()) uncovered += ", ";
+                        uncovered += kv.first;
                     }
                 }
-                addError("Match on " + matchTypeStr + " is not exhaustive: missing variant(s) " +
-                         missing + " (add the missing variant(s) or a wildcard '?')", node);
+                addError("Match on " + matchTypeStr + " is not exhaustive: variant(s) " +
+                         uncovered + " are not covered by an unguarded arm " +
+                         "(add an unguarded arm or a wildcard '?')", node);
             }
         }
     }

@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Exhaustiveness now accounts for guard clauses on enum variant arms: a variant
+  covered only by a guarded arm does not count as unconditionally covered, since
+  the guard can be false and leave a no-match path. A match is exhaustive only
+  when every variant has an unguarded arm (or a guarded arm plus a separate
+  unguarded duplicate, or a wildcard). Codegen and the semantic check stay in
+  sync on this rule.
 - A `match` on a tagged-union enum that is not exhaustive — no unguarded
   wildcard and not covering every variant — is now rejected by the semantic
   analyser with a diagnostic listing the missing variant(s). (Previously the

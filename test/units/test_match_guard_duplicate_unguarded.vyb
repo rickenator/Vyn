@@ -1,0 +1,29 @@
+// @test: guarded variant plus an unguarded duplicate restores exhaustiveness
+// @description: a variant covered by both a guarded and an unguarded arm is
+//   unconditionally covered, so the match compiles and dispatches correctly.
+// @category: enum, match, control-flow
+// @expect: pass
+// @expect-return: -77
+// @execute-jit: true
+
+enum Shape { Circle(Float), Rect(Float, Float), Unit }
+
+area(s<Shape>)<Float> -> {
+    match (s) {
+        Circle(r) if r > 100.0 -> { return 999.0 }
+        Circle(r) -> { return 3.14 * r * r }
+        Rect(w, h) -> { return w * h }
+        Unit -> { return 0.0 }
+    }
+}
+
+main()<Int> -> {
+    a<Float> = area(Shape::Circle(2.0))
+    b<Float> = area(Shape::Circle(200.0))
+    c<Float> = area(Shape::Rect(3.0, 4.0))
+    d<Float> = area(Shape::Unit)
+    if (a == 12.56 && b == 999.0 && c == 12.0 && d == 0.0) {
+        return -77
+    }
+    return 1
+}

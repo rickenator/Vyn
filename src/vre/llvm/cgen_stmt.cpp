@@ -1203,14 +1203,19 @@ void LLVMCodegen::codegenMatch(vyb::ast::MatchStatement* node, llvm::AllocaInst*
     // without a spurious "may not return on all paths" diagnostic.
     if (matchedEnum && !hasWildcard) {
         std::set<std::string> covered;
-        for (auto& c : node->cases) {
-            if (!c.first) { hasWildcard = true; break; }
+        for (size_t i = 0; i < node->cases.size(); ++i) {
+            auto& pat = node->cases[i].first;
+            if (!pat) { hasWildcard = true; break; }
+            // A guarded arm covers only the subset where its guard is true, so
+            // it does not establish unconditional coverage of its variant.
+            bool guarded = (i < node->guards.size() && node->guards[i]);
+            if (guarded) continue;
             std::string vname;
-            if (auto* ctor = dynamic_cast<ast::ConstructionExpression*>(c.first.get())) {
+            if (auto* ctor = dynamic_cast<ast::ConstructionExpression*>(pat.get())) {
                 auto* tv = ctor->constructedType
                     ? dynamic_cast<ast::TypeName*>(ctor->constructedType.get()) : nullptr;
                 if (tv && tv->identifier) vname = tv->identifier->name;
-            } else if (auto* idp = dynamic_cast<ast::Identifier*>(c.first.get())) {
+            } else if (auto* idp = dynamic_cast<ast::Identifier*>(pat.get())) {
                 vname = idp->name;
             }
             if (!vname.empty()) covered.insert(vname);

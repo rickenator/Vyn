@@ -198,8 +198,10 @@ is the working audit for what needs to be implemented next.
   exhaustive: either an unguarded wildcard or arms covering every variant. The
   semantic analyser rejects a non-exhaustive match, naming the missing variant(s);
   codegen treats an exhaustive match's no-match default as unreachable, so an
-  all-return match used as the final statement compiles cleanly. Guards are not
-  yet considered for coverage (a guarded variant arm still counts as covering).
+  all-return match used as the final statement compiles cleanly. A guarded arm
+  does not count as unconditionally covering its variant: the variant needs an
+  unguarded arm (or a guarded arm plus a separate unguarded duplicate) or a
+  wildcard.
 - [x] **`match` as expression** — `r<Int> = match (v) { pattern -> val, ? -> val }`
   yields the matched arm's value. The result type is inferred from the first
   arm's body expression; codegen allocates a zero-initialized result slot and
@@ -674,5 +676,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: August 2026*
 *Current Version: Vyb v0.5.3 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 784 tests passing (harness, 100%)*
+*Overall Status: ~60-65% complete toward 1.0 — 786 tests passing (harness, 100%)*
 *SUGGESTIONS.md merged into this document.*

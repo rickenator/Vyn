@@ -1,0 +1,20 @@
+// @test: a guarded variant alone does not make a match exhaustive
+// @description: covering every variant but with one only behind a guard leaves a
+//   possible no-match path (guard false), so the match is still non-exhaustive.
+// @category: enum, match, semantic, error
+// @expect: fail
+// @expect-error: not exhaustive
+
+enum Shape { Circle(Float), Rect(Float, Float), Unit }
+
+area(s<Shape>)<Float> -> {
+    match (s) {
+        Circle(r) if r > 100.0 -> { return 999.0 }
+        Rect(w, h) -> { return w * h }
+        Unit -> { return 0.0 }
+    }
+}
+
+main()<Int> -> {
+    return area(Shape::Circle(1.0))
+}
