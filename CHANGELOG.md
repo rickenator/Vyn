@@ -21,6 +21,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   It integrates fully with `match`/`select` variant dispatch and exhaustiveness
   checking, unwrapping both primitive and heap (e.g. `String`) payloads.
 
+- `Vec::new()` / `Vec::new(n)` are superseded by a vybish constructor form:
+  `Vec()` builds an empty growable vector and `Vec(n)` builds an n-element,
+  zero-initialized vector, both with the element type inferred from the variable
+  annotation (`v<Vec<String>> = Vec()`). The legacy `Vec::new()` / `Vec::new(n)`
+  forms remain as a back-compat alias so existing code keeps compiling. Tests,
+  examples, demos, and the README now use the new idiom.
+
 ### Fixed
 - `select` now supports data-carrying enum variants directly: arms like
   `Circle(r) ->`, `Rect(w, h) ->`, and `Unit ->` dispatch on the runtime tag and

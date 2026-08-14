@@ -6,12 +6,12 @@
 
 main()<Int> -> {
     // Create a mutable Vec - should work
-    mutable_vec<Vec<Int>> = Vec::new();
+    mutable_vec<Vec<Int>> = Vec();
     mutable_vec.push(1);
     println("Mutable Vec push worked");
 
     // Create a const Vec - push should fail at semantic analysis stage
-    const<Vec<Int>> const_vec = Vec::new();
+    const<Vec<Int>> const_vec = Vec();
     const_vec.push(2);  // This SHOULD cause: "Cannot call mutating method 'push' on const Vec: const_vec"
     println("ERROR: const Vec push should not have worked!");
 

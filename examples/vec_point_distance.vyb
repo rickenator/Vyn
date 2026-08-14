@@ -6,7 +6,7 @@ struct Point {
 }
 
 main()<Int> -> {
-    points<Vec<Point>> = Vec::new()
+    points<Vec<Point>> = Vec()
 
     points.push(Point { x = 3.0, y = 4.0 })
     points.push(Point { x = 1.0, y = 1.0 })

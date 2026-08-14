@@ -5,11 +5,11 @@
 // @expect: pass
 // @expect-return: 3
 pick(flag<Bool>)<Vec<Int>> -> {
-    a<Vec<Int>> = Vec::new()
+    a<Vec<Int>> = Vec()
     a.push(1)
     a.push(2)
     a.push(3)
-    b<Vec<Int>> = Vec::new()
+    b<Vec<Int>> = Vec()
     b.push(9)
     // Ownership of the selected Vec must transfer to the caller. Previously the
     // local a/b data was freed here, causing a use-after-free / double free.

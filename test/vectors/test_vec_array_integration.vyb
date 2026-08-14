@@ -1,7 +1,7 @@
 // Test Vec array integration - push_array and to_array
 main()<Int> -> {
     // Test push_array functionality
-    vec<Vec<Int>> = Vec::new();
+    vec<Vec<Int>> = Vec();
 
     // Create an array to push
     arr<[Int; 3]> = [10, 20, 30];
@@ -39,7 +39,7 @@ main()<Int> -> {
     println("Small buffer contents:", small_buffer);
 
     // Test type compatibility between Vec<T> and [T; N]
-    string_vec<Vec<String>> = Vec::new();
+    string_vec<Vec<String>> = Vec();
     string_arr<[String; 2]> = ["hello", "world"];
     string_vec.push_array(string_arr);
     println("String vec length:", string_vec.len());

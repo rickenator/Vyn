@@ -5,7 +5,7 @@ main()<Int> -> {
     println("=== Real-time Data Processing Simulation ===");
 
     // Pre-allocate working buffers (no allocation during processing!)
-    sensor_data<Vec<Int>> = Vec::new();
+    sensor_data<Vec<Int>> = Vec();
     processing_buffer<[Int; 100]> = [0; 100];  // Fixed-size processing buffer
     output_buffer<[Int; 50]> = [0; 50];        // Output buffer
 
@@ -28,7 +28,7 @@ main()<Int> -> {
     println("Copied", elements_copied, "elements to processing buffer");
 
     // Simulate processing (filter values > 50)
-    processed_vec<Vec<Int>> = Vec::new();
+    processed_vec<Vec<Int>> = Vec();
     j<Int> = 0;
     while (j < elements_copied) {
         if (processing_buffer[j] > 50) {
@@ -77,7 +77,7 @@ main()<Int> -> {
     // Demonstrate type safety and bounds checking
     println("=== Safety Demonstration ===");
 
-    small_vec<Vec<Int>> = Vec::new();
+    small_vec<Vec<Int>> = Vec();
     small_vec.push(1).push(2);
 
     tiny_buffer<[Int; 1]> = [0];

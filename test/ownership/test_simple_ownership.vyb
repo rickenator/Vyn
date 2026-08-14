@@ -1,7 +1,7 @@
-// Simple test without cleanup to verify Vec::new works
+// Simple test without cleanup to verify Vec() works
 // @expect-return: 42
 test_simple_vec()<Int> -> {
-    v1<Vec<Int32>> = Vec::new(5);
+    v1<Vec<Int32>> = Vec(5);
     println("Vec created successfully");
     return 42;
 }

@@ -5,7 +5,7 @@
 // @expect-output: 20
 
 main()<Int> -> {
-    v<Vec<Int>> = Vec::new()
+    v<Vec<Int>> = Vec()
     v.push(10)
     v.push(20)
     removed<Int> = v.pop()

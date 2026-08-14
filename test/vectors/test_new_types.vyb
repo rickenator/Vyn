@@ -16,8 +16,8 @@ main()<Int> -> {
     println("Float64 value:", large_float);
 
     // Test Vec with different numeric types
-    int32_vec<Vec<Int32>> = Vec::new(3);
-    float32_vec<Vec<Float32>> = Vec::new(2);
+    int32_vec<Vec<Int32>> = Vec(3);
+    float32_vec<Vec<Float32>> = Vec(2);
 
     // These should be zero-initialized
     int32_first<Int32> = int32_vec.get(0);

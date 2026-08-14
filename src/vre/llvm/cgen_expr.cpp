@@ -706,6 +706,79 @@ void LLVMCodegen::visit(vyb::ast::BinaryExpression *node) {
     }
 }
 
+void LLVMCodegen::emitVecConstructor(vyb::ast::CallExpression* node) {
+    // Create Vec struct: { ptr, size, capacity }
+    std::vector<llvm::Type*> vecFields = {
+        llvm::PointerType::get(*context, 0), // ptr to elements (opaque pointer)
+        llvm::Type::getInt64Ty(*context),    // size
+        llvm::Type::getInt64Ty(*context)     // capacity
+    };
+
+    llvm::StructType* vecStructType = llvm::StructType::get(*context, vecFields, false);
+
+    // Allocate the Vec struct.
+    llvm::Value* vecAlloca = builder->CreateAlloca(vecStructType, nullptr, "vec.new");
+
+    if (node->arguments.empty()) {
+        // Vec() / Vec::new() - empty vector.
+        llvm::Value* nullPtr = llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0));
+        llvm::Value* zero = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 0);
+        llvm::Value* ptrFieldPtr = builder->CreateStructGEP(vecStructType, vecAlloca, 0, "vec.ptr_field");
+        builder->CreateStore(nullPtr, ptrFieldPtr);
+        llvm::Value* sizeFieldPtr = builder->CreateStructGEP(vecStructType, vecAlloca, 1, "vec.size_field");
+        builder->CreateStore(zero, sizeFieldPtr);
+        llvm::Value* capFieldPtr = builder->CreateStructGEP(vecStructType, vecAlloca, 2, "vec.cap_field");
+        builder->CreateStore(zero, capFieldPtr);
+    } else if (node->arguments.size() == 1) {
+        // Vec(n) / Vec::new(n) - preallocated vector with zero-initialized elements.
+        node->arguments[0]->accept(*this);
+        llvm::Value* sizeValue = m_currentLLVMValue;
+        if (!sizeValue) {
+            logError(node->loc, "Failed to evaluate size argument for Vec(n)");
+            m_currentLLVMValue = nullptr;
+            return;
+        }
+
+        if (sizeValue->getType() != llvm::Type::getInt64Ty(*context)) {
+            sizeValue = builder->CreateSExtOrTrunc(sizeValue, llvm::Type::getInt64Ty(*context), "size.ext");
+        }
+
+        // Allocate memory for elements. Numeric/opaque elements are stored inline;
+        // this defaults to 8 bytes per element (matching the legacy Vec::new(n) path).
+        llvm::Type* elementType = llvm::Type::getInt64Ty(*context);
+        llvm::Value* allocSize = builder->CreateMul(sizeValue,
+            llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 8), "alloc.size");
+
+        llvm::FunctionType* mallocType = llvm::FunctionType::get(
+            llvm::PointerType::get(*context, 0),
+            {llvm::Type::getInt64Ty(*context)}, false);
+        llvm::Function* mallocFunc = llvm::Function::Create(mallocType,
+            llvm::Function::ExternalLinkage, "malloc", module.get());
+        llvm::Value* dataPtr = builder->CreateCall(mallocFunc, {allocSize}, "vec.data");
+
+        llvm::FunctionType* memsetType = llvm::FunctionType::get(
+            llvm::PointerType::get(*context, 0),
+            {llvm::PointerType::get(*context, 0), llvm::Type::getInt32Ty(*context), llvm::Type::getInt64Ty(*context)},
+            false);
+        llvm::Function* memsetFunc = llvm::Function::Create(memsetType,
+            llvm::Function::ExternalLinkage, "memset", module.get());
+        builder->CreateCall(memsetFunc, {
+            dataPtr,
+            llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 0),
+            allocSize
+        });
+
+        llvm::Value* ptrFieldPtr = builder->CreateStructGEP(vecStructType, vecAlloca, 0, "vec.ptr_field");
+        builder->CreateStore(dataPtr, ptrFieldPtr);
+        llvm::Value* sizeFieldPtr = builder->CreateStructGEP(vecStructType, vecAlloca, 1, "vec.size_field");
+        builder->CreateStore(sizeValue, sizeFieldPtr);
+        llvm::Value* capFieldPtr = builder->CreateStructGEP(vecStructType, vecAlloca, 2, "vec.cap_field");
+        builder->CreateStore(sizeValue, capFieldPtr);
+    }
+
+    m_currentLLVMValue = builder->CreateLoad(vecStructType, vecAlloca, "vec.new.value");
+}
+
 void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
 
     // Bare Option constructor: `Some(x)`. The semantic layer injected the target
@@ -726,6 +799,16 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 m_currentLLVMValue = buildTaggedEnumValue(mangled, "Some", payloadVals);
                 return;
             }
+        }
+    }
+
+    // Bare builtin Vec constructor: `Vec()`, `Vec(n)`, or explicitly-typed
+    // `Vec<T>()` / `Vec<T>(n)`. The callee is the identifier `Vec` (or a
+    // `Vec<...>` generic instantiation) rather than the legacy `Vec::new(...)`.
+    if (auto idCallee = dynamic_cast<ast::Identifier*>(node->callee.get())) {
+        if (idCallee->name == "Vec") {
+            emitVecConstructor(node);
+            return;
         }
     }
 
@@ -778,104 +861,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                     // This is Vec::new() or Vec::new(size) - create a vector
                     VYB_CDBG << "DEBUG: Creating Vec::new() constructor" << std::endl;
 
-                    // Create Vec struct: { ptr, size, capacity }
-                    std::vector<llvm::Type*> vecFields = {
-                        llvm::PointerType::get(*context, 0), // ptr to elements (opaque pointer)
-                        llvm::Type::getInt64Ty(*context),    // size
-                        llvm::Type::getInt64Ty(*context)     // capacity
-                    };
-
-                    llvm::StructType* vecStructType = llvm::StructType::get(*context, vecFields, false);
-
-                    // Allocate the Vec struct
-                    llvm::Value* vecAlloca = builder->CreateAlloca(vecStructType, nullptr, "vec.new");
-
-                    // Check if size argument is provided
-                    if (node->arguments.empty()) {
-                        // Vec::new() - empty vector
-                        VYB_CDBG << "DEBUG: Creating empty Vec" << std::endl;
-
-                        // Initialize fields: ptr = null, size = 0, capacity = 0
-                        llvm::Value* nullPtr = llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0));
-                        llvm::Value* zero = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 0);
-
-                        // Store null pointer
-                        llvm::Value* ptrFieldPtr = builder->CreateStructGEP(vecStructType, vecAlloca, 0, "vec.ptr_field");
-                        builder->CreateStore(nullPtr, ptrFieldPtr);
-
-                        // Store size = 0
-                        llvm::Value* sizeFieldPtr = builder->CreateStructGEP(vecStructType, vecAlloca, 1, "vec.size_field");
-                        builder->CreateStore(zero, sizeFieldPtr);
-
-                        // Store capacity = 0
-                        llvm::Value* capFieldPtr = builder->CreateStructGEP(vecStructType, vecAlloca, 2, "vec.cap_field");
-                        builder->CreateStore(zero, capFieldPtr);
-
-                    } else if (node->arguments.size() == 1) {
-                        // Vec::new(size) - preallocated vector with zero-initialized elements
-                        VYB_CDBG << "DEBUG: Creating preallocated Vec with size" << std::endl;
-
-                        // Evaluate size argument
-                        node->arguments[0]->accept(*this);
-                        llvm::Value* sizeValue = m_currentLLVMValue;
-                        if (!sizeValue) {
-                            logError(node->loc, "Failed to evaluate size argument for Vec::new(size)");
-                            m_currentLLVMValue = nullptr;
-                            return;
-                        }
-
-                        // Convert size to i64 if needed
-                        if (sizeValue->getType() != llvm::Type::getInt64Ty(*context)) {
-                            sizeValue = builder->CreateSExtOrTrunc(sizeValue, llvm::Type::getInt64Ty(*context), "size.ext");
-                        }
-
-                        // Allocate memory for elements (assuming Int elements for now)
-                        // In a reference model, we store pointers to boxed values, but for numeric types we can store values directly
-                        llvm::Type* elementType = llvm::Type::getInt64Ty(*context); // Default to Int (i64)
-                        llvm::Value* allocSize = builder->CreateMul(sizeValue,
-                            llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 8), // 8 bytes per Int64
-                            "alloc.size");
-
-                        // Allocate memory using malloc (assume malloc is available)
-                        llvm::FunctionType* mallocType = llvm::FunctionType::get(
-                            llvm::PointerType::get(*context, 0),
-                            {llvm::Type::getInt64Ty(*context)},
-                            false
-                        );
-                        llvm::Function* mallocFunc = llvm::Function::Create(mallocType,
-                            llvm::Function::ExternalLinkage, "malloc", module.get());
-
-                        llvm::Value* dataPtr = builder->CreateCall(mallocFunc, {allocSize}, "vec.data");
-
-                        // Zero-initialize the allocated memory for numeric types
-                        llvm::FunctionType* memsetType = llvm::FunctionType::get(
-                            llvm::PointerType::get(*context, 0),
-                            {llvm::PointerType::get(*context, 0), llvm::Type::getInt32Ty(*context), llvm::Type::getInt64Ty(*context)},
-                            false
-                        );
-                        llvm::Function* memsetFunc = llvm::Function::Create(memsetType,
-                            llvm::Function::ExternalLinkage, "memset", module.get());
-
-                        builder->CreateCall(memsetFunc, {
-                            dataPtr,
-                            llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 0), // Fill with zeros
-                            allocSize
-                        });
-
-                        // Store data pointer
-                        llvm::Value* ptrFieldPtr = builder->CreateStructGEP(vecStructType, vecAlloca, 0, "vec.ptr_field");
-                        builder->CreateStore(dataPtr, ptrFieldPtr);
-
-                        // Store size = capacity = provided size
-                        llvm::Value* sizeFieldPtr = builder->CreateStructGEP(vecStructType, vecAlloca, 1, "vec.size_field");
-                        builder->CreateStore(sizeValue, sizeFieldPtr);
-
-                        llvm::Value* capFieldPtr = builder->CreateStructGEP(vecStructType, vecAlloca, 2, "vec.cap_field");
-                        builder->CreateStore(sizeValue, capFieldPtr);
-                    }
-
-                    // Load the struct value for return (not the pointer)
-                    m_currentLLVMValue = builder->CreateLoad(vecStructType, vecAlloca, "vec.new.value");
+                    emitVecConstructor(node);
                     return;
                 }
 

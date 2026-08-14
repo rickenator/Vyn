@@ -570,6 +570,11 @@ private:
     void handleMemberTemplateInstantiation(ast::MemberExpression* memberExpr,
                                          const std::vector<ast::TypeNodePtr>& typeArgs,
                                          ast::GenericInstantiationExpression* node);
+
+    // Builtin Vec constructor (`Vec()`, `Vec(n)`): validate arity, visit the
+    // optional size argument, and (if no surrounding annotation propagated a
+    // concrete element type) default to `Vec<Int>`.
+    void handleVecConstructor(ast::CallExpression* node);
     std::unique_ptr<ast::Declaration> performMonomorphization(TemplateInfo* templateInfo,
                                                              const std::vector<std::string>& concreteTypes);
     std::unique_ptr<ast::Declaration> cloneAndSubstituteAST(ast::Declaration* templateBody,

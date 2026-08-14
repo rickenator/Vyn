@@ -1,10 +1,10 @@
 main()<Int> -> {
     // Test Vec with different types
-    words<Vec<String>> = Vec::new();
+    words<Vec<String>> = Vec();
     words.push("hello");
     words.push("world");
 
-    empty<Vec<Int>> = Vec::new();
+    empty<Vec<Int>> = Vec();
     println("Length:", empty.len());
 
     empty.push(42);

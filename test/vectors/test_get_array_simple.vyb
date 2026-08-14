@@ -1,7 +1,7 @@
 // Test: Basic get_array functionality - simple test without method chaining
 main()<Int> -> {
     // Create and initialize Vec
-    vec<Vec<Int>> = Vec::new();
+    vec<Vec<Int>> = Vec();
     vec.push(10);
     vec.push(20);
     vec.push(30);

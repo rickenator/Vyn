@@ -1130,23 +1130,28 @@ void SemanticAnalyzer::visit(ast::VariableDeclaration* node) {
     }
 
     if (node->init) {
-        // Special case: if initializer is Vec::new(), propagate the variable's type to it BEFORE visiting
+        // Special case: if the initializer is a Vec constructor (`Vec()`, `Vec(n)`,
+        // or the legacy `Vec::new()`), propagate the variable's concrete Vec<T>
+        // element type into the call BEFORE visiting it.
         if (auto callExpr = dynamic_cast<ast::CallExpression*>(node->init.get())) {
+            bool isVecCtor = false;
             if (auto memberExpr = dynamic_cast<ast::MemberExpression*>(callExpr->callee.get())) {
                 if (auto vecIdent = dynamic_cast<ast::Identifier*>(memberExpr->object.get())) {
                     if (auto newIdent = dynamic_cast<ast::Identifier*>(memberExpr->property.get())) {
-                        if (vecIdent->name == "Vec" && newIdent->name == "new" && node->typeNode) {
-                            // This is Vec::new() - extract element type from variable's type
-                            ast::TypeNode* varType = node->typeNode->type ? node->typeNode->type.get() : node->typeNode.get();
-                            if (auto vecVarType = dynamic_cast<ast::VecType*>(varType)) {
-                                // Set the Vec::new() call to return the correct Vec<T> type
-                                if (vecVarType->elementType) {
-                                    auto vecType = std::make_unique<ast::VecType>(callExpr->loc, vecVarType->elementType->clone());
-                                    expressionTypes[callExpr] = vecType.get();
-                                    callExpr->type = std::shared_ptr<ast::TypeNode>(std::move(vecType));
-                                }
-                            }
-                        }
+                        isVecCtor = vecIdent->name == "Vec" && newIdent->name == "new";
+                    }
+                }
+            } else if (auto idCallee = dynamic_cast<ast::Identifier*>(callExpr->callee.get())) {
+                isVecCtor = idCallee->name == "Vec";
+            }
+
+            if (isVecCtor && node->typeNode) {
+                ast::TypeNode* varType = node->typeNode->type ? node->typeNode->type.get() : node->typeNode.get();
+                if (auto vecVarType = dynamic_cast<ast::VecType*>(varType)) {
+                    if (vecVarType->elementType) {
+                        auto vecType = std::make_unique<ast::VecType>(callExpr->loc, vecVarType->elementType->clone());
+                        expressionTypes[callExpr] = vecType.get();
+                        callExpr->type = std::shared_ptr<ast::TypeNode>(std::move(vecType));
                     }
                 }
             }
@@ -1400,6 +1405,28 @@ void SemanticAnalyzer::visit(ast::BinaryExpression* node) {
         VYB_CDBG << "DEBUG: Binary expression result type: " << resultType->toString() << std::endl;
     }
 }
+
+void SemanticAnalyzer::handleVecConstructor(ast::CallExpression* node) {
+    if (node->arguments.size() > 1) {
+        addError("Vec() accepts at most 1 argument (optional size)", node);
+        return;
+    }
+    if (node->arguments.size() == 1 && node->arguments[0]) {
+        node->arguments[0]->accept(*this);
+    }
+    // If a surrounding annotation (e.g. `v<Vec<String>> = Vec()`) already
+    // propagated the concrete Vec<T> element type, use it.
+    if (expressionTypes.count(node) && expressionTypes[node]) {
+        return;
+    }
+    // Fall back to Vec<Int> when no element type is inferable.
+    auto intId = std::make_unique<ast::Identifier>(node->loc, "Int");
+    auto intType = std::make_unique<ast::TypeName>(node->loc, std::move(intId));
+    auto vecType = std::make_unique<ast::VecType>(node->loc, std::move(intType));
+    expressionTypes[node] = vecType.get();
+    node->type = std::shared_ptr<ast::TypeNode>(std::move(vecType));
+}
+
 void SemanticAnalyzer::visit(ast::CallExpression* node) {
     // Bare Option constructor: `Some(x)`. A surrounding annotation (variable
     // declaration or return statement) injects the target `Option<T>` type into
@@ -1418,6 +1445,14 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 expressionTypes[node] = node->type.get();
                 return;
             }
+        }
+    }
+    // Bare builtin Vec constructor: `Vec()`, `Vec(n)`. The callee is the bare
+    // identifier `Vec` rather than the legacy `Vec::new(...)` static form.
+    if (auto idCallee = dynamic_cast<ast::Identifier*>(node->callee.get())) {
+        if (idCallee->name == "Vec") {
+            handleVecConstructor(node);
+            return;
         }
     }
     // Check if this is an intrinsic function call before visiting the callee

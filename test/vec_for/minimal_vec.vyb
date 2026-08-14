@@ -1,7 +1,7 @@
 // Minimal Vec iteration test
 // @expect-return: 5
 main()<Int> -> {
-    v<Vec<Int>> = Vec::new();
+    v<Vec<Int>> = Vec();
     v.push(5);
 
     s<Int> = 0;

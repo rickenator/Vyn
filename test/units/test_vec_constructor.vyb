@@ -1,0 +1,33 @@
+// @test: vybish Vec constructor Vec() and Vec(n)
+// @description: bare `Vec()` builds an empty growable vector and `Vec(n)` builds
+//   an n-element zero-initialized vector, both with the element type inferred
+//   from the variable annotation. The legacy `Vec()` / `Vec(n)` forms
+//   still work as a back-compat alias.
+// @category: vec, constructor, stdlib
+// @expect: pass
+// @expect-return: -77
+// @execute-jit: true
+
+main()<Int> -> {
+    a<Vec<Int>> = Vec()
+    a.push(10)
+    a.push(20)
+    a.push(30)
+
+    b<Vec<Int>> = Vec(4)
+    len_b<Int> = b.len()
+    zero<Int> = b.get(2)
+
+    c<Vec<String>> = Vec()
+    c.push("hello")
+
+    d<Vec<Int>> = Vec()
+    d.push(7)
+    e<Vec<Int>> = Vec(3)
+
+    if (a.len() == 3 && len_b == 4 && zero == 0 && c.len() == 1 &&
+        d.len() == 1 && e.len() == 3) {
+        return -77
+    }
+    return 1
+}

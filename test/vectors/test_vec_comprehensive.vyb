@@ -1,7 +1,7 @@
 // Test all new Vec methods comprehensively
 main()<Int> -> {
     // Test basic Vec creation and manipulation
-    vec<Vec<Int>> = Vec::new();
+    vec<Vec<Int>> = Vec();
     println("New vec is_empty:", vec.is_empty());
     println("New vec capacity:", vec.capacity());
     println("New vec length:", vec.len());
@@ -26,7 +26,7 @@ main()<Int> -> {
     println("Contains 5:", has_five);
 
     // Test concat method
-    vec2<Vec<Int>> = Vec::new();
+    vec2<Vec<Int>> = Vec();
     vec2.push(10).push(20);
 
     result<Vec<Int>> = vec.concat(vec2);
@@ -47,7 +47,7 @@ main()<Int> -> {
     println("Empty?", result.is_empty());
 
     // Test capacity management
-    big_vec<Vec<Int>> = Vec::new();
+    big_vec<Vec<Int>> = Vec();
     i<Int> = 0;
     while (i < 10) {
         big_vec.push(i * i);  // Push squares

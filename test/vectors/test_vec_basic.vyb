@@ -1,6 +1,6 @@
 main()<Int> -> {
     // Test basic Vec creation
-    numbers<Vec<Int>> = Vec::new();
+    numbers<Vec<Int>> = Vec();
 
     // Test push operations
     numbers.push(10);

@@ -1,6 +1,6 @@
 // @expect-return: 60
 main()<Int> -> {
-    numbers<Vec<Int>> = Vec::new();
+    numbers<Vec<Int>> = Vec();
     numbers.push(10);
     numbers.push(20);
     numbers.push(30);

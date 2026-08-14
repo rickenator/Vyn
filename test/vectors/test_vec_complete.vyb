@@ -1,6 +1,6 @@
 main()<Int> -> {
-    // Test Vec::new() constructor
-    numbers<Vec<Int>> = Vec::new();
+    // Test Vec() constructor
+    numbers<Vec<Int>> = Vec();
 
     // Test Vec::push() method
     numbers.push(10);

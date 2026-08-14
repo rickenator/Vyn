@@ -1,4 +1,4 @@
-// Test Vec::new() and basic operations
+// Test Vec() and basic operations
 
 struct TreeNode {
     key<Int>,
@@ -6,7 +6,7 @@ struct TreeNode {
 }
 
 main()<Int> -> {
-    nodes<Vec<TreeNode>> = Vec::new()
+    nodes<Vec<TreeNode>> = Vec()
     println("Created empty Vec")
 
     node1<TreeNode> = TreeNode { key = 10, value = "ten" }

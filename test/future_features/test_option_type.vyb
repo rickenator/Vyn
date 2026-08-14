@@ -20,7 +20,7 @@ find_first(v<Vec<Int>>, target<Int>)<Option<Int>> -> {
 }
 
 main()<Int> -> {
-    v<Vec<Int>> = Vec::new()
+    v<Vec<Int>> = Vec()
     v.push(10)
     v.push(20)
     result<Option<Int>> = find_first(v, 20)

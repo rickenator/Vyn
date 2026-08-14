@@ -2,7 +2,7 @@
 // Test Vec edge cases and error conditions
 main()<Int> -> {
     // Test empty Vec operations
-    empty<Vec<Int>> = Vec::new()
+    empty<Vec<Int>> = Vec()
 
     println("Testing empty Vec:")
     println("Empty length:", empty.len())
@@ -19,7 +19,7 @@ main()<Int> -> {
     // negative = empty.get(-1)   // Negative index
 
     // Test large Vec operations
-    large<Vec<Int>> = Vec::new()
+    large<Vec<Int>> = Vec()
 
     // Fill with many elements
     i<Int> = 0
@@ -46,7 +46,7 @@ main()<Int> -> {
     large_conversion<[Int; 200]> = large.to_array(200)  // Convert to larger array than Vec size
 
     // Test concat with empty Vec
-    empty2<Vec<Int>> = Vec::new()
+    empty2<Vec<Int>> = Vec()
     combined<Vec<Int>> = large.concat(empty2)
     println("Combined with empty length:", combined.len())
 

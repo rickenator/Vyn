@@ -5,7 +5,7 @@
 // @expect-return: 2
 
 main()<Int> -> {
-    values<Vec<Int>> = Vec::new()
+    values<Vec<Int>> = Vec()
     values.push(10)
     values.push(20)
     return values.len()

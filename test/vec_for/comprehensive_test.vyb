@@ -2,7 +2,7 @@
 
 main()<Int> -> {
     // Test 1: Basic iteration with chained push
-    v1<Vec<Int>> = Vec::new();
+    v1<Vec<Int>> = Vec();
     v1.push(1).push(2).push(3);
     var<Int> sum1 = 0;
     for (x in v1) {
@@ -13,7 +13,7 @@ main()<Int> -> {
     }
 
     // Test 2: Empty Vec
-    v2<Vec<Int>> = Vec::new();
+    v2<Vec<Int>> = Vec();
     var<Int> sum2 = 0;
     for (x in v2) {
         sum2 = sum2 + x;
@@ -23,7 +23,7 @@ main()<Int> -> {
     }
 
     // Test 3: Break in Vec iteration with chained push
-    v3<Vec<Int>> = Vec::new();
+    v3<Vec<Int>> = Vec();
     v3.push(1).push(2).push(3).push(4);
     var<Int> sum3 = 0;
     for (x in v3) {
@@ -37,7 +37,7 @@ main()<Int> -> {
     }
 
     // Test 4: Continue in Vec iteration with chained push
-    v4<Vec<Int>> = Vec::new();
+    v4<Vec<Int>> = Vec();
     v4.push(1).push(2).push(3).push(4);
     var<Int> sum4 = 0;
     var<Int> skip_pos = 0;

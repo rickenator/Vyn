@@ -3,7 +3,7 @@
 
 main()<Int> -> {
     // Test chained push - more concise syntax
-    numbers<Vec<Int>> = Vec::new();
+    numbers<Vec<Int>> = Vec();
     numbers.push(10).push(20).push(30).push(40).push(50);
 
     sum<Int> = 0;

@@ -1,7 +1,7 @@
 // Test basic Vec methods including get_array
 main()<Int> -> {
     // Create a Vec and add some elements
-    vec<Vec<Int>> = Vec::new();
+    vec<Vec<Int>> = Vec();
     vec.push(100);
     vec.push(200);
     vec.push(300);
@@ -22,7 +22,7 @@ main()<Int> -> {
     println("Large buffer first element should be 100");
 
     // Test is_empty
-    empty_vec<Vec<Int>> = Vec::new();
+    empty_vec<Vec<Int>> = Vec();
     println("Empty vec is_empty:", empty_vec.is_empty());
     println("Filled vec is_empty:", vec.is_empty());
 

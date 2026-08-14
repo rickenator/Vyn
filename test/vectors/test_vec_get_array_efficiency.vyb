@@ -1,7 +1,7 @@
 // Test Vec get_array method for efficient pre-allocated array copying
 main()<Int> -> {
     // Create and populate a Vec
-    vec<Vec<Int>> = Vec::new();
+    vec<Vec<Int>> = Vec();
     vec.push(10).push(20).push(30).push(40).push(50);
 
     println("Vec populated with 5 elements");
@@ -51,7 +51,7 @@ main()<Int> -> {
     println("Final reusable buffer state:", reusable_buffer);
 
     // Test with different element types for type safety
-    string_vec<Vec<String>> = Vec::new();
+    string_vec<Vec<String>> = Vec();
     string_vec.push("hello").push("world").push("efficient");
 
     string_buffer<[String; 5]> = ["", "", "", "", ""];

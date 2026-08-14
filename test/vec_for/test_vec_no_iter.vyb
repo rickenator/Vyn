@@ -1,5 +1,5 @@
 main()<Int> -> {
-    v<Vec<Int>> = Vec::new();
+    v<Vec<Int>> = Vec();
     v.push(5);
     x<Int> = v.len();
     return x;

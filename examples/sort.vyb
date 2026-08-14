@@ -1,7 +1,7 @@
 // Insertion sort over Vec<Int>.
 
 insert_sorted(sorted<Vec<Int>>, value<Int>)<Vec<Int>> -> {
-    result<Vec<Int>> = Vec::new()
+    result<Vec<Int>> = Vec()
     inserted<Bool> = false
     i<Int> = 0
 
@@ -22,7 +22,7 @@ insert_sorted(sorted<Vec<Int>>, value<Int>)<Vec<Int>> -> {
 }
 
 sort_ints(nums<Vec<Int>>)<Vec<Int>> -> {
-    sorted<Vec<Int>> = Vec::new()
+    sorted<Vec<Int>> = Vec()
     i<Int> = 0
     while (i < nums.len()) {
         sorted = insert_sorted(sorted, nums.get(i))
@@ -32,7 +32,7 @@ sort_ints(nums<Vec<Int>>)<Vec<Int>> -> {
 }
 
 main()<Int> -> {
-    nums<Vec<Int>> = Vec::new()
+    nums<Vec<Int>> = Vec()
     nums.push(64)
     nums.push(12)
     nums.push(34)

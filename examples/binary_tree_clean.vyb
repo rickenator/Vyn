@@ -7,7 +7,7 @@ struct TreeNode {
 }
 
 main()<Int> -> {
-    nodes<Vec<TreeNode>> = Vec::new()
+    nodes<Vec<TreeNode>> = Vec()
     nodes.push(TreeNode { key = 50, value = "fifty" })
     nodes.push(TreeNode { key = 30, value = "thirty" })
     nodes.push(TreeNode { key = 70, value = "seventy" })

@@ -6,12 +6,12 @@
 
 main()<Int> -> {
     // This should work - mutable Vec
-    mutable_vec<Vec<Int>> = Vec::new();
+    mutable_vec<Vec<Int>> = Vec();
     mutable_vec.push(1);
 
     // This should trigger a constness error during semantic analysis
     // Using legacy const<Type> syntax
-    const<Vec<Int>> const_vec = Vec::new();
+    const<Vec<Int>> const_vec = Vec();
     const_vec.push(2);  // This should cause semantic error: Cannot call mutating method 'push' on const Vec
 
     return 0;

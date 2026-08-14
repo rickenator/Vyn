@@ -15,7 +15,7 @@ bind<T> SizedAdd -> Vec<T> {
 }
 
 main()<Int> -> {
-    numbers<Vec<Int>> = Vec::new()
+    numbers<Vec<Int>> = Vec()
     numbers.push(10)
     return numbers.add_size(4)
 }

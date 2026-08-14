@@ -24,7 +24,7 @@ main()<Int> -> {
     distance_sq<Int> = p.x * p.x + p.y * p.y
     println("point distance squared = " + distance_sq.to_string())
 
-    scores<Vec<Int>> = Vec::new()
+    scores<Vec<Int>> = Vec()
     scores.push(95)
     scores.push(82)
     scores.push(71)

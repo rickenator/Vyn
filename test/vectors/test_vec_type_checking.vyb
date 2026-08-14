@@ -1,14 +1,14 @@
 // Test Vec type checking and error handling
 main()<Int> -> {
     // Test proper type enforcement
-    int_vec<Vec<Int>> = Vec::new()
+    int_vec<Vec<Int>> = Vec()
 
     // These should work - correct types
     int_vec.push(42)
     int_vec.push(100)
 
     // Test with different element types
-    string_vec<Vec<String>> = Vec::new()
+    string_vec<Vec<String>> = Vec()
     string_vec.push("hello")
     string_vec.push("world")
 

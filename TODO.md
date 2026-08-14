@@ -274,7 +274,7 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
 - [x] **I/O intrinsics** — `print()` (no newline), `println_int()`, `print_int()`, `println_bool()`, `print_bool()`
 - [ ] **Iterator aspect** — `next(self)<Option<Item>>` protocol for `for` loop integration
 - [ ] **`Vec<T>` expansion** — `.map()`, `.filter()`, `.reduce()`, `.find()`, `.sort()`; `.contains()` is now correctly implemented
-- [ ] **`Vec<T>` constructor idiom** — replace `Vec::new()` / `Vec::new(size)` with a vybish constructor call: `Vec()` (empty growable) and `Vec(n)` (preallocate `n` elements/capacity). `Vec::new()` stays as a back-compat alias. See "Vyb-Native Ideas Worth Exploring".
+- [x] **`Vec<T>` constructor idiom** — `Vec::new()` / `Vec::new(size)` replaced by a vybish constructor call: `Vec()` (empty growable) and `Vec(n)` (preallocate `n` elements/capacity), element type inferred from the annotation. `Vec::new()` stays as a back-compat alias.
 
 ### 5. Sum Types / Enums (MEDIUM PRIORITY)
 Vyb needs a way to express sum types. Essential for `Option<T>`, `Result<T,E>`, and
@@ -495,15 +495,18 @@ These are not in any current design document but feel natural given Vyb's identi
 should be prototyped or at least documented before 1.0:
 
 ### `Vec()` Constructor Idiom (`Vec::new()` → `Vec(n)`)
-`Vec::new()` reads like an OOP static constructor (Rust/Java) and doesn't fit Vyb's
-type-as-constructor feel (cf. the built-in `Option<T>`). Proposal:
+**Implemented (0.5.3).** `Vec::new()` read like an OOP static constructor (Rust/Java) and
+didn't fit Vyb's type-as-constructor feel. Now `Vec()` and `Vec(n)` build an empty or
+n-element zero-initialized growable vector, with the element type inferred from the
+variable annotation:
 ```vyb
-a<Vec<Int>> = Vec()           # empty, growable
-b<Vec<Int>> = Vec(16)         # preallocate / zero-init 16 elements (and capacity)
-c<Vec<String>> = Vec<String>() # explicit element type, no annotation needed
+a<Vec<Int>> = Vec()          # empty, growable
+b<Vec<Int>> = Vec(16)        # preallocate / zero-init 16 elements (and capacity)
+c<Vec<String>> = Vec()       # element type inferred from the annotation
 ```
-`Vec(n)` mirrors today's `Vec::new(n)` (n zero-initialized elements, capacity n) so
-semantics don't change; `Vec::new()` is retained as a back-compat alias.
+`Vec::new()` / `Vec::new(n)` remain as a back-compat alias. Explicit generic-typed
+constructor calls like `Vec<String>()` are not yet parseable (they'd need generic
+function-call support on the builtin type) and are a possible follow-up.
 **Open question:** a "constant size / non-growable" flag. Recommendation is to NOT overload
 `Vec` with fixed-size semantics — Vyb already has fixed arrays, and a non-growable
 collection is a distinct type. Keep `Vec` growable, treating `Vec(n)` as preallocation
@@ -693,5 +696,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: August 2026*
 *Current Version: Vyb v0.5.3 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 792 tests passing (harness, 100%)*
+*Overall Status: ~60-65% complete toward 1.0 — 793 tests passing (harness, 100%)*
 *SUGGESTIONS.md merged into this document.*

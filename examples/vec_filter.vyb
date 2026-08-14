@@ -1,7 +1,7 @@
 // Filtering even numbers from Vec<Int>.
 
 main()<Int> -> {
-    numbers<Vec<Int>> = Vec::new()
+    numbers<Vec<Int>> = Vec()
     numbers.push(1)
     numbers.push(2)
     numbers.push(3)
@@ -9,7 +9,7 @@ main()<Int> -> {
     numbers.push(5)
     numbers.push(6)
 
-    evens<Vec<Int>> = Vec::new()
+    evens<Vec<Int>> = Vec()
 
     for (num in numbers) {
         half<Int> = num / 2

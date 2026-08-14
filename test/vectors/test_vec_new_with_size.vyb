@@ -1,15 +1,15 @@
 // @expect-return: 0
-// Test Vec::new() and Vec::new(size) constructors with reference model semantics
+// Test Vec() and Vec(size) constructors with reference model semantics
 // This test also verifies Int32 and Float32 type support
 
 main()<Int> -> {
-    // Test Vec::new() - empty vector (existing functionality)
-    empty_vec<Vec<Int>> = Vec::new();
+    // Test Vec() - empty vector (existing functionality)
+    empty_vec<Vec<Int>> = Vec();
     empty_vec.push(42);
     println("Empty Vec created and element pushed");
 
-    // Test Vec::new(size) - preallocated vector with zero-initialized elements
-    preallocated_vec<Vec<Int>> = Vec::new(5);
+    // Test Vec(size) - preallocated vector with zero-initialized elements
+    preallocated_vec<Vec<Int>> = Vec(5);
     println("Preallocated Vec created with size 5");
 
     // In reference model: numeric elements are zero-initialized
@@ -18,8 +18,8 @@ main()<Int> -> {
     println("First element verified (should be 0)");
 
     // Test with different sizes
-    small_vec<Vec<Int>> = Vec::new(2);
-    large_vec<Vec<Int>> = Vec::new(10);
+    small_vec<Vec<Int>> = Vec(2);
+    large_vec<Vec<Int>> = Vec(10);
     println("Different sized Vecs created");
 
     // Test modifying preallocated Vec

@@ -1,11 +1,11 @@
 // @test: Vec push and len
-// @description: Test Vec::new(), push(), and len()
+// @description: Test Vec(), push(), and len()
 // @category: vec
 // @expect: pass
 // @expect-output: 3
 
 main()<Int> -> {
-    v<Vec<Int>> = Vec::new()
+    v<Vec<Int>> = Vec()
     v.push(10)
     v.push(20)
     v.push(30)

@@ -6,9 +6,9 @@ quicksort(nums<Vec<Int>>)<Vec<Int>> -> {
     }
 
     pivot<Int> = nums.get(nums.len() / 2)
-    left<Vec<Int>> = Vec::new()
-    equal<Vec<Int>> = Vec::new()
-    right<Vec<Int>> = Vec::new()
+    left<Vec<Int>> = Vec()
+    equal<Vec<Int>> = Vec()
+    right<Vec<Int>> = Vec()
 
     i<Int> = 0
     while (i < nums.len()) {
@@ -25,7 +25,7 @@ quicksort(nums<Vec<Int>>)<Vec<Int>> -> {
 
     left_sorted<Vec<Int>> = quicksort(left)
     right_sorted<Vec<Int>> = quicksort(right)
-    result<Vec<Int>> = Vec::new()
+    result<Vec<Int>> = Vec()
 
     i = 0
     while (i < left_sorted.len()) {
@@ -49,7 +49,7 @@ quicksort(nums<Vec<Int>>)<Vec<Int>> -> {
 }
 
 main()<Int> -> {
-    values<Vec<Int>> = Vec::new()
+    values<Vec<Int>> = Vec()
     values.push(9)
     values.push(3)
     values.push(7)

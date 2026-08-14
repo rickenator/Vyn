@@ -217,6 +217,9 @@ private:
     llvm::Value* buildTaggedEnumValue(const std::string& enumName, const std::string& variantName,
                                       std::vector<llvm::Value*> payloadVals);
     llvm::Value* extractEnumVariantField(llvm::Value* enumVal, llvm::StructType* payloadTy, unsigned fieldIdx);
+    // Emit a Vec value for the builtin Vec constructor (`Vec()`, `Vec(n)`), sharing
+    // the codegen between the bare `Vec(...)` and legacy `Vec::new(...)` forms.
+    void emitVecConstructor(vyb::ast::CallExpression* node);
     std::string mangleGenericTypeName(const std::string& baseName, const std::vector<vyb::ast::TypeNodePtr>& typeArgs); // Generate mangled name like Box_Int
     llvm::StructType* monomorphizeStruct(const std::string& baseName, const std::vector<vyb::ast::TypeNodePtr>& typeArgs); // Generate specialized struct
     llvm::StructType* monomorphizeEnum(const std::string& baseName, const std::vector<vyb::ast::TypeNodePtr>& typeArgs);   // Generate specialized tagged-union enum

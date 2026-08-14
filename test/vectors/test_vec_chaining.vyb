@@ -1,7 +1,7 @@
 // Test Vec method chaining functionality
 main()<Int> -> {
     // Test method chaining with push
-    numbers<Vec<Int>> = Vec::new();
+    numbers<Vec<Int>> = Vec();
 
     // Chain multiple push operations
     result<Vec<Int>> = numbers.push(1).push(2).push(3).push(4).push(5);
@@ -11,12 +11,12 @@ main()<Int> -> {
     println("Length:", result.len());
 
     // Test chaining with other methods
-    numbers2<Vec<Int>> = Vec::new().push(10).push(20).push(30);
+    numbers2<Vec<Int>> = Vec().push(10).push(20).push(30);
     println("Numbers2 length:", numbers2.len());
     println("Numbers2 empty?", numbers2.is_empty());
 
     // Test concat chaining
-    numbers3<Vec<Int>> = Vec::new().push(100).push(200);
+    numbers3<Vec<Int>> = Vec().push(100).push(200);
     combined<Vec<Int>> = numbers2.concat(numbers3);
     println("Combined length:", combined.len());
 

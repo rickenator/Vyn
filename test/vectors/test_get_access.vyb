@@ -1,8 +1,8 @@
-// Test Vec::new(size) with element access to find segfault source
+// Test Vec(size) with element access to find segfault source
 
 main()<Int> -> {
     // Test sized constructor with element access
-    sized_vec<Vec<Int>> = Vec::new(3);
+    sized_vec<Vec<Int>> = Vec(3);
     println("Sized Vec created");
 
     // Try accessing the first element - this might be where the segfault occurs

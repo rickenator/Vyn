@@ -1,5 +1,5 @@
 main()<Int> -> {
-    v<Vec<Int>> = Vec::new();
+    v<Vec<Int>> = Vec();
     s<Int> = 0;
     for (x in v) {
         s = s + x;

@@ -19,7 +19,7 @@ bind Container -> Vec<Int> {
 
 main()<Int> -> {
     // Create a Vec<Int>
-    numbers<Vec<Int>> = Vec::new()
+    numbers<Vec<Int>> = Vec()
     numbers.push(1)
     numbers.push(2)
     numbers.push(3)

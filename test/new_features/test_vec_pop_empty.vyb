@@ -5,7 +5,7 @@
 // @expect-output: 0
 
 main()<Int> -> {
-    v<Vec<Int>> = Vec::new()
+    v<Vec<Int>> = Vec()
     removed<Int> = v.pop()
     println_int(removed)
     return 0

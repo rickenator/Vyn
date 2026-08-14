@@ -46,7 +46,7 @@ main()<Int> -> {
     s<Int> = pick_string(Option<String>::Some("hello"))
     t<Int> = pick_string(Option<String>::None)
 
-    v<Vec<Int>> = Vec::new()
+    v<Vec<Int>> = Vec()
     v.push(10)
     v.push(20)
     r<Option<Int>> = find_first(v, 20)

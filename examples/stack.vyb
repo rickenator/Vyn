@@ -6,7 +6,7 @@ struct Stack {
 }
 
 stack_new()<Stack> -> {
-    return Stack { items = Vec::new(), size = 0 }
+    return Stack { items = Vec(), size = 0 }
 }
 
 stack_push(s<their<Stack>>, value<Int>)<Void> -> {

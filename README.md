@@ -69,7 +69,7 @@ build/vyb hello.vyb  # Returns exit code 42
 # Try select expressions with pattern matching
 cat > example.vyb << 'EOF'
 main()<Int> -> {
-    numbers<Vec<Int>> = Vec::new()
+    numbers<Vec<Int>> = Vec()
     numbers.push(10)
     numbers.push(20)
 
@@ -307,7 +307,7 @@ These features were completed in the current release cycle and are fully tested:
   ```
 - **Vec `for` loop type inference** — Compiler-generated loop variables require no explicit types
   ```vyb
-  nums<Vec<Int>> = Vec::new()
+  nums<Vec<Int>> = Vec()
   nums.push(10)
   for (n in nums) {
       println(n)   // n is automatically Int
@@ -368,7 +368,7 @@ These features were completed in the current release cycle and are fully tested:
   - **Immutable parameters**: `param<Type const>` for read-only arguments
 - **Variables**: `name<Type> = value` with type inference and explicit typing
 - **Immutable bindings**: `name<Type const> = value` — cannot be reassigned
-- **Resizable Arrays**: `Vec<T>` with `new()`, `push()`, `pop()`, `len()`, `get()` methods
+- **Resizable Arrays**: `Vec<T>` with a vybish constructor (`Vec()`, `Vec(n)`) and `push()`, `pop()`, `len()`, `get()` methods
 - **Vec Iteration**: `for (item in vec)` loops with inferred element type and `break`/`continue`
 - **Fixed Arrays**: `[T; N]` with indexing
 - **Structs**: `struct Point { x<Int>, y<Int> }` with field access (`p.x`, `p.y`)
@@ -646,7 +646,7 @@ main()<Int> -> {
 | Type | Description | Mutability | Example |
 |------|-------------|------------|---------|
 | `[T; N]` | Fixed-size array | Mutable elements | `nums<[Int; 5]> = [1, 2, 3, 4, 5]` |
-| `Vec<T>` | Dynamic array | Mutable elements | `items<Vec<String>> = Vec::new()` |
+| `Vec<T>` | Dynamic array | Mutable elements | `items<Vec<String>> = Vec()` |
 | `Tuple<T,U,...>` | Heterogeneous tuple (variadic) | Immutable | `data<Tuple<Int,String,Bool>>` |
 
 #### Ownership Types
@@ -750,7 +750,7 @@ struct TreeNode {
 create_child(parent<our<TreeNode>>, value<Int>)<our<TreeNode>> -> {
     return our(TreeNode {
         value: value,
-        children: Vec::new(),
+        children: Vec(),
         parent: soft(parent)  # Create weak reference with soft()
     })
 }
@@ -874,7 +874,7 @@ create_person(name<String>, age<Int>)<Person> -> {
     person<Person> = Person {
         name = name,
         age = age,
-        scores = Vec::new()
+        scores = Vec()
     }
     person.scores.push(85)
     person.scores.push(92)
@@ -962,7 +962,7 @@ numbers<[Int; 5]> = [1, 2, 3, 4, 5]
 floats<[Float; 3]> = [1.0, 2.5, -3.14]
 
 // Dynamic arrays (Vec<T>)
-items<Vec<Int>> = Vec::new()
+items<Vec<Int>> = Vec()
 
 // Immutable binding
 PI<Float const> = 3.14159
@@ -1128,7 +1128,7 @@ smuggle experimental::parser from "./local/experiments"
 
 # Use imported symbols
 main()<Int> -> {
-    numbers<Vec<Int>> = Vec::new()
+    numbers<Vec<Int>> = Vec()
     numbers.push(calculate(10))
 
     println(numbers)  # From trusted std::io
@@ -1168,7 +1168,7 @@ internal_helper()<Int> -> { ... }                 # Private to this file
 ```vyb
 # Resizable vectors with full method support
 main()<Int> -> {
-    numbers<Vec<Int>> = Vec::new()
+    numbers<Vec<Int>> = Vec()
     numbers.push(10)
     numbers.push(20)
     numbers.push(30)
@@ -1184,7 +1184,7 @@ main()<Int> -> {
 
 # Vec iteration - parentheses mandatory
 iterate_example()<Int> -> {
-    items<Vec<Int>> = Vec::new()
+    items<Vec<Int>> = Vec()
     items.push(1)
     items.push(2)
     items.push(3)
@@ -1425,7 +1425,7 @@ get_complex()<Tuple<Int, Int, Bool, String, Int, Bool, Int>> -> {
 
 # Tuples work seamlessly with complex types
 get_mixed()<Tuple<String, Vec<Int>, Bool>> -> {
-    numbers<Vec<Int>> = Vec::new()
+    numbers<Vec<Int>> = Vec()
     numbers.push(1)
     numbers.push(2)
     return "data", numbers, true

@@ -6,7 +6,7 @@
 
 // Insert val into already-sorted Vec, returning a new sorted Vec
 insert_sorted(sorted<Vec<Int>>, val<Int>)<Vec<Int>> -> {
-    result<Vec<Int>> = Vec::new()
+    result<Vec<Int>> = Vec()
     inserted<Bool> = false
     i<Int> = 0
     while (i < sorted.len()) {
@@ -24,7 +24,7 @@ insert_sorted(sorted<Vec<Int>>, val<Int>)<Vec<Int>> -> {
 }
 
 sort_ints(nums<Vec<Int>>)<Vec<Int>> -> {
-    sorted<Vec<Int>> = Vec::new()
+    sorted<Vec<Int>> = Vec()
     i<Int> = 0
     while (i < nums.len()) {
         sorted = insert_sorted(sorted, nums.get(i))
@@ -34,7 +34,7 @@ sort_ints(nums<Vec<Int>>)<Vec<Int>> -> {
 }
 
 main()<Int> -> {
-    nums<Vec<Int>> = Vec::new()
+    nums<Vec<Int>> = Vec()
     nums.push(4)
     nums.push(2)
     nums.push(5)

@@ -5,7 +5,7 @@
 // @expect-output: 6
 
 main()<Int> -> {
-    v<Vec<Int>> = Vec::new()
+    v<Vec<Int>> = Vec()
     v.push(1)
     v.push(2)
     v.push(3)

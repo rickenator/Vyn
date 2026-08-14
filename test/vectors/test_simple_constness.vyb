@@ -2,7 +2,7 @@
 
 main()<Int> -> {
     // Test with mutable Vec - should work
-    mutable_vec<Vec<Int>> = Vec::new();
+    mutable_vec<Vec<Int>> = Vec();
     mutable_vec.push(1);
     mutable_vec.push(2);
     len1<Int> = mutable_vec.len();

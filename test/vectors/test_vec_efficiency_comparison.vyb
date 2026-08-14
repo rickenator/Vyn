@@ -8,7 +8,7 @@ main()<Int> -> {
     println("=== Vec Efficiency Method Comparison ===");
 
     // Create a Vec with data
-    source<Vec<Int>> = Vec::new();
+    source<Vec<Int>> = Vec();
     i<Int> = 0;
     while (i < 1000) {  // Large dataset
         source.push(i * i);
@@ -55,7 +55,7 @@ main()<Int> -> {
         println("Processing chunk", chunk);
 
         // Simulate getting different data ranges
-        chunk_vec<Vec<Int>> = Vec::new();
+        chunk_vec<Vec<Int>> = Vec();
         start<Int> = chunk * 15;
         end<Int> = start + 20;
 

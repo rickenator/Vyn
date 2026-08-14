@@ -81,7 +81,7 @@ Legend: ✅ Implemented | 🚧 Partial / Stubbed | 📋 Planned
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| `Vec::new()` | ✅ | Heap-allocated dynamic array |
+| `Vec()` / `Vec(n)` | ✅ | Vybish constructor: empty, or `n` zero-initialized elements (legacy `Vec::new()` alias retained) |
 | `Vec::push()` | ✅ | Append element |
 | `Vec::pop()` | ✅ | Remove last element |
 | `Vec::len()` | ✅ | Returns element count |
