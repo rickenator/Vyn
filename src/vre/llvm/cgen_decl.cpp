@@ -582,6 +582,9 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
             builder->CreateCall(initFn, {});
         }
 
+        // Record the scope-stack depth before this function adds its own scopes,
+        // so a `return` can clean up to exactly this baseline (never the caller's).
+        m_functionScopeBaseline = scopeStack.size();
         // Initialize scope management for function body
         enterScope();
 
@@ -685,8 +688,14 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
         }
         VYB_CDBG << "DEBUG: FunctionDeclaration - finished processing function body" << std::endl;
 
-        // Clean up function scope before return
-        exitScope();
+        // Clean up the function scope (i.e. the parameter scope) before an
+        // implicit/fall-through return. If the function already returned via an
+        // explicit `return`, the ReturnStatement's exitToFunctionBaseline() has
+        // already emitted cleanup for every live scope, and the current block is
+        // terminated - inserting another cleanup here would corrupt the IR.
+        if (!func->empty() && !func->back().getTerminator()) {
+            exitScope();
+        }
 
         // Verify function return: ensure all paths return if non-void, or add implicit return.
         const bool isFailableVoidFunction =

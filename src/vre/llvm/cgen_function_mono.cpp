@@ -174,6 +174,7 @@ llvm::Function* LLVMCodegen::monomorphizeGenericFunction(const std::string& func
         currentTrapHandlerIndex = -1;
         auto savedScopeStack = std::move(scopeStack);
         scopeStack.clear();
+        m_functionScopeBaseline = 0;
 
         currentFunction = specializedFunc;
 

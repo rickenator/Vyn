@@ -38,6 +38,10 @@ void LLVMCodegen::visit(vyb::ast::BlockStatement* node) {
     // Save the current namedValues for block scoping
     auto oldNamedValues = namedValues;
 
+    // Record the depth before this block adds its scope so we can restore
+    // exactly what the block introduces, never touching caller scopes.
+    size_t parentDepth = scopeStack.size();
+
     // Enter new scope for ownership tracking
     enterScope();
 
@@ -59,12 +63,15 @@ void LLVMCodegen::visit(vyb::ast::BlockStatement* node) {
     }
 
     // Always exit scope and cleanup variables, but check if block is terminated
-    // If block is terminated (e.g., by return), cleanup must happen before termination
+    // If block is terminated (e.g., by return), cleanup must happen before termination.
+    // On a returning path the ReturnStatement already ran exitScope() on this
+    // block's scope, so here we only restore up to parentDepth. Otherwise that
+    // exitScope() plus this block's cleanup would double-pop into caller scopes,
+    // silently dropping outer scopes after e.g. two `if { return }` blocks.
     if (builder->GetInsertBlock() && builder->GetInsertBlock()->getTerminator()) {
-        // Block is terminated - can't insert cleanup code here
-        // This case should be handled by inserting cleanup before return statements
-        
-        if (!scopeStack.empty()) {
+        // Block is terminated - can't insert cleanup code here.
+        // Cleanup already happened on the returning path (see ReturnStatement).
+        while (scopeStack.size() > parentDepth) {
             scopeStack.pop_back();
         }
     } else {
@@ -383,8 +390,8 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                 llvm::Function* printlnFunc = getVybPrintlnFunction();
                 if (jsonStr) builder->CreateCall(printlnFunc, {jsonStr});
 
-                // Clean up scope and pop call frame, then return void
-                if (!scopeStack.empty()) exitScope();
+                // Clean up the function's scopes and pop call frame, then return void
+                exitToFunctionBaseline();
                 generatePopFrameCall();
                 builder->CreateRetVoid();
             } else {
@@ -482,10 +489,12 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                     }
                 }
 
-                // IMPORTANT: Clean up current block scope before returning
-                // This prevents the block scope cleanup from happening after the terminator
+                // IMPORTANT: Clean up the function's scopes before returning so the
+                // cleanup happens (and the last cleanup leaves the insert point in a
+                // terminator-free block) before the terminator is emitted. A return
+                // deep inside nested blocks (e.g. `while { if { return } }`) must
+                // pop every scope this function introduced, not just the innermost.
                 if (!scopeStack.empty()) {
-                    
                     // If returning an owning variable, skip its local cleanup because
                     // ownership of that binding is transferred to the caller.
                     if (node->argument) {
@@ -505,7 +514,7 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                             }
                         }
                     }
-                    exitScope();
+                    exitToFunctionBaseline();
                 }
 
                 // Phase 6.4: Pop call frame before return
@@ -579,7 +588,7 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                         }
 
                         if (jsonStr) builder->CreateCall(getVybPrintlnFunction(), {jsonStr});
-                        if (!scopeStack.empty()) exitScope();
+                        exitToFunctionBaseline();
                         generatePopFrameCall();
                         builder->CreateRetVoid();
                     } else {
@@ -595,21 +604,15 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
             // Error during argument codegen or argument is null expression (should not happen for valid AST)
             // TODO: Report error (Return argument codegen failed or resulted in null)
             if (currentFunction && currentFunction->getReturnType()->isVoidTy()) {
-                // IMPORTANT: Clean up current block scope before returning
-                if (!scopeStack.empty()) {
-                    
-                    exitScope();
-                }
+                // IMPORTANT: Clean up current function scopes before returning
+                exitToFunctionBaseline();
                 // Phase 6.4: Pop call frame before return
                 generatePopFrameCall();
                 builder->CreateRetVoid();
             } else if (currentFunction) {
                 // Return undef if function expects a non-void type and codegen failed
-                // IMPORTANT: Clean up current block scope before returning
-                if (!scopeStack.empty()) {
-                    
-                    exitScope();
-                }
+                // IMPORTANT: Clean up current function scopes before returning
+                exitToFunctionBaseline();
                 // Phase 6.4: Pop call frame before return
                 generatePopFrameCall();
                 builder->CreateRet(llvm::UndefValue::get(currentFunction->getReturnType()));
@@ -618,11 +621,8 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
         }
     } else {
         // No argument, so it's a void return
-        // IMPORTANT: Clean up current block scope before returning
-        if (!scopeStack.empty()) {
-            
-            exitScope();
-        }
+        // IMPORTANT: Clean up current function scopes before returning
+        exitToFunctionBaseline();
         // Phase 6.4: Pop call frame before return
         generatePopFrameCall();
         if (currentFunctionAST && currentFunctionAST->needsErrorReturn) {

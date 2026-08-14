@@ -338,6 +338,7 @@ llvm::Function* LLVMCodegen::monomorphizeTraitMethod(const std::string& concrete
                     // recover from an underflow below the caller's baseline.
                     auto savedMethodScopeStack = std::move(scopeStack);
                     scopeStack.clear();
+                    m_functionScopeBaseline = 0;
                     size_t savedScopeDepth = 0;
                     enterScope();
                     generatePushFrameCall(specializedName, methodAST->loc);

@@ -73,6 +73,29 @@ void LLVMCodegen::exitScope() {
     scopeStack.pop_back(); // Remove current scope
 }
 
+void LLVMCodegen::exitToFunctionBaseline() {
+    // A `return` deep inside nested blocks (e.g. `while { if { return } }`) must
+    // clean ALL of the function's live scopes - function body and parameters -
+    // so their cleanup IR is emitted before the return's terminator (the last
+    // cleanup moves the insert point into the terminator-free continue block the
+    // ret is then emitted into). Without this, an empty loop-exit block would be
+    // left terminated by ret and then re-cleaned later into that same block.
+    //
+    // LLVM codegen walks control-flow paths sequentially over ONE shared scope
+    // stack, so a return inside one branch must not permanently destroy scopes
+    // that sibling paths still depend on (e.g. declarations that follow an
+    // `if { return }` in the same function body). We therefore clean up to the
+    // function baseline, then restore the stack to its pre-return state. The
+    // cleanup IR is already emitted into this branch's own basic blocks (which
+    // are mutually exclusive with any continuation path), so restoring the stack
+    // only affects static bookkeeping, not runtime behavior.
+    auto savedStack = scopeStack;
+    while (!scopeStack.empty() && scopeStack.size() > m_functionScopeBaseline) {
+        exitScope();
+    }
+    scopeStack = std::move(savedStack);
+}
+
 void LLVMCodegen::registerVariable(const std::string& name, llvm::Value* allocaInst, llvm::Value* value,
                                   ast::OwnershipKind ownership, llvm::Type* type, bool needsCleanup) {
     if (scopeStack.empty()) {

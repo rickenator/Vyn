@@ -113,6 +113,7 @@ private:
     // Scope and symbol management
     llvm::Function* currentFunction = nullptr; // Initialize
     vyb::ast::FunctionDeclaration* currentFunctionAST = nullptr; // Track AST node for error propagation
+    size_t m_functionScopeBaseline = 0;   // Scope-stack depth at function entry
     llvm::StructType* currentClassType = nullptr; // Initialize
     LoopContext currentLoopContext;
     std::vector<LoopContext> loopStack;
@@ -385,6 +386,7 @@ private:
     // Scope and ownership management
     void enterScope();
     void exitScope();
+    void exitToFunctionBaseline();
     void registerVariable(const std::string& name, llvm::Value* allocaInst, llvm::Value* value, ast::OwnershipKind ownership, llvm::Type* type, bool needsCleanup = false);
     void cleanupVariable(const ScopeVariable& var);
     void incrementRefCount(const std::string& name);
