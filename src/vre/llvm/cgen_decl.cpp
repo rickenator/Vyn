@@ -477,8 +477,15 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
     // Mangle function name if inside a bind/impl block
     std::string functionName = node->id->name;
     if (m_currentImplTypeNode) {
-        // Create mangled name: TypeName_methodName (e.g., Person_goodbye, Robot_hello)
-        functionName = m_currentImplTypeNode->toString() + "_" + node->id->name;
+        // Create mangled name: TypeName[_TraitName]_methodName
+        // (e.g., Person_goodbye, Thing_DisplayA_show). Including the trait
+        // name disambiguates types that bind multiple aspects which declare
+        // the same method name.
+        functionName = m_currentImplTypeNode->toString();
+        if (!m_currentImplTraitName.empty()) {
+            functionName += "_" + m_currentImplTraitName;
+        }
+        functionName += "_" + node->id->name;
         VYB_CDBG << "DEBUG: Mangling bind method name: " << node->id->name
                   << " -> " << functionName << std::endl;
     }

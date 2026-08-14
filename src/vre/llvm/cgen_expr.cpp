@@ -1221,121 +1221,187 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
     if (auto memberExpr = dynamic_cast<vyb::ast::MemberExpression*>(node->callee.get())) {
         if (auto objIdent = dynamic_cast<vyb::ast::Identifier*>(memberExpr->object.get())) {
             if (auto methodIdent = dynamic_cast<vyb::ast::Identifier*>(memberExpr->property.get())) {
-                // Look up the object to get its LLVM value
-                auto objIt = namedValues.find(objIdent->name);
-                if (objIt != namedValues.end()) {
-                    llvm::Value* objectAlloca = objIt->second;
+                std::string methodName = methodIdent->name;
 
-                    // Try to get the full concrete type name
-                    // First check valueTypeMap for substituted types (e.g., during monomorphization)
-                    std::string concreteType;
-                    auto typeMapIt = valueTypeMap.find(objectAlloca);
+                // Determine whether this is a qualified aspect call
+                // (Aspect::method(receiver, ...)) or an unqualified method
+                // call (receiver.method(...)).
+                auto objIt = namedValues.find(objIdent->name);
+                SemanticAnalyzer* semantic = driver_.hasSemanticAnalyzer()
+                    ? driver_.getSemanticAnalyzer() : nullptr;
+
+                bool isQualifiedAspectCall = (objIt == namedValues.end()) && semantic &&
+                    semantic->getTraitRegistry().count(objIdent->name) != 0;
+
+                llvm::Value* receiverAlloca = nullptr;
+                llvm::Value* receiverValue = nullptr; // loaded receiver struct (qualified)
+                std::string concreteType;
+                std::string callDebug = objIdent->name + "." + methodName + "()";
+
+                if (!isQualifiedAspectCall) {
+                    // Unqualified: the receiver is a variable in namedValues.
+                    if (objIt != namedValues.end()) {
+                        receiverAlloca = objIt->second;
+                        auto typeMapIt = valueTypeMap.find(receiverAlloca);
+                        if (typeMapIt != valueTypeMap.end() && typeMapIt->second) {
+                            concreteType = typeMapIt->second->toString();
+                        } else if (objIdent->type) {
+                            concreteType = objIdent->type->toString();
+                        }
+                    }
+                } else {
+                    // Qualified: the receiver is the first call argument.
+                    callDebug = objIdent->name + "::" + methodName + "()";
+                    if (node->arguments.empty()) {
+                        logError(node->loc, "Qualified aspect call " + objIdent->name +
+                                 "::" + methodName + "() requires a receiver as the first argument.");
+                        m_currentLLVMValue = nullptr;
+                        return;
+                    }
+                    node->arguments[0]->accept(*this);
+                    receiverValue = m_currentLLVMValue;
+                    if (!receiverValue) {
+                        logError(node->loc, "Failed to evaluate the receiver of qualified aspect call " +
+                                 objIdent->name + "::" + methodName + "().");
+                        m_currentLLVMValue = nullptr;
+                        return;
+                    }
+                    auto typeMapIt = valueTypeMap.find(receiverValue);
                     if (typeMapIt != valueTypeMap.end() && typeMapIt->second) {
                         concreteType = typeMapIt->second->toString();
-                        VYB_CDBG << "DEBUG: Got type from valueTypeMap: " << concreteType << std::endl;
-                    } else if (objIdent->type) {
-                        concreteType = objIdent->type->toString();
-                        VYB_CDBG << "DEBUG: Got type from AST: " << concreteType << std::endl;
+                    } else if (node->arguments[0]->type) {
+                        concreteType = node->arguments[0]->type->toString();
                     }
+                }
 
-                    if (!concreteType.empty()) {
-                        std::string methodName = methodIdent->name;
+                if (concreteType.empty()) {
+                    VYB_CDBG << "DEBUG: No type for aspect method call: " << callDebug << std::endl;
+                    if (!isQualifiedAspectCall) {
+                        // Fall through so the general member-expression path can
+                        // produce the appropriate diagnostic for non-aspect calls.
+                    } else {
+                        logError(node->loc, "Cannot determine the receiver type of qualified aspect call " +
+                                 callDebug);
+                        m_currentLLVMValue = nullptr;
+                        return;
+                    }
+                } else {
+                    VYB_CDBG << "DEBUG: Checking aspect method call: " << callDebug
+                              << " on type " << concreteType << std::endl;
 
-                        VYB_CDBG << "DEBUG: Checking aspect method call: " << concreteType
-                                  << "." << methodName << "()" << std::endl;
-
-                        // First try to find a bind implementation with mangled name (Type_method)
-                        std::string mangledName = concreteType + "_" + methodName;
-                        llvm::Function* implFunc = module->getFunction(mangledName);
-
-                        if (implFunc) {
-                            VYB_CDBG << "DEBUG: Found bind method implementation: " << mangledName << std::endl;
-                        } else {
-                            VYB_CDBG << "DEBUG: No bind implementation found (" << mangledName
-                                      << "), trying generic monomorphization..." << std::endl;
-
-                            // Try to find which aspect this method belongs to
-                            // We need to search through aspects to find which one declares this method
-                            if (driver_.hasSemanticAnalyzer()) {
-                                SemanticAnalyzer* semantic = driver_.getSemanticAnalyzer();
-                                const auto& aspects = semantic->getTraitRegistry();  // Get aspect registry
-
-                                // Search all aspects for this method
-                                for (const auto& aspectEntry : aspects) {
-                                    const std::string& aspectName = aspectEntry.first;
-                                    const TraitInfo* aspectInfo = aspectEntry.second.get();
-
-                                    // Check if this aspect has the method (iterate through vector)
-                                    bool hasMethod = false;
-                                    if (aspectInfo) {
-                                        for (const auto& method : aspectInfo->methods) {
-                                            if (method.name == methodName) {
-                                                hasMethod = true;
-                                                break;
-                                            }
-                                        }
-                                    }
-
-                                    if (hasMethod) {
-                                        VYB_CDBG << "DEBUG: Found method " << methodName
-                                                  << " in aspect " << aspectName << std::endl;
-
-                                        // Try to monomorphize the method for the concrete type
-                                        implFunc = monomorphizeTraitMethod(concreteType, aspectName, methodName);
-                                        if (implFunc) {
-                                            VYB_CDBG << "DEBUG: Successfully monomorphized method!" << std::endl;
-                                            break;
-                                        }
+                    // Collect the candidate aspect(s) that provide this method for
+                    // the concrete type. Qualified calls only consider the explicit
+                    // aspect; unqualified calls consider every bound aspect.
+                    std::vector<std::string> candidateTraits;
+                    auto pushIfProvides = [&](const std::string& trait, bool inImpl) {
+                        if (!inImpl) {
+                            auto traitIt = semantic->getTraitRegistry().find(trait);
+                            if (traitIt != semantic->getTraitRegistry().end()) {
+                                for (const auto& tm : traitIt->second->methods) {
+                                    if (tm.name == methodName && tm.hasDefaultImpl) {
+                                        inImpl = true;
+                                        break;
                                     }
                                 }
                             }
                         }
+                        if (inImpl) candidateTraits.push_back(trait);
+                    };
 
-                        if (implFunc) {
-                            VYB_CDBG << "DEBUG: Found aspect method implementation: " << methodName
-                                      << " for type " << concreteType << std::endl;
-
-                            // Build arguments: first arg is the object, rest are the call arguments
-                            std::vector<llvm::Value*> argValues;
-
-                            // Load the struct value to pass as first argument
-                            if (auto allocaType = llvm::dyn_cast<llvm::AllocaInst>(objectAlloca)) {
-                                llvm::Value* structValue = builder->CreateLoad(
-                                    allocaType->getAllocatedType(),
-                                    objectAlloca,
-                                    objIdent->name + ".load"
-                                );
-                                argValues.push_back(structValue);
-                            } else {
-                                argValues.push_back(objectAlloca);
-                            }
-
-                            // Add the remaining arguments
-                            for (auto& arg : node->arguments) {
-                                arg->accept(*this);
-                                if (!m_currentLLVMValue) {
-                                    logError(arg->loc, "Argument codegen failed for aspect method " + methodName);
-                                    m_currentLLVMValue = nullptr;
-                                    return;
+                    if (isQualifiedAspectCall) {
+                        candidateTraits.push_back(objIdent->name);
+                    } else if (semantic) {
+                        // Concrete impls bound to this type.
+                        const auto& impls = semantic->getTraitImpls();
+                        auto limpl = impls.find(concreteType);
+                        if (limpl != impls.end()) {
+                            for (const auto& traitEntry : limpl->second) {
+                                bool has = false;
+                                for (const ast::FunctionDeclaration* m : traitEntry.second) {
+                                    if (m && m->id && m->id->name == methodName) { has = true; break; }
                                 }
-                                argValues.push_back(m_currentLLVMValue);
+                                pushIfProvides(traitEntry.first, has);
                             }
+                        }
+                        // Generic impl patterns matching this concrete type.
+                        TypePattern concretePattern = TypePattern::parse(concreteType);
+                        const auto& genImpls = semantic->getGenericTraitImpls();
+                        for (const auto& typeEntry : genImpls) {
+                            TypePattern tmplPattern = TypePattern::parse(typeEntry.first);
+                            std::map<std::string, std::string> sub;
+                            if (!tmplPattern.matchesPattern(concretePattern, sub)) continue;
+                            for (const auto& traitEntry : typeEntry.second) {
+                                const GenericImplInfo* gii = traitEntry.second.get();
+                                bool has = false;
+                                if (gii && gii->declaration) {
+                                    for (const auto& m : gii->declaration->methods) {
+                                        if (m && m->id && m->id->name == methodName) { has = true; break; }
+                                    }
+                                }
+                                pushIfProvides(traitEntry.first, has);
+                            }
+                        }
+                    }
 
-                            // Make the call
-                            if (implFunc->getReturnType()->isVoidTy()) {
-                                builder->CreateCall(implFunc, argValues);
+                    llvm::Function* implFunc = nullptr;
+                    for (const std::string& trait : candidateTraits) {
+                        std::string mangledName = concreteType + "_" + trait + "_" + methodName;
+                        implFunc = module->getFunction(mangledName);
+                        if (implFunc) {
+                            VYB_CDBG << "DEBUG: Found aspect method implementation: "
+                                      << mangledName << std::endl;
+                            break;
+                        }
+                        if (semantic) {
+                            implFunc = monomorphizeTraitMethod(concreteType, trait, methodName);
+                            if (implFunc) {
+                                VYB_CDBG << "DEBUG: Monomorphized aspect method for trait "
+                                          << trait << " on " << concreteType << std::endl;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (implFunc) {
+                        // Build arguments: first argument is the receiver struct.
+                        std::vector<llvm::Value*> argValues;
+                        if (isQualifiedAspectCall) {
+                            argValues.push_back(receiverValue);
+                        } else if (auto allocaType = llvm::dyn_cast<llvm::AllocaInst>(receiverAlloca)) {
+                            argValues.push_back(builder->CreateLoad(
+                                allocaType->getAllocatedType(),
+                                receiverAlloca,
+                                objIdent->name + ".load"));
+                        } else {
+                            argValues.push_back(receiverAlloca);
+                        }
+
+                        size_t argStart = isQualifiedAspectCall ? 1u : 0u;
+                        for (size_t i = argStart; i < node->arguments.size(); ++i) {
+                            auto& arg = node->arguments[i];
+                            arg->accept(*this);
+                            if (!m_currentLLVMValue) {
+                                logError(arg->loc, "Argument codegen failed for aspect method " + methodName);
                                 m_currentLLVMValue = nullptr;
-                            } else {
-                                m_currentLLVMValue = builder->CreateCall(implFunc, argValues, "aspect.method.result");
+                                return;
                             }
-
-                            VYB_CDBG << "DEBUG: Successfully generated call to aspect method: " << methodName << std::endl;
-                            return;
-                        } else {
-                            VYB_CDBG << "DEBUG: No aspect implementation found for " << concreteType
-                                      << "." << methodName << "()" << std::endl;
+                            argValues.push_back(m_currentLLVMValue);
                         }
+
+                        if (implFunc->getReturnType()->isVoidTy()) {
+                            builder->CreateCall(implFunc, argValues);
+                            m_currentLLVMValue = nullptr;
+                        } else {
+                            m_currentLLVMValue = builder->CreateCall(implFunc, argValues, "aspect.method.result");
+                        }
+
+                        VYB_CDBG << "DEBUG: Successfully generated call to aspect method: "
+                                  << methodName << " for type " << concreteType << std::endl;
+                        return;
                     }
+
+                    VYB_CDBG << "DEBUG: No aspect implementation found for " << callDebug
+                              << " on type " << concreteType << std::endl;
                 }
             }
         }

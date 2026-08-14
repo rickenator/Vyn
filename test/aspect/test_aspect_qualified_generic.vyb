@@ -1,0 +1,24 @@
+// @test: qualified aspect call on generic bind
+// @description: Aspect::method(receiver) dispatches through a generic bind to a monomorphized implementation
+// @category: aspect, generics, qualified, dispatch
+// @expect: pass
+// @expect-return: 3
+
+aspect Container {
+    size(self)<Int> -> { }
+}
+
+bind<T> Container -> Vec<T> {
+    size(self)<Int> -> {
+        return self.len()
+    }
+}
+
+main()<Int> -> {
+    numbers<Vec<Int>> = Vec::new()
+    numbers.push(1)
+    numbers.push(2)
+    numbers.push(3)
+    n<Int> = Container::size(numbers)
+    return n
+}

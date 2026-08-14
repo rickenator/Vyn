@@ -159,7 +159,7 @@ llvm::Function* LLVMCodegen::monomorphizeTraitMethod(const std::string& concrete
                                                      const std::string& traitName,
                                                      const std::string& methodName) {
     // Check cache first
-    std::string cacheKey = concreteType + "::" + methodName;
+    std::string cacheKey = concreteType + "::" + traitName + "::" + methodName;
     auto cacheIt = monomorphizedMethods.find(cacheKey);
     if (cacheIt != monomorphizedMethods.end()) {
         return cacheIt->second;
@@ -208,8 +208,12 @@ llvm::Function* LLVMCodegen::monomorphizeTraitMethod(const std::string& concrete
                     // Since we don't have a deep clone method for FunctionDeclaration,
                     // we'll work with the original and generate specialized code directly
 
-                    // Build specialized function name: TypeName_MethodName (e.g., "Box_Int_show")
-                    std::string specializedName = concretePattern.toMangled() + "_" + methodName;
+                    // Build specialized function name: TypeName_TraitName_MethodName
+                    // (e.g., "Vec_Int_Container_size"). Including the trait name
+                    // disambiguates types that bind multiple aspects which
+                    // declare the same method name.
+                    std::string specializedName = concretePattern.toMangled() +
+                        "_" + traitName + "_" + methodName;
 
 
                     // Get the method's signature

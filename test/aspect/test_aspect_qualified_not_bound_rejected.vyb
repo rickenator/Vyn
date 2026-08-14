@@ -1,0 +1,30 @@
+// @test: qualified aspect call to unbound type rejected
+// @description: A qualified call to an aspect that is not bound to the receiver type is rejected
+// @category: aspect, qualified, diagnostics
+// @expect: fail
+// @expect-error: Type 'Thing' does not implement aspect 'DisplayB' (no bind found).
+// @semantic-only: true
+
+aspect DisplayA {
+    show(self)<String> -> { }
+}
+
+aspect DisplayB {
+    show(self)<String> -> { }
+}
+
+struct Thing {
+    value<Int>
+}
+
+bind DisplayA -> Thing {
+    show(self)<String> -> {
+        return "A"
+    }
+}
+
+main()<Int> -> {
+    thing<Thing> = Thing { value = 1 }
+    label<String> = DisplayB::show(thing)
+    return 0
+}

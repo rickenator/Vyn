@@ -266,6 +266,10 @@ public:
     const std::unordered_map<std::string, std::unordered_map<std::string, std::unique_ptr<GenericImplInfo>>>&
     getGenericTraitImpls() const { return genericTraitImpls; }
 
+    // Access to concrete trait implementations (bind Aspect -> Type)
+    const std::unordered_map<std::string, std::unordered_map<std::string, std::vector<ast::FunctionDeclaration*>>>&
+    getTraitImpls() const { return traitImpls; }
+
     // Access to aspect/trait registry
     const std::unordered_map<std::string, std::unique_ptr<TraitInfo>>&
     getTraitRegistry() const { return traitRegistry; }
@@ -289,6 +293,7 @@ public:
     ast::TypeNode* substituteSelfType(ast::TypeNode* returnType, const std::string& concreteType); // Substitute Self with concrete type
     void handleVecMethodCall(ast::CallExpression* node, const std::string& objectName, const std::string& methodName);
     void handleVecMethodCallOnMember(ast::CallExpression* node, ast::VecType* vecType, const std::string& methodName);
+    void handleQualifiedAspectCall(ast::CallExpression* node, const std::string& aspectName, const std::string& methodName);
 
     // Statements
     void visit(ast::BlockStatement* node) override;

@@ -1,0 +1,39 @@
+// @test: qualified aspect call disambiguation
+// @description: Aspect::method(receiver) selects a specific aspect when multiple aspects bind the same method name to a type
+// @category: aspect, dispatch, qualified
+// @expect: pass
+// @expect-return: 0
+
+aspect DisplayA {
+    show(self)<String> -> { }
+}
+
+aspect DisplayB {
+    show(self)<String> -> { }
+}
+
+struct Thing {
+    value<Int>
+}
+
+bind DisplayA -> Thing {
+    show(self)<String> -> {
+        return "A"
+    }
+}
+
+bind DisplayB -> Thing {
+    show(self)<String> -> {
+        return "B"
+    }
+}
+
+main()<Int> -> {
+    thing<Thing> = Thing { value = 1 }
+    a<String> = DisplayA::show(thing)
+    b<String> = DisplayB::show(thing)
+    if (a == "A" && b == "B") {
+        return 0
+    }
+    return 1
+}

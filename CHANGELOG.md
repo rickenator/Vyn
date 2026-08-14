@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Qualified aspect-method disambiguation: `Aspect::method(receiver, ...)` now
+  selects a specific aspect whenever multiple bound aspects declare the same
+  method name for a type (e.g. `DisplayA::show(thing)` vs `DisplayB::show(thing)`).
+  Unqualified ambiguous dot-calls (`thing.show()`) remain rejected. To support
+  this, bind-method symbols are emitted per `Type_Trait_Method` so distinct
+  implementations coexist in the same module.
 - Aspect inheritance (super-aspects): `aspect Comparable : Equatable` declares a
   super-aspect. Super-aspect names are validated against defined aspects, cyclic
   super-aspect dependencies are rejected, and binding a sub-aspect requires the

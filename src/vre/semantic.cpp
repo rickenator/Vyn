@@ -1363,6 +1363,20 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
         }
     }
 
+    // Qualified aspect method call: Aspect::method(receiver, ...)
+    // Detected before the callee is visited so the aspect identifier is not
+    // treated as the type of a plain member-expression object.
+    if (auto memberExpr = dynamic_cast<ast::MemberExpression*>(node->callee.get())) {
+        if (auto objIdent = dynamic_cast<ast::Identifier*>(memberExpr->object.get())) {
+            if (auto methodIdent = dynamic_cast<ast::Identifier*>(memberExpr->property.get())) {
+                if (findTrait(objIdent->name)) {
+                    handleQualifiedAspectCall(node, objIdent->name, methodIdent->name);
+                    return;
+                }
+            }
+        }
+    }
+
     // Only visit callee if it's not an intrinsic (intrinsics don't need symbol resolution)
     if (!isIntrinsic && node->callee) {
         node->callee->accept(*this);
@@ -5957,6 +5971,116 @@ bool SemanticAnalyzer::isBuiltinTypeCompatible(const std::string& typeName, cons
     }
 
     return false;
+}
+
+void SemanticAnalyzer::handleQualifiedAspectCall(ast::CallExpression* node,
+                                                  const std::string& aspectName,
+                                                  const std::string& methodName) {
+    if (node->arguments.empty()) {
+        addError("Qualified aspect call " + aspectName + "::" + methodName +
+                 "() requires a receiver as the first argument.", node);
+        return;
+    }
+
+    // Visit the receiver to resolve its type.
+    ast::Expression* receiver = node->arguments[0].get();
+    if (receiver) receiver->accept(*this);
+
+    ast::TypeNode* receiverType = nullptr;
+    if (receiver) {
+        auto it = expressionTypes.find(receiver);
+        if (it != expressionTypes.end() && it->second) receiverType = it->second;
+        if (!receiverType && receiver->type) receiverType = receiver->type.get();
+    }
+    if (!receiverType) {
+        addError("Cannot determine the type of the receiver argument to " +
+                 aspectName + "::" + methodName + "().", node);
+        return;
+    }
+
+    // Visit the remaining arguments for typing.
+    for (size_t i = 1; i < node->arguments.size(); ++i) {
+        if (node->arguments[i]) node->arguments[i]->accept(*this);
+    }
+
+    const std::string typeStr = receiverType->toString();
+
+    TraitInfo* traitInfo = findTrait(aspectName);
+    if (!traitInfo) {
+        addError("Aspect '" + aspectName + "' is not defined.", node);
+        return;
+    }
+
+    // Locate an explicit bind implementation for this concrete type.
+    ast::FunctionDeclaration* methodDecl = nullptr;
+    bool typeMatchesImpl = false;
+    auto typeImplsIt = traitImpls.find(typeStr);
+    if (typeImplsIt != traitImpls.end()) {
+        auto traitIt = typeImplsIt->second.find(aspectName);
+        if (traitIt != typeImplsIt->second.end()) {
+            typeMatchesImpl = true;
+            for (ast::FunctionDeclaration* m : traitIt->second) {
+                if (m && m->id && m->id->name == methodName) {
+                    methodDecl = m;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Fall back to a generic impl pattern (e.g., bind<T> Container -> Vec<T>).
+    if (!typeMatchesImpl) {
+        for (const auto& typeEntry : genericTraitImpls) {
+            if (!matchesPattern(typeStr, typeEntry.first)) continue;
+            const auto& traitMap = typeEntry.second;
+            auto traitIt = traitMap.find(aspectName);
+            if (traitIt == traitMap.end()) continue;
+            const GenericImplInfo* implInfo = traitIt->second.get();
+            if (!implInfo || !implInfo->declaration) continue;
+            typeMatchesImpl = true;
+            for (const auto& m : implInfo->declaration->methods) {
+                if (m && m->id && m->id->name == methodName) {
+                    methodDecl = m.get();
+                    break;
+                }
+            }
+            break;
+        }
+    }
+
+    // Determine whether the method is declared by the aspect itself.
+    const TraitMethod* declaredMethod = nullptr;
+    for (const auto& tm : traitInfo->methods) {
+        if (tm.name == methodName) {
+            declaredMethod = &tm;
+            break;
+        }
+    }
+    if (!declaredMethod && !methodDecl) {
+        addError("Aspect '" + aspectName + "' does not define a method named '" +
+                 methodName + "'.", node);
+        return;
+    }
+    if (!typeMatchesImpl) {
+        addError("Type '" + typeStr + "' does not implement aspect '" + aspectName +
+                 "' (no bind found).", node);
+        return;
+    }
+
+    ast::TypeNode* returnTypeNode = methodDecl ? methodDecl->returnTypeNode.get()
+                                               : declaredMethod->returnType;
+    if (!returnTypeNode) {
+        addError("Method '" + methodName + "' in aspect '" + aspectName +
+                 "' has no return type.", node);
+        return;
+    }
+
+    ast::TypeNode* actualReturnType = substituteSelfType(returnTypeNode, typeStr);
+    expressionTypes[node] = actualReturnType;
+    node->type = std::shared_ptr<ast::TypeNode>(actualReturnType->clone());
+    VYB_CDBG << "DEBUG: Qualified aspect call " << aspectName << "::" << methodName
+              << " on " << typeStr << " returns " << actualReturnType->toString()
+              << std::endl;
 }
 
 void SemanticAnalyzer::handleVecMethodCall(ast::CallExpression* node, const std::string& objectName, const std::string& methodName) {

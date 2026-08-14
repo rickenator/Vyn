@@ -1,4 +1,4 @@
-# Vyb Feature Status (v0.5.2)
+# Vyb Feature Status (v0.5.3)
 
 This document tracks the implementation status of Vyb language features.
 
@@ -64,7 +64,7 @@ Legend: ✅ Implemented | 🚧 Partial / Stubbed | 📋 Planned
 | Structs | ✅ | |
 | Enums | ✅ | C-like integer enums: variants map to sequential `i64` constants; `Enum::Variant` access works; tagged unions (data variants) planned for v0.6 |
 | Generics (monomorphization) | ✅ | Includes generic functions and current generic bind method executable monomorphization, plus call-site type-argument inference with return-type substitution and aspect-bound validation on generic function calls; broader nested/member templates still need expansion |
-| Aspect/Bind polymorphism | ✅ | Includes canonical simple receiver shorthand `method(self)<T>`, legacy/explicit `self<Self>`, ownership-qualified receivers, associated types, executable generic bind methods for current supported shapes, ambiguous dot-call diagnostics, bind selection precedence (bounded generic bind over unbounded for the same shape), and super-aspect inheritance (`aspect Sub : Super` with binding requirements and cycle detection) |
+| Aspect/Bind polymorphism | ✅ | Includes canonical simple receiver shorthand `method(self)<T>`, legacy/explicit `self<Self>`, ownership-qualified receivers, associated types, executable generic bind methods for current supported shapes, ambiguous dot-call diagnostics, qualified disambiguation (`Aspect::method(receiver)` selects a specific aspect when multiple bound aspects share a method name; bind symbols are emitted per `Type_Trait_Method`), bind selection precedence (bounded generic bind over unbounded for the same shape), and super-aspect inheritance (`aspect Sub : Super` with binding requirements and cycle detection) |
 | Ownership: `my`, `our`, `their`, `mild` | 🚧 | Lexical borrow enforcement, minimal `our<T>`/`mild<T>` control blocks, unwrap-on-read for primitive `my`/`our`/`mild<T>`, and compile-time move tracking for `my<T>` (use-after-move rejection plus transfer on assignment/init/arguments); full copy/drop semantics still planned |
 | `freedom` blocks + `loc<T>` raw pointers | ✅ | |
 | `match` / `select` expressions | ✅ | |
@@ -117,4 +117,4 @@ Legend: ✅ Implemented | 🚧 Partial / Stubbed | 📋 Planned
 
 ---
 
-*Last updated: v0.5.2 (2026-08-13)*
+*Last updated: v0.5.3 (2026-08-13)*
