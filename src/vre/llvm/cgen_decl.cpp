@@ -704,7 +704,12 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
             // A simple check: if the last block in a non-empty function doesn't have a terminator, it's an error.
             if (!func->empty() && !func->back().getTerminator()) {
                 logError(node->loc, "Function '" + node->id->name + "' has a non-void return type but may not return on all paths (missing return at end of body).");
-                // Optionally, builder->CreateUnreachable(); if this state should be impossible.
+                // Keep the IR verifier happy: terminate the fall-through block with
+                // `unreachable`. This happens when a function falls out of its last
+                // statement (e.g. a `match` whose arms all `return`) without a final
+                // trailing return; the diagnostic above reports the real bug.
+                builder->SetInsertPoint(&func->back());
+                builder->CreateUnreachable();
             }
         }
 

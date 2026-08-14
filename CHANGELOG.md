@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- A non-void function whose last statement is a `match` whose arms all `return`
+  (with no trailing `return` after the match) no longer leaves an unterminated
+  basic block that trips the LLVM verifier. The fall-through block is now
+  terminated with `unreachable`, so compilation produces valid IR and reports a
+  clean "may not return on all paths" diagnostic instead of crashing. Arms that
+  return via a final wildcard (`? -> ...`) define a complete function and run
+  cleanly.
 - `fail` inside a callee (e.g. an `if`/`else` branch or an `ensure cond else
   fail<...>(...)`) is now trapped correctly by the caller. Trap contexts were a
   shared, non-function-local stack, so a `fail` in a callee could branch into the

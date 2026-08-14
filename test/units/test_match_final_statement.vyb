@@ -1,0 +1,21 @@
+// @test: match as the final statement of a value-returning function
+// @description: a non-void function whose last statement is a match with all arms
+//   returning (including a wildcard fallback) terminates cleanly.
+// @category: match, control-flow
+// @expect: pass
+// @expect-return: -77
+// @execute-jit: true
+
+pick(x<Int>)<Int> -> {
+    match (x) {
+        0 -> { return 10 }
+        ? -> { return 20 }
+    }
+}
+
+main()<Int> -> {
+    if (pick(0) == 10 && pick(5) == 20) {
+        return -77
+    }
+    return 1
+}
