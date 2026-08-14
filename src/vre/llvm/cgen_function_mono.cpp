@@ -45,8 +45,8 @@ std::string LLVMCodegen::mangleGenericFunctionName(const std::string& baseName,
 llvm::Function* LLVMCodegen::monomorphizeGenericFunction(const std::string& functionName,
                                                          const std::vector<std::string>& concreteTypeArgs) {
     VYB_CDBG << "DEBUG: Monomorphizing generic function: " << functionName << " with types: ";
-    for (const auto& t : concreteTypeArgs) std::cout << t << " ";
-    std::cout << std::endl;
+    for (const auto& t : concreteTypeArgs) VYB_CDBG << t << " ";
+    VYB_CDBG << std::endl;
 
     // Look up the generic function template
     auto templateIt = genericFunctionTemplates.find(functionName);
@@ -138,6 +138,7 @@ llvm::Function* LLVMCodegen::monomorphizeGenericFunction(const std::string& func
     if (templateFunc->body) {
         // Save current function context
         llvm::Function* oldFunction = currentFunction;
+        llvm::BasicBlock* oldInsertBlock = builder->GetInsertBlock();
         std::map<std::string, llvm::Value*> oldNamedValues;
         oldNamedValues.swap(namedValues);
 
@@ -215,9 +216,12 @@ llvm::Function* LLVMCodegen::monomorphizeGenericFunction(const std::string& func
             }
         }
 
-        // Restore context
+        // Restore context, including the caller's insertion point so that
+        // instructions after the call are emitted into the caller's block
+        // (not into the freshly monomorphized function's block).
         exitScope();
         currentFunction = oldFunction;
+        if (oldInsertBlock) builder->SetInsertPoint(oldInsertBlock);
         namedValues.swap(oldNamedValues);
     }
 

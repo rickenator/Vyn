@@ -1,0 +1,31 @@
+// @test: generic function returning a String through an aspect bound
+// @description: monomorphized generic function calls a String-returning bounded method, then the caller continues codegen after the call (regression: builder insertion point was not restored, jamming caller IR into the monomorphized block)
+// @category: aspect, generics, monomorphization
+// @expect: pass
+// @expect-return: 7
+
+aspect Display {
+    title(self)<String> ->
+}
+
+struct Item {
+    id<Int>
+}
+
+bind Display -> Item {
+    title(self)<String> -> {
+        return "item " + self.id
+    }
+}
+
+describe<T<Display>>(it<T>)<Int> -> {
+    s<String> = it.title()
+    return s.len()
+}
+
+main()<Int> -> {
+    item<Item> = Item { id = 7 }
+    len<Int> = describe(item)
+    result<Int> = len + 1
+    return result
+}
