@@ -251,7 +251,7 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
 - [x] **C type mapping** — Common C aliases (`CInt`, `CSize`, `CString`, `CPtr<T>`, `CVoid`, etc.) lower through semantic/codegen
 - [x] **`#[repr(C)]` on structs** — Attribute parses on structs, preserves declaration-order unpacked LLVM layout, and rejects generic/Vyb-runtime fields that are not C ABI-stable
 - [x] **Native `--link <lib-or-path>` flow** — Repeatable build flag passes `-l<lib>` or explicit library/object paths to the native linker
-- [ ] **Variadic C functions** — `printf(format: *i8, ...) -> Int`
+- [x] **Variadic C functions** — `extern "C" { printf(format<loc<Int8>>, ...)<Int> }`; a trailing `...` marks the declaration variadic, codegen emits `isVarArg`, and call sites accept any number of extra arguments (with Vyb String varargs auto-extracting their `char*` data pointer so `printf("%s", s)` works). `printf("%d-%s", 7, "vyb")` is covered by `test/ffi/variadic_c_printf.vyb`.
 - [ ] **`vyb bindgen`** — Tool to generate Vyb bindings from C headers (v0.6+)
 
 ### 3. Ownership Types — Runtime Enforcement (HIGH PRIORITY)
@@ -700,5 +700,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: August 2026*
 *Current Version: Vyb v0.5.4 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 810 tests passing (harness, 100%)*
+*Overall Status: ~60-65% complete toward 1.0 — 811 tests passing (harness, 100%)*
 *SUGGESTIONS.md merged into this document.*

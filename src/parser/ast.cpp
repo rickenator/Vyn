@@ -1128,8 +1128,8 @@ void VariableDeclaration::accept(Visitor& visitor) {
 
 // --- FunctionDeclaration ---
 // ... existing code ...
-FunctionDeclaration::FunctionDeclaration(SourceLocation loc, std::unique_ptr<Identifier> i, std::vector<FunctionParameter> ps, std::unique_ptr<BlockStatement> b, bool is_async, TypeNodePtr ret_type_node, bool has_default_impl, std::vector<std::unique_ptr<GenericParameter>> gps)
-    : Declaration(loc), id(std::move(i)), genericParams(std::move(gps)), params(std::move(ps)), body(std::move(b)), isAsync(is_async), hasDefaultImpl(has_default_impl), returnTypeNode(std::move(ret_type_node)) {}
+FunctionDeclaration::FunctionDeclaration(SourceLocation loc, std::unique_ptr<Identifier> i, std::vector<FunctionParameter> ps, std::unique_ptr<BlockStatement> b, bool is_async, TypeNodePtr ret_type_node, bool has_default_impl, std::vector<std::unique_ptr<GenericParameter>> gps, bool variadic)
+    : Declaration(loc), id(std::move(i)), genericParams(std::move(gps)), params(std::move(ps)), body(std::move(b)), isAsync(is_async), hasDefaultImpl(has_default_impl), variadic(variadic), returnTypeNode(std::move(ret_type_node)) {}
 
 NodeType FunctionDeclaration::getType() const {
     return NodeType::FUNCTION_DECLARATION;

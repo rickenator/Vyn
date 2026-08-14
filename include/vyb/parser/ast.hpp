@@ -1153,6 +1153,7 @@ public:
     std::unique_ptr<BlockStatement> body;
     bool isAsync;
     bool hasDefaultImpl; // true if method has arrow (-> {...}), false if mandatory (no arrow)
+    bool variadic;       // true for variadic C functions (e.g. `printf(fmt: *i8, ...)`)
     TypeNodePtr returnTypeNode; // Optional return type annotation
 
     // Error propagation metadata (set during semantic analysis)
@@ -1160,7 +1161,7 @@ public:
     bool needsErrorReturn = false;  // Returns { T, error_ptr } instead of T
     std::vector<std::string> errorTypes;  // Types that can be failed (for type checking)
 
-    FunctionDeclaration(SourceLocation loc, std::unique_ptr<Identifier> id, std::vector<FunctionParameter> params, std::unique_ptr<BlockStatement> body, bool isAsync = false, TypeNodePtr returnTypeNode = nullptr, bool hasDefaultImpl = true, std::vector<std::unique_ptr<GenericParameter>> genericParams = std::vector<std::unique_ptr<GenericParameter>>());
+    FunctionDeclaration(SourceLocation loc, std::unique_ptr<Identifier> id, std::vector<FunctionParameter> params, std::unique_ptr<BlockStatement> body, bool isAsync = false, TypeNodePtr returnTypeNode = nullptr, bool hasDefaultImpl = true, std::vector<std::unique_ptr<GenericParameter>> genericParams = std::vector<std::unique_ptr<GenericParameter>>(), bool variadic = false);
     ~FunctionDeclaration() override = default;
     NodeType getType() const override;
     std::string toString() const override;

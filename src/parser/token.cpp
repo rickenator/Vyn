@@ -107,6 +107,7 @@ std::string token_type_to_string(vyb::TokenType type) { // Corrected namespace f
         {vyb::TokenType::LSHIFT, "LSHIFT"},
         {vyb::TokenType::RSHIFT, "RSHIFT"},
         {vyb::TokenType::DOTDOT, "DOTDOT"},
+        {vyb::TokenType::ELLIPSIS, "ELLIPSIS"},
 
         // Compound Assignment Operators
         {vyb::TokenType::PLUSEQ, "PLUSEQ"},

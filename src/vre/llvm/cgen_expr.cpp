@@ -2716,8 +2716,18 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         }
     }
 
-    // Check argument count
-    if (calleeFunc->arg_size() != node->arguments.size()) {
+    // Check argument count. Variadic functions accept any number of extra
+    // arguments, but at least as many as their fixed parameters.
+    size_t fixedParamCount = calleeFunc->getFunctionType()->getNumParams();
+    if (calleeFunc->isVarArg()) {
+        if (node->arguments.size() < fixedParamCount) {
+            logError(node->loc, "Variadic function " + calleeName + " requires at least " +
+                     std::to_string(fixedParamCount) + " argument(s), got " +
+                     std::to_string(node->arguments.size()) + ".");
+            m_currentLLVMValue = nullptr;
+            return;
+        }
+    } else if (fixedParamCount != node->arguments.size()) {
         logError(node->loc, "Incorrect number of arguments passed to function " + calleeName);
         m_currentLLVMValue = nullptr;
         return;
@@ -2733,41 +2743,54 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             return;
         }
 
-        // Implicit cast if necessary (e.g. int to float, i64 to i32)
-        llvm::Type* expectedArgType = calleeFunc->getFunctionType()->getParamType(i);
-        if (argValue->getType() != expectedArgType) {
-            if (expectedArgType->isPointerTy()) {
-                if (auto* stringStructType = llvm::dyn_cast<llvm::StructType>(argValue->getType())) {
-                    if (stringStructType->getNumElements() == 2 &&
-                        stringStructType->getElementType(0)->isPointerTy() &&
-                        stringStructType->getElementType(1)->isIntegerTy()) {
-                        argValue = builder->CreateExtractValue(argValue, {0}, "cstrarg");
+        if (i < fixedParamCount) {
+            // Fixed parameters: implicit cast to the declared parameter type.
+            llvm::Type* expectedArgType = calleeFunc->getFunctionType()->getParamType(i);
+            if (argValue->getType() != expectedArgType) {
+                if (expectedArgType->isPointerTy()) {
+                    if (auto* stringStructType = llvm::dyn_cast<llvm::StructType>(argValue->getType())) {
+                        if (stringStructType->getNumElements() == 2 &&
+                            stringStructType->getElementType(0)->isPointerTy() &&
+                            stringStructType->getElementType(1)->isIntegerTy()) {
+                            argValue = builder->CreateExtractValue(argValue, {0}, "cstrarg");
+                        }
+                    }
+                } else if (expectedArgType->isFloatingPointTy() && argValue->getType()->isIntegerTy()) {
+                    argValue = builder->CreateSIToFP(argValue, expectedArgType, "callargcast");
+                } else if (expectedArgType->isIntegerTy() && argValue->getType()->isFloatingPointTy()) {
+                    argValue = builder->CreateFPToSI(argValue, expectedArgType, "callargcast");
+                } else if (expectedArgType->isIntegerTy() && argValue->getType()->isIntegerTy()) {
+                    // Handle integer width mismatches (e.g., i64 to i32)
+                    llvm::IntegerType* expectedIntType = llvm::cast<llvm::IntegerType>(expectedArgType);
+                    llvm::IntegerType* actualIntType = llvm::cast<llvm::IntegerType>(argValue->getType());
+
+                    if (expectedIntType->getBitWidth() < actualIntType->getBitWidth()) {
+                        // Truncate to smaller width (e.g., i64 to i32)
+                        argValue = builder->CreateTrunc(argValue, expectedArgType, "callargtrunc");
+                    } else if (expectedIntType->getBitWidth() > actualIntType->getBitWidth()) {
+                        // Sign-extend to larger width (e.g., i32 to i64)
+                        argValue = builder->CreateSExt(argValue, expectedArgType, "callargsext");
                     }
                 }
-            } else if (expectedArgType->isFloatingPointTy() && argValue->getType()->isIntegerTy()) {
-                argValue = builder->CreateSIToFP(argValue, expectedArgType, "callargcast");
-            } else if (expectedArgType->isIntegerTy() && argValue->getType()->isFloatingPointTy()) {
-                argValue = builder->CreateFPToSI(argValue, expectedArgType, "callargcast");
-            } else if (expectedArgType->isIntegerTy() && argValue->getType()->isIntegerTy()) {
-                // Handle integer width mismatches (e.g., i64 to i32)
-                llvm::IntegerType* expectedIntType = llvm::cast<llvm::IntegerType>(expectedArgType);
-                llvm::IntegerType* actualIntType = llvm::cast<llvm::IntegerType>(argValue->getType());
+                // Add more sophisticated casting rules as needed
+            }
 
-                if (expectedIntType->getBitWidth() < actualIntType->getBitWidth()) {
-                    // Truncate to smaller width (e.g., i64 to i32)
-                    argValue = builder->CreateTrunc(argValue, expectedArgType, "callargtrunc");
-                } else if (expectedIntType->getBitWidth() > actualIntType->getBitWidth()) {
-                    // Sign-extend to larger width (e.g., i32 to i64)
-                    argValue = builder->CreateSExt(argValue, expectedArgType, "callargsext");
+            if (argValue->getType() != expectedArgType) {
+                 logError(node->arguments[i]->loc, "Argument type mismatch for call to " + calleeName + ". Expected " + getTypeName(expectedArgType) + " but got " + getTypeName(argValue->getType()));
+                 m_currentLLVMValue = nullptr;
+                 return;
+            }
+        } else {
+            // Variadic arguments have no declared parameter type, so pass the raw
+            // value. As a convenience, auto-extract a Vyb String's data pointer so
+            // C varargs such as `printf("%s", s)` receive the expected `char*`.
+            if (auto* stringStructType = llvm::dyn_cast<llvm::StructType>(argValue->getType())) {
+                if (stringStructType->getNumElements() == 2 &&
+                    stringStructType->getElementType(0)->isPointerTy() &&
+                    stringStructType->getElementType(1)->isIntegerTy()) {
+                    argValue = builder->CreateExtractValue(argValue, {0}, "cvararg.str");
                 }
             }
-            // Add more sophisticated casting rules as needed
-        }
-
-        if (argValue->getType() != expectedArgType) {
-             logError(node->arguments[i]->loc, "Argument type mismatch for call to " + calleeName + ". Expected " + getTypeName(expectedArgType) + " but got " + getTypeName(argValue->getType()));
-             m_currentLLVMValue = nullptr;
-             return;
         }
         argValues.push_back(argValue);
     }

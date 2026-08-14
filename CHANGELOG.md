@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Variadic C functions** — a trailing `...` in an extern C parameter list now marks the declaration as variadic. Codegen emits a true LLVM vararg function, and call sites accept any number of extra arguments beyond the fixed parameters (rejecting calls with too few). Vyb `String` varargs auto-extract their `char*` data pointer so C varargs such as `printf("%s", s)` receive a C string; `printf("%d-%s", 7, "vyb")` is covered by `test/ffi/variadic_c_printf.vyb`. Variadic functions must be extern/forward declarations (a body is rejected).
+
 - **`core::math` stdlib module** — new `stdlib/core/math.vyb` with composition
   helpers over the global math intrinsics: `clamp(value<Int>, lo<Int>, hi<Int>)<Int>`
   (inclusive range clamping via `min`/`max`) and `is_close(a<Float>, b<Float>,

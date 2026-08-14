@@ -117,6 +117,7 @@ Legend: ✅ Implemented | 🚧 Partial / Stubbed | 📋 Planned
 | AOT native executable | ✅ | `--build` flag with repeatable `--link <lib-or-path>` linker inputs |
 | Multi-file compilation | ✅ | ModuleRegistry resolves local imports, module paths, stdlib discovery, and dependency order |
 | `extern "C"` FFI | ✅ | Extern blocks parse/codegen, freedom-gated calls, C ABI scalar/pointer aliases, conservative `#[repr(C)]` structs |
+| Variadic C functions | ✅ | A trailing `...` marks an extern declaration variadic (isVarArg); call sites accept extra args and auto-extract Vyb `String` data pointers for `%s` (`test/ffi/variadic_c_printf.vyb`) |
 
 ---
 

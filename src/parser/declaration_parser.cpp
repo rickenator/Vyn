@@ -556,11 +556,17 @@ std::unique_ptr<vyb::ast::FunctionDeclaration> DeclarationParser::parse_function
     // Parse generic parameters: name<T, U> or name<T<Display>>
     std::vector<std::unique_ptr<ast::GenericParameter>> generic_params = this->parse_generic_params();
 
-    // Parse parameters: name(params)
+    // Parse parameters: name(params) -- trailing '...' marks the function variadic (extern C)
     this->expect(vyb::TokenType::LPAREN);
     std::vector<vyb::ast::FunctionParameter> params_structs;
+    bool variadic = false;
     if (this->peek().type != vyb::TokenType::RPAREN) {
         do {
+            if (this->peek().type == vyb::TokenType::ELLIPSIS) {
+                this->consume(); // consume '...'
+                variadic = true;
+                break;
+            }
             params_structs.push_back(this->parse_function_parameter_struct());
         } while (this->match(vyb::TokenType::COMMA));
     }
@@ -676,7 +682,7 @@ std::unique_ptr<vyb::ast::FunctionDeclaration> DeclarationParser::parse_function
         // 'body' remains nullptr
     }
 
-    return std::make_unique<vyb::ast::FunctionDeclaration>(loc, std::move(name), std::move(params_structs), std::move(body), is_async, std::move(return_type_node), hasArrow, std::move(generic_params));
+    return std::make_unique<vyb::ast::FunctionDeclaration>(loc, std::move(name), std::move(params_structs), std::move(body), is_async, std::move(return_type_node), hasArrow, std::move(generic_params), variadic);
 }
 
 // StructDeclNode not in ast.hpp. Assuming a Declaration type for it.

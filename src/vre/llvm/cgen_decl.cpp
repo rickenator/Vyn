@@ -466,7 +466,7 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
         }
     }
 
-    llvm::FunctionType* funcType = llvm::FunctionType::get(returnType, paramTypes, false /*isVarArg*/);
+    llvm::FunctionType* funcType = llvm::FunctionType::get(returnType, paramTypes, node->variadic /*isVarArg*/);
 
     // DEBUG: Print the function type we're creating
     std::string funcTypeStr;

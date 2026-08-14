@@ -200,7 +200,11 @@ std::vector<vyb::token::Token> Lexer::tokenize() {
       case ',': emit_token(vyb::TokenType::COMMA, ","); break;
       case '.':
         if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '.') {
-          emit_token(vyb::TokenType::DOTDOT, "..");
+          if (pos_ + 2 < source_.size() && source_[pos_ + 2] == '.') {
+            emit_token(vyb::TokenType::ELLIPSIS, "...");
+          } else {
+            emit_token(vyb::TokenType::DOTDOT, "..");
+          }
         } else {
           emit_token(vyb::TokenType::DOT, ".");
         }

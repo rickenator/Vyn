@@ -956,6 +956,12 @@ void SemanticAnalyzer::visit(ast::FunctionDeclaration* node) {
         addError("Identifier \\\"" + node->id->name + "\\\" is a reserved word and cannot be used as a function name.", node->id.get());
     }
 
+    // Variadic functions are only meaningful for C interop: they must be
+    // extern/forward declarations (no body), e.g. `printf(fmt: *i8, ...)`.
+    if (node->variadic && node->body) {
+        addError("Variadic function \\\"" + node->id->name + "\\\" cannot have a body; variadic functions must be declared as extern C without a body.", node);
+    }
+
     // Skip adding to scope if this is a method in an aspect or bind
     // These are stored in the trait registry, not the global symbol table
     if (!processingTraitOrBindMethod) {

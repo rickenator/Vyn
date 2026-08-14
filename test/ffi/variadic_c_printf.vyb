@@ -1,0 +1,17 @@
+// @test: Variadic C functions (printf)
+// @description: extern "C" printf(fmt: i8*, ...) accepts fixed + variadic args; %d and %s resolve
+// @category: ffi, interop
+// @expect: pass
+// @expect-output: 7-vyb
+// @tags: ffi, extern, variadic, printf
+
+extern "C" {
+    printf(format<loc<Int8>>, ...)<Int>
+}
+
+main()<Int> -> {
+    freedom {
+        printf("%d-%s", 7, "vyb")
+    }
+    return 0
+}
