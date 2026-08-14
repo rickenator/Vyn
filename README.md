@@ -59,7 +59,7 @@ git clone https://github.com/rickenator/Vyb.git
 cd Vyb
 mkdir -p build && cd build && LLVM_DIR=/usr/lib/llvm-18/cmake cmake .. && make -j$(nproc) && cd ..
 
-# Run with modern test harness (400+ tests)
+# Run with modern test harness (740+ tests)
 python3 test_harness.py --vyb ./build/vyb --test-dirs test/new_features --workers 4
 
 # Run your first Vyb program

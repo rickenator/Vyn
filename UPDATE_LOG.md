@@ -3,6 +3,18 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-13: **Polymorphic monomorphization hardening & ownership unwrap-on-read**.
+  Added unwrap-on-read for primitive `my<T>`/`our<T>`/`mild<T>` (reads with the underlying
+  value's type) plus compile-time move tracking for `my<T>` that rejects use-after-move and
+  records transfer on assignment/init/argument passing. Allowed binding aspects to concrete
+  generic instantiations (`bind Display -> Box<Int>`). Fixed generic-function monomorphization so
+  the caller IR insertion point is restored afterward and call-frame push/pop stays balanced
+  (eliminated `printItem_Point` "no terminator" crashes), scoped monomorphized trap-handler bodies
+  so `return` doesn't pop the enclosing function scope, and released the debug `DIBuilder` during
+  module/context release to stop a timing-sensitive `SIGSEGV` under concurrent runs. Corrected
+  `test/ownership/move_function_consume.vyb`, updated the README aspect example to use real bound
+  struct values, and aligned `README.md`/`FEATURE_STATUS.md`/`MONOMORPHIZATION_DESIGN.md`. Full
+  harness suite passes (742/742).
 - 2026-08-06: **Sealed monomorphization design** (I-010). Created `doc/MONOMORPHIZATION_DESIGN.md` documenting the permanent decision: compile-time monomorphization for all generics, aspects + bind for polymorphism, no vtables/dynamic dispatch/trait objects. Updated TODO.md with sealed status. Fixed multi-argument type inference in generic function calls — each argument now maps to its corresponding type parameter by position instead of only using the first argument. Fixed trap/ensure result passing via alloca-based merging (eliminated PHI node predecessor mismatch). Removed DEBUG_CHECK and DEBUG_CRASH fprintf(stderr) debug prints. All 213 tests pass.
 
 This log consolidates what still needs to be implemented after scanning the

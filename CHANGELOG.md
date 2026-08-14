@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Primitive ownership unwrap-on-read and move tracking:
+  - Reading a `my<T>` / `our<T>` / `mild<T>` primitive now unwraps to the underlying value.
+  - Compile-time move tracking for `my<T>` bindings rejects use-after-move and
+    records ownership transfer on assignment, initialization, and `my<T>` argument passing.
+- Aspect binds to concrete generic instantiations:
+  - `bind Display -> Box<Int>` (and similar shapes) now resolve and monomorphize into executable methods.
 - Error propagation Phases 3–5 for `fail`/`trap`:
   - `fail` without in-scope trap now returns the failable ABI tuple and propagates to caller.
   - Call sites of failable functions now auto-check `{value,error}` and propagate on non-null error.
@@ -25,6 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `mild<T>.grab()` upgrades live weak handles to `our<T>` and returns a null `our<T>` placeholder for released targets until `Option<T>` exists.
 
 ### Changed
+- Generic-function monomorphization hardens: caller IR insertion point is restored after
+  monomorphizing a generic function, and call-frame push/pop stays balanced across monomorphized
+  trait-method bindings (fixes `printItem_Point` "no terminator" crashes).
+- Monomorphized trap-handler bodies get their own scope so `return` no longer pops the enclosing
+  function scope (fixes `ERROR: No active scope to register variable`).
+- Released `DIBuilder` during `releaseModule`/`releaseContext` so debug-metadata teardown no longer
+  runs against a freed LLVM context — removes the flaky concurrent-run `SIGSEGV`.
 - Runtime `__vyb_runtime_untrapped_error` now reports error type, JSON payload, fail source location, and honors `exitCode<Int>` payload fields.
 - JIT `main` dispatch now checks failable-main error tuple returns and routes non-null errors to the untrapped runtime handler.
 - Returning a local `our<T>` or `mild<T>` now transfers the handle to the caller instead of cleaning it up before return.
