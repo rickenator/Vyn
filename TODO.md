@@ -182,8 +182,7 @@ is the working audit for what needs to be implemented next.
 
 ### Aspect System — Completion (HIGH PRIORITY)
 - [x] Phases 1-4: Declarations, method calls, generic impls, type param substitution
-- [x] **Associated types (slice: defaults + bounds + generic binds)** — `type Item` declarations, `bind` assignments (`type Item = Int`), validation for missing/unknown/duplicate assignments, default associated types (`type Item = Int`), aspect bounds (`type Item<Display>`), and resolution through generic binds (`bind<T> Iterator -> Boxer<T> { type Item = T }` substitutes the concrete type at the call site) are implemented. `Self::Item` used directly as a bind method's return type now also resolves in both concrete and generic bind bodies (the impl context is established before the monomorphized signature is built, substituting the concrete type argument at the call site). Remaining work: dyn-dispatch integration.
-- [ ] **Aspect objects / dynamic dispatch** — `dyn Aspect` for runtime polymorphism
+- [x] **Associated types (slice: defaults + bounds + generic binds)** — `type Item` declarations, `bind` assignments (`type Item = Int`), validation for missing/unknown/duplicate assignments, default associated types (`type Item = Int`), aspect bounds (`type Item<Display>`), and resolution through generic binds (`bind<T> Iterator -> Boxer<T> { type Item = T }` substitutes the concrete type at the call site) are implemented. `Self::Item` used directly as a bind method's return type now also resolves in both concrete and generic bind bodies (the impl context is established before the monomorphized signature is built, substituting the concrete type argument at the call site). The associated-type slice is complete; runtime (dyn) dispatch is a deliberate non-goal (see `Dynamic Dispatch (`dyn Aspect`) — Marked as Future Experiment` below).
 - [x] **Aspect inheritance** — `aspect Comparable : Equatable` super-aspects: declared super-aspects are validated against defined aspects, cyclic dependencies are rejected, and binding a sub-aspect requires the same type to also bind each super-aspect (order-independent).
 - [x] **Qualified aspect-method disambiguation** — `DisplayA::show(thing)` selects a specific aspect whenever multiple bound aspects declare the same method name for a type; unqualified ambiguous dot-calls (`thing.show()`) remain rejected. Bind method symbols are emitted per `Type_Trait_Method` so distinct implementations coexist. Also works on bounded type parameters (`Aspect::show(thing)` for `thing<T<Aspect>>` inside generic functions).
 - [x] **Monomorphization with bounds validation** — Generic function calls infer type arguments from the call site, substitute them into the return type, and reject concrete instantiations whose type does not bind the declared aspect(s).
@@ -457,6 +456,23 @@ being implemented in the aspect system first (tracked separately).
 A solid 1.0 with `async`/`await` + structured concurrency is more valuable than an
 under-designed actor model. Channels and actors require a full design document before
 implementation. The README has been updated to remove them from the v1.0 scope.
+
+### [DECIDED] Dynamic Dispatch (`dyn Aspect`) — Marked as Future Experiment
+
+**Decision:** Vyb stays fully static. No `dyn Aspect`, no vtables, no runtime
+polymorphism — consistent with the sealed `doc/MONOMORPHIZATION_DESIGN.md`.
+
+Static (compile-time) monomorphization is the core dispatch model: zero runtime
+overhead, exact value types preserved, one dispatch model, and a clean fit with the
+compile-time ownership concepts (`my`/`our`/`their`). The erased-polymorphism use
+cases that would justify vtables — heterogeneous aspect-typed collections
+(`Vec<dyn Display>`) and implementers unknown at compile time (plugins / ABI-stable
+boundaries) — are not part of the 1.0 scope. Function pointers / closures across the
+C FFI remain the supported escape hatch for callback-style interfaces.
+
+`dyn Aspect` is intentionally parked as a **future experiment**, not part of the 1.0
+checklist. If a concrete use case emerges, it requires a new design document and an
+explicit change to the sealed monomorphization design before any implementation.
 
 ---
 
