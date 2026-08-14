@@ -52,6 +52,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test/ffi/enum_by_value.vyb`.
 
 ### Fixed
+- **`if { return }` no longer over-pops the codegen scope stack** — a block
+  whose body terminates via `return` popped twice: the return's cleanup already
+  ran `exitScope()`, then the enclosing block popped once more, so each
+  `if { return }` silently dropped the next outer scope. After two such ifs a
+  later declaration could run with an empty scope (`No active scope to register
+  variable`). Blocks now restore only the scopes they introduced (a depth
+  captured before their own `enterScope`), and a `return` cleans every scope its
+  function introduced (function body and parameters) before emitting its
+  terminator — so an early return out of `while { if { return } }` no longer
+  leaves the loop-exit block terminated and then re-cleaned into that same block —
+  while restoring the stack afterwards so declarations after an `if { return }`
+  keep their scopes. Covered by the enum-accessor/loop suites and a
+  `if { return }`-then-declare repro.
+- **`import prelude` no longer drops the internal `hash_chars` helper** — the
+  `Hashable -> Float` bind body calls `hash_chars`, but it was only
+  `share(all)` inside `core::aspects` and not re-exported, so pulling prelude in
+  left the carried bind referencing an undefined identifier. It is now re-exported
+  through `core::prelude` and the top-level `prelude` (restores
+  `test/modules/stdlib_autodiscovery.vyb`).
 - **Monomorphized bind methods no longer corrupt the caller's scope stack** — a
   by-ref bind method whose body returns from inside a loop (common in collection
   methods like `HashMap.get`) could over-pop the shared codegen scope stack while
