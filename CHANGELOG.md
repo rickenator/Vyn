@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A bind method whose return type is `Self::Item` inside the bind body now
+  resolves the associated type in both concrete and generic binds. For a
+  concrete bind (`bind Iterator -> CounterIter { type Item = Int; next(self)<Self::Item> }`)
+  the return type resolves to the assigned type, and for a generic bind
+  (`bind<T> Iterator -> Boxer<T> { type Item = T; next(self)<Self::Item> }`) the
+  type parameter is substituted with the concrete type argument at the call site
+  (e.g. `Boxer<Int>.next()` returns `Int`). The impl context is established before
+  the monomorphized method signature is built so parameter and return types
+  resolve against the specialized type and its associated-type bindings.
 - Qualified aspect-method disambiguation: `Aspect::method(receiver, ...)` now
   selects a specific aspect whenever multiple bound aspects declare the same
   method name for a type (e.g. `DisplayA::show(thing)` vs `DisplayB::show(thing)`).

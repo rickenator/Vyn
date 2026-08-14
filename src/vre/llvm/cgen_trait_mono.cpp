@@ -216,6 +216,17 @@ llvm::Function* LLVMCodegen::monomorphizeTraitMethod(const std::string& concrete
                         "_" + traitName + "_" + methodName;
 
 
+                    // Establish the concrete impl context before resolving the
+                    // signature so Self::Item / <Trait>::Item references in
+                    // parameter and return types resolve against the specialized
+                    // type and its associated-type bindings rather than the
+                    // caller currently being generated.
+                    auto currentImplConcreteTypeNode = typePatternToTypeNode(concretePattern, methodAST->loc);
+                    ast::TypeNode* origImplTypeNode = m_currentImplTypeNode;
+                    std::string origImplTraitName = m_currentImplTraitName;
+                    m_currentImplTypeNode = currentImplConcreteTypeNode.get();
+                    m_currentImplTraitName = traitName;
+
                     // Get the method's signature
                     std::vector<llvm::Type*> paramTypes;
 
@@ -223,6 +234,8 @@ llvm::Function* LLVMCodegen::monomorphizeTraitMethod(const std::string& concrete
                     llvm::Type* selfType = resolveTypeForMonomorphization(concretePattern, typeSubstitutions);
                     if (!selfType) {
                         logError(SourceLocation(), "Failed to resolve Self type for " + concreteType);
+                        m_currentImplTypeNode = origImplTypeNode;
+                        m_currentImplTraitName = origImplTraitName;
                         return nullptr;
                     }
                     paramTypes.push_back(selfType);
@@ -239,6 +252,8 @@ llvm::Function* LLVMCodegen::monomorphizeTraitMethod(const std::string& concrete
                             param.typeNode.get(), typeSubstitutions);
                         if (!paramType) {
                             logError(SourceLocation(), "Failed to resolve parameter type for " + param.name->name);
+                            m_currentImplTypeNode = origImplTypeNode;
+                            m_currentImplTraitName = origImplTraitName;
                             return nullptr;
                         }
                         paramTypes.push_back(paramType);
@@ -252,6 +267,8 @@ llvm::Function* LLVMCodegen::monomorphizeTraitMethod(const std::string& concrete
                             methodAST->returnTypeNode.get(), typeSubstitutions);
                         if (!returnType) {
                             logError(SourceLocation(), "Failed to resolve return type");
+                            m_currentImplTypeNode = origImplTypeNode;
+                            m_currentImplTraitName = origImplTraitName;
                             return nullptr;
                         }
                     }
@@ -273,7 +290,6 @@ llvm::Function* LLVMCodegen::monomorphizeTraitMethod(const std::string& concrete
                     // impl context as normal bind methods so return statements, Self,
                     // and associated type references resolve against the specialized
                     // function instead of the caller currently being generated.
-                    auto currentImplConcreteTypeNode = typePatternToTypeNode(concretePattern, methodAST->loc);
 
                     auto savedTypeSubstitutions = currentTypeSubstitutions;
                     auto savedNamedValues = namedValues;
@@ -381,6 +397,8 @@ llvm::Function* LLVMCodegen::monomorphizeTraitMethod(const std::string& concrete
                         }
                     }
 
+                    m_currentImplTypeNode = origImplTypeNode;
+                    m_currentImplTraitName = origImplTraitName;
                     return specializedFunc;
                 }
             }
@@ -431,6 +449,71 @@ llvm::Type* LLVMCodegen::resolveParameterTypeWithSubstitution(vyb::ast::TypeNode
     if (auto typeName = dynamic_cast<ast::TypeName*>(typeNode)) {
         if (typeName->identifier) {
             const std::string& name = typeName->identifier->name;
+
+            // Resolve Self::Item / <Trait>::Item against the associated-type
+            // bindings of the current concrete type (and trait) first.
+            if (m_currentImplTypeNode && !m_currentImplTraitName.empty()) {
+                std::string typedName = typeName->toString();
+                std::string assocName;
+                if (typedName.rfind("Self::", 0) == 0) {
+                    assocName = typedName.substr(6);
+                } else if (typedName.rfind(m_currentImplTraitName + "::", 0) == 0) {
+                    assocName = typedName.substr(m_currentImplTraitName.length() + 2);
+                }
+                if (!assocName.empty() && driver_.hasSemanticAnalyzer()) {
+                    SemanticAnalyzer* semantic = driver_.getSemanticAnalyzer();
+                    const std::string concreteType = m_currentImplTypeNode->toString();
+                    // Concrete binds populate the semantic associated-type map directly.
+                    std::string bound = semantic->resolveAssociatedTypeForType(concreteType, m_currentImplTraitName, typedName);
+                    if (bound.empty()) {
+                        // Generic binds: look up the matching generic impl's explicit
+                        // associated-type assignment, then substitute its type params.
+                        TypePattern concretePattern = TypePattern::parse(concreteType);
+                        for (const auto& typeEntry : semantic->getGenericTraitImpls()) {
+                            TypePattern tmplPattern = TypePattern::parse(typeEntry.first);
+                            std::map<std::string, std::string> matchSubs;
+                            if (!tmplPattern.matchesPattern(concretePattern, matchSubs)) continue;
+                            auto traitIt = typeEntry.second.find(m_currentImplTraitName);
+                            if (traitIt == typeEntry.second.end()) continue;
+                            const GenericImplInfo* gii = traitIt->second.get();
+                            if (!gii) continue;
+                            auto assocIt = gii->associatedTypeBindings.find(assocName);
+                            if (assocIt != gii->associatedTypeBindings.end() && assocIt->second) {
+                                bound = assocIt->second->toString();
+                                break;
+                            }
+                        }
+                    }
+                    if (!bound.empty()) {
+                        // Substitute any remaining type parameters (e.g. Item = T -> Int).
+                        auto replaceTokens = [](std::string s, const std::string& tok, const std::string& repl) {
+                            if (tok.empty()) return s;
+                            auto isIdChar = [](char c) {
+                                return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+                            };
+                            std::string out;
+                            out.reserve(s.size());
+                            for (size_t i = 0; i < s.size();) {
+                                if (i + tok.size() <= s.size() && s.compare(i, tok.size(), tok) == 0 &&
+                                    (i == 0 || !isIdChar(s[i - 1])) &&
+                                    (i + tok.size() == s.size() || !isIdChar(s[i + tok.size()]))) {
+                                    out += repl;
+                                    i += tok.size();
+                                } else {
+                                    out += s[i];
+                                    ++i;
+                                }
+                            }
+                            return out;
+                        };
+                        for (const auto& kv : substitutions) {
+                            bound = replaceTokens(bound, kv.first, kv.second);
+                        }
+                        auto concreteTypeNode = typePatternToTypeNode(TypePattern::parse(bound), typeNode->loc);
+                        return codegenType(concreteTypeNode.get());
+                    }
+                }
+            }
 
             // Check if it's a type parameter
             auto it = substitutions.find(name);

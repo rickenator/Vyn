@@ -2106,6 +2106,19 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                         // Owns synthesized return-type nodes created for generic impls.
                         std::vector<std::unique_ptr<ast::TypeNode>> resolvedReturnTypes;
 
+                        // Resolve a Self::Item / <trait>::Item return reference against the
+                        // associated-type bindings of a concrete trait impl.
+                        auto resolveConcreteAssocReturnType = [&](const std::string& rtStr,
+                                                                  const std::string& traitName) -> std::string {
+                            if (rtStr.rfind("Self::", 0) == 0 || rtStr.rfind(traitName + "::", 0) == 0) {
+                                std::string bound = resolveAssociatedTypeReference(typeNameStr, traitName, rtStr);
+                                if (!bound.empty()) {
+                                    return replaceTokens(bound, "Self", typeNameStr);
+                                }
+                            }
+                            return "";
+                        };
+
                         auto typeImplsIt = traitImpls.find(typeNameStr);
                         if (typeImplsIt != traitImpls.end()) {
                             for (const auto& traitEntry : typeImplsIt->second) {
@@ -2115,7 +2128,17 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
 
                                 for (ast::FunctionDeclaration* method : methods) {
                                     if (method && method->id && method->id->name == methodName) {
-                                        addCandidate(traitName, method->returnTypeNode.get());
+                                        std::string rtStr = method->returnTypeNode ? method->returnTypeNode->toString() : "";
+                                        std::string resolved = resolveConcreteAssocReturnType(rtStr, traitName);
+                                        if (resolved.empty()) {
+                                            addCandidate(traitName, method->returnTypeNode.get());
+                                        } else {
+                                            auto resolvedNode = std::make_unique<ast::TypeName>(
+                                                node->loc, std::make_unique<ast::Identifier>(node->loc, resolved));
+                                            ast::TypeNode* ptr = resolvedNode.get();
+                                            resolvedReturnTypes.push_back(std::move(resolvedNode));
+                                            addCandidate(traitName, ptr, true);
+                                        }
                                         foundInImpl = true;
                                     }
                                 }
@@ -2125,6 +2148,16 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                     if (traitIt != traitRegistry.end()) {
                                         for (const auto& traitMethod : traitIt->second->methods) {
                                             if (traitMethod.name == methodName && traitMethod.hasDefaultImpl) {
+                                                std::string rtStr = traitMethod.returnType ? traitMethod.returnType->toString() : "";
+                                                std::string resolved = resolveConcreteAssocReturnType(rtStr, traitName);
+                                                if (!resolved.empty()) {
+                                                    auto resolvedNode = std::make_unique<ast::TypeName>(
+                                                        node->loc, std::make_unique<ast::Identifier>(node->loc, resolved));
+                                                    ast::TypeNode* ptr = resolvedNode.get();
+                                                    resolvedReturnTypes.push_back(std::move(resolvedNode));
+                                                    addCandidate(traitName, ptr, true);
+                                                    continue;
+                                                }
                                                 addCandidate(traitName, traitMethod.returnType);
                                             }
                                         }
