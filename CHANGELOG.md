@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `mild<T>.grab()` upgrades live weak handles to `our<T>` and returns a null `our<T>` placeholder for released targets until `Option<T>` exists.
 
 ### Changed
+- Ownership transfer-on-return now covers expression returns: an owning value
+  (Vec with malloc'd data, `our<T>`, `mild<T>`) returned through a `select` expression
+  (or any whole-value read) transfers to the caller instead of being freed first,
+  fixing a `free(): double free detected` crash. Added an `@category: ownership, vec`
+  regression test.
 - Generic-function monomorphization hardens: caller IR insertion point is restored after
   monomorphizing a generic function, and call-frame push/pop stays balanced across monomorphized
   trait-method bindings (fixes `printItem_Point` "no terminator" crashes).

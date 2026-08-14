@@ -12,6 +12,27 @@ namespace vyb {
 
 // --- Statements ---
 
+// Collect the names of owning bindings whose value is read as a whole value in
+// `expr` and therefore flows out to the caller as the return value. Ownership of
+// these bindings transfers to the caller, so their cleanup must be suppressed.
+// Only whole-value positions are traversed (bare identifiers and select arms);
+// call and member-access arguments are excluded because those reads do not
+// transfer a local binding (Vec arguments are deep-copied, and member results
+// are owned by their base object).
+static void collectReturnTransferNames(ast::Expression* expr,
+                                       std::set<std::string>& out) {
+    if (!expr) return;
+    if (auto* ident = dynamic_cast<ast::Identifier*>(expr)) {
+        out.insert(ident->name);
+        return;
+    }
+    if (auto* sel = dynamic_cast<ast::SelectExpression*>(expr)) {
+        for (const auto& arm : sel->cases) {
+            collectReturnTransferNames(arm.second.get(), out);
+        }
+    }
+}
+
 void LLVMCodegen::visit(vyb::ast::BlockStatement* node) {
     // Save the current namedValues for block scoping
     auto oldNamedValues = namedValues;
@@ -467,19 +488,18 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                     // If returning an owning variable, skip its local cleanup because
                     // ownership of that binding is transferred to the caller.
                     if (node->argument) {
-                        if (auto* retIdent = dynamic_cast<ast::Identifier*>(node->argument.get())) {
-                            const std::string& retVarName = retIdent->name;
-                            for (auto& scopeVars : scopeStack) {
-                                for (auto& var : scopeVars) {
-                                    bool transfersOwnership =
-                                        var.name == retVarName &&
-                                        (var.isVecWithMallocData ||
-                                         var.ownership == ast::OwnershipKind::OUR ||
-                                         var.ownership == ast::OwnershipKind::MILD);
-                                    if (transfersOwnership) {
-                                        var.needsCleanup = false;
-                                        var.isVecWithMallocData = false;
-                                    }
+                        std::set<std::string> transferNames;
+                        collectReturnTransferNames(node->argument.get(), transferNames);
+                        for (auto& scopeVars : scopeStack) {
+                            for (auto& var : scopeVars) {
+                                bool transfersOwnership =
+                                    transferNames.count(var.name) &&
+                                    (var.isVecWithMallocData ||
+                                     var.ownership == ast::OwnershipKind::OUR ||
+                                     var.ownership == ast::OwnershipKind::MILD);
+                                if (transfersOwnership) {
+                                    var.needsCleanup = false;
+                                    var.isVecWithMallocData = false;
                                 }
                             }
                         }
@@ -2026,4 +2046,3 @@ void LLVMCodegen::visit(vyb::ast::TupleDestructureAssignment* node) {
 }
 
 }  // namespace vyb
-

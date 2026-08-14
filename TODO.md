@@ -634,7 +634,7 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 ### Implementation Consistency
 - [ ] **`borrow` prefix vs `borrow()` function call** — Both syntaxes work. The canonical form per `Canonical_Reference_Syntax.md` is `borrow(expr)`. Document `borrow expr` prefix as deprecated.
 - [ ] **`their<T>` nested member access** — The semantic analyzer sometimes fails to dereference through `their<T>` for nested member access. Audit all transitive field access paths.
-- [ ] **Vec cleanup on return** — The heuristic checking whether the returned identifier matches a Vec variable may miss returns via expressions. Consider a more robust ownership-transfer-on-return pass.
+- [x] **Vec cleanup on return** — Transfer-on-return now walks whole-value reads (bare identifiers and `select` arms), so owning values (Vec with malloc'd data, `our<T>`, `mild<T>`) returned via expressions transfer to the caller instead of being freed first.
 
 ### Action Items
 

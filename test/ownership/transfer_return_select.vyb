@@ -1,0 +1,22 @@
+// @test: Transferring an owned Vec out of a function via a select expression
+// @description: A Vec selected by a select expression returns to the caller with
+//   ownership transferred, instead of being freed before use (double free).
+// @category: ownership, vec
+// @expect: pass
+// @expect-return: 3
+pick(flag<Bool>)<Vec<Int>> -> {
+    a<Vec<Int>> = Vec::new()
+    a.push(1)
+    a.push(2)
+    a.push(3)
+    b<Vec<Int>> = Vec::new()
+    b.push(9)
+    // Ownership of the selected Vec must transfer to the caller. Previously the
+    // local a/b data was freed here, causing a use-after-free / double free.
+    return select(flag) -> { true -> a, false -> b }
+}
+
+main()<Int> -> {
+    c<Vec<Int>> = pick(true)
+    return c.len()
+}
