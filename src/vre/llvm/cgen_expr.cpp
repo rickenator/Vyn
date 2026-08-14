@@ -749,19 +749,14 @@ void LLVMCodegen::emitVecConstructor(vyb::ast::CallExpression* node) {
         llvm::Value* allocSize = builder->CreateMul(sizeValue,
             llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 8), "alloc.size");
 
-        llvm::FunctionType* mallocType = llvm::FunctionType::get(
-            llvm::PointerType::get(*context, 0),
-            {llvm::Type::getInt64Ty(*context)}, false);
-        llvm::Function* mallocFunc = llvm::Function::Create(mallocType,
-            llvm::Function::ExternalLinkage, "malloc", module.get());
+        // Reuse the single module-level `malloc` declaration (like the Vec
+        // push/resize paths). Creating a fresh ExternalLinkage "malloc" per
+        // `Vec(n)` call makes LLVM suffix each duplicate (`malloc.N`), which
+        // the ORC JIT cannot resolve ("Symbols not found: [ malloc.N ]").
+        llvm::Function* mallocFunc = getOrCreateMallocFunction();
         llvm::Value* dataPtr = builder->CreateCall(mallocFunc, {allocSize}, "vec.data");
 
-        llvm::FunctionType* memsetType = llvm::FunctionType::get(
-            llvm::PointerType::get(*context, 0),
-            {llvm::PointerType::get(*context, 0), llvm::Type::getInt32Ty(*context), llvm::Type::getInt64Ty(*context)},
-            false);
-        llvm::Function* memsetFunc = llvm::Function::Create(memsetType,
-            llvm::Function::ExternalLinkage, "memset", module.get());
+        llvm::Function* memsetFunc = getOrCreateMemsetFunction();
         builder->CreateCall(memsetFunc, {
             dataPtr,
             llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 0),

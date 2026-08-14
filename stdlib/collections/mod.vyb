@@ -24,7 +24,8 @@
 #   - `VecOps` (on the built-in `Vec<T>`): non-mutating view helpers written in
 #     Vyb over the Vec primitives — `first` / `last` (head/tail element),
 #     `reversed` (a fresh reversed copy) and `find` (first matching index, or
-#     `-1`). Bound via `Equatable`; ordering (`sorted` / `min` / `max`) and the
+#     `-1`), and the ordering helpers `sorted` (fresh ascending copy),
+#     `min` / `max`. Bound via `Comparable` (which refines `Equatable`); the
 #     higher-order `map` / `filter` / `reduce` are deferred on compiler gaps
 #     (see the detailed note next to the bind below).
 #   - `HashMap<K,V>()` / `HashSet<K>()` (and their `(cap)` / `(cap, true)`
@@ -58,6 +59,11 @@ hashkey<K<Hashable>>(k<K>)<Int> -> {
 }
 
 # Map an arbitrary (possibly negative) hash onto a bucket index in [0, nb).
+share(all)
+cmp_lt<T<Comparable>>(a<T>, b<T>)<Bool> -> {
+    return a.compare(b) < 0
+}
+
 share(all)
 bucket_for(h<Int>, nb<Int>)<Int> -> {
     b<Int> = h % nb
@@ -317,18 +323,18 @@ bind<K<Hashable, Equatable>> SetOps -> HashSet<K> {
 # The built-in `Vec<T>` already ships the mutation/access primitives (`push`,
 # `pop`, `get`, `set`, `len`, `clear`, `is_empty`, `contains`, `remove_at`).
 # These binds layer analysis/view operations on top, written in Vyb over those
-# primitives. They are *non-mutating*: `reversed` returns a fresh vector and
-# `find` / `first` / `last` only read. `find` returns the index of the first
-# `==` match or `-1`; `first` / `last` return the head/tail element. On an
-# empty vector `reversed` is a no-op, while `first` / `last` (which read via
-# `Vec::get`) inherit `get`'s current out-of-range behavior (a known compiler
-# gap: the returned value is not a clean default). The ordering methods
-# (`sorted`, `min`, `max`) and the higher-order `map` / `filter` / `reduce`
-# are intentionally *not* shipped yet: the former need to call `compare` on a
-# generic element but codegen cannot yet lower an aspect-dispatch `compare` on
-# a type-parameter receiver inside a generic bind body (the same mechanism
-# that makes the `equals`-based helpers work), and the latter need closure
-# capture plus by-ref `their<Vec<T>>` receivers, neither implemented yet.
+# primitives. They are *non-mutating*: `reversed` returns a fresh vector,
+# `sorted` a fresh ascending copy, and `find` / `first` / `last` / `min` / `max`
+# only read. `find` returns the index of the first `==` match or `-1`;
+# `first` / `last` return the head/tail element. On an empty vector `reversed`
+# is a no-op, while `first` / `last` (which read via `Vec::get`) inherit `get`'s
+# current out-of-range behavior (a known compiler gap: the returned value is not
+# a clean default). Comparison order is dispatched through the
+# `Comparable`-bounded `cmp_lt` helper (mirroring the `equals`-based `samekey`),
+# because a direct `compare` call does not resolve on a generic element. The
+# higher-order `map` / `filter` / `reduce` (and any in-place forms) are
+# intentionally not shipped yet: they need closure capture plus by-ref
+# `their<Vec<T>>` receivers, neither implemented yet.
 #
 # ---------------------------------------------------------------------------
 share(all)
@@ -337,10 +343,13 @@ aspect VecOps {
     last(self<Vec<T>>)<T> -> { }
     reversed(self<Vec<T>>)<Vec<T>> -> { }
     find(self<Vec<T>>, value<T>)<Int> -> { }
+    min(self<Vec<T>>)<T> -> { }
+    max(self<Vec<T>>)<T> -> { }
+    sorted(self<Vec<T>>)<Vec<T>> -> { }
 }
 
 share(all)
-bind<T<Equatable>> VecOps -> Vec<T> {
+bind<T<Comparable, Equatable>> VecOps -> Vec<T> {
     first(self<Vec<T>>)<T> -> {
         return self.get(0)
     }
@@ -365,6 +374,47 @@ bind<T<Equatable>> VecOps -> Vec<T> {
             i = i + 1
         }
         return -1
+    }
+    min(self<Vec<T>>)<T> -> {
+        m<T> = self.get(0)
+        i<Int> = 1
+        while (i < self.len()) {
+            if (cmp_lt(self.get(i), m)) { m = self.get(i) }
+            i = i + 1
+        }
+        return m
+    }
+    max(self<Vec<T>>)<T> -> {
+        m<T> = self.get(0)
+        i<Int> = 1
+        while (i < self.len()) {
+            if (cmp_lt(m, self.get(i))) { m = self.get(i) }
+            i = i + 1
+        }
+        return m
+    }
+    sorted(self<Vec<T>>)<Vec<T>> -> {
+        n<Int> = self.len()
+        used<Vec<Bool>> = Vec()
+        k<Int> = 0
+        while (k < n) { used.push(false); k = k + 1 }
+        out<Vec<T>> = Vec()
+        k = 0
+        while (k < n) {
+            mi<Int> = -1
+            j<Int> = 0
+            while (j < n) {
+                if (!used.get(j)) {
+                    if (mi == -1) { mi = j }
+                    else if (cmp_lt(self.get(j), self.get(mi))) { mi = j }
+                }
+                j = j + 1
+            }
+            out.push(self.get(mi))
+            used.set(mi, true)
+            k = k + 1
+        }
+        return out
     }
 }
 

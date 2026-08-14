@@ -60,13 +60,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ConstructionExpression` field initializers in addition to bare identifiers.
 
 - **`Vec<T>` view helpers via `VecOps`** — `import collections` now binds a
-  pure-Vyb `VecOps` aspect to the built-in `Vec<T>` (Equatable-gated) exposing
-  non-mutating helpers written over the Vec primitives: `first`/`last` (head /
-  tail element), `reversed` (a fresh reversed copy), and `find` (index of the
-  first `==` match, or `-1`). Ordering methods (`sorted`/`min`/`max`) are
-  deferred on a codegen gap (no `compare` dispatch on a type-parameter
-  receiver inside a generic bind body), and `map`/`filter`/`reduce` await
-  closure capture. Covered by `test/modules/test_vec_expansion.vyb`.
+  pure-Vyb `VecOps` aspect to the built-in `Vec<T>` (Comparable-gated, which
+  refines `Equatable`) exposing non-mutating helpers written over the Vec
+  primitives: `first`/`last` (head / tail element), `reversed` (a fresh
+  reversed copy), `find` (index of the first `==` match, or `-1`), and the
+  ordering helpers `sorted` (fresh ascending copy), `min`, and `max`. Ordering
+  is dispatched through the `Comparable`-bounded `cmp_lt` helper (mirroring the
+  `equals`-based `samekey`), since a direct `compare` call does not resolve on a
+  generic element. `map`/`filter`/`reduce` await closure capture. Covered by
+  `test/modules/test_vec_expansion.vyb`.
+
+- **Scalar `Comparable` impls are complete** — `compare` is now pre-wired for
+  `Float` (sign of difference), `Bool` (`false` < `true`), and `String`
+  (lexicographic, byte-wise via `char_at`, length-tiebreak), in addition to the
+  existing `Int` (`self - other`). This completes the documented core-scalar
+  surface and is what makes `sorted` / `min` / `max` work on `Vec<Float>` and
+  `Vec<String>`.
 
 ### Changed
 - **`FunctionType` grammar doc no longer contradicts the parser** — `vyb.hpp`
@@ -95,6 +104,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test/ffi/enum_by_value.vyb`.
 
 ### Fixed
+- **`Vec(n)` no longer emits untrackable `malloc`/`memset` symbols** —
+  `emitVecConstructor` previously called `llvm::Function::Create` for a fresh
+  `ExternalLinkage` `malloc`/`memset` on *every* `Vec(n)` (pre-sized) call. With
+  more than one such allocation in a module, LLVM auto-suffixed each duplicate
+  (`malloc.N` / `memset.N`), which the ORC JIT could not resolve at runtime
+  (`Symbols not found: [ memset.21 ]`), so pre-sized vectors across
+  collections/core now JIT-run correctly. It now reuses the single module-level
+  declarations via `getOrCreateMallocFunction`/`getOrCreateMemsetFunction`,
+  matching the Vec push/resize paths. This also clears the previously-failing
+  Vec-constructor and multi-vector JIT runs.
 - **Generic structs with mixed-field (Vec + scalar/Bool) layouts resolve
   correctly through by-ref receivers** — `LLVMCodegen::codegenType` memoized
   types by the raw `TypeNode*`, but transient substitution clones (created while

@@ -104,6 +104,46 @@ bind Comparable -> Int {
 }
 
 share(all)
+bind Comparable -> Float {
+    compare(self<Float>, other<Float>)<Int> -> {
+        if (self < other) { return -1 }
+        if (self > other) { return 1 }
+        return 0
+    }
+}
+
+share(all)
+bind Comparable -> Bool {
+    compare(self<Bool>, other<Bool>)<Int> -> {
+        if (self == other) { return 0 }
+        if (self) { return 1 }
+        return -1
+    }
+}
+
+share(all)
+bind Comparable -> String {
+    compare(self<String>, other<String>)<Int> -> {
+        # Byte-wise lexicographic string comparison, inlined in the bind body
+        # (a module-local helper would not be visible when the bind is
+        # activated cross-module, e.g. on `import prelude`).
+        i<Int> = 0
+        na<Int> = self.len()
+        nb<Int> = other.len()
+        while (i < na && i < nb) {
+            ca<Int> = self.char_at(i)
+            cb<Int> = other.char_at(i)
+            if (ca < cb) { return -1 }
+            if (ca > cb) { return 1 }
+            i = i + 1
+        }
+        if (na < nb) { return -1 }
+        if (na > nb) { return 1 }
+        return 0
+    }
+}
+
+share(all)
 bind Hashable -> Int {
     hash(self<Int>)<Int> -> { return self }
 }

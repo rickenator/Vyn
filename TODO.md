@@ -278,13 +278,14 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
 - [x] **Math library** — `sqrt`, `sin`, `cos`, `tan`, `exp`, `log`, `log2`, `log10`, `pow`, `floor`, `ceil`, `round`, `abs`, `min`, `max`
 - [x] **I/O intrinsics** — `print()` (no newline), `println_int()`, `print_int()`, `println_bool()`, `print_bool()`
 - [ ] **Iterator aspect** — `next(self)<Option<Item>>` protocol for `for` loop integration
-- [~] **`Vec<T>` expansion** — shipped: `find` (first matching index, or `-1`),
-  `first`/`last` (head/tail element), and `reversed` (fresh copy), via the
-  `VecOps` bind on the built-in `Vec<T>` (Equatable-gated, pure Vyb;
-  `test/modules/test_vec_expansion.vyb`). Pending: `.sorted()`/`.min()`/`.max()`
-  (need `compare` dispatch on a type-parameter receiver — blocked on a codegen
-  gap), and `.map()`/`.filter()`/`.reduce()` (need closure capture) plus
-  by-ref `their<Vec<T>>` for in-place forms. `.contains()` is now correct.
+- [~] **`Vec<T>` expansion** — shipped via the `VecOps` bind on the built-in
+  `Vec<T>` (Comparable-gated, pure Vyb; `test/modules/test_vec_expansion.vyb`):
+  `find` (first matching index, or `-1`), `first`/`last` (head/tail element),
+  `reversed` (fresh copy), and `sorted` / `min` / `max` (ordering dispatched
+  through the `Comparable`-bounded `cmp_lt` helper — a direct `compare` call
+  does not resolve on a generic element). Pending: `.map()`/`.filter()`/
+  `.reduce()` (need closure capture) plus by-ref `their<Vec<T>>` for in-place
+  forms. `.contains()` is now correct.
 - [x] **`Vec<T>` constructor idiom** — `Vec::new()` / `Vec::new(size)` replaced by a vybish constructor call: `Vec()` (empty growable) and `Vec(n)` (preallocate `n` elements/capacity), element type inferred from the annotation. `Vec::new()` stays as a back-compat alias.
 
 ### 5. Sum Types / Enums (MEDIUM PRIORITY)

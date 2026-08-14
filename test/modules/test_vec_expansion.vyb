@@ -1,14 +1,15 @@
 // @test: stdlib collections VecOps expansion methods
 // @description: pure-Vyb non-mutating Vec<T> extension operations shipped by
 //   `import collections` (bound to the built-in Vec<T> via an Equatable-gated
-//   aspect): first/last, reversed (fresh vector), and find (first matching
-//   index, or -1). Ordering (sorted/min/max) is deferred until codegen can
-//   lower `compare` on a type-parameter receiver; map/filter/reduce await
-//   closure capture. Two compiler gaps are avoided here: chaining a Vec
-//   method on a bind-method Vec return (e.g. `v.reversed().len()`) hits an
-//   ICmp codegen bug, and `Vec.get` on an empty vector returns garbage, so
-//   first/last are only exercised on non-empty vectors and results are bound
-//   to locals before indexing.
+//   aspect): first/last, reversed (fresh vector), find (first matching index,
+//   or -1), and the ordering helpers sorted (fresh ascending vector), min and
+//   max. Ordering contrasts via the Comparable-bound `cmp_lt` helper (compare
+//   must be invoked through a bounded-parameter helper rather than inlined on a
+//   generic element). map/filter/reduce await closure capture. Two compiler
+//   gaps are avoided here: chaining a Vec method on a bind-method Vec return
+//   (e.g. `v.reversed().len()`) hits an ICmp codegen bug, and `Vec.get` on an
+//   empty vector returns garbage, so first/last are only exercised on
+//   non-empty vectors and results are bound to locals before indexing.
 // @category: modules, collections, vec, generics, aspects, bind
 // @expect: pass
 // @expect-output: ok
@@ -55,10 +56,21 @@ main()<Int> -> {
     sr<Vec<String>> = s.reversed()
     if (check(sr.get(0) == "blue" && sr.get(2) == "red", 10)) { return 10 }
 
+    # ordering helpers (compare dispatched via the Comparable-bound helper)
+    if (check(v.min() == 1, 11)) { return 11 }
+    if (check(v.max() == 9, 12)) { return 12 }
+    sv<Vec<Int>> = v.sorted()
+    if (check(sv.len() == 5 && sv.get(0) == 1 && sv.get(4) == 9, 13)) { return 13 }
+    if (check(v.last() == 1, 14)) { return 14 }
+    fs<Vec<Float>> = Vec()
+    fs.push(2.5); fs.push(1.25); fs.push(3.75)
+    fso<Vec<Float>> = fs.sorted()
+    if (check(fso.get(0) == 1.25 && fso.get(2) == 3.75, 15)) { return 15 }
+
     # reversed on an empty vector is a no-op
     e<Vec<Int>> = Vec()
     er<Vec<Int>> = e.reversed()
-    if (check(er.len() == 0, 11)) { return 11 }
+    if (check(er.len() == 0, 16)) { return 16 }
 
     println("ok")
     return 0
