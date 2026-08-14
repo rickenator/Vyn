@@ -185,6 +185,7 @@ is the working audit for what needs to be implemented next.
 - [x] **Associated types (slice: defaults + bounds + generic binds)** — `type Item` declarations, `bind` assignments (`type Item = Int`), validation for missing/unknown/duplicate assignments, default associated types (`type Item = Int`), aspect bounds (`type Item<Display>`), and resolution through generic binds (`bind<T> Iterator -> Boxer<T> { type Item = T }` substitutes the concrete type at the call site) are implemented. `Self::Item` used directly as a bind method's return type now also resolves in both concrete and generic bind bodies (the impl context is established before the monomorphized signature is built, substituting the concrete type argument at the call site). The associated-type slice is complete; runtime (dyn) dispatch is a deliberate non-goal (see `Dynamic Dispatch (`dyn Aspect`) — Marked as Future Experiment` below).
 - [x] **Aspect inheritance** — `aspect Comparable : Equatable` super-aspects: declared super-aspects are validated against defined aspects, cyclic dependencies are rejected, and binding a sub-aspect requires the same type to also bind each super-aspect (order-independent).
 - [x] **Qualified aspect-method disambiguation** — `DisplayA::show(thing)` selects a specific aspect whenever multiple bound aspects declare the same method name for a type; unqualified ambiguous dot-calls (`thing.show()`) remain rejected. Bind method symbols are emitted per `Type_Trait_Method` so distinct implementations coexist. Also works on bounded type parameters (`Aspect::show(thing)` for `thing<T<Aspect>>` inside generic functions).
+- [ ] **Unqualified method dispatch on bounded type parameters** — `thing.show()` for `thing<T<Display>>` inside a generic function should resolve the method through the bound aspect without an explicit `Aspect::` prefix (the qualified `Aspect::show(thing)` form already works). Currently unqualified dot-calls on a bounded type parameter remain rejected.
 - [x] **Monomorphization with bounds validation** — Generic function calls infer type arguments from the call site, substitute them into the return type, and reject concrete instantiations whose type does not bind the declared aspect(s).
 - [x] **Bind selection precedence** — A bounded generic bind (`bind<T<Aspect>>`) deterministically takes precedence over an unbounded bind (`bind<T>`) for the same type shape, independent of declaration order.
 
@@ -306,10 +307,10 @@ with `pass` for multi-statement case bodies. Needs polishing:
 - [x] **`select` with enum variants** — Full destructuring in arms (`Circle(r) ->`, `Unit ->`) with payload fields bound as arm-scoped locals
 - [ ] **`select` as statement** — Allow `select` without a binding target (side-effects only)
 
-### 8. Wildcard Trap Handler (MEDIUM PRIORITY)
-- [ ] **`trap (e<?>)` syntax** — Catch any error type
-- [ ] **`typeof(e)` in wildcard handler** — Runtime type discrimination
-- [ ] **Multi-type trap** — `trap (e<ParseError | IOError>) -> { ... }` (Vyb-native syntax)
+### 8. Wildcard / Multi-Type Trap Handler (MEDIUM PRIORITY)
+- [x] **`trap (e<?>)` syntax** — Catch any error type
+- [x] **`typeof(e)` in wildcard handler** — Runtime type discrimination
+- [x] **Multi-type trap** — `trap (e<ParseError | IOError>) -> { ... }` (Vyb-native syntax) catches an error of any listed type and binds `e` as an opaque error pointer resolved via `e as T` / `typeof(e)` / `typename(e)`
 
 ### 9. Advanced Control Flow (LOWER PRIORITY)
 - [x] **`defer` statement** — `defer cleanup()` runs on scope exit (LIFO order, function-level)
@@ -696,5 +697,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: August 2026*
 *Current Version: Vyb v0.5.3 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 799 tests passing (harness, 100%)*
+*Overall Status: ~60-65% complete toward 1.0 — 800 tests passing (harness, 100%)*
 *SUGGESTIONS.md merged into this document.*

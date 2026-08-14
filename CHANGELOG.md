@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A `trap (e<Type1 | Type2>)` multi-type union handler now catches an error of
+  any listed type and binds `e` as an opaque error pointer, so the handler
+  resolves the concrete payload via the safe-downcasting / introspection
+  operators it already uses in wildcard traps: `g<ParseError> = e as ParseError`,
+  `typeof(e) == typeof<ParseError>()`, `typename(e)`. Previously the multi-type
+  form parsed and matched but the handler had no typed access to `e` (only
+  Bool/Int handlers round-tripped); chained `} trap (e<Type>)` clauses already
+  dispatch first-type-compatible-wins and keep working.
+
 - `Option<T>` is now a first-class built-in generic data enum
   (`enum Option<T> { Some(T), None }`), so nullable values no longer require the
   transitional `core::option::OptionInt` bridge (kept for source-compat). It

@@ -1,0 +1,37 @@
+// @test: multi-type trap union + multiple chained trap clauses
+// @description: `trap (e<Type1 | Type2>)` catches an error of any listed type and
+//   binds `e` as an opaque error pointer resolved via introspection (`e as T`,
+//   `typeof(e)`); chained `} trap (e<Type>)` clauses dispatch first-match-wins.
+// @category: trap, multi-type, as, typeof, error, codegen
+// @expect: pass
+// @expect-return: -77
+// @execute-jit: true
+
+struct ParseError { code<Int> }
+struct IOError { msg<String> }
+struct RuntimeException { detail<String> }
+
+fail_parse()<Int> -> { fail<ParseError>(ParseError { code = 7 }); return 0 }
+fail_io()<Int> -> { fail<IOError>(IOError { msg = "disk full" }); return 0 }
+
+main()<Int> -> {
+    // Multi-type union matching the first listed type, payload read via `as`
+    p<Int> = { fail_parse() } trap (e<ParseError | IOError>) -> {
+        g<ParseError> = e as ParseError
+        g.code
+    }
+    // Multi-type union matching the second listed type
+    m<String> = { fail_io() } trap (e<ParseError | IOError>) -> {
+        g<IOError> = e as IOError
+        g.msg
+    }
+    // typeof() discrimination inside a union handler
+    kind<Bool> = { fail_parse() } trap (e<ParseError | IOError>) -> {
+        typeof(e) == typeof<ParseError>()
+    }
+    // Multiple chained trap clauses: first type-compatible handler wins
+    y<Int> = { fail_io() } trap (e<ParseError>) -> { 1 } trap (e<IOError>) -> { 2 }
+
+    if (p == 7 && m == "disk full" && kind && y == 2) { return -77 }
+    return 1
+}

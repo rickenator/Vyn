@@ -5716,12 +5716,15 @@ void SemanticAnalyzer::visit(ast::TrapClause* node) {
         activeTrapTypes.push_back(node->errorType.get());
     }
 
-    // Add error variable to scope (immutable binding)
-    // For multi-type traps, use first type or mark as union (future: actual union type)
+    // Add error variable to scope (immutable binding). Wildcard and multi-type
+    // traps both bind an opaque error pointer: the static type is unknown (could
+    // be any listed type at runtime), so the handler resolves the concrete type
+    // via introspection against the runtime type ID (`e as T`, `typeof(e)`,
+    // `typename(e)`) rather than a single concrete type.
     SymbolInfo errorSymbol;
     errorSymbol.name = node->errorName->name;
-    if (node->isMultiType && !node->errorTypes.empty()) {
-        errorSymbol.type = node->errorTypes[0].get();  // Temporary: use first type
+    if (node->isWildcard || node->isMultiType) {
+        errorSymbol.type = nullptr;
     } else {
         errorSymbol.type = node->errorType.get();
     }
@@ -5734,10 +5737,10 @@ void SemanticAnalyzer::visit(ast::TrapClause* node) {
     } else if (node->isMultiType) {
         VYB_CDBG << "DEBUG: trap clause for multi-type union: ";
         for (size_t i = 0; i < node->errorTypes.size(); ++i) {
-            if (i > 0) std::cout << " | ";
-            std::cout << node->errorTypes[i]->toString();
+            if (i > 0) VYB_CDBG << " | ";
+            VYB_CDBG << node->errorTypes[i]->toString();
         }
-        std::cout << std::endl;
+        VYB_CDBG << std::endl;
     } else if (node->errorType) {
         VYB_CDBG << "DEBUG: trap clause for error type: " << node->errorType->toString() << std::endl;
     }
