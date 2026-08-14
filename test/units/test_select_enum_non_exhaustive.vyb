@@ -1,0 +1,16 @@
+// @test: non-exhaustive select on a tagged-union enum is rejected
+// @description: a select that does not cover every variant and has no wildcard
+//   is reported as not exhaustive.
+// @category: enum, select, semantic, error
+// @expect: fail
+// @expect-error: not exhaustive
+
+enum Shape { Circle(Float), Rect(Float, Float), Unit }
+
+main()<Int> -> {
+    res<Float> = select(Shape::Circle(1.0)) -> {
+        Circle(rad) -> 3.14 * rad * rad,
+        Rect(wid, hei) -> wid * hei
+    }
+    return 1
+}

@@ -3756,6 +3756,17 @@ void SemanticAnalyzer::visit(ast::SelectExpression* node) {
         node->expr->accept(*this);
     }
 
+    // Best-effort static type of the select target, used to bind enum variant
+    // payload fields and to check exhaustiveness on tagged-union enums.
+    std::string selectTypeStr;
+    if (node->expr) {
+        if (auto it = expressionTypes.find(node->expr.get()); it != expressionTypes.end() && it->second) {
+            selectTypeStr = it->second->toString();
+        } else if (node->expr->type) {
+            selectTypeStr = node->expr->type->toString();
+        }
+    }
+
     // Track comparison patterns for unreachable detection
     struct ComparisonInfo {
         vyb::TokenType op;
@@ -3768,6 +3779,10 @@ void SemanticAnalyzer::visit(ast::SelectExpression* node) {
     // Visit all patterns and check for unreachable patterns
     for (size_t i = 0; i < node->cases.size(); i++) {
         const auto& [pattern, result] = node->cases[i];
+
+        // Each arm gets its own scope so enum-variant payload bindings from a
+        // `Circle(r)` pattern are scoped to the matching arm only.
+        enterScope();
 
         if (!pattern) {
             // Wildcard pattern (nullptr)
@@ -3863,6 +3878,57 @@ void SemanticAnalyzer::visit(ast::SelectExpression* node) {
             }
 
             comp->accept(*this);
+        } else if (auto* ctor = dynamic_cast<ast::ConstructionExpression*>(pattern.get())) {
+            // Enum variant pattern with payload: `Circle(r)`, `Rect(w, h)`.
+            bool handled = false;
+            if (!selectTypeStr.empty()) {
+                auto variantsIt = enumVariantPayloadTypes.find(selectTypeStr);
+                auto* tv = ctor->constructedType
+                    ? dynamic_cast<ast::TypeName*>(ctor->constructedType.get()) : nullptr;
+                if (variantsIt != enumVariantPayloadTypes.end() && tv && tv->identifier) {
+                    auto varIt = variantsIt->second.find(tv->identifier->name);
+                    if (varIt != variantsIt->second.end()) {
+                        handled = true;
+                        const auto& payload = varIt->second;
+                        if (payload.size() != ctor->arguments.size()) {
+                            addError("Enum variant '" + tv->identifier->name + "' of " + selectTypeStr +
+                                     " expects " + std::to_string(payload.size()) + " binding(s), got " +
+                                     std::to_string(ctor->arguments.size()), ctor);
+                        }
+                        for (size_t bi = 0; bi < ctor->arguments.size(); ++bi) {
+                            auto* bid = dynamic_cast<ast::Identifier*>(ctor->arguments[bi].get());
+                            if (!bid) {
+                                addError("Enum variant pattern bindings must be identifiers.", ctor);
+                                continue;
+                            }
+                            const std::string& bname = bid->name;
+                            if (currentScope->lookupDirect(bname)) {
+                                addError("Redefinition of variable \"" + bname +
+                                         "\" in variant pattern.", bid);
+                                continue;
+                            }
+                            ast::TypeNode* pt = (bi < payload.size()) ? payload[bi].get() : nullptr;
+                            currentScope->add(SymbolInfo{SymbolInfo::Kind::Variable, bname, false,
+                                ast::OwnershipKind::MY, pt ? pt->clone().release() : nullptr});
+                        }
+                    }
+                }
+            }
+            if (!handled) {
+                ctor->accept(*this);
+            }
+        } else if (auto* vid = dynamic_cast<ast::Identifier*>(pattern.get())) {
+            // Enum unit-variant pattern: `Unit`.
+            bool handled = false;
+            if (!selectTypeStr.empty()) {
+                auto variantsIt = enumVariantPayloadTypes.find(selectTypeStr);
+                if (variantsIt != enumVariantPayloadTypes.end() && variantsIt->second.count(vid->name)) {
+                    handled = true;
+                }
+            }
+            if (!handled) {
+                vid->accept(*this);
+            }
         } else {
             // Other pattern types
             pattern->accept(*this);
@@ -3871,12 +3937,44 @@ void SemanticAnalyzer::visit(ast::SelectExpression* node) {
         if (result) {
             result->accept(*this);
         }
+
+        exitScope();
     }
 
-    // TODO: Type checking:
-    // - All result expressions should have compatible types
-    // - Pattern types should match the expression type
-    // - Check for exhaustiveness
+    // Exhaustiveness checking for tagged-union enums: a select on a data-carrying
+    // enum must cover every variant or have a wildcard, or some value could fall
+    // through with no matching arm. Select arms carry no guards, so a variant
+    // pattern always covers its variant.
+    if (wildcardIndex == SIZE_MAX && !selectTypeStr.empty()) {
+        auto variantsIt = enumVariantPayloadTypes.find(selectTypeStr);
+        if (variantsIt != enumVariantPayloadTypes.end() && !variantsIt->second.empty()) {
+            const auto& variants = variantsIt->second;
+            std::set<std::string> covered;
+            for (auto& c : node->cases) {
+                if (!c.first) { covered.insert("__wildcard__"); break; }
+                std::string vname;
+                if (auto* ctor = dynamic_cast<ast::ConstructionExpression*>(c.first.get())) {
+                    auto* tv = ctor->constructedType
+                        ? dynamic_cast<ast::TypeName*>(ctor->constructedType.get()) : nullptr;
+                    if (tv && tv->identifier) vname = tv->identifier->name;
+                } else if (auto* idp = dynamic_cast<ast::Identifier*>(c.first.get())) {
+                    vname = idp->name;
+                }
+                if (variants.count(vname)) covered.insert(vname);
+            }
+            if (!covered.count("__wildcard__") && covered.size() < variants.size()) {
+                std::string uncovered;
+                for (auto& kv : variants) {
+                    if (!covered.count(kv.first)) {
+                        if (!uncovered.empty()) uncovered += ", ";
+                        uncovered += kv.first;
+                    }
+                }
+                addError("Select on " + selectTypeStr + " is not exhaustive: variant(s) " +
+                         uncovered + " are not covered (add the missing variant(s) or a wildcard '?')", node);
+            }
+        }
+    }
 }
 
 void SemanticAnalyzer::visit(ast::ComparisonPattern* node) {

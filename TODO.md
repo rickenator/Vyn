@@ -191,7 +191,7 @@ is the working audit for what needs to be implemented next.
 ### Pattern Matching — Completion (MEDIUM PRIORITY)
 - [x] Literal patterns, wildcard `?`, comparison operators
 - [x] **Struct destructuring** — `Point { x, y } ->` in match arms: a struct pattern binds each listed field as a local variable in the arm body (extracted from the matched struct value). Field names are validated against the struct, and a struct pattern whose type can never match the match expression's static type is rejected.
-- [x] **Enum/sum type variant patterns** — `Circle(r) ->`, `Rect(w, h) ->`, `Unit ->` (tagged-union enums): data enums compile to a value-semantics `{ i64 tag, [N x i8] data }` union, construct via `Shape::Variant(args)`, and match arms on variants compare the runtime tag and bind payload fields. Generic data enums and `select` variant destructuring are still pending.
+- [x] **Enum/sum type variant patterns** — `Circle(r) ->`, `Rect(w, h) ->`, `Unit ->` (tagged-union enums): data enums compile to a value-semantics `{ i64 tag, [N x i8] data }` union, construct via `Shape::Variant(args)`, and match arms on variants compare the runtime tag and bind payload fields. `select` variants and exhaustiveness are implemented; generic data enums are still pending.
 - [x] **Range patterns** — `1..10 ->` in match arms: an inclusive `[start, end]` bound check compiled for integer/float match values; inverted (`start > end`) ranges are rejected as never-matchable.
 - [x] **Guard clauses** — `pattern if condition ->` in match arms: a guard runs after the pattern matches (destructured struct fields are available to it); if false the arm is skipped and matching falls through to later arms or the default. A guarded wildcard is treated as non-exhaustive so downstream arms stay reachable.
 - [x] **Exhaustiveness checking** — A `match` on a data-carrying enum must be
@@ -282,7 +282,7 @@ and pattern matching, not be a separate OOP mechanism.
 
 - [x] **Enum declaration syntax** — `enum Direction { North, South, East, West }` — variants compile to sequential `i64` integer constants (0, 1, 2, …); access via `Direction::North`
 - [x] **Enum variants with data** — `enum Shape { Circle(Float), Rect(Float, Float) }` (tagged unions, non-generic): value-semantics `{ i64 tag, [N x i8] data }` representation built in codegen; generic data enums deferred
-- [x] **Pattern matching on enums (match)** — In `match`, enum variant patterns (`Circle(r) ->`) dispatch on the runtime tag and bind payload fields; unit variants match bare (`Unit ->`), and a match must be exhaustive. `select` variant destructuring remains.
+- [x] **Pattern matching on enums (match/select)** — In `match`, enum variant patterns (`Circle(r) ->`) dispatch on the runtime tag and bind payload fields; unit variants match bare (`Unit ->`), and a match must be exhaustive. `select` mirrors this, dispatching on variants and enforcing exhaustiveness the same way.
 - [ ] **Enum methods via `bind`** — `bind Drawable -> Shape { ... }` (natural fit!)
 - [ ] **`Option<T>` as built-in enum** — `Some(T)` / `None`
 - [ ] **`Result<T, E>` as built-in enum** — `Ok(T)` / `Err(E)`
@@ -299,9 +299,9 @@ and pattern matching, not be a separate OOP mechanism.
 The `select` expression is a uniquely Vyb concept: pattern matching that produces a value,
 with `pass` for multi-statement case bodies. Needs polishing:
 
-- [ ] **`select` exhaustiveness** — Warn when no `?` wildcard and possible no-match
+- [x] **`select` exhaustiveness** — A `select` on a tagged-union enum must cover every variant or have a wildcard, or it is rejected with the missing variant(s) named
 - [ ] **Nested `select`** — `select` inside a `select` arm
-- [ ] **`select` with enum variants** — Full destructuring in arms
+- [x] **`select` with enum variants** — Full destructuring in arms (`Circle(r) ->`, `Unit ->`) with payload fields bound as arm-scoped locals
 - [ ] **`select` as statement** — Allow `select` without a binding target (side-effects only)
 
 ### 8. Wildcard Trap Handler (MEDIUM PRIORITY)
@@ -676,5 +676,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: August 2026*
 *Current Version: Vyb v0.5.3 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 786 tests passing (harness, 100%)*
+*Overall Status: ~60-65% complete toward 1.0 — 788 tests passing (harness, 100%)*
 *SUGGESTIONS.md merged into this document.*

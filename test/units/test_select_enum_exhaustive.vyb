@@ -1,0 +1,31 @@
+// @test: exhaustive select on a tagged-union enum
+// @description: select dispatches on enum variants, binds payload fields as
+//   locals in each arm, and covers every variant (no wildcard needed) cleanly.
+// @category: enum, select, sum-types, pattern-matching
+// @expect: pass
+// @expect-return: -77
+// @execute-jit: true
+
+enum Shape { Circle(Float), Rect(Float, Float), Unit }
+
+main()<Int> -> {
+    a<Float> = select(Shape::Circle(2.0)) -> {
+        Circle(r2) -> 3.14 * r2 * r2,
+        Rect(w, h) -> w * h,
+        Unit -> 0.0
+    }
+    b<Float> = select(Shape::Rect(3.0, 4.0)) -> {
+        Circle(r2) -> 3.14 * r2 * r2,
+        Rect(w, h) -> w * h,
+        Unit -> 0.0
+    }
+    d<Float> = select(Shape::Unit) -> {
+        Circle(r2) -> 3.14 * r2 * r2,
+        Rect(w, h) -> w * h,
+        Unit -> 0.0
+    }
+    if (a == 12.56 && b == 12.0 && d == 0.0) {
+        return -77
+    }
+    return 1
+}

@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `select` now supports data-carrying enum variants directly: arms like
+  `Circle(r) ->`, `Rect(w, h) ->`, and `Unit ->` dispatch on the runtime tag and
+  bind payload fields as arm-scoped locals, matching the `match` behavior.
+  `select` on a tagged-union enum also enforces exhaustiveness — it must cover
+  every variant or include a wildcard — and reports the missing variant(s)
+  otherwise. (Previously `select` could only compare literals/comparisons, and
+  an enum variant was mis-parsed or unresolved.)
 - Exhaustiveness now accounts for guard clauses on enum variant arms: a variant
   covered only by a guarded arm does not count as unconditionally covered, since
   the guard can be false and leave a no-match path. A match is exhaustive only

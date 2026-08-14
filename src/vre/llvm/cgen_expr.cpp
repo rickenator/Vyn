@@ -5099,6 +5099,41 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
         return;
     }
 
+    // If the select target is a tagged-union enum, variant patterns such as
+    // `Circle(r)` or `Unit` dispatch on the runtime tag instead of literal compare.
+    const TaggedEnumInfo* matchedEnum =
+        (matchValue && matchValue->getType()->isStructTy())
+        ? findTaggedEnum(matchValue->getType())
+        : nullptr;
+
+    // Bind the payload fields of an enum-variant arm pattern (e.g. `Circle(r)`)
+    // as locals in `namedValues`. Used both by the result-type inference preview
+    // (so the first arm's body can resolve its bindings) and by the real case
+    // loop; returns the payload struct type, or nullptr if the pattern is not a
+    // data-carrying variant of the matched enum.
+    auto bindVariantPattern = [&](const ast::ExprPtr& pattern) -> llvm::StructType* {
+        if (!matchedEnum) return nullptr;
+        auto* ctor = dynamic_cast<ast::ConstructionExpression*>(pattern.get());
+        if (!ctor) return nullptr;
+        auto* tv = ctor->constructedType
+            ? dynamic_cast<ast::TypeName*>(ctor->constructedType.get()) : nullptr;
+        if (!tv || !tv->identifier) return nullptr;
+        auto payIt = matchedEnum->variantPayloadTypes.find(tv->identifier->name);
+        if (payIt == matchedEnum->variantPayloadTypes.end()) return nullptr;
+        llvm::StructType* payloadTy = payIt->second;
+        for (size_t fi = 0; fi < ctor->arguments.size(); ++fi) {
+            auto* b = dynamic_cast<ast::Identifier*>(ctor->arguments[fi].get());
+            if (!b) continue;
+            llvm::Value* fv = extractEnumVariantField(
+                matchValue, payloadTy, static_cast<unsigned>(fi));
+            if (!fv) break;
+            llvm::AllocaInst* alloca = createEntryBlockAlloca(fv->getType(), b->name);
+            builder->CreateStore(fv, alloca);
+            namedValues[b->name] = alloca;
+        }
+        return payloadTy;
+    };
+
     // Create basic blocks for pattern matching
     llvm::Function* func = builder->GetInsertBlock()->getParent();
     llvm::BasicBlock* endSelectBB = llvm::BasicBlock::Create(*context, "select.end");
@@ -5127,7 +5162,12 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
         infer_types_only = true;
 
         // Evaluate first result to get type
+        // Pre-bind an enum-variant first arm's payload fields so the preview can
+        // type-check the body (the block is erased after; only the type matters).
+        std::map<std::string, llvm::Value*> savedInferNamedValues = namedValues;
+        bindVariantPattern(node->cases[0].first);
         node->cases[0].second->accept(*this);
+        namedValues = std::move(savedInferNamedValues);
         if (m_currentLLVMValue) {
             resultType = m_currentLLVMValue->getType();
         }
@@ -5182,6 +5222,25 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
         // Create blocks for this case
         llvm::BasicBlock* caseBB = llvm::BasicBlock::Create(*context, "select.case", func);
         nextCaseBB = llvm::BasicBlock::Create(*context, "select.next");
+
+        // Exact/literal match comparison, used when the pattern is not a
+        // comparison operator or a known enum variant.
+        auto buildLiteralCond = [&]() -> llvm::Value* {
+            pattern->accept(*this);
+            llvm::Value* pv = m_currentLLVMValue;
+            if (!pv) return nullptr;
+            if (pv->getType()->isIntegerTy() && matchValue->getType()->isIntegerTy())
+                return builder->CreateICmpEQ(matchValue, pv, "select.cmp");
+            if (pv->getType()->isFloatingPointTy() && matchValue->getType()->isFloatingPointTy())
+                return builder->CreateFCmpOEQ(matchValue, pv, "select.fcmp");
+            if (pv->getType()->isPointerTy() && matchValue->getType()->isPointerTy()) {
+                return builder->CreateICmpEQ(
+                    builder->CreatePtrToInt(matchValue, llvm::Type::getInt64Ty(*context)),
+                    builder->CreatePtrToInt(pv, llvm::Type::getInt64Ty(*context)), "select.ptrcmp");
+            }
+            logWarning(pattern->loc, "Complex select pattern not fully implemented");
+            return llvm::ConstantInt::getFalse(*context);
+        };
 
         // Check if this is a comparison pattern
         bool isComparisonPattern = (pattern->getType() == ast::NodeType::COMPARISON_PATTERN);
@@ -5252,16 +5311,41 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
                     cond = llvm::ConstantInt::getFalse(*context);
                 }
             }
+        } else if (matchedEnum && dynamic_cast<ast::ConstructionExpression*>(pattern.get())) {
+            // Enum variant pattern with payload: `Circle(r)`, `Rect(a, b)`.
+            auto* ctor = static_cast<ast::ConstructionExpression*>(pattern.get());
+            auto* tv = ctor->constructedType ? dynamic_cast<ast::TypeName*>(ctor->constructedType.get()) : nullptr;
+            if (tv && tv->identifier) {
+                auto tagIt = matchedEnum->variantTags.find(tv->identifier->name);
+                if (tagIt != matchedEnum->variantTags.end()) {
+                    llvm::Value* tagVal = builder->CreateExtractValue(matchValue, 0, "select.enum.tag");
+                    cond = builder->CreateICmpEQ(
+                        tagVal, llvm::ConstantInt::get(int64Type, tagIt->second, true), "select.variant.tag");
+                } else {
+                    logError(ctor->loc, "Unknown variant '" + tv->identifier->name + "' of enum being selected");
+                    cond = llvm::ConstantInt::getFalse(*context);
+                }
+            } else {
+                cond = llvm::ConstantInt::getFalse(*context);
+            }
+        } else if (auto* pid = dynamic_cast<ast::Identifier*>(pattern.get())) {
+            // Enum unit-variant pattern: `Unit`. Only dispatch as a variant if the
+            // identifier names one; otherwise treat it as a literal value.
+            cond = nullptr;
+            if (matchedEnum) {
+                auto tagIt = matchedEnum->variantTags.find(pid->name);
+                if (tagIt != matchedEnum->variantTags.end()) {
+                    llvm::Value* tagVal = builder->CreateExtractValue(matchValue, 0, "select.enum.tag");
+                    cond = builder->CreateICmpEQ(
+                        tagVal, llvm::ConstantInt::get(int64Type, tagIt->second, true), "select.variant.tag");
+                }
+            }
+            if (!cond) {
+                cond = buildLiteralCond();
+            }
         } else {
             // Exact match pattern (literal value)
-            // Evaluate pattern
-            pattern->accept(*this);
-            llvm::Value* patternValue = m_currentLLVMValue;
-
-            if (patternValue) {
-                // Compare match value with pattern value
-                cond = builder->CreateICmpEQ(matchValue, patternValue, "select.cmp");
-            }
+            cond = buildLiteralCond();
         }
 
         if (cond) {
@@ -5269,6 +5353,11 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
 
             // Case matched - evaluate result expression
             builder->SetInsertPoint(caseBB);
+            // Bind enum-variant payload fields for the matched arm (scoped to
+            // this arm) before its body runs; restore after so the bindings don't
+            // leak into sibling arms or later statements.
+            std::map<std::string, llvm::Value*> savedArmNamedValues = namedValues;
+            bindVariantPattern(pattern);
             if (result) {
                 // Check if result is a BlockExpression or naked expression
                 if (dynamic_cast<ast::BlockExpression*>(result.get())) {
@@ -5285,6 +5374,7 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
                     }
                 }
             }
+            namedValues = std::move(savedArmNamedValues);
 
             // Continue to next case
             nextCaseBB->insertInto(func);

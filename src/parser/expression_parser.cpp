@@ -141,6 +141,30 @@ namespace vyb {
                     if (!pattern) {
                         throw error(peek(), "Expected pattern in select arm");
                     }
+                    // Enum variant pattern with payload: `Circle(r)`, `Rect(w, h)`.
+                    // The primary parser returns the bare variant identifier and
+                    // leaves the `( binding, ... )` group; assemble it into a
+                    // ConstructionExpression that codegen reinterprets as a
+                    // variant pattern, matching how the match parser handles it.
+                    if (auto* pid = dynamic_cast<ast::Identifier*>(pattern.get())) {
+                        if (peek().type == vyb::TokenType::LPAREN) {
+                            consume(); // '('
+                            std::vector<ast::ExprPtr> vbindings;
+                            while (peek().type != vyb::TokenType::RPAREN && !IsAtEnd()) {
+                                ast::ExprPtr b = parse_primary();
+                                if (!b) {
+                                    throw error(peek(), "Expected binding name in enum variant pattern");
+                                }
+                                vbindings.push_back(std::move(b));
+                                if (!match(vyb::TokenType::COMMA)) break;
+                            }
+                            expect(vyb::TokenType::RPAREN, "Expected ')' after enum variant pattern bindings");
+                            auto vtName = std::make_unique<ast::TypeName>(
+                                pid->loc, std::make_unique<ast::Identifier>(pid->loc, pid->name));
+                            pattern = std::make_unique<ast::ConstructionExpression>(
+                                pid->loc, std::move(vtName), std::move(vbindings));
+                        }
+                    }
                 }
 
                 // Expect '->' (arrow)
