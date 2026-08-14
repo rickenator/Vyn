@@ -1,0 +1,15 @@
+// @test: mix of naked and block/pass arms in a match expression
+// @description: value-returning match accepts naked-expression arms and block arms that `pass`, sharing one result slot
+// @category: pattern matching, match, expressions, pass
+// @expect: pass
+// @expect-return: 99
+
+main()<Int> -> {
+    v<Int> = 2
+    r<Int> = match (v) {
+        1 -> { pass 10 },
+        2 -> 99,
+        ? -> { pass 30 }
+    }
+    return r
+}

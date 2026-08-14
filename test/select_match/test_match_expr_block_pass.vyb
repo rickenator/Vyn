@@ -1,0 +1,15 @@
+// @test: block arms yield via pass in a match expression
+// @description: `pattern -> { stmts; pass value }` in a match expression stores the passed value as the result
+// @category: pattern matching, match, expressions, pass
+// @expect: pass
+// @expect-return: 20
+
+main()<Int> -> {
+    v<Int> = 2
+    r<Int> = match (v) {
+        1 -> { pass 10 },
+        2 -> { pass 20 },
+        ? -> { pass 30 }
+    }
+    return r
+}

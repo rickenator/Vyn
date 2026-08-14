@@ -60,9 +60,12 @@ struct LoopContext {
     llvm::BasicBlock *loopExit;   // Block after the loop
 };
 
-// Helper struct to manage select expression context
-struct SelectContext {
-    llvm::BasicBlock *endBlock;   // Block after the select
+// Helper struct to manage value-yielding contexts (select expressions and
+// match-as-value expressions). Both `select` arms and `match` block arms yield
+// a value via the `pass` statement, which stores into resultAlloca and branches
+// to endBlock.
+struct YieldContext {
+    llvm::BasicBlock *endBlock;   // Block after the yielding expression
     llvm::AllocaInst *resultAlloca; // Alloca for storing the result
 };
 
@@ -113,7 +116,7 @@ private:
     llvm::StructType* currentClassType = nullptr; // Initialize
     LoopContext currentLoopContext;
     std::vector<LoopContext> loopStack;
-    std::vector<SelectContext> selectStack;  // Track nested select expressions
+    std::vector<YieldContext> yieldContextStack_;  // Track nested select/match yield expressions
     bool infer_types_only = false;  // Flag for type inference without codegen
     std::map<std::string, llvm::AllocaInst*> m_currentFunctionNamedValues;
 

@@ -5039,10 +5039,10 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
     llvm::AllocaInst* resultAlloca = nullptr;
 
     // Push select context EARLY for pass statements (with null resultAlloca temporarily)
-    SelectContext selectCtx;
+    YieldContext selectCtx;
     selectCtx.endBlock = endSelectBB;
     selectCtx.resultAlloca = nullptr; // Will be set after determining type
-    selectStack.push_back(selectCtx);
+    yieldContextStack_.push_back(selectCtx);
 
     // Determine result type from first case (TODO: proper type inference)
     if (!node->cases.empty() && node->cases[0].second) {
@@ -5076,7 +5076,7 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
         if (resultType) {
             resultAlloca = builder->CreateAlloca(resultType, nullptr, "select.result");
             // Update the context with the actual resultAlloca
-            selectStack.back().resultAlloca = resultAlloca;
+            yieldContextStack_.back().resultAlloca = resultAlloca;
         }
     }
 
@@ -5224,7 +5224,7 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
     }
 
     // Pop select context
-    selectStack.pop_back();
+    yieldContextStack_.pop_back();
 
     // If no wildcard, branch to end from last nextCaseBB
     if (!hasWildcard && nextCaseBB && !nextCaseBB->getTerminator()) {

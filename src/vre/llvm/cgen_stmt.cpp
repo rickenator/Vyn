@@ -795,14 +795,16 @@ void LLVMCodegen::visit(vyb::ast::WhileStatement* node) {
 }
 
 void LLVMCodegen::visit(vyb::ast::PassStatement* node) {
-    // Pass statement is used inside select expression blocks to return a value
-    if (selectStack.empty()) {
-        logError(node->loc, "Pass statement can only be used inside select expression blocks.");
+    // Pass statement is used inside select expression or match block arms to
+    // yield a value. It stores into the enclosing expression's result slot and
+    // branches to its end block.
+    if (yieldContextStack_.empty()) {
+        logError(node->loc, "Pass statement can only be used inside select/match expression blocks.");
         m_currentLLVMValue = nullptr;
         return;
     }
 
-    SelectContext& currentSelect = selectStack.back();
+    YieldContext& currentYield = yieldContextStack_.back();
 
     // Codegen the pass value
     if (node->argument) {
@@ -815,12 +817,12 @@ void LLVMCodegen::visit(vyb::ast::PassStatement* node) {
             return;
         }
 
-        if (passValue && currentSelect.resultAlloca) {
+        if (passValue && currentYield.resultAlloca) {
             // Store the value in the result alloca
-            builder->CreateStore(passValue, currentSelect.resultAlloca);
+            builder->CreateStore(passValue, currentYield.resultAlloca);
 
             // Branch to the end block
-            builder->CreateBr(currentSelect.endBlock);
+            builder->CreateBr(currentYield.endBlock);
         } else {
             logError(node->loc, "Failed to generate code for pass value.");
         }
@@ -1141,6 +1143,13 @@ void LLVMCodegen::codegenMatch(vyb::ast::MatchStatement* node, llvm::AllocaInst*
     llvm::BasicBlock* defaultBB = nullptr;
     llvm::BasicBlock* endMatchBB = llvm::BasicBlock::Create(*context, "match.end"); // Don't add to function yet
 
+    // For a value-returning match expression, expose a yield context so that
+    // `pass` inside a block arm stores into the shared result slot and branches
+    // to the end block.
+    if (resultAlloca) {
+        yieldContextStack_.push_back(YieldContext{endMatchBB, resultAlloca});
+    }
+
     std::vector<llvm::BasicBlock*> caseBBs;
     std::vector<llvm::BasicBlock*> caseBodyBBs;
 
@@ -1428,6 +1437,11 @@ void LLVMCodegen::codegenMatch(vyb::ast::MatchStatement* node, llvm::AllocaInst*
     // If this is a value-returning match expression and a real merge point
     // exists, load the stored result. Otherwise (statement form, or every arm
     // returned/broke) the match produces no value.
+    // Pop the yield context before producing the final value.
+    if (resultAlloca && !yieldContextStack_.empty()) {
+        yieldContextStack_.pop_back();
+    }
+
     if (resultAlloca && !endMatchBB->use_empty()) {
         m_currentLLVMValue = builder->CreateLoad(
             resultAlloca->getAllocatedType(), resultAlloca, "match.expr.value");

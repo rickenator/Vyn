@@ -1,0 +1,17 @@
+// @test: block arm with multiple statements yields via pass
+// @description: a `pass` at the end of a multi-statement arm body provides the match expression value
+// @category: pattern matching, match, expressions, pass
+// @expect: pass
+// @expect-return: 10
+
+main()<Int> -> {
+    v<Int> = 3
+    r<Int> = match (v) {
+        3 -> {
+            y<Int> = v * 2
+            pass y + 4
+        },
+        ? -> { pass 0 }
+    }
+    return r
+}
