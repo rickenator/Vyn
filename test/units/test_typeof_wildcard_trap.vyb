@@ -1,0 +1,31 @@
+// @test: typeof/typename in wildcard trap + typeof<T>() compile-time form
+// @description: in a wildcard trap (e<?>), typeof(e) extracts the error's runtime
+//   type ID and typename(e) its type name, so handlers can discriminate failed
+//   errors by type (typeof(e) == typeof<GErr>()). Also adds the typeof<T>()
+//   compile-time type-hash form alongside the static typeof(expr).
+// @category: introspection, typeof, typename, trap, error
+// @expect: pass
+// @expect-return: -77
+// @execute-jit: true
+
+struct GErr { code<Int> }
+
+risky()<Int> -> {
+    fail<GErr>(GErr { code = 7 })
+    return 0
+}
+
+main()<Int> -> {
+    tParse<Bool> = { risky() } trap (e<?>) -> { typeof(e) == typeof<GErr>() }
+    tInt<Bool>   = { risky() } trap (e<?>) -> { typeof(e) == typeof<Int>() }
+    tName<Bool>  = { risky() } trap (e<?>) -> { typename(e) == "GErr" }
+
+    // typeof<T>() compile-time form + typeof(expr) static-form regression.
+    ct<Bool> = (typeof<Int>() == typeof(42))
+    cn<Bool> = (typeof<String>() != typeof(1))
+
+    if (tParse && !tInt && tName && ct && cn) {
+        return -77
+    }
+    return 1
+}

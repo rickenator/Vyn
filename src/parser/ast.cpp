@@ -1639,13 +1639,19 @@ void StructPattern::accept(Visitor& visitor) {
 
 // --- TypeofExpression ---
 TypeofExpression::TypeofExpression(SourceLocation loc, ExprPtr operand)
-    : Expression(loc), operand(std::move(operand)) {}
+    : Expression(loc), operand(std::move(operand)), operandFromWildcardError(false) {}
+
+TypeofExpression::TypeofExpression(SourceLocation loc, TypeNodePtr typeArg)
+    : Expression(loc), typeArg(std::move(typeArg)), operandFromWildcardError(false) {}
 
 NodeType TypeofExpression::getType() const {
     return NodeType::TYPEOF_EXPRESSION;
 }
 
 std::string TypeofExpression::toString() const {
+    if (typeArg) {
+        return "typeof<" + typeArg->toString() + ">()";
+    }
     return "typeof(" + (operand ? operand->toString() : "nullptr") + ")";
 }
 
@@ -1655,7 +1661,7 @@ void TypeofExpression::accept(Visitor& visitor) {
 
 // --- TypenameExpression ---
 TypenameExpression::TypenameExpression(SourceLocation loc, ExprPtr operand)
-    : Expression(loc), operand(std::move(operand)) {}
+    : Expression(loc), operand(std::move(operand)), operandFromWildcardError(false) {}
 
 NodeType TypenameExpression::getType() const {
     return NodeType::TYPENAME_EXPRESSION;

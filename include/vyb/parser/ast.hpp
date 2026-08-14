@@ -1449,9 +1449,14 @@ public:
 // typeof(value) -> Type (8-byte type ID hash)
 class TypeofExpression : public Expression {
 public:
-    ExprPtr operand;  // Expression to get type of
+    ExprPtr operand;       // Expression to get type of (nullptr for typeof<T>())
+    TypeNodePtr typeArg;   // Compile-time type argument for typeof<T>()
+    bool operandFromWildcardError; // Set by semantic: operand is a wildcard trap `e<?>`
 
+    // typeof(expr)
     TypeofExpression(SourceLocation loc, ExprPtr operand);
+    // typeof<T>()
+    TypeofExpression(SourceLocation loc, TypeNodePtr typeArg);
     NodeType getType() const override;
     std::string toString() const override;
     void accept(Visitor& visitor) override;
@@ -1463,6 +1468,7 @@ public:
 class TypenameExpression : public Expression {
 public:
     ExprPtr operand;  // Expression to get type name of
+    bool operandFromWildcardError; // Set by semantic: operand is a wildcard trap `e<?>`
 
     TypenameExpression(SourceLocation loc, ExprPtr operand);
     NodeType getType() const override;

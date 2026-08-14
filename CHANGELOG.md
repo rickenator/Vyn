@@ -60,6 +60,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   concrete payload from the error struct so the handler can read its fields
   (`g<GErr> = e as GErr` then `g.code`), and same-type casts pass through
   (`x as Int`); incompatible static casts are a semantic error.
+- `typeof(e)` / `typename(e)` now work on wildcard trap errors (`e<?>`):
+  `typeof(e)` loads the error's runtime type ID and `typename(e)` its type-name
+  string from the error struct, so handlers can discriminate failed errors by
+  type (`trap (e<?>) -> { typeof(e) == typeof<ParseError>() }`). Adds the
+  `typeof<T>()` compile-time type-hash form (e.g. `typeof<GErr>()`), and
+  `typeof` / `typename` are recognized as expression-statement starts.
 
 ### Fixed
 - A `match`/`select` arm whose value is a primitive `.to_string()` now stores a

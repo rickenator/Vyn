@@ -408,6 +408,9 @@ public:
     void visit(ast::TypenameExpression* node) override;
     void visit(ast::AsExpression* node) override;
 
+    // True if an expression is an Identifier bound as a wildcard trap error (e<?>).
+    bool isWildcardErrorExpr(ast::Expression* expr) const;
+
     // Declarations
     void visit(ast::Module* node) override; // Added declaration
     void visit(ast::VariableDeclaration* node) override;

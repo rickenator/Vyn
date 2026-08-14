@@ -5776,23 +5776,58 @@ llvm::Value* LLVMCodegen::generateBoolToString(llvm::Value* boolValue) {
 }
 // Introspection: typeof(expr) - returns 8-byte type ID
 void LLVMCodegen::visit(vyb::ast::TypeofExpression* node) {
-    if (!node || !node->operand) {
-        logError(node->loc, "typeof() requires an operand expression");
+    if (!node) {
+        logError(node->loc, "typeof() requires an operand or type argument");
         m_currentLLVMValue = nullptr;
         return;
     }
 
-    // Get the type name from the operand's type field (set by semantic analysis)
+    // typeof<T>() - compile-time hash of the resolved type name.
+    if (node->typeArg) {
+        std::string typeName = node->typeArg->type
+            ? node->typeArg->type->toString() : node->typeArg->toString();
+        uint64_t typeHash = std::hash<std::string>{}(typeName);
+        m_currentLLVMValue = llvm::ConstantInt::get(builder->getInt64Ty(), typeHash);
+        return;
+    }
+
+    // Wildcard trap error (e<?>): load the runtime type ID from the VybError header.
+    if (node->operandFromWildcardError) {
+        if (!node->operand) { m_currentLLVMValue = nullptr; return; }
+        node->operand->accept(*this);
+        llvm::Value* errPtr = m_currentLLVMValue;
+        if (!errPtr || !errPtr->getType()->isPointerTy()) {
+            logError(node->loc, "typeof() on wildcard error requires an error pointer");
+            m_currentLLVMValue = nullptr;
+            return;
+        }
+        llvm::Type* i8Ptr = llvm::PointerType::get(*context, 0);
+        llvm::StructType* vybErrorTy = llvm::StructType::get(
+            *context,
+            { builder->getInt64Ty(), i8Ptr, i8Ptr, i8Ptr,
+              builder->getInt32Ty(), builder->getInt32Ty() },
+            false);
+        llvm::Value* errStruct = builder->CreateBitCast(
+            errPtr, llvm::PointerType::get(vybErrorTy, 0), "typeof.err.ptr");
+        llvm::Value* slot = builder->CreateStructGEP(
+            vybErrorTy, errStruct, 0, "typeof.typeid.slot");
+        m_currentLLVMValue = builder->CreateLoad(
+            builder->getInt64Ty(), slot, "typeof.typeid");
+        return;
+    }
+
+    // Static form: hash the operand's static type (set by semantic analysis).
+    if (!node->operand) {
+        logError(node->loc, "typeof() requires an operand expression");
+        m_currentLLVMValue = nullptr;
+        return;
+    }
     std::string typeName = "Unknown";
     if (node->operand->type) {
         typeName = node->operand->type->toString();
     }
-
-    // Generate type hash as compile-time constant
     uint64_t typeHash = std::hash<std::string>{}(typeName);
-    llvm::Value* typeId = llvm::ConstantInt::get(builder->getInt64Ty(), typeHash);
-
-    m_currentLLVMValue = typeId;
+    m_currentLLVMValue = llvm::ConstantInt::get(builder->getInt64Ty(), typeHash);
 }
 
 // Introspection: typename(expr) - returns String with type name
@@ -5800,6 +5835,45 @@ void LLVMCodegen::visit(vyb::ast::TypenameExpression* node) {
     if (!node || !node->operand) {
         logError(node->loc, "typename() requires an operand expression");
         m_currentLLVMValue = nullptr;
+        return;
+    }
+
+    // Wildcard trap error (e<?>): load the runtime type name from the error header
+    // and wrap it in a String { ptr, len }.
+    if (node->operandFromWildcardError) {
+        node->operand->accept(*this);
+        llvm::Value* errPtr = m_currentLLVMValue;
+        if (!errPtr || !errPtr->getType()->isPointerTy()) {
+            logError(node->loc, "typename() on wildcard error requires an error pointer");
+            m_currentLLVMValue = nullptr;
+            return;
+        }
+        llvm::Type* i8Ptr = llvm::PointerType::get(*context, 0);
+        llvm::StructType* vybErrorTy = llvm::StructType::get(
+            *context,
+            { builder->getInt64Ty(), i8Ptr, i8Ptr, i8Ptr,
+              builder->getInt32Ty(), builder->getInt32Ty() },
+            false);
+        llvm::Value* errStruct = builder->CreateBitCast(
+            errPtr, llvm::PointerType::get(vybErrorTy, 0), "typename.err.ptr");
+        llvm::Value* slot = builder->CreateStructGEP(
+            vybErrorTy, errStruct, 1, "typename.name.slot");
+        llvm::Value* namePtr = builder->CreateLoad(
+            i8Ptr, slot, "typename.name.ptr");
+        llvm::Type* i64Ty = builder->getInt64Ty();
+        llvm::Function* strlenFn = module->getFunction("strlen");
+        if (!strlenFn) {
+            strlenFn = llvm::Function::Create(
+                llvm::FunctionType::get(i64Ty, {i8Ptr}, false),
+                llvm::Function::ExternalLinkage, "strlen", module.get());
+        }
+        llvm::Value* len = builder->CreateCall(strlenFn, {namePtr}, "typename.len");
+        llvm::StructType* sTy = llvm::StructType::get(
+            *context, {i8Ptr, i64Ty});
+        llvm::Value* s = llvm::UndefValue::get(sTy);
+        s = builder->CreateInsertValue(s, namePtr, 0, "typename.ptr");
+        s = builder->CreateInsertValue(s, len, 1, "typename.len");
+        m_currentLLVMValue = s;
         return;
     }
 

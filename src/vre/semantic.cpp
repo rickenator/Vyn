@@ -366,6 +366,13 @@ void SemanticAnalyzer::injectBareEnumCtorArgTypes(ast::CallExpression* node) {
     }
 }
 
+bool SemanticAnalyzer::isWildcardErrorExpr(ast::Expression* expr) const {
+    auto* id = dynamic_cast<ast::Identifier*>(expr);
+    if (!id) return false;
+    SymbolInfo* sym = currentScope->lookup(id->name);
+    return sym && sym->type == nullptr;
+}
+
 void SemanticAnalyzer::enterScope() {
     currentScope = new SymbolTable(currentScope);
     borrowScopes.emplace_back();
@@ -7811,24 +7818,41 @@ bool SemanticAnalyzer::matchesPattern(const std::string& concreteType, const std
 }
 
 // Introspection: typeof(expr) returns Type (8-byte type ID)
+// Introspection: typeof(expr) / typeof<T>() returns an opaque Type type ID.
 void SemanticAnalyzer::visit(ast::TypeofExpression* node) {
-    if (!node || !node->operand) {
+    if (!node) {
         addError("typeof() requires an operand expression.", node);
         expressionTypes[node] = nullptr;
         return;
     }
-
-    // Analyze operand to determine its type
-    node->operand->accept(*this);
 
     // Result type is always "Type" (primitive introspection type)
     auto typeIdent = std::make_unique<ast::Identifier>(node->loc, "Type");
     ast::TypeNode* resultType = new ast::TypeName(node->loc, std::move(typeIdent));
     expressionTypes[node] = resultType;
     node->type = std::shared_ptr<ast::TypeNode>(resultType->clone());
+
+    // Compile-time form: typeof<T>() just resolves the target type.
+    if (node->typeArg) {
+        node->typeArg->accept(*this);
+        return;
+    }
+
+    if (!node->operand) {
+        addError("typeof() requires an operand expression.", node);
+        expressionTypes[node] = nullptr;
+        return;
+    }
+    node->operand->accept(*this);
+
+    // A wildcard trap error (e<?>) has no static type; extract its runtime type.
+    if (isWildcardErrorExpr(node->operand.get())) {
+        node->operandFromWildcardError = true;
+    }
 }
 
 // Introspection: typename(expr) returns String
+// Introspection: typename(expr) returns String.
 void SemanticAnalyzer::visit(ast::TypenameExpression* node) {
     if (!node || !node->operand) {
         addError("typename() requires an operand expression.", node);
@@ -7844,6 +7868,11 @@ void SemanticAnalyzer::visit(ast::TypenameExpression* node) {
     ast::TypeNode* resultType = new ast::TypeName(node->loc, std::move(stringIdent));
     expressionTypes[node] = resultType;
     node->type = std::shared_ptr<ast::TypeNode>(resultType->clone());
+
+    // A wildcard trap error (e<?>): load its runtime type name at codegen.
+    if (isWildcardErrorExpr(node->operand.get())) {
+        node->operandFromWildcardError = true;
+    }
 }
 
 

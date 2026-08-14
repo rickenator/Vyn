@@ -1320,6 +1320,18 @@ regular_array_literal:
         // Handle introspection operators
         if (match(TokenType::KEYWORD_TYPEOF)) {
             token::Token typeof_token = previous_token();
+            if (match(TokenType::LT)) {
+                // typeof<T>() - compile-time type hash of T
+                TypeParser type_parser(tokens_, pos_, current_file_path_, *this);
+                ast::TypeNodePtr targ = type_parser.parse();
+                if (!targ) {
+                    throw error(previous_token(), "Expected a type argument in 'typeof<T>()'.");
+                }
+                expect(TokenType::GT, "Expected '>' after typeof type argument");
+                expect(TokenType::LPAREN, "Expected '(' after 'typeof<T>'");
+                expect(TokenType::RPAREN, "Expected ')' after 'typeof<T>'");
+                return std::make_unique<ast::TypeofExpression>(typeof_token.location, std::move(targ));
+            }
             expect(TokenType::LPAREN, "Expected '(' after 'typeof'");
             vyb::ast::ExprPtr operand = parse_expression();
             expect(TokenType::RPAREN, "Expected ')' after typeof operand");
@@ -1508,7 +1520,9 @@ bool ExpressionParser::is_expression_start(vyb::TokenType type) const {
         type == TokenType::LPAREN ||    // Grouped expression or tuple
         type == TokenType::LBRACKET ||  // Array literal or list comprehension
         type == TokenType::LBRACE ||    // Object literal
-        type == TokenType::KEYWORD_IF)  // If expression
+        type == TokenType::KEYWORD_IF ||  // If expression
+        type == TokenType::KEYWORD_TYPEOF ||  // typeof(expr) / typeof<T>()
+        type == TokenType::KEYWORD_TYPENAME)  // typename(expr)
     {
         return true;
     }

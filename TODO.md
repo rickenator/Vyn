@@ -293,7 +293,7 @@ and pattern matching, not be a separate OOP mechanism.
 - [x] `typeof(expr)` — Returns type hash as i64
 - [x] `typename(expr)` — Returns type name as String
 - [x] **`as` downcasting operator** — `value as TargetType`: lexed/parsed as an infix expression (`parse_cast_expr`), typed as the target type, and code-gen'd as a safe downcast. In a wildcard trap (`e<?>`) it extracts the concrete payload from the error struct (e.g. `g<GErr> = e as GErr`), and same-type casts pass through; incompatible casts are a semantic error. (Phase 2 — see also `typeof`/type-context items below.)
-- [ ] **`typeof` in wildcard trap** — `trap (e<?>) -> { if typeof(e) == typeof<ParseError>() }`
+- [x] **`typeof` / `typename` in wildcard trap** — `trap (e<?>) -> { if (typeof(e) == typeof<ParseError>()) }`: on a wildcard error operand, `typeof(e)` loads the error's runtime type ID and `typename(e)` its type-name string from the error struct (so handlers can discriminate failed errors by type). Also adds the `typeof<T>()` compile-time type-hash form and recognizes `typeof`/`typename` as expression-statement starts.
 - [ ] **Type registry at startup** — `__vyb_module_init()` registers all types
 - [ ] **`Type` as first-class type** — `t<Type> = typeof(42)`, equality comparison
 
@@ -696,5 +696,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: August 2026*
 *Current Version: Vyb v0.5.3 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 797 tests passing (harness, 100%)*
+*Overall Status: ~60-65% complete toward 1.0 — 798 tests passing (harness, 100%)*
 *SUGGESTIONS.md merged into this document.*
