@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- A `match` on a tagged-union enum that is not exhaustive — no unguarded
+  wildcard and not covering every variant — is now rejected by the semantic
+  analyser with a diagnostic listing the missing variant(s). (Previously the
+  codegen treated only the exhaustive case as sound; a missing variant now fails
+  to compile instead of reaching an impossible default.)
 - A `match` on a tagged-union enum whose arms cover every variant is now
   recognized as exhaustive: its no-match default block is marked `unreachable`,
   so a non-void function whose final statement is such an exhaustive all-return

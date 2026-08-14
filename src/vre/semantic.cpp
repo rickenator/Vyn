@@ -4522,6 +4522,44 @@ void SemanticAnalyzer::visit(ast::MatchStatement* node) {
 
         exitScope();
     }
+
+    // Exhaustiveness checking for tagged-union enums: a match on a data-carrying
+    // enum is exhaustive only when it has an unguarded wildcard or arms that
+    // cover every variant. A non-exhaustive match would silently fall through to
+    // an impossible default at runtime (the codegen default block is
+    // `unreachable` for the exhaustive case), so reject it here.
+    if (wildcardIndex == SIZE_MAX && !matchTypeStr.empty()) {
+        auto variantsIt = enumVariantPayloadTypes.find(matchTypeStr);
+        if (variantsIt != enumVariantPayloadTypes.end() && !variantsIt->second.empty()) {
+            const auto& variants = variantsIt->second;
+            std::set<std::string> covered;
+            for (auto& c : node->cases) {
+                if (!c.first) { covered.insert("__wildcard__"); break; }
+                std::string vname;
+                if (auto* ctor = dynamic_cast<ast::ConstructionExpression*>(c.first.get())) {
+                    auto* tv = ctor->constructedType
+                        ? dynamic_cast<ast::TypeName*>(ctor->constructedType.get()) : nullptr;
+                    if (tv && tv->identifier) vname = tv->identifier->name;
+                } else if (auto* idp = dynamic_cast<ast::Identifier*>(c.first.get())) {
+                    vname = idp->name;
+                }
+                // A guarded variant arm counts as covering its variant for now
+                // (mirrors codegen), so a partially-matched guarded set is caught.
+                if (variants.count(vname)) covered.insert(vname);
+            }
+            if (!covered.count("__wildcard__") && covered.size() < variants.size()) {
+                std::string missing;
+                for (auto& kv : variants) {
+                    if (!covered.count(kv.first)) {
+                        if (!missing.empty()) missing += ", ";
+                        missing += kv.first;
+                    }
+                }
+                addError("Match on " + matchTypeStr + " is not exhaustive: missing variant(s) " +
+                         missing + " (add the missing variant(s) or a wildcard '?')", node);
+            }
+        }
+    }
 }
 void SemanticAnalyzer::visit(ast::YieldStatement* node) {
     // Check if we're inside a generator function

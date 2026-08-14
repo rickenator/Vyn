@@ -1,0 +1,19 @@
+// @test: non-exhaustive match on a tagged-union enum is rejected
+// @description: a match on a data-carrying enum that does not cover every
+//   variant and has no wildcard is reported as not exhaustive.
+// @category: enum, match, semantic, error
+// @expect: fail
+// @expect-error: not exhaustive
+
+enum Shape { Circle(Float), Rect(Float, Float), Unit }
+
+area(s<Shape>)<Float> -> {
+    match (s) {
+        Circle(r) -> { return 3.14 * r * r }
+        Rect(w, h) -> { return w * h }
+    }
+}
+
+main()<Int> -> {
+    return area(Shape::Circle(1.0))
+}
