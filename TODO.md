@@ -274,6 +274,7 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
 - [x] **I/O intrinsics** — `print()` (no newline), `println_int()`, `print_int()`, `println_bool()`, `print_bool()`
 - [ ] **Iterator aspect** — `next(self)<Option<Item>>` protocol for `for` loop integration
 - [ ] **`Vec<T>` expansion** — `.map()`, `.filter()`, `.reduce()`, `.find()`, `.sort()`; `.contains()` is now correctly implemented
+- [ ] **`Vec<T>` constructor idiom** — replace `Vec::new()` / `Vec::new(size)` with a vybish constructor call: `Vec()` (empty growable) and `Vec(n)` (preallocate `n` elements/capacity). `Vec::new()` stays as a back-compat alias. See "Vyb-Native Ideas Worth Exploring".
 
 ### 5. Sum Types / Enums (MEDIUM PRIORITY)
 Vyb needs a way to express sum types. Essential for `Option<T>`, `Result<T,E>`, and
@@ -285,6 +286,7 @@ and pattern matching, not be a separate OOP mechanism.
 - [x] **Pattern matching on enums (match/select)** — In `match`, enum variant patterns (`Circle(r) ->`) dispatch on the runtime tag and bind payload fields; unit variants match bare (`Unit ->`), and a match must be exhaustive. `select` mirrors this, dispatching on variants and enforcing exhaustiveness the same way.
 - [ ] **Enum methods via `bind`** — `bind Drawable -> Shape { ... }` (natural fit!)
 - [x] **`Option<T>` as built-in enum** — `Some(T)` / `None`; registered in the compiler (no `import` needed), constructible via `Option<Int>::Some(x)` / `Option<Int>::None` and type-inferred bare `Some(x)` / `None`, with match/select dispatch and exhaustiveness
+- [ ] **`Option<T>` ergonomics — bare `Some(x)` / `None` anywhere** — bare constructors currently infer only when the enclosing variable declaration or function return type is `Option<T>`; needs general expected-type propagation so they can appear as subexpressions (e.g. `unwrap(Some(7))`, `v.push(Some(x))`)
 - [ ] **`Result<T, E>` as built-in enum** — `Ok(T)` / `Err(E)`
 
 ### 6. Introspection System — Completion (MEDIUM PRIORITY)
@@ -491,6 +493,21 @@ explicit change to the sealed monomorphization design before any implementation.
 
 These are not in any current design document but feel natural given Vyb's identity and
 should be prototyped or at least documented before 1.0:
+
+### `Vec()` Constructor Idiom (`Vec::new()` → `Vec(n)`)
+`Vec::new()` reads like an OOP static constructor (Rust/Java) and doesn't fit Vyb's
+type-as-constructor feel (cf. the built-in `Option<T>`). Proposal:
+```vyb
+a<Vec<Int>> = Vec()           # empty, growable
+b<Vec<Int>> = Vec(16)         # preallocate / zero-init 16 elements (and capacity)
+c<Vec<String>> = Vec<String>() # explicit element type, no annotation needed
+```
+`Vec(n)` mirrors today's `Vec::new(n)` (n zero-initialized elements, capacity n) so
+semantics don't change; `Vec::new()` is retained as a back-compat alias.
+**Open question:** a "constant size / non-growable" flag. Recommendation is to NOT overload
+`Vec` with fixed-size semantics — Vyb already has fixed arrays, and a non-growable
+collection is a distinct type. Keep `Vec` growable, treating `Vec(n)` as preallocation
+headroom rather than a length cap; introduce `VecFixed(n)` later only if it earns its keep.
 
 ### `pipe` Operator (`|>`)
 Functional pipelines without deep nesting:
