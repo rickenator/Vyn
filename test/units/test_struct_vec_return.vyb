@@ -1,0 +1,35 @@
+// @test: returning a struct that embeds a Vec preserves the Vec's data
+// @description: a function that builds an object literal containing an owning
+//   Vec field (e.g. a constructor behind a collection) transfers that Vec's
+//   ownership to the caller instead of freeing it on return, so reading the
+//   embedded Vec afterward returns the real elements rather than freed memory.
+// @category: ownership, structs, vec, return, modules, collections
+// @expect: pass
+// @expect-return: -77
+// @execute-jit: true
+
+struct Holder {
+    names<Vec<String>>,
+    codes<Vec<Int>>
+}
+
+make_pair()<Holder> -> {
+    ns<Vec<String>> = Vec<String>()
+    ns.push("alpha")
+    ns.push("beta")
+    cs<Vec<Int>> = Vec<Int>()
+    cs.push(10)
+    cs.push(20)
+    return Holder { names = ns, codes = cs }
+}
+
+main()<Int> -> {
+    h<Holder> = make_pair()
+    if (h.codes.get(1) != 20 || h.names.get(0) != "alpha") {
+        return 1
+    }
+    if (h.codes.len() != 2 || h.names.len() != 2) {
+        return 2
+    }
+    return -77
+}

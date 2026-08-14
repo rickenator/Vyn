@@ -32,6 +32,22 @@ static void collectReturnTransferNames(ast::Expression* expr,
             collectReturnTransferNames(arm.second.get(), out);
         }
     }
+    // A struct literal consumes its field values as whole values, so a bare
+    // owning variable read as an initializer (e.g. a Vec handed into a struct
+    // field) must flow out with the returned object rather than being freed by
+    // its local cleanup on the way out.
+    if (auto* obj = dynamic_cast<ast::ObjectLiteral*>(expr)) {
+        for (const auto& prop : obj->properties) {
+            collectReturnTransferNames(prop.value.get(), out);
+        }
+        return;
+    }
+    if (auto* ctor = dynamic_cast<ast::ConstructionExpression*>(expr)) {
+        for (const auto& arg : ctor->arguments) {
+            collectReturnTransferNames(arg.get(), out);
+        }
+        return;
+    }
 }
 
 void LLVMCodegen::visit(vyb::ast::BlockStatement* node) {
