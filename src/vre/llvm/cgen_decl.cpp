@@ -1001,8 +1001,6 @@ void LLVMCodegen::visit(vyb::ast::BindDeclaration* node) {
 }
 
 void LLVMCodegen::visit(vyb::ast::EnumDeclaration* node) {
-    // C-like integer enum: each variant maps to a sequential i64 constant.
-    // Variants with associated types are not supported yet (tagged union is a future feature).
     if (!node->name) {
         logError(node->loc, "EnumDeclaration missing name");
         m_currentLLVMValue = nullptr;
@@ -1012,15 +1010,74 @@ void LLVMCodegen::visit(vyb::ast::EnumDeclaration* node) {
     const std::string& enumName = node->name->name;
     enumTypeNames.insert(enumName);
 
-    int64_t currentValue = 0;
-    for (const auto& variantNode : node->variants) {
-        if (!variantNode || !variantNode->name) continue;
-        const std::string qualName = enumName + "::" + variantNode->name->name;
-        llvm::Constant* enumConst = llvm::ConstantInt::get(int64Type, currentValue, /*isSigned=*/true);
-        enumVariantValues[qualName] = enumConst;
-        currentValue++;
+    // Determine whether this enum carries data variants (tagged union) or is a
+    // plain C-like integer enum. Tagged unions are only built for non-generic
+    // enums here; generic data enums defer to the integer fallback for now.
+    bool hasData = false;
+    for (const auto& v : node->variants) {
+        if (v && !v->associatedTypes.empty()) { hasData = true; break; }
     }
 
+    if (!hasData || !node->genericParams.empty()) {
+        // C-like integer enum: each variant maps to a sequential i64 constant.
+        int64_t currentValue = 0;
+        for (const auto& variantNode : node->variants) {
+            if (!variantNode || !variantNode->name) continue;
+            const std::string qualName = enumName + "::" + variantNode->name->name;
+            llvm::Constant* enumConst = llvm::ConstantInt::get(int64Type, currentValue, /*isSigned=*/true);
+            enumVariantValues[qualName] = enumConst;
+            currentValue++;
+        }
+        m_currentLLVMValue = nullptr;
+        return;
+    }
+
+    // Tagged-union enum: represent as { i64 tag, [N x i8] data }, where N is the
+    // largest payload (in bytes) across variants. Value semantics; C-like enums
+    // above are untouched.
+    TaggedEnumInfo info;
+    unsigned payloadBytes = 0;
+    int64_t tag = 0;
+    for (const auto& variantNode : node->variants) {
+        if (!variantNode || !variantNode->name) continue;
+        const std::string& vname = variantNode->name->name;
+        info.variantTags[vname] = static_cast<unsigned>(tag);
+        if (!variantNode->associatedTypes.empty()) {
+            std::vector<llvm::Type*> fieldTypes;
+            for (const auto& t : variantNode->associatedTypes) {
+                llvm::Type* ft = codegenType(t.get());
+                if (!ft) {
+                    logError(variantNode->loc, "Could not resolve payload type for variant " + vname);
+                    ft = llvm::Type::getInt64Ty(*context);
+                }
+                fieldTypes.push_back(ft);
+            }
+            llvm::StructType* payloadTy = llvm::StructType::get(*context, fieldTypes, false);
+            info.variantPayloadTypes[vname] = payloadTy;
+            const llvm::DataLayout& dl = module->getDataLayout();
+            llvm::TypeSize sz = dl.getTypeAllocSize(payloadTy);
+            if (sz.getFixedValue() > payloadBytes) {
+                payloadBytes = static_cast<unsigned>(sz.getFixedValue());
+            }
+        }
+        tag++;
+    }
+    if (payloadBytes == 0) payloadBytes = 1;
+
+    info.payloadBytes = payloadBytes;
+    llvm::Type* dataArrayTy = llvm::ArrayType::get(llvm::Type::getInt8Ty(*context), payloadBytes);
+    llvm::StructType* enumStruct = llvm::StructType::get(*context, {llvm::Type::getInt64Ty(*context), dataArrayTy}, false);
+    info.llvmType = enumStruct;
+
+    // Register the type so codegenType('Shape') resolves and variables can hold it.
+    UserTypeInfo typeInfo;
+    typeInfo.llvmType = enumStruct;
+    typeInfo.isStruct = true;
+    userTypeMap[enumName] = typeInfo;
+    taggedEnumInfo[enumName] = info;
+
+    VYB_CDBG << "DEBUG: Registered tagged union enum " << enumName << " as " << getTypeName(enumStruct)
+             << " with max payload " << payloadBytes << " bytes" << std::endl;
     m_currentLLVMValue = nullptr;
 }
 

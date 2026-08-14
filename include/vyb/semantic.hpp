@@ -495,6 +495,10 @@ private:
     // Enum type names declared in this module (for identifier and member-expression resolution)
     std::unordered_set<std::string> enumTypeNames;
 
+    // Payload types for data-carrying (tagged-union) enum variants:
+    // enumName -> variantName -> payload TypeNodes (empty vector = unit variant).
+    std::unordered_map<std::string, std::unordered_map<std::string, std::vector<ast::TypeNodePtr>>> enumVariantPayloadTypes;
+
     // Context for resolving 'Self' type in aspect implementations
     ast::TypeNode* currentImplType = nullptr;  // Set to Box<T> when processing bind Display -> Box<T>
     std::string currentImplTraitName;          // Set to Display when processing bind Display -> Type

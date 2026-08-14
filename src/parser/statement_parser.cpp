@@ -1403,6 +1403,29 @@ vyb::ast::StmtPtr StatementParser::parse_match() {
             if (!pattern) {
                 throw error(peek(), "Expected pattern in match arm.");
             }
+            // Enum variant pattern with payload: `Circle(r)`, `Rect(w, h)`. The
+            // primary parser returns the bare variant identifier and leaves the
+            // `( binding, ... )` group; assemble it into a ConstructionExpression
+            // that codegen reinterprets as a variant pattern.
+            if (auto* pid = dynamic_cast<ast::Identifier*>(pattern.get())) {
+                if (peek().type == vyb::TokenType::LPAREN) {
+                    consume(); // '('
+                    std::vector<ast::ExprPtr> vbindings;
+                    while (peek().type != vyb::TokenType::RPAREN && !IsAtEnd()) {
+                        ast::ExprPtr b = expr_parser_.parse_primary();
+                        if (!b) {
+                            throw error(peek(), "Expected binding name in enum variant pattern.");
+                        }
+                        vbindings.push_back(std::move(b));
+                        if (!match(vyb::TokenType::COMMA)) break;
+                    }
+                    expect(vyb::TokenType::RPAREN, "Expected ')' after enum variant pattern bindings.");
+                    auto vtName = std::make_unique<vyb::ast::TypeName>(
+                        pid->loc, std::make_unique<vyb::ast::Identifier>(pid->loc, pid->name));
+                    pattern = std::make_unique<vyb::ast::ConstructionExpression>(
+                        pid->loc, std::move(vtName), std::move(vbindings));
+                }
+            }
             // Range pattern: `start..end` (inclusive). Parse the upper bound
             // here since parse_primary stops before binary operators.
             if (peek().type == vyb::TokenType::DOTDOT) {

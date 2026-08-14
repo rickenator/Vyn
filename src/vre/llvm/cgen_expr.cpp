@@ -713,6 +713,21 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
     // Check for Vec::new() constructor calls
     // VYB_CDBG << "DEBUG: Checking if callee is MemberExpression..." << std::endl;
     if (auto memberExpr = dynamic_cast<vyb::ast::MemberExpression*>(node->callee.get())) {
+        // Tagged-union enum variant constructor: Shape::Circle(x), Shape::Rect(a, b).
+        if (auto enIdent = dynamic_cast<vyb::ast::Identifier*>(memberExpr->object.get())) {
+            if (auto varIdent = dynamic_cast<vyb::ast::Identifier*>(memberExpr->property.get())) {
+                auto tagIt = taggedEnumInfo.find(enIdent->name);
+                if (tagIt != taggedEnumInfo.end()) {
+                    std::vector<llvm::Value*> payloadVals;
+                    for (auto& arg : node->arguments) {
+                        arg->accept(*this);
+                        payloadVals.push_back(m_currentLLVMValue);
+                    }
+                    m_currentLLVMValue = buildTaggedEnumValue(enIdent->name, varIdent->name, payloadVals);
+                    return;
+                }
+            }
+        }
         // VYB_CDBG << "DEBUG: Found MemberExpression callee" << std::endl;
         // VYB_CDBG << "DEBUG: MemberExpression object: " << (memberExpr->object ? memberExpr->object->toString() : "null") << std::endl;
         // VYB_CDBG << "DEBUG: MemberExpression property: " << (memberExpr->property ? memberExpr->property->toString() : "null") << std::endl;
@@ -3403,6 +3418,27 @@ void LLVMCodegen::visit(ast::MemberExpression* node) {
             if (enumTypeNames.count(objIdent->name)) {
                 if (auto* propIdent = dynamic_cast<ast::Identifier*>(node->property.get())) {
                     const std::string qualName = objIdent->name + "::" + propIdent->name;
+                    // A tagged-union enum (has data variants) is emitted as a value
+                    // struct rather than an integer constant. A unit variant used
+                    // directly as a value builds a tag-only value; a data variant
+                    // used without constructor arguments is an error.
+                    if (taggedEnumInfo.count(objIdent->name)) {
+                        auto tagEnumIt = taggedEnumInfo.find(objIdent->name);
+                        const TaggedEnumInfo& tei = tagEnumIt->second;
+                        if (tei.variantPayloadTypes.count(propIdent->name)) {
+                            logError(node->loc, "Enum variant '" + propIdent->name +
+                                     "' of tagged enum " + objIdent->name + " requires constructor arguments");
+                            m_currentLLVMValue = nullptr;
+                            return;
+                        }
+                        if (!tei.variantTags.count(propIdent->name)) {
+                            logError(node->loc, "Unknown enum variant: " + qualName);
+                            m_currentLLVMValue = nullptr;
+                            return;
+                        }
+                        m_currentLLVMValue = buildTaggedEnumValue(objIdent->name, propIdent->name, {});
+                        return;
+                    }
                     auto enumIt = enumVariantValues.find(qualName);
                     if (enumIt != enumVariantValues.end()) {
                         m_currentLLVMValue = enumIt->second;

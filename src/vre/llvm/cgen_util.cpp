@@ -409,3 +409,71 @@ void LLVMCodegen::bindStructPatternFields(const vyb::ast::StructPattern* node, l
         }
     }
 }
+
+// Find the tagged-union enum layout whose LLVM type matches the given runtime
+// struct type (used to detect that a match value is a data-carrying enum).
+const LLVMCodegen::TaggedEnumInfo* LLVMCodegen::findTaggedEnum(llvm::Type* structTy) const {
+    for (const auto& kv : taggedEnumInfo) {
+        if (kv.second.llvmType == structTy) {
+            return &kv.second;
+        }
+    }
+    return nullptr;
+}
+
+// Build a tagged-union enum value for the given variant. For unit variants pass
+// an empty payloadVals. The result is an in-memory struct { i64 tag, [N x i8] data }.
+llvm::Value* LLVMCodegen::buildTaggedEnumValue(const std::string& enumName, const std::string& variantName,
+                                               std::vector<llvm::Value*> payloadVals) {
+    auto it = taggedEnumInfo.find(enumName);
+    if (it == taggedEnumInfo.end()) {
+        logError(SourceLocation(), "Unknown tagged enum: " + enumName);
+        return nullptr;
+    }
+    const TaggedEnumInfo& info = it->second;
+    auto tagIt = info.variantTags.find(variantName);
+    if (tagIt == info.variantTags.end()) {
+        logError(SourceLocation(), "Unknown variant '" + variantName + "' of tagged enum " + enumName);
+        return nullptr;
+    }
+
+    llvm::StructType* enumTy = info.llvmType;
+    llvm::AllocaInst* tmp = builder->CreateAlloca(enumTy, nullptr, "enum.construct.tmp");
+    builder->CreateStore(llvm::ConstantStruct::get(enumTy, {
+        llvm::ConstantInt::get(int64Type, tagIt->second, true),
+        llvm::UndefValue::get(enumTy->getElementType(1))
+    }), tmp);
+
+    // Store the tag field.
+    llvm::Value* tagPtr = builder->CreateStructGEP(enumTy, tmp, 0, "enum.tag.ptr");
+    builder->CreateStore(llvm::ConstantInt::get(int64Type, tagIt->second, true), tagPtr);
+
+    auto payIt = info.variantPayloadTypes.find(variantName);
+    if (payIt != info.variantPayloadTypes.end() && payIt->second) {
+        llvm::StructType* payloadTy = payIt->second;
+        llvm::Value* dataPtr = builder->CreateStructGEP(enumTy, tmp, 1, "enum.data.ptr");
+        llvm::Value* payloadPtr = builder->CreateBitCast(dataPtr, llvm::PointerType::get(payloadTy, 0), "enum.payload.ptr");
+        for (size_t i = 0; i < payloadVals.size() && i < payloadTy->getNumElements(); ++i) {
+            if (!payloadVals[i]) continue;
+            llvm::Value* fieldPtr = builder->CreateStructGEP(payloadTy, payloadPtr, i, "enum.payload.field");
+            builder->CreateStore(payloadVals[i], fieldPtr);
+        }
+    }
+
+    llvm::Value* result = builder->CreateLoad(enumTy, tmp, "enum.construct.value");
+    return result;
+}
+
+// Extract one payload field from a tagged-union enum value given the variant's
+// payload struct type. Index 0 is the first field of the variant's payload tuple.
+llvm::Value* LLVMCodegen::extractEnumVariantField(llvm::Value* enumVal, llvm::StructType* payloadTy, unsigned fieldIdx) {
+    if (!enumVal || !payloadTy || fieldIdx >= payloadTy->getNumElements()) {
+        return nullptr;
+    }
+    llvm::AllocaInst* tmp = builder->CreateAlloca(enumVal->getType(), nullptr, "enum.extract.tmp");
+    builder->CreateStore(enumVal, tmp);
+    llvm::Value* dataPtr = builder->CreateStructGEP(enumVal->getType(), tmp, 1, "enum.extract.data");
+    llvm::Value* payloadPtr = builder->CreateBitCast(dataPtr, llvm::PointerType::get(payloadTy, 0), "enum.extract.payload");
+    llvm::Value* fieldPtr = builder->CreateStructGEP(payloadTy, payloadPtr, fieldIdx, "enum.extract.field.ptr");
+    return builder->CreateLoad(payloadTy->getElementType(fieldIdx), fieldPtr, "enum.extract.field.val");
+}

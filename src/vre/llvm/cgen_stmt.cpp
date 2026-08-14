@@ -1188,6 +1188,13 @@ void LLVMCodegen::codegenMatch(vyb::ast::MatchStatement* node, llvm::AllocaInst*
         }
     }
 
+    // If the matched value is a tagged-union enum (data-carrying), variant
+    // patterns such as `Circle(r)` or `Unit` dispatch on the runtime tag.
+    const TaggedEnumInfo* matchedEnum =
+        (matchValue && matchValue->getType()->isStructTy())
+        ? findTaggedEnum(matchValue->getType())
+        : nullptr;
+
     // Generate code for each case
     for (size_t i = 0; i < node->cases.size(); i++) {
         // Set insertion point to this case's pattern matching block
@@ -1199,6 +1206,10 @@ void LLVMCodegen::codegenMatch(vyb::ast::MatchStatement* node, llvm::AllocaInst*
 
         // Default pattern (underscore/wildcard) just branches to the body
         const ast::StructPattern* pendingStructPattern = nullptr;
+        // Variant pattern holder: when a case matches a data-carrying enum
+        // variant, extract its payload fields into these named bindings.
+        llvm::StructType* pendingVariantPayloadTy = nullptr;
+        std::vector<std::string> pendingVariantBindings;
         if (!casePattern) {
             builder->CreateBr(caseBodyBBs[i]);
         } else {
@@ -1313,6 +1324,41 @@ void LLVMCodegen::codegenMatch(vyb::ast::MatchStatement* node, llvm::AllocaInst*
                     logError(compPattern->loc, "Comparison pattern requires integer or float types");
                     isMatch = llvm::ConstantInt::getFalse(*context);
                 }
+            } else if (matchedEnum && dynamic_cast<ast::ConstructionExpression*>(casePattern.get())) {
+                // Enum variant pattern with payload: `Circle(r)`, `Rect(a, b)`.
+                auto* ctor = static_cast<ast::ConstructionExpression*>(casePattern.get());
+                auto* tv = ctor->constructedType ? dynamic_cast<ast::TypeName*>(ctor->constructedType.get()) : nullptr;
+                if (tv && tv->identifier) {
+                    auto tagIt = matchedEnum->variantTags.find(tv->identifier->name);
+                    if (tagIt != matchedEnum->variantTags.end()) {
+                        llvm::Value* tagVal = builder->CreateExtractValue(matchValue, 0, "enum.tag");
+                        isMatch = builder->CreateICmpEQ(
+                            tagVal, llvm::ConstantInt::get(int64Type, tagIt->second, true), "match.variant.tag");
+                        auto payIt = matchedEnum->variantPayloadTypes.find(tv->identifier->name);
+                        if (payIt != matchedEnum->variantPayloadTypes.end()) {
+                            pendingVariantPayloadTy = payIt->second;
+                            for (auto& arg : ctor->arguments) {
+                                if (auto* b = dynamic_cast<ast::Identifier*>(arg.get())) {
+                                    pendingVariantBindings.push_back(b->name);
+                                }
+                            }
+                        }
+                    } else {
+                        logError(ctor->loc, "Unknown variant '" + tv->identifier->name + "' of enum being matched");
+                        isMatch = llvm::ConstantInt::getFalse(*context);
+                    }
+                } else {
+                    isMatch = llvm::ConstantInt::getFalse(*context);
+                }
+            } else if (matchedEnum && dynamic_cast<ast::Identifier*>(casePattern.get())) {
+                // Enum unit-variant pattern: `Unit`, `None`.
+                auto* pid = static_cast<ast::Identifier*>(casePattern.get());
+                auto tagIt = matchedEnum->variantTags.find(pid->name);
+                if (tagIt != matchedEnum->variantTags.end()) {
+                    llvm::Value* tagVal = builder->CreateExtractValue(matchValue, 0, "enum.tag");
+                    isMatch = builder->CreateICmpEQ(
+                        tagVal, llvm::ConstantInt::get(int64Type, tagIt->second, true), "match.variant.tag");
+                }
             } else {
                 // Exact match pattern (literal value)
                 // Evaluate the pattern
@@ -1360,6 +1406,15 @@ void LLVMCodegen::codegenMatch(vyb::ast::MatchStatement* node, llvm::AllocaInst*
         auto savedCaseNamedValues = namedValues;
         if (pendingStructPattern) {
             bindStructPatternFields(pendingStructPattern, matchValue);
+        } else if (pendingVariantPayloadTy && !pendingVariantBindings.empty()) {
+            for (size_t fi = 0; fi < pendingVariantBindings.size(); ++fi) {
+                const std::string& bname = pendingVariantBindings[fi];
+                llvm::Value* fv = extractEnumVariantField(matchValue, pendingVariantPayloadTy, static_cast<unsigned>(fi));
+                if (!fv) { logError(casePattern->loc, "Enum variant pattern binding out of range"); break; }
+                llvm::AllocaInst* alloca = createEntryBlockAlloca(fv->getType(), bname);
+                builder->CreateStore(fv, alloca);
+                namedValues[bname] = alloca;
+            }
         }
 
         // Optional guard clause: after the pattern matches (and destructured

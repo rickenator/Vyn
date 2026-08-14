@@ -1377,6 +1377,40 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
         }
     }
 
+    // Tagged-union enum variant constructor: Shape::Circle(x), Shape::Rect(a, b).
+    // Validates arity and types the call as the enum (so `s = Shape::Circle(1.5)`
+    // infers the enum type) before the callee is consumed as a generic expression.
+    if (auto memCtor = dynamic_cast<ast::MemberExpression*>(node->callee.get())) {
+        if (auto objId = dynamic_cast<ast::Identifier*>(memCtor->object.get())) {
+            if (auto varId = dynamic_cast<ast::Identifier*>(memCtor->property.get())) {
+                auto enumIt = enumVariantPayloadTypes.find(objId->name);
+                if (enumIt != enumVariantPayloadTypes.end()) {
+                    auto varIt = enumIt->second.find(varId->name);
+                    if (varIt == enumIt->second.end()) {
+                        addError("Unknown variant '" + varId->name + "' of enum " + objId->name, node);
+                        return;
+                    }
+                    const auto& payload = varIt->second;
+                    if (payload.size() != node->arguments.size()) {
+                        addError("Enum variant '" + varId->name + "' of " + objId->name +
+                                 " expects " + std::to_string(payload.size()) + " argument(s), got " +
+                                 std::to_string(node->arguments.size()), node);
+                        return;
+                    }
+                    auto enumType = std::make_unique<ast::TypeName>(
+                        node->loc, std::make_unique<ast::Identifier>(node->loc, objId->name));
+                    node->type = std::shared_ptr<ast::TypeNode>(enumType.release());
+                    expressionTypes[node] = node->type.get();
+                    // Still visit args so side expressions and nested types are checked.
+                    for (auto& arg : node->arguments) {
+                        if (arg) arg->accept(*this);
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
     // Only visit callee if it's not an intrinsic (intrinsics don't need symbol resolution)
     if (!isIntrinsic && node->callee) {
         node->callee->accept(*this);
@@ -2820,9 +2854,26 @@ void SemanticAnalyzer::visit(ast::MemberExpression* node) {
         const std::string& typeName = objectIdent->name;
         const std::string& methodName = propertyId->name;
 
-        // Enum variant access: EnumName::VariantName → integer constant (Int)
+        // Enum variant access: EnumName::VariantName
         if (enumTypeNames.count(typeName)) {
-            // Set the expression type to Int (enum variants are i64 constants)
+            auto enumPayIt = enumVariantPayloadTypes.find(typeName);
+            if (enumPayIt != enumVariantPayloadTypes.end()) {
+                // Tagged-union enum: a unit variant used as a value has the enum type.
+                auto varIt = enumPayIt->second.find(methodName);
+                if (varIt == enumPayIt->second.end()) {
+                    addError("Unknown variant '" + methodName + "' of enum " + typeName, node);
+                    return;
+                }
+                if (!varIt->second.empty()) {
+                    addError("Enum variant '" + methodName + "' of " + typeName +
+                             " requires constructor arguments", node);
+                    return;
+                }
+                expressionTypes[node] = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, typeName));
+                return;
+            }
+            // C-like integer enum: variants are i64 constants
             expressionTypes[node] = new ast::TypeName(node->loc,
                 std::make_unique<ast::Identifier>(node->loc, "Int"));
             return;
@@ -4399,6 +4450,61 @@ void SemanticAnalyzer::visit(ast::MatchStatement* node) {
             if (startLit && endLit && startLit->value > endLit->value) {
                 addError("Range pattern '..' has start greater than end and can never match.", rng);
             }
+        } else if (auto* ctor = dynamic_cast<ast::ConstructionExpression*>(pattern.get())) {
+            // Enum variant pattern with payload: `Circle(r)`, `Rect(w, h)`.
+            bool handled = false;
+            if (!matchTypeStr.empty()) {
+                auto variantsIt = enumVariantPayloadTypes.find(matchTypeStr);
+                auto* tv = ctor->constructedType
+                    ? dynamic_cast<ast::TypeName*>(ctor->constructedType.get()) : nullptr;
+                if (variantsIt != enumVariantPayloadTypes.end() && tv && tv->identifier) {
+                    auto varIt = variantsIt->second.find(tv->identifier->name);
+                    if (varIt != variantsIt->second.end()) {
+                        handled = true;
+                        const auto& payload = varIt->second;
+                        if (payload.size() != ctor->arguments.size()) {
+                            addError("Enum variant '" + tv->identifier->name + "' of " + matchTypeStr +
+                                     " expects " + std::to_string(payload.size()) + " binding(s), got " +
+                                     std::to_string(ctor->arguments.size()), ctor);
+                        }
+                        for (size_t bi = 0; bi < ctor->arguments.size(); ++bi) {
+                            auto* bid = dynamic_cast<ast::Identifier*>(ctor->arguments[bi].get());
+                            if (!bid) {
+                                addError("Enum variant pattern bindings must be identifiers.", ctor);
+                                continue;
+                            }
+                            const std::string& bname = bid->name;
+                            if (currentScope->lookupDirect(bname)) {
+                                addError("Redefinition of variable \"" + bname +
+                                         "\" in variant pattern.", bid);
+                                continue;
+                            }
+                            ast::TypeNode* pt = (bi < payload.size()) ? payload[bi].get() : nullptr;
+                            currentScope->add(SymbolInfo{SymbolInfo::Kind::Variable, bname, false,
+                                ast::OwnershipKind::MY, pt ? pt->clone().release() : nullptr});
+                        }
+                    }
+                }
+            }
+            if (!handled) {
+                // Not a known variant of the matched enum: fall back to a generic
+                // construction expression.
+                ctor->accept(*this);
+            }
+        } else if (auto* vid = dynamic_cast<ast::Identifier*>(pattern.get())) {
+            // Enum unit-variant pattern: `Unit`, `None`. When matching a tagged
+            // enum and the identifier names one of its variants, it binds no
+            // payload; otherwise it is a plain literal/identifier pattern.
+            bool handled = false;
+            if (!matchTypeStr.empty()) {
+                auto variantsIt = enumVariantPayloadTypes.find(matchTypeStr);
+                if (variantsIt != enumVariantPayloadTypes.end() && variantsIt->second.count(vid->name)) {
+                    handled = true;
+                }
+            }
+            if (!handled) {
+                vid->accept(*this);
+            }
         } else {
             // Other pattern types
             pattern->accept(*this);
@@ -4585,8 +4691,31 @@ void SemanticAnalyzer::visit(ast::StructDeclaration* node) {
 // void SemanticAnalyzer::visit(ast::ClassDeclaration* node) {} // Handled above
 void SemanticAnalyzer::visit(ast::EnumDeclaration* node) {
     if (!node || !node->name) return;
-    enumTypeNames.insert(node->name->name);
-    // Enum variants are integer constants — no further semantic work needed for C-like enums.
+    const std::string& enumName = node->name->name;
+    enumTypeNames.insert(enumName);
+    if (node->variants.empty()) return;
+
+    bool hasData = false;
+    for (const auto& v : node->variants) {
+        if (v && !v->associatedTypes.empty()) { hasData = true; break; }
+    }
+    if (!hasData) return; // C-like integer enums need no further semantic work.
+
+    auto& payloadMap = enumVariantPayloadTypes[enumName];
+    for (const auto& v : node->variants) {
+        if (!v || !v->name) continue;
+        std::vector<ast::TypeNodePtr> payload;
+        for (const auto& t : v->associatedTypes) {
+            if (t) payload.push_back(t->clone());
+        }
+        payloadMap[v->name->name] = std::move(payload);
+    }
+
+    // Register the enum as a known type so annotations like `s<Shape>` resolve
+    // and so `s = Shape::Circle(...)` infers the enum type.
+    currentScope->add(SymbolInfo{SymbolInfo::Kind::Type, enumName, false,
+        ast::OwnershipKind::MY,
+        new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, enumName))});
 }
 // void SemanticAnalyzer::visit(ast::TraitDeclaration* node) {} // Handled above (commented out)
 // void SemanticAnalyzer::visit(ast::ImplDeclaration* node) {} // Handled above

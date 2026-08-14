@@ -198,8 +198,24 @@ private:
     // Set of declared enum type names (for quick lookup)
     std::set<std::string> enumTypeNames;
 
+    // Tagged-union layout for enums that carry data variants (e.g. enum Shape { Circle(Float) }).
+    // Represented as a value-semantics struct { i64 tag, [N x i8] data } where N is the
+    // largest payload (in bytes) among the variants. C-like enums with no data variants
+    // are untouched and remain plain i64 constants.
+    struct TaggedEnumInfo {
+        llvm::StructType* llvmType = nullptr;          // { i64 tag, [N x i8] data }
+        unsigned payloadBytes = 0;                     // N
+        std::map<std::string, unsigned> variantTags;   // VariantName -> tag value
+        std::map<std::string, llvm::StructType*> variantPayloadTypes; // VariantName -> payload struct (absent = unit variant)
+    };
+    std::map<std::string, TaggedEnumInfo> taggedEnumInfo;
+
     // Helper methods
     llvm::Type* codegenType(vyb::ast::TypeNode* typeNode); // Converts vyb::TypeNode to llvm::Type
+    const TaggedEnumInfo* findTaggedEnum(llvm::Type* structTy) const;
+    llvm::Value* buildTaggedEnumValue(const std::string& enumName, const std::string& variantName,
+                                      std::vector<llvm::Value*> payloadVals);
+    llvm::Value* extractEnumVariantField(llvm::Value* enumVal, llvm::StructType* payloadTy, unsigned fieldIdx);
     std::string mangleGenericTypeName(const std::string& baseName, const std::vector<vyb::ast::TypeNodePtr>& typeArgs); // Generate mangled name like Box_Int
     llvm::StructType* monomorphizeStruct(const std::string& baseName, const std::vector<vyb::ast::TypeNodePtr>& typeArgs); // Generate specialized struct
     void generateTypeMetadata(const std::string& typeName, vyb::ast::StructDeclaration* structDecl); // Generate type metadata for JSON/reflection

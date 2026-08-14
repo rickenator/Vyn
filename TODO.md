@@ -191,7 +191,7 @@ is the working audit for what needs to be implemented next.
 ### Pattern Matching — Completion (MEDIUM PRIORITY)
 - [x] Literal patterns, wildcard `?`, comparison operators
 - [x] **Struct destructuring** — `Point { x, y } ->` in match arms: a struct pattern binds each listed field as a local variable in the arm body (extracted from the matched struct value). Field names are validated against the struct, and a struct pattern whose type can never match the match expression's static type is rejected.
-- [ ] **Enum/sum type variant patterns** — `Some(value) ->`, `None ->`
+- [x] **Enum/sum type variant patterns** — `Circle(r) ->`, `Rect(w, h) ->`, `Unit ->` (tagged-union enums): data enums compile to a value-semantics `{ i64 tag, [N x i8] data }` union, construct via `Shape::Variant(args)`, and match arms on variants compare the runtime tag and bind payload fields. Generic data enums and `select` variant destructuring are still pending.
 - [x] **Range patterns** — `1..10 ->` in match arms: an inclusive `[start, end]` bound check compiled for integer/float match values; inverted (`start > end`) ranges are rejected as never-matchable.
 - [x] **Guard clauses** — `pattern if condition ->` in match arms: a guard runs after the pattern matches (destructured struct fields are available to it); if false the arm is skipped and matching falls through to later arms or the default. A guarded wildcard is treated as non-exhaustive so downstream arms stay reachable.
 - [ ] **Exhaustiveness checking** — Compiler rejects non-exhaustive match
@@ -274,8 +274,8 @@ expressive APIs. **Vyb-natural approach:** enums should integrate with the aspec
 and pattern matching, not be a separate OOP mechanism.
 
 - [x] **Enum declaration syntax** — `enum Direction { North, South, East, West }` — variants compile to sequential `i64` integer constants (0, 1, 2, …); access via `Direction::North`
-- [ ] **Enum variants with data** — `enum Shape { Circle(Float), Rect(Float, Float) }` (tagged unions; future)
-- [ ] **Pattern matching on enums** — In `match`, `select`, and destructuring (integer match works today)
+- [x] **Enum variants with data** — `enum Shape { Circle(Float), Rect(Float, Float) }` (tagged unions, non-generic): value-semantics `{ i64 tag, [N x i8] data }` representation built in codegen; generic data enums deferred
+- [x] **Pattern matching on enums (match)** — In `match`, enum variant patterns (`Circle(r) ->`) dispatch on the runtime tag and bind payload fields; unit variants match bare (`Unit ->`). `select` variant destructuring and exhaustiveness remain.
 - [ ] **Enum methods via `bind`** — `bind Drawable -> Shape { ... }` (natural fit!)
 - [ ] **`Option<T>` as built-in enum** — `Some(T)` / `None`
 - [ ] **`Result<T, E>` as built-in enum** — `Ok(T)` / `Err(E)`
@@ -669,5 +669,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: August 2026*
 *Current Version: Vyb v0.5.3 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 780 tests passing (harness, 100%)*
+*Overall Status: ~60-65% complete toward 1.0 — 781 tests passing (harness, 100%)*
 *SUGGESTIONS.md merged into this document.*

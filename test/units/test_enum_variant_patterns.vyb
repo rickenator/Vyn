@@ -1,0 +1,34 @@
+// @test: enum (tagged union) variant patterns in match
+// @description: data-carrying enums construct via Enum::Variant(args) and match
+//   arms on variants bind payload fields, match unit variants, and dispatch on the runtime tag.
+// @category: enums, sum-types, match, pattern-matching, types
+// @expect: pass
+// @expect-return: -77
+// @execute-jit: true
+
+enum Shape { Circle(Float), Rect(Float, Float), Unit }
+
+area(s<Shape>)<Float> -> {
+    result<Float> = 0.0
+    match (s) {
+        Circle(r) -> { result = 3.14 * r * r }
+        Rect(w, h) -> { result = w * h }
+        Unit -> { result = 0.0 }
+    }
+    return result
+}
+
+main()<Int> -> {
+    circle<Shape> = Shape::Circle(2.0)
+    rect<Shape> = Shape::Rect(3.0, 4.0)
+    unit<Shape> = Shape::Unit
+
+    a<Float> = area(circle)
+    b<Float> = area(rect)
+    d<Float> = area(unit)
+
+    if (a == 12.56 && b == 12.0 && d == 0.0) {
+        return -77
+    }
+    return 1
+}

@@ -29,6 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   untrapped failure even when the caller trapped it.
 
 ### Added
+- Tagged-union (data-carrying) enums and enum variant patterns in `match`:
+  `enum Shape { Circle(Float), Rect(Float, Float), Unit }` now compiles to a
+  value-semantics `{ i64 tag, [N x i8] data }` union, constructs via
+  `Shape::Circle(x)` / `Shape::Rect(a, b)`, and matches on variants
+  (`Circle(r) ->`, `Rect(w, h) ->`, `Unit ->`) by comparing the runtime tag and
+  binding payload fields. C-like integer enums are unchanged. Generic data
+  enums and `select` variant destructuring are deferred.
 - Generic function calls now accept explicit type arguments, e.g.
   `probe<Int>(0, 0)`. Previously `name<Type>(...)` was mis-parsed as a variable
   declaration (`name` of type `Type`) followed by a bare `( ... )` sequence, so
