@@ -28,6 +28,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   forms remain as a back-compat alias so existing code keeps compiling. Tests,
   examples, demos, and the README now use the new idiom.
 
+- `Result<T, E>` is now a first-class built-in generic data enum
+  (`enum Result<T, E> { Ok(T), Err(E) }`), for fallible operations. It is
+  registered directly in the compiler (semantic generic-enum template plus a
+  codegen tagged-union layout, monomorphized per payload type), so it needs no
+  `import`. It supports qualified construction
+  (`Result<Int, String>::Ok(42)` / `Result<Int, String>::Err("boom")) and
+  type-inferred bare construction (`Ok(x)` / `Err(e)` when the enclosing
+  variable declaration or function return type is `Result<T, E>`). It integrates
+  fully with `match`/`select` variant dispatch and exhaustiveness checking,
+  unwrapping both primitive and heap (e.g. `String`) payloads in either the
+  `Ok` or `Err` position.
+
 ### Fixed
 - `select` now supports data-carrying enum variants directly: arms like
   `Circle(r) ->`, `Rect(w, h) ->`, and `Unit ->` dispatch on the runtime tag and

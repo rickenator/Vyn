@@ -209,23 +209,39 @@ llvm::StructType* LLVMCodegen::monomorphizeEnum(const std::string& baseName,
                                                  const std::vector<ast::TypeNodePtr>& typeArgs) {
     std::string mangledName = mangleGenericTypeName(baseName, typeArgs);
 
-    // Built-in generic data enum: `enum Option<T> { Some(T), None }`. It is not
-    // declared in source, so build its tagged-union layout directly from the
-    // single payload type argument rather than a codegen-registered template.
-    if (baseName == "Option" || baseName == "core::option::Option") {
+    // Built-in generic data enums: `enum Option<T> { Some(T), None }` and
+    // `enum Result<T, E> { Ok(T), Err(E) }`. They are not declared in source, so
+    // build their tagged-union layouts directly from the payload type arguments
+    // rather than a codegen-registered template.
+    if (baseName == "Option" || baseName == "core::option::Option" ||
+        baseName == "Result" || baseName == "core::result::Result") {
         auto cacheIt = taggedEnumInfo.find(mangledName);
         if (cacheIt != taggedEnumInfo.end()) return cacheIt->second.llvmType;
         TaggedEnumInfo info;
-        info.variantTags["Some"] = 0;
-        info.variantTags["None"] = 1;
+        const bool isOption = (baseName == "Option" || baseName == "core::option::Option");
+        struct PayloadVariant { const char* name; unsigned typeArgIdx; };
+        std::vector<PayloadVariant> payloadVariants;
+        int64_t tag = 0;
+        if (isOption) {
+            info.variantTags["Some"] = static_cast<unsigned>(tag++);
+            payloadVariants.push_back({"Some", 0});
+            info.variantTags["None"] = static_cast<unsigned>(tag++);
+        } else {
+            info.variantTags["Ok"] = static_cast<unsigned>(tag++);
+            payloadVariants.push_back({"Ok", 0});
+            info.variantTags["Err"] = static_cast<unsigned>(tag++);
+            payloadVariants.push_back({"Err", 1});
+        }
         unsigned payloadBytes = 0;
-        if (!typeArgs.empty() && typeArgs[0]) {
-            llvm::Type* payloadTy = codegenType(typeArgs[0].get());
+        for (const auto& pv : payloadVariants) {
+            if (pv.typeArgIdx >= typeArgs.size() || !typeArgs[pv.typeArgIdx]) continue;
+            llvm::Type* payloadTy = codegenType(typeArgs[pv.typeArgIdx].get());
             if (!payloadTy) payloadTy = llvm::Type::getInt64Ty(*context);
             llvm::StructType* payloadStruct = llvm::StructType::get(*context, {payloadTy}, false);
-            info.variantPayloadTypes["Some"] = payloadStruct;
+            info.variantPayloadTypes[pv.name] = payloadStruct;
             llvm::TypeSize sz = module->getDataLayout().getTypeAllocSize(payloadStruct);
-            payloadBytes = static_cast<unsigned>(sz.getFixedValue());
+            unsigned bytes = static_cast<unsigned>(sz.getFixedValue());
+            if (bytes > payloadBytes) payloadBytes = bytes;
         }
         if (payloadBytes == 0) payloadBytes = 1;
         info.payloadBytes = payloadBytes;

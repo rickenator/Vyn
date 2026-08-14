@@ -1,0 +1,53 @@
+// @test: built-in Result<T, E> enum with Ok/Err
+// @description: the built-in generic data enum Result<T, E> constructs via qualified
+//   (Result<Int, String>::Ok(...)/::Err(...)) and bare (Ok(...)/Err(...), inferred from
+//   an enclosing Result<T, E> annotation), and match/select dispatch on the payload with
+//   the concrete substituted bindings for both variants.
+// @category: enum, generics, result, match, select, sum-types
+// @expect: pass
+// @expect-return: -77
+// @execute-jit: true
+
+unpack_ok_or(r<Result<Int, String>>)<Int> -> {
+    match (r) {
+        Ok(v) -> { return v }
+        Err(e) -> { return -1 }
+    }
+}
+
+label_result(r<Result<String, String>>)<Int> -> {
+    return select(r) -> {
+        Ok(s) -> s.len(),
+        Err(e) -> -5
+    }
+}
+
+safe_div(a<Int>, b<Int>)<Result<Int, String>> -> {
+    if (b == 0) { return Err("div by zero") }
+    return Ok(a / b)
+}
+
+main()<Int> -> {
+    ok_val<Int> = unpack_ok_or(Result<Int, String>::Ok(42))
+    err_val<Int> = unpack_ok_or(Result<Int, String>::Err("boom"))
+
+    ok_bare<Result<Int, String>> = Ok(7)
+    ok_e<Int> = unpack_ok_or(ok_bare)
+
+    err_bare<Result<Int, String>> = Err("nope")
+    err_e<Int> = unpack_ok_or(err_bare)
+
+    s1<Int> = label_result(Result<String, String>::Ok("hello"))
+    s2<Int> = label_result(Result<String, String>::Err("oops"))
+
+    good<Result<Int, String>> = safe_div(20, 5)
+    bad<Result<Int, String>> = safe_div(1, 0)
+    good_v<Int> = unpack_ok_or(good)
+    bad_v<Int> = unpack_ok_or(bad)
+
+    if (ok_val == 42 && err_val == -1 && ok_e == 7 && err_e == -1 &&
+        s1 == 5 && s2 == -5 && good_v == 4 && bad_v == -1) {
+        return -77
+    }
+    return 1
+}

@@ -510,7 +510,8 @@ llvm::Type* LLVMCodegen::codegenType(vyb::ast::TypeNode* typeNode) {
             // Before checking for primitive types, see if this matches a generic template
             if (!typeNameNode->genericArgs.empty()) {
                 // Generic data enum (e.g. Box<Int>): monomorphize the tagged union.
-                if (genericEnumTemplates.count(typeNameStr) || typeNameStr == "Option") {
+                if (genericEnumTemplates.count(typeNameStr) || typeNameStr == "Option" ||
+                    typeNameStr == "Result") {
                     llvm::StructType* enumTy = monomorphizeEnum(typeNameStr, typeNameNode->genericArgs);
                     if (!enumTy) {
                         logError(typeNode->loc, "Failed to monomorphize generic enum " + typeNameStr);

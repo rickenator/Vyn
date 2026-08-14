@@ -261,7 +261,7 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
 
 ### 4. Standard Library Expansion (HIGH PRIORITY)
 - [x] **`Option<T>`** — `Some(value)` / `None` for nullable values; built-in generic enum (transitional `core::option::OptionInt` bridge retained for source-compat)
-- [ ] **`Result<T, E>`** — `Ok(value)` / `Err(error)` for fallible operations (`core::result` placeholder module exists)
+- [x] **`Result<T, E>`** — `Ok(value)` / `Err(error)` for fallible operations; built-in generic enum (`core::result` placeholder module retained for source-compat)
 - [ ] **Core aspects** — `Display`, `Debug`, `Clone`, `Equatable`, `Comparable`, `Hashable`
 - [x] **String methods** — `.len()`, `.contains()`, `.starts_with()`, `.ends_with()`, `.to_upper()`, `.to_lower()`, `.substring()`, `.char_at()`, `.trim()`, `.replace()`, `String::from_bytes()`
 - [ ] **String methods (remaining)** — `.split()`, `.format()`
@@ -287,7 +287,7 @@ and pattern matching, not be a separate OOP mechanism.
 - [ ] **Enum methods via `bind`** — `bind Drawable -> Shape { ... }` (natural fit!)
 - [x] **`Option<T>` as built-in enum** — `Some(T)` / `None`; registered in the compiler (no `import` needed), constructible via `Option<Int>::Some(x)` / `Option<Int>::None` and type-inferred bare `Some(x)` / `None`, with match/select dispatch and exhaustiveness
 - [ ] **`Option<T>` ergonomics — bare `Some(x)` / `None` anywhere** — bare constructors currently infer only when the enclosing variable declaration or function return type is `Option<T>`; needs general expected-type propagation so they can appear as subexpressions (e.g. `unwrap(Some(7))`, `v.push(Some(x))`)
-- [ ] **`Result<T, E>` as built-in enum** — `Ok(T)` / `Err(E)`
+- [x] **`Result<T, E>` as built-in enum** — `Ok(T)` / `Err(E)`; registered in the compiler (no `import`), constructible via `Result<Int, String>::Ok(x)` / `::Err(e)` and type-inferred bare `Ok(x)` / `Err(e)`, with match/select dispatch and exhaustiveness
 
 ### 6. Introspection System — Completion (MEDIUM PRIORITY)
 - [x] `typeof(expr)` — Returns type hash as i64
@@ -579,7 +579,7 @@ For Vyb to be considered production-ready at 1.0, **all of the following must be
 - [ ] Ownership types runtime-enforced (borrow checking, move semantics)
 - [x] Minimal `mild<T>` control block implemented with `soft()`, `grab()`, and `released()`
 - [x] Error propagation (Phases 2-5) complete
-- [x] `Option<T>` in stdlib (built-in enum); `Result<T, E>` remains
+- [x] `Option<T>` and `Result<T, E>` in stdlib (built-in enums)
 - [ ] Core aspects (`Display`, `Debug`, `Clone`, `Equatable`, `Comparable`, `Hashable`)
 - [ ] Iterator aspect with `for` loop desugaring
 - [ ] Enum/sum types with pattern matching
@@ -696,5 +696,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: August 2026*
 *Current Version: Vyb v0.5.3 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 793 tests passing (harness, 100%)*
+*Overall Status: ~60-65% complete toward 1.0 — 794 tests passing (harness, 100%)*
 *SUGGESTIONS.md merged into this document.*

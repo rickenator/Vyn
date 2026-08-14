@@ -1,0 +1,17 @@
+// @test: non-exhaustive match on built-in Result<T, E> is rejected
+// @description: a match on the built-in Result enum that covers only the Ok
+//   variant is reported as not exhaustive (Err must be covered by an unguarded
+//   arm or wildcard '?').
+// @category: enum, generics, result, match, semantic, error
+// @expect: fail
+// @expect-error: not exhaustive
+
+unpack(r<Result<Int, String>>)<Int> -> {
+    match (r) {
+        Ok(v) -> { return v }
+    }
+}
+
+main()<Int> -> {
+    return 0
+}
