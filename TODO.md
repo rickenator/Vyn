@@ -194,7 +194,10 @@ is the working audit for what needs to be implemented next.
 - [x] **Enum/sum type variant patterns** — `Circle(r) ->`, `Rect(w, h) ->`, `Unit ->` (tagged-union enums): data enums compile to a value-semantics `{ i64 tag, [N x i8] data }` union, construct via `Shape::Variant(args)`, and match arms on variants compare the runtime tag and bind payload fields. Generic data enums and `select` variant destructuring are still pending.
 - [x] **Range patterns** — `1..10 ->` in match arms: an inclusive `[start, end]` bound check compiled for integer/float match values; inverted (`start > end`) ranges are rejected as never-matchable.
 - [x] **Guard clauses** — `pattern if condition ->` in match arms: a guard runs after the pattern matches (destructured struct fields are available to it); if false the arm is skipped and matching falls through to later arms or the default. A guarded wildcard is treated as non-exhaustive so downstream arms stay reachable.
-- [ ] **Exhaustiveness checking** — Compiler rejects non-exhaustive match
+- [x] **Exhaustiveness checking (codegen)** — A `match` whose arms cover every
+  variant of a tagged-union enum is treated as exhaustive (its no-match default
+  is unreachable), so an all-return match used as the final statement compiles
+  cleanly. The semantic analyser does not yet *reject* a non-exhaustive match.
 - [x] **`match` as expression** — `r<Int> = match (v) { pattern -> val, ? -> val }`
   yields the matched arm's value. The result type is inferred from the first
   arm's body expression; codegen allocates a zero-initialized result slot and
@@ -669,5 +672,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: August 2026*
 *Current Version: Vyb v0.5.3 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 782 tests passing (harness, 100%)*
+*Overall Status: ~60-65% complete toward 1.0 — 783 tests passing (harness, 100%)*
 *SUGGESTIONS.md merged into this document.*

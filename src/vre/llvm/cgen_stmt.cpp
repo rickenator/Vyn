@@ -1,4 +1,5 @@
 #include <vyb/parser/ast.hpp>
+#include <set>
 #include "vyb/vre/llvm/codegen.hpp"
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
@@ -1194,6 +1195,30 @@ void LLVMCodegen::codegenMatch(vyb::ast::MatchStatement* node, llvm::AllocaInst*
         (matchValue && matchValue->getType()->isStructTy())
         ? findTaggedEnum(matchValue->getType())
         : nullptr;
+
+    // Exhaustiveness: a match is exhaustive when it has an unguarded wildcard or,
+    // for a tagged-union enum, arms that cover every variant. An exhaustive match
+    // has an impossible default (no-match) path, so its default block is marked
+    // `unreachable`; this lets a function whose arms all `return` compile cleanly
+    // without a spurious "may not return on all paths" diagnostic.
+    if (matchedEnum && !hasWildcard) {
+        std::set<std::string> covered;
+        for (auto& c : node->cases) {
+            if (!c.first) { hasWildcard = true; break; }
+            std::string vname;
+            if (auto* ctor = dynamic_cast<ast::ConstructionExpression*>(c.first.get())) {
+                auto* tv = ctor->constructedType
+                    ? dynamic_cast<ast::TypeName*>(ctor->constructedType.get()) : nullptr;
+                if (tv && tv->identifier) vname = tv->identifier->name;
+            } else if (auto* idp = dynamic_cast<ast::Identifier*>(c.first.get())) {
+                vname = idp->name;
+            }
+            if (!vname.empty()) covered.insert(vname);
+        }
+        if (covered.size() == matchedEnum->variantTags.size()) {
+            hasWildcard = true; // exhaustive: the no-match default is unreachable
+        }
+    }
 
     // Generate code for each case
     for (size_t i = 0; i < node->cases.size(); i++) {

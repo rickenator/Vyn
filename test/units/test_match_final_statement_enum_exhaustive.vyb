@@ -1,0 +1,28 @@
+// @test: exhaustive enum variant match as the final statement
+// @description: a match whose arms cover every variant of a tagged-union enum,
+//   used as the final statement of a value-returning function with all arms
+//   returning, has an unreachable no-match default and compiles cleanly.
+// @category: enum, match, control-flow, sum-types
+// @expect: pass
+// @expect-return: -77
+// @execute-jit: true
+
+enum Shape { Circle(Float), Rect(Float, Float), Unit }
+
+area(s<Shape>)<Float> -> {
+    match (s) {
+        Circle(r) -> { return 3.14 * r * r }
+        Rect(w, h) -> { return w * h }
+        Unit -> { return 0.0 }
+    }
+}
+
+main()<Int> -> {
+    a<Float> = area(Shape::Circle(2.0))
+    b<Float> = area(Shape::Rect(3.0, 4.0))
+    d<Float> = area(Shape::Unit)
+    if (a == 12.56 && b == 12.0 && d == 0.0) {
+        return -77
+    }
+    return 1
+}

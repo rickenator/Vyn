@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- A `match` on a tagged-union enum whose arms cover every variant is now
+  recognized as exhaustive: its no-match default block is marked `unreachable`,
+  so a non-void function whose final statement is such an exhaustive all-return
+  `match` compiles cleanly instead of raising a spurious "may not return on all
+  paths" diagnostic.
 - A non-void function whose last statement is a `match` whose arms all `return`
   (with no trailing `return` after the match) no longer leaves an unterminated
   basic block that trips the LLVM verifier. The fall-through block is now
