@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Guard clauses in `match` arms: `pattern if condition ->` only runs the arm
+  when the pattern matches AND the condition is true. The guard runs after the
+  pattern matches (so it can read destructured struct fields); a false guard
+  falls through to the next arm or the default. A guarded wildcard is treated as
+  non-exhaustive, so later arms (and the no-match fall-through) remain reachable.
 - Inclusive range patterns in `match` arms: `1..10 ->` matches a value within
   `[start, end]` (integer or float). A range whose start is greater than its end
   is statically rejected as never-matchable.

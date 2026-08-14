@@ -4191,8 +4191,13 @@ void SemanticAnalyzer::visit(ast::MatchStatement* node) {
         enterScope();
 
         if (!pattern) {
-            // Wildcard pattern (nullptr)
-            if (wildcardIndex == SIZE_MAX) {
+            // Wildcard pattern (nullptr). A wildcard WITH a guard is not
+            // exhaustive, so it does not make later patterns unreachable.
+            bool wildcardHasGuard = (i < node->guards.size() && node->guards[i]);
+            if (wildcardHasGuard) {
+                // A guarded wildcard covers only the guarded condition; leave
+                // downstream patterns reachable.
+            } else if (wildcardIndex == SIZE_MAX) {
                 wildcardIndex = i;
             } else {
                 // Can't get loc from nullptr, use block as node
@@ -4363,6 +4368,12 @@ void SemanticAnalyzer::visit(ast::MatchStatement* node) {
         } else {
             // Other pattern types
             pattern->accept(*this);
+        }
+
+        // Optional guard clause is analyzed in the same (case) scope so it can
+        // reference destructured bindings from a struct pattern.
+        if (i < node->guards.size() && node->guards[i]) {
+            node->guards[i]->accept(*this);
         }
 
         if (block) {

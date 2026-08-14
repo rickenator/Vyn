@@ -1305,6 +1305,7 @@ vyb::ast::StmtPtr StatementParser::parse_match() {
     // Parse match arms: pattern => expression
     std::vector<std::pair<vyb::ast::ExprPtr, vyb::ast::ExprPtr>> cases;
 
+    std::vector<vyb::ast::ExprPtr> guards;
     while (!check(vyb::TokenType::RBRACE) && !IsAtEnd()) {
         // Skip newlines between cases
         while (match(vyb::TokenType::NEWLINE)) {}
@@ -1367,6 +1368,15 @@ vyb::ast::StmtPtr StatementParser::parse_match() {
             }
         }
 
+        // Optional guard clause: `pattern if condition`
+        vyb::ast::ExprPtr guard = nullptr;
+        if (match(vyb::TokenType::KEYWORD_IF)) {
+            guard = expr_parser_.parse_expression();
+            if (!guard) {
+                throw error(peek(), "Expected condition after 'if' in match arm.");
+            }
+        }
+
         // Expect '->' (arrow)
         expect(vyb::TokenType::ARROW, "Expected '->' after match pattern.");
 
@@ -1387,6 +1397,7 @@ vyb::ast::StmtPtr StatementParser::parse_match() {
         }
 
         cases.emplace_back(std::move(pattern), std::move(result));
+        guards.push_back(std::move(guard));
 
         // Optional comma
         match(vyb::TokenType::COMMA);
@@ -1397,7 +1408,7 @@ vyb::ast::StmtPtr StatementParser::parse_match() {
 
     expect(vyb::TokenType::RBRACE, "Expected '}' after match cases.");
 
-    return std::make_unique<vyb::ast::MatchStatement>(match_loc, std::move(match_expr), std::move(cases));
+    return std::make_unique<vyb::ast::MatchStatement>(match_loc, std::move(match_expr), std::move(cases), std::move(guards));
 }
 
 std::unique_ptr<vyb::ast::BreakStatement> StatementParser::parse_break() {

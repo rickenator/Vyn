@@ -1,0 +1,21 @@
+// @test: guard clauses on match arms
+// @description: `pattern if condition ->` only runs the arm when the pattern matches AND the condition is true
+// @category: pattern matching, match, guards
+// @expect: pass
+// @expect-return: 20
+
+main()<Int> -> {
+    v<Int> = 5
+    match (v) {
+        ? if v > 8 -> {
+            return 10
+        },
+        ? if v > 3 -> {
+            return 20
+        },
+        ? -> {
+            return 30
+        }
+    }
+    return -1
+}

@@ -1170,8 +1170,10 @@ void LLVMCodegen::visit(vyb::ast::MatchStatement* node) {
 
     // Check if there's a wildcard pattern (nullptr) in the cases
     bool hasWildcard = false;
-    for (const auto& caseItem : node->cases) {
-        if (!caseItem.first) {
+    for (size_t ci = 0; ci < node->cases.size(); ++ci) {
+        // A guarded wildcard is not exhaustive, so it does not count as an
+        // unconditional catch-all for the default block.
+        if (!node->cases[ci].first && !(ci < node->guards.size() && node->guards[ci])) {
             hasWildcard = true;
             break;
         }
@@ -1350,6 +1352,31 @@ void LLVMCodegen::visit(vyb::ast::MatchStatement* node) {
         if (pendingStructPattern) {
             bindStructPatternFields(pendingStructPattern, matchValue);
         }
+
+        // Optional guard clause: after the pattern matches (and destructured
+        // fields are bound), evaluate the condition. A false guard falls
+        // through to the next case's pattern check.
+        if (i < node->guards.size() && node->guards[i]) {
+            node->guards[i]->accept(*this);
+            llvm::Value* guardValue = m_currentLLVMValue;
+            if (!guardValue) {
+                logError(node->guards[i]->loc, "Failed to evaluate match arm guard");
+            } else {
+                if (!guardValue->getType()->isIntegerTy(1)) {
+                    guardValue = builder->CreateICmpNE(
+                        guardValue,
+                        llvm::ConstantInt::get(guardValue->getType(), 0),
+                        "match.guard.cmp");
+                }
+                llvm::BasicBlock* guardPassBB = llvm::BasicBlock::Create(
+                    *context, "match.guard.pass." + std::to_string(i), function);
+                llvm::BasicBlock* guardNextBB =
+                    (i < node->cases.size() - 1) ? caseBBs[i + 1] : defaultBB;
+                builder->CreateCondBr(guardValue, guardPassBB, guardNextBB);
+                builder->SetInsertPoint(guardPassBB);
+            }
+        }
+
         if (caseBody) {
             caseBody->accept(*this);
             // Value from the body becomes the match result

@@ -1475,7 +1475,12 @@ class MatchStatement : public Statement {
 public:
     ExprPtr expr;
     std::vector<std::pair<ExprPtr, ExprPtr>> cases;
-    MatchStatement(SourceLocation loc, ExprPtr expr, std::vector<std::pair<ExprPtr, ExprPtr>> cases);
+    // Optional guard clause per case (index-aligned with cases; nullptr = no guard).
+    // A guard `pattern if condition` only matches when the pattern matches AND
+    // the condition evaluates to true.
+    std::vector<ExprPtr> guards;
+    MatchStatement(SourceLocation loc, ExprPtr expr, std::vector<std::pair<ExprPtr, ExprPtr>> cases,
+                   std::vector<ExprPtr> guards = {});
     NodeType getType() const override;
     std::string toString() const override;
     void accept(Visitor& visitor) override;

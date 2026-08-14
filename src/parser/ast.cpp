@@ -1686,8 +1686,9 @@ void ThrowStatement::accept(Visitor& visitor) {
 }
 
 // --- MatchStatement ---
-MatchStatement::MatchStatement(SourceLocation loc, ExprPtr expr, std::vector<std::pair<ExprPtr, ExprPtr>> cases)
-    : Statement(loc), expr(std::move(expr)), cases(std::move(cases)) {}
+MatchStatement::MatchStatement(SourceLocation loc, ExprPtr expr, std::vector<std::pair<ExprPtr, ExprPtr>> cases,
+                               std::vector<ExprPtr> guards)
+    : Statement(loc), expr(std::move(expr)), cases(std::move(cases)), guards(std::move(guards)) {}
 
 NodeType MatchStatement::getType() const {
     return NodeType::MATCH_STATEMENT;
@@ -1695,8 +1696,12 @@ NodeType MatchStatement::getType() const {
 
 std::string MatchStatement::toString() const {
     std::string str = "match " + (expr ? expr->toString() : "nullptr") + " { ";
-    for (const auto& c : cases) {
-        str += (c.first ? c.first->toString() : "_") + " => " + (c.second ? c.second->toString() : "nullptr") + "; ";
+    for (size_t i = 0; i < cases.size(); ++i) {
+        str += (cases[i].first ? cases[i].first->toString() : "_");
+        if (i < guards.size() && guards[i]) {
+            str += " if " + guards[i]->toString();
+        }
+        str += " => " + (cases[i].second ? cases[i].second->toString() : "nullptr") + "; ";
     }
     str += "}";
     return str;

@@ -1,0 +1,18 @@
+// @test: a failing guard falls through to the next arm or default
+// @description: When a guard is false, matching continues to later arms; with no match, execution continues after the match
+// @category: pattern matching, match, guards
+// @expect: pass
+// @expect-return: 999
+
+main()<Int> -> {
+    v<Int> = 5
+    match (v) {
+        1..3 -> {
+            return 100
+        },
+        ? if v == 9 -> {
+            return 300
+        }
+    }
+    return 999
+}
