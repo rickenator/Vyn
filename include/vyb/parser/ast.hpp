@@ -59,6 +59,7 @@ class RangeExpression; // Added for range-based for loops
 class BlockExpression; // Block as expression for match arms
 class SelectExpression; // Select expression for pattern matching with returns
 class ComparisonPattern; // Comparison pattern for match/select (e.g., >= 18)
+class StructPattern; // Struct destructuring pattern (e.g., Point { x, y })
 class TypeofExpression; // Introspection: typeof(expr) returns Type
 class TypenameExpression; // Introspection: typename(expr) returns String
 
@@ -214,6 +215,7 @@ enum class NodeType {
     BLOCK_EXPRESSION, // Block as expression for match arms
     SELECT_EXPRESSION, // Select expression for pattern matching
     COMPARISON_PATTERN, // Comparison pattern for match/select
+    STRUCT_PATTERN, // Struct destructuring pattern (e.g., Point { x, y })
     TYPEOF_EXPRESSION, // Introspection: typeof(expr) returns Type
     TYPENAME_EXPRESSION, // Introspection: typename(expr) returns String
 
@@ -320,6 +322,7 @@ public:
     virtual void visit(BlockExpression* node) = 0;
     virtual void visit(SelectExpression* node) = 0;
     virtual void visit(ComparisonPattern* node) = 0;
+    virtual void visit(StructPattern* node) = 0;
     virtual void visit(TypeofExpression* node) = 0;
     virtual void visit(TypenameExpression* node) = 0;
 
@@ -1413,6 +1416,19 @@ public:
     ExprPtr value;    // Value to compare against
 
     ComparisonPattern(SourceLocation loc, token::Token op, ExprPtr value);
+    NodeType getType() const override;
+    std::string toString() const override;
+    void accept(Visitor& visitor) override;
+};
+
+// --- StructPattern ---
+// Represents struct destructuring `Type { a, b }` in match/select arms.
+class StructPattern : public Expression {
+public:
+    ast::TypeNodePtr typeName;                     // Struct type being destructured
+    std::vector<std::unique_ptr<Identifier>> bindings; // Bound variable names (== field names)
+
+    StructPattern(SourceLocation loc, ast::TypeNodePtr typeName, std::vector<std::unique_ptr<Identifier>> bindings);
     NodeType getType() const override;
     std::string toString() const override;
     void accept(Visitor& visitor) override;

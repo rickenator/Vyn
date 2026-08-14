@@ -4979,6 +4979,13 @@ void LLVMCodegen::visit(ast::ComparisonPattern* node) {
     m_currentLLVMValue = nullptr;
 }
 
+
+void LLVMCodegen::visit(ast::StructPattern* node) {
+    // Struct destructuring is handled inline in MatchStatement::visit where the
+    // matched struct value is available for field extraction.
+    (void)node;
+}
+
 void LLVMCodegen::visit(ast::SelectExpression* node) {
     // Select expression: pattern match and return a value
     // Supports both naked expressions (auto-return) and blocks with pass keyword

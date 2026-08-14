@@ -1330,10 +1330,30 @@ vyb::ast::StmtPtr StatementParser::parse_match() {
                 op_token.location, op_token, std::move(value)
             );
         } else {
-            // Primary expression pattern (literal for exact match)
+            // Primary expression pattern (literal for exact match). A struct
+            // destructuring pattern such as `Point { x, y }` parses as an object
+            // literal whose fields are all value-less shorthand entries; detect
+            // that form and reinterpret it as a StructPattern.
             pattern = expr_parser_.parse_primary();
             if (!pattern) {
                 throw error(peek(), "Expected pattern in match arm.");
+            }
+            if (auto* obj = dynamic_cast<vyb::ast::ObjectLiteral*>(pattern.get())) {
+                if (obj->typePath && !obj->properties.empty()) {
+                    bool allShorthand = true;
+                    for (const auto& prop : obj->properties) {
+                        if (prop.value) { allShorthand = false; break; }
+                    }
+                    if (allShorthand) {
+                        std::vector<std::unique_ptr<vyb::ast::Identifier>> bindings;
+                        for (const auto& prop : obj->properties) {
+                            bindings.push_back(std::make_unique<vyb::ast::Identifier>(prop.key->loc, prop.key->name));
+                        }
+                        auto typeName = obj->typePath->clone();
+                        pattern = std::make_unique<vyb::ast::StructPattern>(
+                            pattern->loc, std::move(typeName), std::move(bindings));
+                    }
+                }
             }
         }
 

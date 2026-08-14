@@ -425,6 +425,7 @@ private:
 
     // Struct field access
     int getStructFieldIndex(llvm::StructType* structType, const std::string& fieldName);
+    void bindStructPatternFields(const vyb::ast::StructPattern* node, llvm::Value* matchValue);
 
 public:
     // Visitor methods overridden from vyb::Visitor, corrected to match ast.hpp
@@ -467,6 +468,7 @@ public:
     void visit(vyb::ast::BlockExpression* node) override;
     void visit(vyb::ast::SelectExpression* node) override;
     void visit(vyb::ast::ComparisonPattern* node) override;
+    void visit(vyb::ast::StructPattern* node) override;
 
     // Add missing visit methods for expressions from ast.hpp if they are defined there
     // and are causing linker errors.

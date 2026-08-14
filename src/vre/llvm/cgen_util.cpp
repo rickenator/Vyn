@@ -382,3 +382,30 @@ int LLVMCodegen::getStructFieldIndex(llvm::StructType* structType, const std::st
     }
     return -1; // Field not found or struct type not recognized by our map
 }
+
+// Bind the fields of a struct destructuring pattern (e.g., `Point { x, y }`) as
+// local variables in the current scope, extracting each field from the matched
+// struct value.
+void LLVMCodegen::bindStructPatternFields(const vyb::ast::StructPattern* node, llvm::Value* matchValue) {
+    llvm::StructType* structType = llvm::dyn_cast_or_null<llvm::StructType>(matchValue ? matchValue->getType() : nullptr);
+    if (!structType) {
+        return;
+    }
+    for (auto& binding : node->bindings) {
+        if (!binding) continue;
+        const std::string& fname = binding->name;
+        int fieldIndex = getStructFieldIndex(structType, fname);
+        if (fieldIndex < 0) {
+            logError(binding->loc, "Field '" + fname + "' not found in matched struct during destructuring");
+            continue;
+        }
+        llvm::Value* fieldValue = builder->CreateExtractValue(
+            matchValue, static_cast<unsigned>(fieldIndex), fname);
+        llvm::AllocaInst* alloca = createEntryBlockAlloca(fieldValue->getType(), fname);
+        builder->CreateStore(fieldValue, alloca);
+        namedValues[fname] = alloca;
+        if (binding->type) {
+            valueTypeMap[alloca] = std::shared_ptr<vyb::ast::TypeNode>(binding->type->clone());
+        }
+    }
+}

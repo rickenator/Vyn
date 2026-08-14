@@ -392,6 +392,7 @@ public:
     void visit(ast::BlockExpression* node) override;
     void visit(ast::SelectExpression* node) override;
     void visit(ast::ComparisonPattern* node) override;
+    void visit(ast::StructPattern* node) override;
     void visit(ast::ListComprehension* node) override;
     void visit(ast::GenericInstantiationExpression* node) override;
     void visit(ast::PointerDerefExpression* node) override;

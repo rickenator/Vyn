@@ -1187,6 +1187,7 @@ void LLVMCodegen::visit(vyb::ast::MatchStatement* node) {
         auto& caseBody = node->cases[i].second;
 
         // Default pattern (underscore/wildcard) just branches to the body
+        const ast::StructPattern* pendingStructPattern = nullptr;
         if (!casePattern) {
             builder->CreateBr(caseBodyBBs[i]);
         } else {
@@ -1195,7 +1196,18 @@ void LLVMCodegen::visit(vyb::ast::MatchStatement* node) {
 
             llvm::Value* isMatch = nullptr;
 
-            if (isComparisonPattern) {
+            if (auto* sp = dynamic_cast<ast::StructPattern*>(casePattern.get())) {
+                // Struct destructuring: the matched value must be a struct. Vyb
+                // statically types structs (no runtime type tags), so a struct
+                // pattern always matches; its fields are bound in the case body.
+                if (!matchValue->getType()->isStructTy()) {
+                    logError(sp->loc, "Struct destructuring pattern requires a struct match value");
+                    isMatch = llvm::ConstantInt::getFalse(*context);
+                } else {
+                    isMatch = llvm::ConstantInt::getTrue(*context);
+                    pendingStructPattern = sp;
+                }
+            } else if (isComparisonPattern) {
                 // Handle comparison pattern
                 auto* compPattern = static_cast<vyb::ast::ComparisonPattern*>(casePattern.get());
 
@@ -1309,10 +1321,16 @@ void LLVMCodegen::visit(vyb::ast::MatchStatement* node) {
 
         // Generate code for the case body
         builder->SetInsertPoint(caseBodyBBs[i]);
+        auto savedCaseNamedValues = namedValues;
+        if (pendingStructPattern) {
+            bindStructPatternFields(pendingStructPattern, matchValue);
+        }
         if (caseBody) {
             caseBody->accept(*this);
             // Value from the body becomes the match result
         }
+        // Scoped destructured field bindings per case arm.
+        namedValues = std::move(savedCaseNamedValues);
 
         // Branch to end of match only if the case body doesn't already have a terminator
         if (!builder->GetInsertBlock()->getTerminator()) {

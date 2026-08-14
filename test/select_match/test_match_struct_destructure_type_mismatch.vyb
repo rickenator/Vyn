@@ -1,0 +1,20 @@
+// @test: struct destructuring type mismatch is rejected
+// @description: A struct pattern cannot match a value whose static type differs from the pattern's type
+// @category: pattern matching, match, structs
+// @expect: fail
+// @expect-error: cannot match a value of type 'Int'
+
+struct Point {
+    x<Int>,
+    y<Int>
+}
+
+main()<Int> -> {
+    n<Int> = 9
+    match (n) {
+        Point { x, y } -> {
+            return x + y
+        }
+    }
+    return -1
+}

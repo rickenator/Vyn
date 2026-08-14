@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Struct destructuring in `match` arms: a `Point { x, y }` pattern binds each
+  listed field as a local variable in the arm body (extracted from the matched
+  struct value). Field names are validated against the struct, and a struct
+  pattern that can never match the match expression's static type
+  (e.g. `Int` vs `Point { ... }`) is rejected at semantic analysis. Also fixed
+  typed-struct-literal detection in `parse_primary` so `Type { ... }` is
+  recognized even when a leading newline separates it from a preceding token
+  (the match-arm case).
 - A bind method whose return type is `Self::Item` inside the bind body now
   resolves the associated type in both concrete and generic binds. For a
   concrete bind (`bind Iterator -> CounterIter { type Item = Int; next(self)<Self::Item> }`)

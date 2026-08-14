@@ -546,36 +546,62 @@ regular_array_literal:
             bool is_typed_struct = false;
             bool has_generic_args = false;
 
-            // Look ahead to check for Type { or Type<Args> { patterns
-            if (pos_ + 1 < tokens_.size()) {
-                if (tokens_[pos_ + 1].type == TokenType::LBRACE) {
-                    // Simple case: Type {
-                    is_typed_struct = true;
-                } else if (tokens_[pos_ + 1].type == TokenType::LT) {
-                    // Potential generic type: Type<...> {
-                    // Scan ahead to find matching > followed by {
-                    int angle_depth = 0;
-                    size_t scan_pos = pos_ + 1;
+            // Locate the identifier's real token index. peek() may sit on a
+            // leading NEWLINE/INDENT (e.g., a match-arm pattern on its own line),
+            // so inspect the first significant token AFTER the identifier.
+            auto next_significant = [&](size_t cstart) -> size_t {
+                for (size_t i = cstart; i < tokens_.size(); ++i) {
+                    if (tokens_[i].type != TokenType::COMMENT &&
+                        tokens_[i].type != TokenType::NEWLINE &&
+                        tokens_[i].type != TokenType::INDENT &&
+                        tokens_[i].type != TokenType::DEDENT) {
+                        return i;
+                    }
+                }
+                return tokens_.size();
+            };
+            size_t ident_idx = pos_;
+            while (ident_idx < tokens_.size() &&
+                   (tokens_[ident_idx].type == TokenType::COMMENT ||
+                    tokens_[ident_idx].type == TokenType::NEWLINE ||
+                    tokens_[ident_idx].type == TokenType::INDENT ||
+                    tokens_[ident_idx].type == TokenType::DEDENT)) {
+                ident_idx++;
+            }
 
-                    while (scan_pos < tokens_.size()) {
-                        if (tokens_[scan_pos].type == TokenType::LT) {
-                            angle_depth++;
-                        } else if (tokens_[scan_pos].type == TokenType::GT) {
-                            angle_depth--;
-                            if (angle_depth == 0) {
-                                // Found matching >, check next token for {
-                                if (scan_pos + 1 < tokens_.size() &&
-                                    tokens_[scan_pos + 1].type == TokenType::LBRACE) {
-                                    is_typed_struct = true;
-                                    has_generic_args = true;
+            // Look ahead to check for Type { or Type<Args> { patterns
+            if (ident_idx + 1 < tokens_.size()) {
+                size_t after_ident = next_significant(ident_idx + 1);
+                if (after_ident < tokens_.size()) {
+                    if (tokens_[after_ident].type == TokenType::LBRACE) {
+                        // Simple case: Type {
+                        is_typed_struct = true;
+                    } else if (tokens_[after_ident].type == TokenType::LT) {
+                        // Potential generic type: Type<...> {
+                        // Scan ahead to find matching > followed by {
+                        int angle_depth = 0;
+                        size_t scan_pos = after_ident;
+                        while (scan_pos < tokens_.size()) {
+                            if (tokens_[scan_pos].type == TokenType::LT) {
+                                angle_depth++;
+                            } else if (tokens_[scan_pos].type == TokenType::GT) {
+                                angle_depth--;
+                                if (angle_depth == 0) {
+                                    // Found matching >, check next token for {
+                                    size_t after_gt = next_significant(scan_pos + 1);
+                                    if (after_gt < tokens_.size() &&
+                                        tokens_[after_gt].type == TokenType::LBRACE) {
+                                        is_typed_struct = true;
+                                        has_generic_args = true;
+                                    }
+                                    break;
                                 }
+                            } else if (angle_depth == 0) {
+                                // Hit something else at same level, not a generic type literal
                                 break;
                             }
-                        } else if (angle_depth == 0) {
-                            // Hit something else at same level, not a generic type literal
-                            break;
+                            scan_pos++;
                         }
-                        scan_pos++;
                     }
                 }
             }

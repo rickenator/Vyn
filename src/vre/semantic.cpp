@@ -3839,6 +3839,13 @@ void SemanticAnalyzer::visit(ast::ComparisonPattern* node) {
     // - Check that the matched expression type supports the comparison
 }
 
+
+void SemanticAnalyzer::visit(ast::StructPattern* node) {
+    // Struct destructuring is handled inline in MatchStatement::visit so the
+    // bound fields live in the correct case scope alongside the case body.
+    (void)node;
+}
+
 void SemanticAnalyzer::visit(ast::ListComprehension* node) {}
 void SemanticAnalyzer::visit(ast::GenericInstantiationExpression* node) {
     if (!node || !node->baseExpression) {
@@ -4155,6 +4162,17 @@ void SemanticAnalyzer::visit(ast::MatchStatement* node) {
         node->expr->accept(*this);
     }
 
+    // Best-effort static type of the match expression, used to reject struct
+    // destructuring patterns whose target type can never match.
+    std::string matchTypeStr;
+    if (node->expr) {
+        if (auto it = expressionTypes.find(node->expr.get()); it != expressionTypes.end() && it->second) {
+            matchTypeStr = it->second->toString();
+        } else if (node->expr->type) {
+            matchTypeStr = node->expr->type->toString();
+        }
+    }
+
     // Track comparison patterns for unreachable detection
     struct ComparisonInfo {
         vyb::TokenType op;
@@ -4167,6 +4185,10 @@ void SemanticAnalyzer::visit(ast::MatchStatement* node) {
     // Visit all patterns and check for unreachable patterns
     for (size_t i = 0; i < node->cases.size(); i++) {
         const auto& [pattern, block] = node->cases[i];
+
+        // Each case (pattern + body) gets its own scope so destructured bindings
+        // from a struct pattern are scoped to the matching arm only.
+        enterScope();
 
         if (!pattern) {
             // Wildcard pattern (nullptr)
@@ -4262,6 +4284,72 @@ void SemanticAnalyzer::visit(ast::MatchStatement* node) {
             }
 
             comp->accept(*this);
+        } else if (auto* sp = dynamic_cast<ast::StructPattern*>(pattern.get())) {
+            // Struct destructuring: bind each field name as a variable in the
+            // current (case) scope so the case body can read the fields.
+            std::string structName = sp->typeName ? sp->typeName->toString() : "";
+            // Extract the core type identifier of a type string (strip ownership
+            // wrappers like my<Point> and trailing generic arguments) so we can
+            // reject patterns that can never match the match expression's type.
+            auto coreTypeName = [](std::string t) -> std::string {
+                bool stripped = true;
+                while (stripped) {
+                    stripped = false;
+                    size_t lt = t.find('<');
+                    if (lt != std::string::npos) {
+                        std::string head = t.substr(0, lt);
+                        if (head == "my" || head == "our" || head == "their" || head == "mild") {
+                            size_t gt = t.rfind('>');
+                            if (gt != std::string::npos && gt > lt) {
+                                t = t.substr(lt + 1, gt - lt - 1);
+                                stripped = true;
+                            }
+                        }
+                    }
+                }
+                size_t lt = t.find('<');
+                if (lt != std::string::npos) t = t.substr(0, lt);
+                return t;
+            };
+            if (!matchTypeStr.empty() && coreTypeName(matchTypeStr) != structName) {
+                addError("Struct pattern '" + structName + "' cannot match a value of type '" +
+                         matchTypeStr + "'.", sp);
+                auto fieldsIt = structFieldTypes.find(structName);
+                if (fieldsIt != structFieldTypes.end()) {
+                    const auto& spFields = fieldsIt->second;
+                    for (auto& binding : sp->bindings) {
+                        binding->type = nullptr;
+                    }
+                }
+            } else {
+                auto fieldsIt = structFieldTypes.find(structName);
+                if (fieldsIt == structFieldTypes.end()) {
+                    addError("Unknown struct type in destructuring pattern: " + structName, sp);
+                } else {
+                    const auto& spFields = fieldsIt->second;
+                    for (auto& binding : sp->bindings) {
+                        const std::string& fname = binding->name;
+                        if (currentScope->lookupDirect(fname)) {
+                            addError("Redefinition of variable \"" + fname +
+                                     "\" in destructuring pattern.", binding.get());
+                            continue;
+                        }
+                        auto ftIt = spFields.find(fname);
+                        if (ftIt == spFields.end()) {
+                            addError("Struct '" + structName + "' has no field '" + fname +
+                                     "' in destructuring pattern.", binding.get());
+                            continue;
+                        }
+                        ast::TypeNode* fieldType = ftIt->second;
+                        currentScope->add(SymbolInfo{
+                            SymbolInfo::Kind::Variable, fname, false, ast::OwnershipKind::MY,
+                            fieldType ? fieldType->clone().release() : nullptr});
+                        // Record the field type on the binding itself so codegen can
+                        // populate valueTypeMap for the destructured variable.
+                        binding->type = fieldType ? std::shared_ptr<ast::TypeNode>(fieldType->clone()) : nullptr;
+                    }
+                }
+            }
         } else {
             // Other pattern types
             pattern->accept(*this);
@@ -4270,6 +4358,8 @@ void SemanticAnalyzer::visit(ast::MatchStatement* node) {
         if (block) {
             block->accept(*this);
         }
+
+        exitScope();
     }
 }
 void SemanticAnalyzer::visit(ast::YieldStatement* node) {

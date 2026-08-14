@@ -1615,6 +1615,28 @@ void ComparisonPattern::accept(Visitor& visitor) {
     visitor.visit(this);
 }
 
+// --- StructPattern ---
+StructPattern::StructPattern(SourceLocation loc, TypeNodePtr typeName, std::vector<std::unique_ptr<Identifier>> bindings)
+    : Expression(loc), typeName(std::move(typeName)), bindings(std::move(bindings)) {}
+
+NodeType StructPattern::getType() const {
+    return NodeType::STRUCT_PATTERN;
+}
+
+std::string StructPattern::toString() const {
+    std::string str = (typeName ? typeName->toString() : "?") + " { ";
+    for (size_t i = 0; i < bindings.size(); ++i) {
+        if (i) str += ", ";
+        str += (bindings[i] ? bindings[i]->name : "?");
+    }
+    str += " }";
+    return str;
+}
+
+void StructPattern::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
 // --- TypeofExpression ---
 TypeofExpression::TypeofExpression(SourceLocation loc, ExprPtr operand)
     : Expression(loc), operand(std::move(operand)) {}

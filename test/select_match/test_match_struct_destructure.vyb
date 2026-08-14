@@ -1,0 +1,23 @@
+// @test: struct destructuring in match arms
+// @description: A `Point { x, y }` pattern destructures the matched struct and binds x and y in the arm body
+// @category: pattern matching, match, structs
+// @expect: pass
+// @expect-return: 7
+
+struct Point {
+    x<Int>,
+    y<Int>
+}
+
+main()<Int> -> {
+    p<Point> = Point { x = 3, y = 4 }
+    match (p) {
+        Point { x, y } -> {
+            return x + y
+        },
+        ? -> {
+            return 0
+        }
+    }
+    return -1
+}
