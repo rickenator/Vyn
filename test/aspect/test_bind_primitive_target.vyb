@@ -1,0 +1,51 @@
+// @test: aspect binds target primitive scalar types
+// @description: A bind can target a primitive scalar (Int, Float, Bool, Char) — not just a struct — dispatching unqualified and through generic bounds, including the core::aspects contracts.
+// @category: aspect, bind, primitives, bounds
+// @expect: pass
+// @expect-return: 0
+
+import core::aspects
+
+bind Display -> Int {
+    display(self<Int>)<String> -> { return "n" + self.to_string() }
+}
+
+bind Equatable -> Int {
+    equals(self<Int>, other<Int>)<Bool> -> { return self == other }
+}
+
+bind Comparable -> Int {
+    compare(self<Int>, other<Int>)<Int> -> { return self - other }
+}
+
+bind Clone -> Int {
+    clone(self<Int>)<Int> -> { return self }
+}
+
+aspect Scalar {
+    toggle(self)<Bool>
+}
+
+bind Scalar -> Bool {
+    toggle(self<Bool>)<Bool> -> { return !self }
+}
+
+describe<T<Display>>(thing<T>)<String> -> {
+    return thing.display()
+}
+
+isSame<T<Equatable>>(a<T>, b<T>)<Bool> -> {
+    return a.equals(b)
+}
+
+main()<Int> -> {
+    a<Int> = 5
+    b<Int> = 5
+    bf<Bool> = false
+    if (a.display() == "n5" && describe(a) == "n5" && isSame(a, b) &&
+        a.equals(b) && a.compare(b) == 0 && a.clone() == 5 &&
+        bf.toggle() == true) {
+        return 0
+    }
+    return 1
+}

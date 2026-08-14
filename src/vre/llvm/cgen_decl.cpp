@@ -954,14 +954,24 @@ void LLVMCodegen::visit(vyb::ast::BindDeclaration* node) {
     // ast.hpp: std::vector<std::unique_ptr<FunctionDeclaration>> methods;
 
     llvm::Type* targetType = codegenType(node->selfType.get());
-    if (!targetType || !targetType->isStructTy()) {
-        logError(node->loc, "Target type for impl block is not a known struct/class type: " + node->selfType->toString());
+    if (!targetType) {
+        logError(node->loc, "Could not resolve bind target type: " + node->selfType->toString());
+        m_currentLLVMValue = nullptr; return;
+    }
+    // A bind target may be a user struct, a built-in struct (String/Bytes/Vec), or a
+    // primitive scalar (Int/Float/Bool/Char/sized ints). Scalar targets carry no struct
+    // type to associate, so currentClassType is left null and Self resolves via
+    // m_currentImplTypeNode (which is set to the target type node below).
+    llvm::StructType* structTarget = llvm::dyn_cast<llvm::StructType>(targetType);
+    bool isScalarTarget = targetType->isIntegerTy() || targetType->isFloatingPointTy();
+    if (!structTarget && !isScalarTarget) {
+        logError(node->loc, "Target type for bind is not a known struct/class or primitive scalar type: " + node->selfType->toString());
         m_currentLLVMValue = nullptr; return;
     }
     llvm::StructType* oldCurrentClassType = currentClassType;
     ast::TypeNode* oldCurrentImplTypeNode = m_currentImplTypeNode;
     std::string oldCurrentImplTraitName = m_currentImplTraitName;
-    currentClassType = llvm::dyn_cast<llvm::StructType>(targetType);
+    currentClassType = structTarget;
     m_currentImplTypeNode = node->selfType.get();
     m_currentImplTraitName = node->traitType ? node->traitType->toString() : std::string();
 

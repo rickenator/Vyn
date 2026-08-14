@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Aspect binds to primitive scalar targets** — a `bind` may now target a
+  primitive scalar type (`Int`, `Float`, `Bool`, `Char`, sized ints) in addition
+  to structs. Primitive-bound methods dispatch unqualified (`v.display()`,
+  `a.equals(b)`, real `self` arithmetic like `self * 2`) and through generic
+  bounds (`<T<Display>>`, `<T<Equatable>>`), monomorphizing per concrete type.
+  Codegen previously rejected any non-struct impl target (`Target type for impl
+  block is not a known struct/class type`); it now accepts resolved integer and
+  floating-point types, leaving `currentClassType` null and resolving `Self` via
+  the impl target type node.
+
 - **Core aspects stdlib contracts** — a new `core::aspects` stdlib module declares
   the six canonical polymorphic contracts (`Display`, `Debug`, `Clone`, `Equatable`,
   `Hashable`, `Comparable`), with `Comparable : Equatable` as a super-aspect. The
