@@ -144,6 +144,15 @@ vyb::ast::StmtPtr StatementParser::parse() {
 
                 // Check for new unified syntax pattern: name<Type>
                 if (next_token.type == vyb::TokenType::LT) {
+                    // If name<Type> is immediately followed by '(' it is not a variable
+                    // declaration — it is a generic function call with explicit type
+                    // arguments (e.g. probe<Int>(0, 0)). Route it through the expression
+                    // parser instead of splitting it into a declaration + sequence.
+                    if (this->looks_like_generic_call()) {
+                        if (this->expr_parser_.is_expression_start(current_token.type)) {
+                            return parse_expression_statement();
+                        }
+                    }
                     return parse_var_decl();
                 }
 
@@ -1100,6 +1109,32 @@ vyb::ast::ExprPtr StatementParser::parse_pattern() {
     return std::make_unique<vyb::ast::Identifier>(id_token.location, id_token.lexeme); // Use lexeme
 }
 
+
+bool StatementParser::looks_like_generic_call() {
+    // The statement currently starts with an identifier (pos_ points at it).
+    // Peek ahead: if `name<Type...>` is immediately followed by '(' then this is a
+    // generic function call with explicit type arguments (probe<Int>(0, 0)) rather
+    // than a variable declaration, which is never followed directly by '('.
+    size_t start = this->pos_;
+    try {
+        this->expect(vyb::TokenType::IDENTIFIER, "Expected identifier in generic call check.");
+        this->expect(vyb::TokenType::LT, "Expected '<' in generic call check.");
+        do {
+            ast::TypeNodePtr type_node = this->type_parser_.parse();
+            if (!type_node) {
+                this->pos_ = start;
+                return false;
+            }
+        } while (this->match(vyb::TokenType::COMMA));
+        this->expect(vyb::TokenType::GT, "Expected '>' in generic call check.");
+        bool is_call = (this->peek().type == vyb::TokenType::LPAREN);
+        this->pos_ = start;
+        return is_call;
+    } catch (...) {
+        this->pos_ = start;
+        return false;
+    }
+}
 
 bool StatementParser::is_statement_start(vyb::TokenType type) const {
     switch (type) {

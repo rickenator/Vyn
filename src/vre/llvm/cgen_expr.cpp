@@ -2516,11 +2516,26 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         ast::FunctionDeclaration* templateFunc = genericFunctionTemplates[identCallee->name];
         size_t numTypeParams = templateFunc->genericParams.size();
 
+        // Choose concrete type arguments: explicit (probe<Int>(0, 0)) if the
+        // caller wrote them, otherwise infer them from the call-site argument types.
+        std::vector<std::string> concreteTypeArgs(numTypeParams, "");
+
+        if (!node->explicitTypeArgs.empty()) {
+            if (node->explicitTypeArgs.size() != numTypeParams) {
+                logError(node->loc, "Explicit type argument count mismatch for generic function " + identCallee->name +
+                         " (expected " + std::to_string(numTypeParams) + ", got " +
+                         std::to_string(node->explicitTypeArgs.size()) + ")");
+                m_currentLLVMValue = nullptr;
+                return;
+            }
+            for (size_t i = 0; i < numTypeParams; ++i) {
+                concreteTypeArgs[i] = node->explicitTypeArgs[i]->toString();
+            }
+            VYB_CDBG << "DEBUG: Using explicit type arguments for " << identCallee->name << std::endl;
+        } else {
         // Infer concrete type arguments from call site
         // Strategy: match each argument to its corresponding type parameter
         // by checking if the argument's type matches the parameter's declared type pattern
-        std::vector<std::string> concreteTypeArgs(numTypeParams, "");
-
         for (size_t i = 0; i < node->arguments.size(); ++i) {
             // Evaluate argument to infer type
             node->arguments[i]->accept(*this);
@@ -2568,7 +2583,6 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 }
             }
         }
-
         // Fill any remaining empty type params with a default (shouldn't happen for valid code)
         for (size_t p = 0; p < numTypeParams; ++p) {
             if (concreteTypeArgs[p].empty()) {
@@ -2579,7 +2593,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 return;
             }
         }
-
+        }
         // Monomorphize the generic function
         llvm::Function* monomorphizedFunc = monomorphizeGenericFunction(identCallee->name, concreteTypeArgs);
         if (!monomorphizedFunc) {
@@ -3880,6 +3894,25 @@ void LLVMCodegen::visit(ast::ConstructionExpression* node) {
     }
 
     VYB_CDBG << "DEBUG: ConstructionExpression processing type: " << node->constructedType->toString() << std::endl;
+
+    // If the "constructed type" is actually a generic function template invoked with
+    // explicit type arguments (e.g. `probe<Int>(0, 0)`), this is a generic function
+    // call rather than struct construction. Dispatch it through the call path so the
+    // explicit type args are honored and the failable return ABI (and trap handling)
+    // apply, matching plain inferred generic calls.
+    if (auto* tname = dynamic_cast<ast::TypeName*>(node->constructedType.get())) {
+        if (tname->identifier && !tname->genericArgs.empty()) {
+            std::string fnName = tname->identifier->name;
+            if (genericFunctionTemplates.find(fnName) != genericFunctionTemplates.end()) {
+                VYB_CDBG << "DEBUG: ConstructionExpression is a generic function call: " << fnName << std::endl;
+                auto calleeId = std::make_unique<ast::Identifier>(tname->identifier->loc, fnName);
+                auto callExpr = std::make_unique<ast::CallExpression>(node->loc, std::move(calleeId), std::move(node->arguments));
+                callExpr->explicitTypeArgs = std::move(tname->genericArgs);
+                this->visit(static_cast<ast::CallExpression*>(callExpr.get()));
+                return;
+            }
+        }
+    }
 
     // Get the type being constructed
     llvm::Type* constructedLLVMType = codegenType(node->constructedType.get());

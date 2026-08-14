@@ -638,6 +638,10 @@ class CallExpression : public Expression {
 public:
     ExprPtr callee;
     std::vector<ExprPtr> arguments;
+    // Explicit generic type arguments recorded when a call is written with
+    // explicit type args (e.g. `probe<Int>(0, 0)`). Empty when the callee was
+    // a plain identifier, in which case type args are inferred at the call site.
+    std::vector<TypeNodePtr> explicitTypeArgs;
 
     CallExpression(SourceLocation loc, ExprPtr callee, std::vector<ExprPtr> arguments);
     virtual ~CallExpression();

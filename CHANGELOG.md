@@ -29,6 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   untrapped failure even when the caller trapped it.
 
 ### Added
+- Generic function calls now accept explicit type arguments, e.g.
+  `probe<Int>(0, 0)`. Previously `name<Type>(...)` was mis-parsed as a variable
+  declaration (`name` of type `Type`) followed by a bare `( ... )` sequence, so
+  such a call silently compiled to a no-op instead of invoking the function.
+  Explicit type args now flow into generic monomorphization (they are used
+  directly rather than inferred, which also supports zero-argument generic
+  calls), and the call uses the same failable `{T, i8*}` ABI as inferred
+  generic calls so a `fail` inside is still caught by the caller's `trap`.
 - `ensure` contract statements: `ensure cond else handling` runs `handling`
   whenever `cond` is false. It desugars to `if (cond) { } else { handling }`
   and so plugs directly into the `fail`/`trap` error system. The handling may

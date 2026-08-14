@@ -201,6 +201,7 @@ namespace vyb { // Changed Vyb to vyb
         std::unique_ptr<vyb::ast::ExitStatement> parse_exit();
         std::unique_ptr<vyb::ast::RethrowStatement> parse_rethrow();
         vyb::ast::StmtPtr parse_var_decl();
+        bool looks_like_generic_call();
         vyb::ast::StmtPtr try_parse_tuple_destructure();
         std::unique_ptr<vyb::ast::Node> parse_struct_pattern();
         std::unique_ptr<vyb::ast::Node> parse_tuple_pattern();

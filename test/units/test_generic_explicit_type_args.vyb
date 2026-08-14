@@ -1,0 +1,26 @@
+// @test: explicit type arguments on generic function calls
+// @description: probe<Int>(0, 0) parses as a generic call (not a variable declaration
+//   plus a "(0, 0)" sequence), monomorphizes with the explicit type arg, and a `fail`
+//   inside the monomorphized body is caught by the caller's trap via the failable ABI.
+// @category: generics, error_handling, fail, trap
+// @expect: pass
+// @expect-return: -77
+// @execute-jit: true
+
+struct GErr { code<Int> }
+
+probe<T>(value<T>, flag<Int>)<Int> -> {
+    if (flag == 0) {
+        fail<GErr>(GErr { code = 9 })
+    }
+    return 77
+}
+
+main()<Int> -> {
+    caught<Int> = { probe<Int>(0, 0) } trap (e<GErr>) -> { -77 }
+    ok<Int> = { probe<Int>(0, 1) } trap (e<GErr>) -> { -1 }
+    if (caught == -77 && ok == 77) {
+        return -77
+    }
+    return 1
+}
