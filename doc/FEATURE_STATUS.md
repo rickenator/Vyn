@@ -69,7 +69,7 @@ Legend: ✅ Implemented | 🚧 Partial / Stubbed | 📋 Planned
 | `freedom` blocks + `loc<T>` raw pointers | ✅ | |
 | `match` / `select` expressions | ✅ | Literal, wildcard, comparison, struct-destructuring (`Point { x, y } ->` binds fields in the arm body; unknown fields and type mismatches rejected), inclusive range patterns (`1..10 ->`; inverted ranges rejected as never-matchable), guard clauses (`pattern if condition ->`, with access to destructured bindings), and `match` as a value-returning expression (`r = match (v) { 1..3 -> 10, ? -> 20 }` infers the result type from the first arm and stores the matched arm's value; block arms yield via `pass`) |
 | `defer` | ✅ | |
-| `fail` / `trap` error system | ✅ | Includes typed `fail<T>(value)`, typed traps, wildcard/multi-type trap parsing, dual-return ABI `{T, i8*}` / `{i1, i8*}`, Phase 3 fail propagation returns, Phase 4 auto-propagating call-site checks, and Phase 5 untrapped runtime handler dispatch from failable `main` |
+| `fail` / `trap` error system | ✅ | Includes typed `fail<T>(value)`, typed traps, wildcard/multi-type trap parsing, dual-return ABI `{T, i8*}` / `{i1, i8*}`, Phase 3 fail propagation returns, Phase 4 auto-propagating call-site checks, and Phase 5 untrapped runtime handler dispatch from failable `main`, and `ensure` contract statements (`ensure cond else handling`, desugaring to `if (cond) { } else { handling }`) |
 | `async` / `await` | 🚧 | Runtime stub |
 | `Vec<T>` | ✅ | |
 | String methods | ✅ | `.len()`, `.contains()`, `.starts_with()`, `.ends_with()`, `.to_upper()`, `.to_lower()`, `.substring()`, `.char_at()`, `.trim()`, `.replace()` |

@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `ensure` contract statements: `ensure cond else handling` runs `handling`
+  whenever `cond` is false. It desugars to `if (cond) { } else { handling }`
+  and so plugs directly into the `fail`/`trap` error system. The handling may
+  be a block or a single statement (`return`, `fail<Error>(...)`, etc.), and
+  may be followed by more statements in the same body. Also fixed `return`
+  parsing so a `return` that is not the final statement in a block (e.g.
+  `ensure x > 0 else return -1` followed by more code) terminates correctly.
 - `match` as a value-returning expression: `r<Int> = match (v) {
   1..3 -> 10, 4..6 -> 20, ? -> 30 }` stores the matched arm's value into
   the variable. The result type is inferred from the first arm's yielded

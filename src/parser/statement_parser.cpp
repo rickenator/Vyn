@@ -74,6 +74,8 @@ vyb::ast::StmtPtr StatementParser::parse() {
             }
         case vyb::TokenType::KEYWORD_IF:
             return parse_if();
+        case vyb::TokenType::KEYWORD_ENSURE:
+            return parse_ensure();
         case vyb::TokenType::KEYWORD_WHILE:
             return parse_while();
         case vyb::TokenType::KEYWORD_FOR:
@@ -312,6 +314,30 @@ std::unique_ptr<vyb::ast::IfStatement> StatementParser::parse_if() {
     }
 
     return std::make_unique<vyb::ast::IfStatement>(if_loc, std::move(condition), std::move(then_branch), std::move(else_branch));
+}
+
+std::unique_ptr<vyb::ast::IfStatement> StatementParser::parse_ensure() {
+    SourceLocation loc = expect(vyb::TokenType::KEYWORD_ENSURE, "Expected 'ensure'.").location;
+
+    // Contract condition (e.g. `b != 0`). Expr parser stops at the `else` keyword.
+    auto condition = expr_parser_.parse_expression();
+    expect(vyb::TokenType::KEYWORD_ELSE, "Expected 'else' after ensure condition.");
+
+    // Failure handling: a block or a single statement (e.g. `return -1`,
+    // `fail<DivisionError>(...)`).
+    vyb::ast::StmtPtr handling;
+    if (check(vyb::TokenType::LBRACE)) {
+        handling = parse_block();
+    } else {
+        handling = parse();
+    }
+
+    // Desugar `ensure cond else handling` into `if (cond) { } else { handling }`
+    // so the handling runs exactly when the condition is false.
+    std::vector<vyb::ast::StmtPtr> emptyBody;
+    auto emptyThen = std::make_unique<vyb::ast::BlockStatement>(loc, std::move(emptyBody));
+    return std::make_unique<vyb::ast::IfStatement>(
+        loc, std::move(condition), std::move(emptyThen), std::move(handling));
 }
 
 std::unique_ptr<vyb::ast::WhileStatement> StatementParser::parse_while() {
@@ -663,8 +689,10 @@ std::unique_ptr<vyb::ast::ReturnStatement> StatementParser::parse_return() {
     if (this->peek().type == vyb::TokenType::SEMICOLON) {
         end_loc = this->peek().location;
         this->consume(); // Consume semicolon
-    } else if (this->peek().type == vyb::TokenType::NEWLINE || this->IsAtEnd() || this->peek().type == vyb::TokenType::RBRACE || this->peek().type == vyb::TokenType::DEDENT) {
-        // Optional semicolon at the end of a line or before closing brace
+    } else if (this->peek().type == vyb::TokenType::NEWLINE || this->IsAtEnd() || this->peek().type == vyb::TokenType::RBRACE || this->peek().type == vyb::TokenType::DEDENT || this->is_statement_start(this->peek().type)) {
+        // Optional semicolon at the end of a line, before a closing brace, or
+        // directly before another new statement (the value expression may have
+        // consumed the trailing newline).
     } else {
         throw std::runtime_error("Expected semicolon or newline after return statement at " + location_to_string(this->peek().location));
     }
@@ -1085,6 +1113,7 @@ bool StatementParser::is_statement_start(vyb::TokenType type) const {
         case vyb::TokenType::KEYWORD_CLASS: // Added class
         case vyb::TokenType::KEYWORD_TEMPLATE: // Added template
         case vyb::TokenType::KEYWORD_IF:
+        case vyb::TokenType::KEYWORD_ENSURE:
         case vyb::TokenType::KEYWORD_WHILE:
         case vyb::TokenType::KEYWORD_FOR:
         case vyb::TokenType::KEYWORD_MATCH:

@@ -498,6 +498,8 @@ function. Fits Vyb's clean aesthetic; makes functional chains readable without a
 chain API requirement.
 
 ### `ensure` Contracts
+**Implemented (0.5.3).** `ensure cond else handling` runs `handling` when `cond` is false,
+desugaring to `if (cond) { } else { handling }` (see `test/units/test_ensure_contract.vyb`).
 Unlike bare `assert` (C-style), `ensure` integrates with the `fail`/`trap` system:
 ```vyb
 divide(a<Int>, b<Int>)<Int> -> {
@@ -667,5 +669,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: August 2026*
 *Current Version: Vyb v0.5.3 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 775 tests passing (harness, 100%)*
+*Overall Status: ~60-65% complete toward 1.0 — 776 tests passing (harness, 100%)*
 *SUGGESTIONS.md merged into this document.*

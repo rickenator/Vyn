@@ -1,0 +1,42 @@
+// @test: ensure contract statements
+// @description: `ensure cond else handling` runs the handling when cond is false (single-statement, block, and with following statements)
+// @category: control_flow, error_handling
+// @expect: pass
+// @expect-return: 0
+
+ensure_pass<Int>(x<Int>)<Int> -> {
+    ensure x > 0 else return -10
+    return 100
+}
+
+ensure_fail<Int>(x<Int>)<Int> -> {
+    ensure x > 0 else return -10
+    return 100
+}
+
+ensure_mid_block<Int>(x<Int>, y<Int>)<Int> -> {
+    ensure x > 0 else return -10
+    z<Int> = y * 2
+    return z
+}
+
+ensure_block_handling<Int>(x<Int>, flag<Int>)<Int> -> {
+    ensure x > 0 else {
+        println("contract violated")
+        return flag
+    }
+    return 200
+}
+
+main()<Int> -> {
+    r1<Int> = ensure_pass(5)
+    r2<Int> = ensure_fail(-3)
+    r3<Int> = ensure_mid_block(-1, 7)
+    r4<Int> = ensure_mid_block(2, 7)
+    r5<Int> = ensure_block_handling(-1, 50)
+    r6<Int> = ensure_block_handling(3, 50)
+    if (r1 == 100 && r2 == -10 && r3 == -10 && r4 == 14 && r5 == 50 && r6 == 200) {
+        return 0
+    }
+    return 1
+}

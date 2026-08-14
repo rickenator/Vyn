@@ -1,19 +1,13 @@
-// @test: ensure statement (future)
-// @description: ensure is a planned post-condition statement that fails if condition is false
+// @test: ensure statement
+// @description: ensure is a post-condition statement that runs its handling when the condition is false
 // @category: control_flow, error_handling
-// @expect: fail
-// @tags: future, unimplemented
+// @tags: future
+// @expect: pass
+// @expect-return: 0
 
-// ensure is not yet implemented; this test verifies that the feature is
-// planned and documents the intended syntax:
-//
-//   divide(a<Int>, b<Int>)<Int> -> {
-//       ensure b != 0 else fail<DivisionError>(...)
-//       return a / b
-//   }
-//
-// When implemented, ensure integrates with fail/trap for contract-style
-// programming. For now the keyword is not recognized.
+// `ensure cond else handling` desugars to `if (cond) { } else { handling }`
+// and integrates with the fail/trap system. See test/units/test_ensure_contract.vyb
+// for the full coverage set.
 
 main()<Int> -> {
     x<Int> = 10

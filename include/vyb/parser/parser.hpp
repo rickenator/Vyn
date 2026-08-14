@@ -189,6 +189,7 @@ namespace vyb { // Changed Vyb to vyb
     private:
         bool is_statement_start(vyb::TokenType type) const; // Added declaration
         std::unique_ptr<vyb::ast::IfStatement> parse_if();
+        std::unique_ptr<vyb::ast::IfStatement> parse_ensure();
         std::unique_ptr<vyb::ast::WhileStatement> parse_while();
         std::unique_ptr<vyb::ast::ForStatement> parse_for();
         std::unique_ptr<vyb::ast::ReturnStatement> parse_return();
