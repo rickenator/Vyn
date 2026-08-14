@@ -310,6 +310,62 @@ static bool injectBareEnumConstructorType(ast::Expression* expr, ast::TypeNode* 
     return true;
 }
 
+void SemanticAnalyzer::injectBareEnumCtorArgTypes(ast::CallExpression* node) {
+    // Inject a parameter's `Option<T>`/`Result<T,E>` type into a matching bare
+    // constructor argument (`Some`/`None`/`Ok`/`Err`) so it infers its payload.
+    auto tryInject = [&](ast::Expression* arg, ast::TypeNode* paramType) {
+        if (!arg || !paramType) return;
+        injectBareEnumConstructorType(arg, paramType);
+    };
+
+    // 1. Named function call: callee is a plain identifier.
+    if (auto* id = dynamic_cast<ast::Identifier*>(node->callee.get())) {
+        auto it = functionRegistry.find(id->name);
+        if (it == functionRegistry.end()) return;
+        ast::FunctionDeclaration* fd = it->second;
+        if (!fd) return;
+        std::set<std::string> gparams;
+        for (const auto& gp : fd->genericParams) {
+            if (gp && gp->name) gparams.insert(gp->name->name);
+        }
+        size_t nArg = node->arguments.size();
+        size_t nPar = fd->params.size();
+        for (size_t i = 0; i < nArg && i < nPar; ++i) {
+            ast::TypeNode* pt = fd->params[i].typeNode.get();
+            if (!pt) continue;
+            // Skip a param that references a generic type parameter: without
+            // forward inference there is no concrete Option/Result to inject.
+            if (!gparams.empty()) {
+                std::string pstr = pt->toString();
+                bool refsGeneric = false;
+                for (const auto& g : gparams) {
+                    if (pstr.find(g) != std::string::npos) { refsGeneric = true; break; }
+                }
+                if (refsGeneric) continue;
+            }
+            tryInject(node->arguments[i].get(), pt);
+        }
+        return;
+    }
+
+    // 2. Vec method call: `v.push(x)` propagates the vector's element type into
+    //    its single argument (e.g. `v<Vec<Option<Int>>>` with `v.push(Some(x))`).
+    if (auto* mem = dynamic_cast<ast::MemberExpression*>(node->callee.get())) {
+        auto* objId = dynamic_cast<ast::Identifier*>(mem->object.get());
+        auto* propId = dynamic_cast<ast::Identifier*>(mem->property.get());
+        if (objId && propId && propId->name == "push") {
+            SymbolInfo* sym = currentScope->lookup(objId->name);
+            if (sym && sym->type) {
+                if (auto* vt = dynamic_cast<ast::VecType*>(sym->type)) {
+                    if (vt->elementType && node->arguments.size() == 1) {
+                        tryInject(node->arguments[0].get(), vt->elementType.get());
+                    }
+                }
+            }
+        }
+    }
+}
+
 void SemanticAnalyzer::enterScope() {
     currentScope = new SymbolTable(currentScope);
     borrowScopes.emplace_back();
@@ -1578,6 +1634,11 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
     if (!isIntrinsic && node->callee) {
         node->callee->accept(*this);
     }
+
+    // Expected-type propagation: inject param/element types into bare enum
+    // constructor arguments (`Some`/`None`/`Ok`/`Err`) before they are visited,
+    // so they can appear as subexpressions (e.g. `unwrap(Some(7))`).
+    injectBareEnumCtorArgTypes(node);
 
     // Visit arguments
     for (auto& arg : node->arguments) {

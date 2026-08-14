@@ -47,6 +47,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   concrete variant with the substituted payload (e.g. `area(self)<Float>` on
   `bind HasArea -> Shape { ... }`, matched over `Circle(r)` / `Rect(w,h)`).
 
+- Bare `Some(x)` / `None` / `Ok(e)` / `Err(e)` now work as arbitrary call
+  arguments via expected-type propagation, not only in annotated variable
+  declarations and returns. The parameter's `Option<T>` / `Result<T,E>` type (or,
+  for `v.push(x)`, the `Vec<T>` element type) is injected into the matching bare
+  constructor before it is resolved, enabling `unwrap(Some(7))`,
+  `classify(Ok(11))`, and `v.push(Some(x))` on a `Vec<Option<Int>>`.
+
 ### Fixed
 - A `match`/`select` arm whose value is a primitive `.to_string()` now stores a
   proper `{ ptr, len }` String into the expression's result slot (wrapping the

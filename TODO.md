@@ -286,7 +286,7 @@ and pattern matching, not be a separate OOP mechanism.
 - [x] **Pattern matching on enums (match/select)** — In `match`, enum variant patterns (`Circle(r) ->`) dispatch on the runtime tag and bind payload fields; unit variants match bare (`Unit ->`), and a match must be exhaustive. `select` mirrors this, dispatching on variants and enforcing exhaustiveness the same way.
 - [x] **Enum methods via `bind`** — `bind Drawable -> Shape { ... }` — an aspect `bind` can target a user-defined enum (concrete or generic, e.g. `bind Render -> Box<Int>`), and the built-in generic enums `Option<T>` / `Result<T,E>`; methods dispatch on the concrete variant with substituted payloads
 - [x] **`Option<T>` as built-in enum** — `Some(T)` / `None`; registered in the compiler (no `import` needed), constructible via `Option<Int>::Some(x)` / `Option<Int>::None` and type-inferred bare `Some(x)` / `None`, with match/select dispatch and exhaustiveness
-- [ ] **`Option<T>` ergonomics — bare `Some(x)` / `None` anywhere** — bare constructors currently infer only when the enclosing variable declaration or function return type is `Option<T>`; needs general expected-type propagation so they can appear as subexpressions (e.g. `unwrap(Some(7))`, `v.push(Some(x))`)
+- [x] **`Option<T>` / `Result<T,E>` ergonomics — bare `Some(x)`/`None`/`Ok(e)`/`Err(e)` as subexpressions** — bare constructors now also infer via expected-type propagation from the callee's parameter type in call arguments (e.g. `unwrap(Some(7))`, `classify(Ok(11))`) and from the container element type for `Vec<T>.push` on a `Vec<Option<Int>>` (`v.push(Some(x))`), in addition to annotated variable declarations and returns
 - [x] **`Result<T, E>` as built-in enum** — `Ok(T)` / `Err(E)`; registered in the compiler (no `import`), constructible via `Result<Int, String>::Ok(x)` / `::Err(e)` and type-inferred bare `Ok(x)` / `Err(e)`, with match/select dispatch and exhaustiveness
 
 ### 6. Introspection System — Completion (MEDIUM PRIORITY)
@@ -696,5 +696,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: August 2026*
 *Current Version: Vyb v0.5.3 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 795 tests passing (harness, 100%)*
+*Overall Status: ~60-65% complete toward 1.0 — 796 tests passing (harness, 100%)*
 *SUGGESTIONS.md merged into this document.*

@@ -575,6 +575,13 @@ private:
     // optional size argument, and (if no surrounding annotation propagated a
     // concrete element type) default to `Vec<Int>`.
     void handleVecConstructor(ast::CallExpression* node);
+
+    // Expected-type propagation: inject the parameter type into a bare builtin
+    // enum constructor argument (`Some`/`None`/`Ok`/`Err`) when the callee's
+    // corresponding parameter is `Option<T>`/`Result<T,E>`, so bare constructors
+    // can appear as call arguments (e.g. `unwrap(Some(7))`, `v.push(Some(x))`).
+    void injectBareEnumCtorArgTypes(ast::CallExpression* node);
+
     std::unique_ptr<ast::Declaration> performMonomorphization(TemplateInfo* templateInfo,
                                                              const std::vector<std::string>& concreteTypes);
     std::unique_ptr<ast::Declaration> cloneAndSubstituteAST(ast::Declaration* templateBody,
