@@ -1,0 +1,49 @@
+// @test: stdlib collections HashMap/HashSet auto-grow and rehash
+// @description: inserting past the load-factor threshold (2 keys per bucket,
+//   starting from 16 buckets) doubles the bucket count and re-hashes every key,
+//   so all keys stay retrievable after multiple growth steps. `make_hash_map` /
+//   `make_hash_set` are used so the bucket metadata is initialized.
+// @category: modules, collections, generics, hash, growth, rehash
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import collections
+
+main()<Int> -> {
+    m<HashMap<String, Int>> = make_hash_map<String, Int>()
+    i<Int> = 0
+    while (i < 100) {
+        k<String> = "key" + i.to_string()
+        m.put(k, i * 3)
+        i = i + 1
+    }
+    if (m.size() != 100) {
+        return 1
+    }
+    j<Int> = 0
+    while (j < 100) {
+        k2<String> = "key" + j.to_string()
+        if (m.get(k2).value != j * 3) {
+            return 2
+        }
+        j = j + 1
+    }
+    if (m.get("keyNOPE").value != 0) {
+        return 3
+    }
+
+    s<HashSet<String>> = make_hash_set<String>()
+    t<Int> = 0
+    while (t < 100) {
+        sv<String> = t.to_string()
+        s.insert(sv)
+        t = t + 1
+    }
+    if (s.size() != 100 || !s.contains("9") || !s.contains("77") || s.contains("nope")) {
+        return 4
+    }
+    println("ok")
+    return 0
+}

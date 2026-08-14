@@ -7,14 +7,15 @@
 # `Hashable` / `Equatable` core aspects:
 #
 #   - `HashMap<K, V>`: a keyed map. Keys and values live in parallel
-#     `keys` / `vals` vectors; a fixed set of hash buckets (`head` + a per-key
-#     `next` chain) indexes the keys so a lookup only scans the single bucket
-#     the key hashes to instead of the whole map. Provides `put`, `get`
-#     (returning `Option<V>`), `contains_key` and `size`. Build one with
-#     `make_hash_map<K, V>()` (16 buckets).
+#     `keys` / `vals` vectors; a set of hash buckets (`head` + a per-key `next`
+#     chain) indexes the keys so a lookup only scans the single bucket the key
+#     hashes to instead of the whole map. Buckets start at 16 and double (with a
+#     full re-hash) once the load exceeds 2 keys per bucket, keeping average
+#     lookup O(1). Provides `put`, `get` (returning `Option<V>`),
+#     `contains_key` and `size`. Build one with `make_hash_map<K, V>()`.
 #   - `HashSet<K>`: a set of distinct keys backed by a `values` vector plus the
-#     same bucket/chain index. Provides `insert` (returns `Bool`), `contains`
-#     and `size`. Build one with `make_hash_set<K>()`.
+#     same auto-growing bucket/chain index. Provides `insert` (returns `Bool`),
+#     `contains` and `size`. Build one with `make_hash_set<K>()`.
 #   - `make_hash_map<K,V>()` / `make_hash_set<K>()`: the constructors return a
 #     fully initialized (bucket-indexed) instance. They are the supported way to
 #     build these collections because the bucket metadata must be set up.
@@ -88,6 +89,34 @@ bind<K<Hashable, Equatable>, V> MapOps -> HashMap<K, V> {
         idx<Int> = self.keys.len() - 1
         self.next.push(self.head.get(b))
         self.head.set(b, idx)
+        # Grow and re-hash once each bucket holds more than ~2 keys on average,
+        # doubling the bucket count. Chains are rebuilt from the full key list.
+        if (self.keys.len() > self.head.len() * 2) {
+            new_nb<Int> = self.head.len() * 2
+            grow<Int> = self.head.len()
+            while (grow < new_nb) {
+                self.head.push(-1)
+                grow = grow + 1
+            }
+            clear<Int> = 0
+            while (clear < new_nb) {
+                self.head.set(clear, -1)
+                clear = clear + 1
+            }
+            nk<Int> = self.keys.len()
+            clr<Int> = 0
+            while (clr < nk) {
+                self.next.set(clr, -1)
+                clr = clr + 1
+            }
+            reb<Int> = 0
+            while (reb < nk) {
+                bb<Int> = bucket_for(hashkey(self.keys.get(reb)), new_nb)
+                self.next.set(reb, self.head.get(bb))
+                self.head.set(bb, reb)
+                reb = reb + 1
+            }
+        }
         return
     }
     get(self<their<HashMap<K, V>>>, key<K>)<Option<V>> -> {
@@ -169,6 +198,32 @@ bind<K<Hashable, Equatable>> SetOps -> HashSet<K> {
         idx<Int> = self.values.len() - 1
         self.next.push(self.head.get(b))
         self.head.set(b, idx)
+        if (self.values.len() > self.head.len() * 2) {
+            new_nb<Int> = self.head.len() * 2
+            grow<Int> = self.head.len()
+            while (grow < new_nb) {
+                self.head.push(-1)
+                grow = grow + 1
+            }
+            clear<Int> = 0
+            while (clear < new_nb) {
+                self.head.set(clear, -1)
+                clear = clear + 1
+            }
+            nk<Int> = self.values.len()
+            clr<Int> = 0
+            while (clr < nk) {
+                self.next.set(clr, -1)
+                clr = clr + 1
+            }
+            reb<Int> = 0
+            while (reb < nk) {
+                bb<Int> = bucket_for(hashkey(self.values.get(reb)), new_nb)
+                self.next.set(reb, self.head.get(bb))
+                self.head.set(bb, reb)
+                reb = reb + 1
+            }
+        }
         return true
     }
     contains(self<their<HashSet<K>>>, value<K>)<Bool> -> {
