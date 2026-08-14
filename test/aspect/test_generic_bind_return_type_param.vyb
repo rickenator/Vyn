@@ -1,0 +1,25 @@
+// @test: generic bind method returning a type parameter resolves to the concrete type
+// @description: A generic bind method whose return type is T substitutes the concrete type argument at the call site
+// @category: aspect, generics, monomorphization
+// @expect: pass
+// @expect-return: 7
+
+aspect Getter {
+    get(self)<Void> -> { }
+}
+
+struct Boxer<T> {
+    value<T>
+}
+
+bind<T> Getter -> Boxer<T> {
+    get(self)<T> -> {
+        return self.value
+    }
+}
+
+main()<Int> -> {
+    b<Boxer<Int>> = Boxer<Int> { value = 7 }
+    r<Int> = b.get()
+    return r
+}

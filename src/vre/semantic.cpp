@@ -2015,17 +2015,96 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                     struct AspectMethodCandidate {
                         std::string traitName;
                         ast::TypeNode* returnType;
+                        bool synthesized = false; // owns a temporary node (needs a stable copy)
                     };
 
                     auto resolveAspectMethodForTypeString = [&](const std::string& typeNameStr) -> bool {
                         std::vector<AspectMethodCandidate> candidates;
                         std::set<std::string> seenCandidates;
-                        auto addCandidate = [&](const std::string& traitName, ast::TypeNode* returnType) {
+                        auto addCandidate = [&](const std::string& traitName, ast::TypeNode* returnType, bool synthesized = false) {
                             std::string key = traitName + "::" + methodName;
                             if (seenCandidates.insert(key).second) {
-                                candidates.push_back({traitName, returnType});
+                                candidates.push_back({traitName, returnType, synthesized});
                             }
                         };
+
+                        // Replace whole-identifier occurrences of `tok` with `repl`.
+                        auto replaceTokens = [](std::string s, const std::string& tok, const std::string& repl) {
+                            if (tok.empty()) return s;
+                            auto isIdChar = [](char c) {
+                                return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+                            };
+                            std::string out;
+                            out.reserve(s.size());
+                            for (size_t i = 0; i < s.size();) {
+                                if (i + tok.size() <= s.size() && s.compare(i, tok.size(), tok) == 0 &&
+                                    (i == 0 || !isIdChar(s[i - 1])) &&
+                                    (i + tok.size() == s.size() || !isIdChar(s[i + tok.size()]))) {
+                                    out += repl;
+                                    i += tok.size();
+                                } else {
+                                    out += s[i];
+                                    ++i;
+                                }
+                            }
+                            return out;
+                        };
+
+                        // Top-level generic type arguments from "Boxer<Int>" -> ["Int"].
+                        auto parseTypeArgs = [](const std::string& s) -> std::vector<std::string> {
+                            size_t lt = s.find('<');
+                            if (lt == std::string::npos) return {};
+                            size_t gt = s.rfind('>');
+                            if (gt == std::string::npos || gt < lt) return {};
+                            std::string inner = s.substr(lt + 1, gt - lt - 1);
+                            std::vector<std::string> args;
+                            std::string cur;
+                            int depth = 0;
+                            for (char c : inner) {
+                                if (c == '<') ++depth;
+                                else if (c == '>') --depth;
+                                if (c == ',' && depth == 0) {
+                                    args.push_back(cur);
+                                    cur.clear();
+                                } else {
+                                    cur.push_back(c);
+                                }
+                            }
+                            if (!cur.empty()) args.push_back(cur);
+                            return args;
+                        };
+
+                        // Resolve a generic-impl method's return type against the concrete
+                        // type: substitutes type parameters (and Self::Item through the
+                        // generic bind's associated-type assignments) to the concrete type.
+                        auto resolveGenericReturnType = [&](const std::string& concreteType,
+                                                            const std::string& traitName,
+                                                            const GenericImplInfo* implInfo,
+                                                            ast::TypeNode* returnTypeNode) -> std::string {
+                            if (!returnTypeNode) return "";
+                            std::string rt = returnTypeNode->toString();
+                            const std::string selfPrefix = "Self::";
+                            const std::string traitPrefix = traitName + "::";
+                            if (rt.rfind(selfPrefix, 0) == 0 || rt.rfind(traitPrefix, 0) == 0) {
+                                size_t sep = rt.find("::");
+                                std::string assocName = (sep != std::string::npos) ? rt.substr(sep + 2) : rt;
+                                auto it = implInfo->associatedTypeBindings.find(assocName);
+                                if (it != implInfo->associatedTypeBindings.end() && it->second) {
+                                    rt = it->second->toString();
+                                }
+                            }
+                            std::vector<std::string> args = parseTypeArgs(concreteType);
+                            if (!args.empty()) {
+                                const auto& params = implInfo->typeParams;
+                                for (size_t i = 0; i < params.size() && i < args.size(); ++i) {
+                                    rt = replaceTokens(rt, params[i], args[i]);
+                                }
+                            }
+                            return rt;
+                        };
+
+                        // Owns synthesized return-type nodes created for generic impls.
+                        std::vector<std::unique_ptr<ast::TypeNode>> resolvedReturnTypes;
 
                         auto typeImplsIt = traitImpls.find(typeNameStr);
                         if (typeImplsIt != traitImpls.end()) {
@@ -2064,7 +2143,17 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                         bool foundInImpl = false;
                                         for (const auto& method : implInfo->declaration->methods) {
                                             if (method && method->id && method->id->name == methodName) {
-                                                addCandidate(traitName, method->returnTypeNode.get());
+                                                std::string resolved = resolveGenericReturnType(
+                                                    typeNameStr, traitName, implInfo, method->returnTypeNode.get());
+                                                if (resolved.empty()) {
+                                                    addCandidate(traitName, method->returnTypeNode.get());
+                                                } else {
+                                                    auto resolvedNode = std::make_unique<ast::TypeName>(
+                                                        node->loc, std::make_unique<ast::Identifier>(node->loc, resolved));
+                                                    ast::TypeNode* ptr = resolvedNode.get();
+                                                    resolvedReturnTypes.push_back(std::move(resolvedNode));
+                                                    addCandidate(traitName, ptr, true);
+                                                }
                                                 foundInImpl = true;
                                             }
                                         }
@@ -2074,7 +2163,17 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                             if (traitIt != traitRegistry.end()) {
                                                 for (const auto& traitMethod : traitIt->second->methods) {
                                                     if (traitMethod.name == methodName && traitMethod.hasDefaultImpl) {
-                                                        addCandidate(traitName, traitMethod.returnType);
+                                                        std::string resolved = resolveGenericReturnType(
+                                                            typeNameStr, traitName, implInfo, traitMethod.returnType);
+                                                        if (resolved.empty()) {
+                                                            addCandidate(traitName, traitMethod.returnType);
+                                                        } else {
+                                                            auto resolvedNode = std::make_unique<ast::TypeName>(
+                                                                node->loc, std::make_unique<ast::Identifier>(node->loc, resolved));
+                                                            ast::TypeNode* ptr = resolvedNode.get();
+                                                            resolvedReturnTypes.push_back(std::move(resolvedNode));
+                                                            addCandidate(traitName, ptr, true);
+                                                        }
                                                     }
                                                 }
                                             }
@@ -2101,8 +2200,17 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
 
                         if (candidates[0].returnType) {
                             ast::TypeNode* actualReturnType = substituteSelfType(candidates[0].returnType, typeNameStr);
-                            expressionTypes[node] = actualReturnType;
-                            node->type = std::shared_ptr<ast::TypeNode>(actualReturnType->clone());
+                            // Synthesized nodes are owned by the temp buffer inside this
+                            // lambda; keep a stable heap copy so later type checks don't
+                            // dangle after the buffer goes out of scope.
+                            if (candidates[0].synthesized) {
+                                ast::TypeNode* stableCopy = actualReturnType->clone().release();
+                                expressionTypes[node] = stableCopy;
+                                node->type = std::shared_ptr<ast::TypeNode>(stableCopy->clone());
+                            } else {
+                                expressionTypes[node] = actualReturnType;
+                                node->type = std::shared_ptr<ast::TypeNode>(actualReturnType->clone());
+                            }
                         }
                         return true;
                     };
@@ -6761,13 +6869,19 @@ bool SemanticAnalyzer::traitMethodSignatureMatches(const TraitMethod& traitMetho
         std::string implReturnType = implMethod->returnTypeNode->toString();
         std::string traitReturnType = traitMethod.returnType->toString();
 
-        if (traitReturnType.rfind("Self::", 0) == 0) {
-            std::string assocName = traitReturnType.substr(6);
-            auto assocIt = associatedTypeBindings.find(assocName);
-            if (assocIt != associatedTypeBindings.end()) {
-                traitReturnType = assocIt->second;
+        auto resolveAssocRef = [&associatedTypeBindings](std::string type) -> std::string {
+            if (type.rfind("Self::", 0) == 0) {
+                std::string assocName = type.substr(6);
+                auto assocIt = associatedTypeBindings.find(assocName);
+                if (assocIt != associatedTypeBindings.end()) {
+                    return assocIt->second;
+                }
             }
-        }
+            return type;
+        };
+
+        implReturnType = resolveAssocRef(implReturnType);
+        traitReturnType = resolveAssocRef(traitReturnType);
 
         if (implReturnType != traitReturnType) {
             VYB_CDBG << "DEBUG: Return type mismatch: "

@@ -182,7 +182,7 @@ is the working audit for what needs to be implemented next.
 
 ### Aspect System — Completion (HIGH PRIORITY)
 - [x] Phases 1-4: Declarations, method calls, generic impls, type param substitution
-- [x] **Associated types (slice: defaults + bounds)** — `aspect Iterator { type Item }` declarations, `bind` assignments (`type Item = Int`), validation for missing/unknown/duplicate assignments, default associated types (`type Item = Int`), and `where`-style associated-type aspect bounds (`type Item<Display>`, enforced when a bind assigns or defaults the type) are implemented. Remaining work: dyn-dispatch integration.
+- [x] **Associated types (slice: defaults + bounds + generic binds)** — `type Item` declarations, `bind` assignments (`type Item = Int`), validation for missing/unknown/duplicate assignments, default associated types (`type Item = Int`), aspect bounds (`type Item<Display>`), and resolution through generic binds (`bind<T> Iterator -> Boxer<T> { type Item = T }` substitutes the concrete type at the call site) are implemented. Remaining work: `Self::Item` used directly as a bind method's return type inside bind bodies (needs codegen return-type substitution), and dyn-dispatch integration.
 - [ ] **Aspect objects / dynamic dispatch** — `dyn Aspect` for runtime polymorphism
 - [x] **Aspect inheritance** — `aspect Comparable : Equatable` super-aspects: declared super-aspects are validated against defined aspects, cyclic dependencies are rejected, and binding a sub-aspect requires the same type to also bind each super-aspect (order-independent).
 - [x] **Qualified aspect-method disambiguation** — `DisplayA::show(thing)` selects a specific aspect whenever multiple bound aspects declare the same method name for a type; unqualified ambiguous dot-calls (`thing.show()`) remain rejected. Bind method symbols are emitted per `Type_Trait_Method` so distinct implementations coexist. Also works on bounded type parameters (`Aspect::show(thing)` for `thing<T<Aspect>>` inside generic functions).
@@ -647,5 +647,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: August 2026*
 *Current Version: Vyb v0.5.3 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 754 tests passing (harness, 100%)*
+*Overall Status: ~60-65% complete toward 1.0 — 756 tests passing (harness, 100%)*
 *SUGGESTIONS.md merged into this document.*

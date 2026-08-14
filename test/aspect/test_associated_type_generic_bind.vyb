@@ -1,0 +1,27 @@
+// @test: associated type through a generic bind resolves to the concrete type
+// @description: bind<T> Iterator -> Boxer<T> with type Item = T resolves Self::Item (and T) to the concrete instantiation's type argument
+// @category: aspect, associated types, generics, monomorphization
+// @expect: pass
+// @expect-return: 7
+
+aspect Iterator {
+    type Item
+    next(self)<Self::Item>
+}
+
+struct Boxer<T> {
+    value<T>
+}
+
+bind<T> Iterator -> Boxer<T> {
+    type Item = T
+    next(self)<T> -> {
+        return self.value
+    }
+}
+
+main()<Int> -> {
+    b<Boxer<Int>> = Boxer<Int> { value = 7 }
+    r<Int> = b.next()
+    return r
+}

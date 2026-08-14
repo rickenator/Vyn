@@ -28,6 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the type assigned to (or defaulted for) an associated type must implement every
   constrained aspect. Non-conforming assignments and bounds naming undefined
   aspects are rejected at bind validation.
+- Associated types through generic binds: a generic bind such as
+  `bind<T> Iterator -> Boxer<T> { type Item = T; next(self)<T> }` now resolves
+  the associated type (and a type-parameter return type) to the concrete type at
+  the call site, so `Boxer<Int>.next()` types and runs as `Int`. Generic bind
+  method return types that reference a type parameter are substituted with the
+  concrete type argument during semantic typing, and `Self::Item` in a bind
+  method's signature is resolved symmetrically during signature matching.
 - Aspect inheritance (super-aspects): `aspect Comparable : Equatable` declares a
   super-aspect. Super-aspect names are validated against defined aspects, cyclic
   super-aspect dependencies are rejected, and binding a sub-aspect requires the
