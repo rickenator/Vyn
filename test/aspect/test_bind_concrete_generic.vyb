@@ -1,0 +1,26 @@
+// @test: bind an aspect to a concrete instantiation of a generic struct
+// @description: bind Display -> Box<Int> is accepted and the bound method reads self.value
+// @category: aspect, bind, generics
+// @expect: pass
+// @expect-return: 42
+
+aspect Display {
+    show(self)<String> ->
+}
+
+struct Box<T> {
+    value<T>
+}
+
+bind Display -> Box<Int> {
+    show(self)<String> -> {
+        return "Box with " + self.value
+    }
+}
+
+main()<Int> -> {
+    box<Box<Int>> = Box<Int> { value = 42 }
+    desc<String> = box.show()
+    println(desc)
+    return box.value
+}

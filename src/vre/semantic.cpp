@@ -4412,9 +4412,33 @@ void SemanticAnalyzer::visit(ast::BindDeclaration* node) {
         if (!isBuiltinType && !isBuiltinGenericType && !isGenericType) {
             SymbolInfo* typeSym = currentScope->lookup(typeName);
             if (!typeSym || typeSym->kind != SymbolInfo::Kind::Type) {
-                addError("Type '" + typeName + "' is not defined.", node);
-                if (hasGenericParams) exitScope();
-                return;
+                // Allow binding to a concrete instantiation of a generic struct
+                // (e.g. bind Display -> Box<Int>): resolve the base template and
+                // validate the type-argument count against its generic parameters.
+                bool resolvedInstantiation = false;
+                auto* selfT = dynamic_cast<ast::TypeName*>(node->selfType.get());
+                if (selfT && selfT->identifier) {
+                    SymbolInfo* baseSym = currentScope->lookup(selfT->identifier->name);
+                    auto paramOrderIt = structGenericParamOrder.find(selfT->identifier->name);
+                    if (baseSym && baseSym->kind == SymbolInfo::Kind::Type &&
+                        paramOrderIt != structGenericParamOrder.end()) {
+                        resolvedInstantiation = true;
+                        size_t expectedParams = paramOrderIt->second.size();
+                        if (!selfT->genericArgs.empty() && expectedParams != 0 &&
+                            selfT->genericArgs.size() != expectedParams) {
+                            addError("Type '" + typeName + "' has " + std::to_string(selfT->genericArgs.size()) +
+                                     " type argument(s) but '" + selfT->identifier->name + "' expects " +
+                                     std::to_string(expectedParams) + ".", node);
+                            if (hasGenericParams) exitScope();
+                            return;
+                        }
+                    }
+                }
+                if (!resolvedInstantiation) {
+                    addError("Type '" + typeName + "' is not defined.", node);
+                    if (hasGenericParams) exitScope();
+                    return;
+                }
             }
         }
 
