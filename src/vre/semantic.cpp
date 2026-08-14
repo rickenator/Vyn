@@ -6663,6 +6663,39 @@ bool SemanticAnalyzer::validateTraitImpl(const std::string& typeName,
         }
     }
 
+    // Validate that assigned associated types satisfy every declared aspect
+    // bound (e.g. `type Item<Display>` requires the bound type to implement Display).
+    for (const auto& declaredAssoc : traitInfo->associatedTypes) {
+        const std::vector<ast::TypeNode*>* constraints =
+            traitInfo->getAssociatedTypeConstraints(declaredAssoc);
+        if (!constraints || constraints->empty()) {
+            continue;
+        }
+        auto boundIt = associatedTypeBindingNames.find(declaredAssoc);
+        if (boundIt == associatedTypeBindingNames.end()) {
+            continue; // Reported as missing above.
+        }
+        const std::string& boundTypeStr = boundIt->second;
+        for (const ast::TypeNode* constraint : *constraints) {
+            if (!constraint) continue;
+            auto constraintId = dynamic_cast<const ast::TypeName*>(constraint);
+            if (!constraintId || !constraintId->identifier) continue;
+            const std::string& constraintAspect = constraintId->identifier->name;
+            TraitInfo* boundTrait = findTrait(constraintAspect);
+            if (!boundTrait) {
+                addError("Associated type bound '" + constraintAspect + "' in aspect '" +
+                         traitName + "' names an aspect that is not defined.", bindDecl);
+                return false;
+            }
+            if (!typeImplementsTrait(boundTypeStr, constraintAspect)) {
+                addError("Associated type '" + declaredAssoc + "' of type '" + boundTypeStr +
+                         "' in bind '" + traitName + " -> " + typeName +
+                         "' does not implement aspect '" + constraintAspect + "'.", bindDecl);
+                return false;
+            }
+        }
+    }
+
     // Check that all required trait methods are implemented
     for (const auto& traitMethod : traitInfo->methods) {
         // Skip methods with default implementations

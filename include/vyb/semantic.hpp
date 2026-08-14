@@ -207,6 +207,9 @@ struct TraitInfo {
     // Default types for associated types, index-aligned with associatedTypes
     // (nullptr = no default declared).
     std::vector<ast::TypeNode*> associatedTypeDefaults;
+    // Aspect bounds for each associated type, index-aligned with associatedTypes
+    // (empty vector = no bound declared).
+    std::vector<std::vector<ast::TypeNode*>> associatedTypeConstraints;
     std::vector<TraitMethod> methods;
     ast::AspectDeclaration* declaration; // Original AST node
 
@@ -215,6 +218,17 @@ struct TraitInfo {
         for (size_t i = 0; i < associatedTypes.size() && i < associatedTypeDefaults.size(); ++i) {
             if (associatedTypes[i] == assocName) {
                 return associatedTypeDefaults[i];
+            }
+        }
+        return nullptr;
+    }
+
+    // Returns the declared aspect bounds for an associated type (its types),
+    // or nullptr if the associated type has no bound.
+    const std::vector<ast::TypeNode*>* getAssociatedTypeConstraints(const std::string& assocName) const {
+        for (size_t i = 0; i < associatedTypes.size() && i < associatedTypeConstraints.size(); ++i) {
+            if (associatedTypes[i] == assocName) {
+                return &associatedTypeConstraints[i];
             }
         }
         return nullptr;
@@ -248,6 +262,14 @@ struct TraitInfo {
                     def = decl->associatedTypeDefaults[i].get();
                 }
                 associatedTypeDefaults.push_back(def);
+
+                std::vector<ast::TypeNode*> cons;
+                if (i < decl->associatedTypeConstraints.size()) {
+                    for (const auto& c : decl->associatedTypeConstraints[i]) {
+                        cons.push_back(c.get());
+                    }
+                }
+                associatedTypeConstraints.push_back(std::move(cons));
             }
         }
 

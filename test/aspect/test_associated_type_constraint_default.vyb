@@ -1,0 +1,32 @@
+// @test: constrained associated type default is accepted when it conforms
+// @description: type Item<Display> = Point lets binds inherit a conforming default
+// @category: aspect, associated types, bounds, defaults
+// @expect: pass
+// @expect-return: 0
+
+aspect Display {
+    show(self)<Void> -> { }
+}
+
+struct Point {
+    x<Int>
+}
+
+bind Display -> Point {
+    show(self)<Void> -> { return }
+}
+
+aspect Iterator {
+    type Item<Display> = Point
+    next(self)<Self::Item>
+}
+
+bind Iterator -> Point {
+    next(self)<Point> -> { return self }
+}
+
+main()<Int> -> {
+    p<Point> = Point { x = 1 }
+    q<Point> = p.next()
+    return 0
+}

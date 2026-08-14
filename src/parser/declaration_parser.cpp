@@ -819,6 +819,7 @@ std::unique_ptr<vyb::ast::Declaration> DeclarationParser::parse_trait_declaratio
     // Parse trait members
     std::vector<std::unique_ptr<ast::Identifier>> associated_types;
     std::vector<ast::TypeNodePtr> associated_type_defaults;
+    std::vector<std::vector<ast::TypeNodePtr>> associated_type_constraints;
     std::vector<std::unique_ptr<ast::FunctionDeclaration>> methods;
 
     while (this->peek().type != vyb::TokenType::RBRACE && this->peek().type != vyb::TokenType::END_OF_FILE) {
@@ -831,6 +832,32 @@ std::unique_ptr<vyb::ast::Declaration> DeclarationParser::parse_trait_declaratio
             }
 
             associated_types.push_back(std::make_unique<ast::Identifier>(associated_type_loc, this->consume().lexeme));
+
+            // Optional aspect bounds: type Item<Display, Clone> (or type Item: Display + Clone)
+            std::vector<ast::TypeNodePtr> constraints;
+            if (this->match(vyb::TokenType::LT)) {
+                do {
+                    if (this->peek().type != vyb::TokenType::IDENTIFIER) {
+                        throw std::runtime_error("Expected aspect name for associated type bound after '<' at " + location_to_string(this->current_location()));
+                    }
+                    auto bound_loc = this->current_location();
+                    std::string aspect_name = this->consume().lexeme;
+                    auto bound_type = std::make_unique<ast::TypeName>(bound_loc, std::make_unique<ast::Identifier>(bound_loc, aspect_name));
+                    constraints.push_back(std::move(bound_type));
+                } while (this->match(vyb::TokenType::COMMA));
+                this->expect(vyb::TokenType::GT); // Close the bounds list
+            } else if (this->match(vyb::TokenType::COLON)) {
+                do {
+                    if (this->peek().type != vyb::TokenType::IDENTIFIER) {
+                        throw std::runtime_error("Expected aspect name for associated type bound after ':' at " + location_to_string(this->current_location()));
+                    }
+                    auto bound_loc = this->current_location();
+                    std::string aspect_name = this->consume().lexeme;
+                    auto bound_type = std::make_unique<ast::TypeName>(bound_loc, std::make_unique<ast::Identifier>(bound_loc, aspect_name));
+                    constraints.push_back(std::move(bound_type));
+                } while (this->match(vyb::TokenType::PLUS));
+            }
+            associated_type_constraints.push_back(std::move(constraints));
 
             // Optional default: type Item = Int
             ast::TypeNodePtr assoc_default = nullptr;
@@ -859,7 +886,7 @@ std::unique_ptr<vyb::ast::Declaration> DeclarationParser::parse_trait_declaratio
 
     this->expect(vyb::TokenType::RBRACE);
 
-    return std::make_unique<ast::AspectDeclaration>(loc, std::move(name), std::move(generic_params), std::move(super_types), std::move(associated_types), std::move(associated_type_defaults), std::move(methods));
+    return std::make_unique<ast::AspectDeclaration>(loc, std::move(name), std::move(generic_params), std::move(super_types), std::move(associated_types), std::move(associated_type_defaults), std::move(associated_type_constraints), std::move(methods));
 }
 
 // ImplDeclNode not in ast.hpp. Assuming a Declaration type for it.

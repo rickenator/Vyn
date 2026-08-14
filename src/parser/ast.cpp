@@ -1685,8 +1685,8 @@ void MatchStatement::accept(Visitor& visitor) {
 }
 
 // --- AspectDeclaration ---
-AspectDeclaration::AspectDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<std::unique_ptr<GenericParameter>> gp, std::vector<std::unique_ptr<Identifier>> sup_types, std::vector<std::unique_ptr<Identifier>> assoc_types, std::vector<TypeNodePtr> assoc_defaults, std::vector<std::unique_ptr<FunctionDeclaration>> meths)
-    : Declaration(loc), name(std::move(n)), genericParams(std::move(gp)), superTypes(std::move(sup_types)), associatedTypes(std::move(assoc_types)), associatedTypeDefaults(std::move(assoc_defaults)), methods(std::move(meths)) {}
+AspectDeclaration::AspectDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<std::unique_ptr<GenericParameter>> gp, std::vector<std::unique_ptr<Identifier>> sup_types, std::vector<std::unique_ptr<Identifier>> assoc_types, std::vector<TypeNodePtr> assoc_defaults, std::vector<std::vector<TypeNodePtr>> assoc_constraints, std::vector<std::unique_ptr<FunctionDeclaration>> meths)
+    : Declaration(loc), name(std::move(n)), genericParams(std::move(gp)), superTypes(std::move(sup_types)), associatedTypes(std::move(assoc_types)), associatedTypeDefaults(std::move(assoc_defaults)), associatedTypeConstraints(std::move(assoc_constraints)), methods(std::move(meths)) {}
 
 NodeType AspectDeclaration::getType() const {
     return NodeType::ASPECT_DECLARATION;
@@ -1706,6 +1706,14 @@ std::string AspectDeclaration::toString() const {
     for (size_t i = 0; i < associatedTypes.size(); ++i) {
         if (associatedTypes[i]) {
             ss << "  type " << associatedTypes[i]->toString();
+            if (i < associatedTypeConstraints.size() && !associatedTypeConstraints[i].empty()) {
+                ss << "<";
+                for (size_t c = 0; c < associatedTypeConstraints[i].size(); ++c) {
+                    if (c > 0) ss << ", ";
+                    if (associatedTypeConstraints[i][c]) ss << associatedTypeConstraints[i][c]->toString();
+                }
+                ss << ">";
+            }
             if (i < associatedTypeDefaults.size() && associatedTypeDefaults[i]) {
                 ss << " = " << associatedTypeDefaults[i]->toString();
             }

@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for that aspect can omit the explicit `type Item = ...` assignment and inherit
   the default. An explicit assignment still takes precedence. A missing assignment
   without a declared default remains a semantic error.
+- Associated-type aspect bounds (`type Item<Display>` / `type Item: Display + Clone`):
+  the type assigned to (or defaulted for) an associated type must implement every
+  constrained aspect. Non-conforming assignments and bounds naming undefined
+  aspects are rejected at bind validation.
 - Aspect inheritance (super-aspects): `aspect Comparable : Equatable` declares a
   super-aspect. Super-aspect names are validated against defined aspects, cyclic
   super-aspect dependencies are rejected, and binding a sub-aspect requires the

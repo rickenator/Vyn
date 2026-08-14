@@ -1,0 +1,24 @@
+// @test: associated type bound to an undefined aspect is rejected
+// @description: A constraint whose aspect is not defined is a binding error
+// @category: aspect, associated types, bounds, diagnostics
+// @expect: fail
+// @expect-error: Associated type bound 'Nonexistent' in aspect 'Itr' names an aspect that is not defined.
+// @semantic-only: true
+
+struct Plain {
+    x<Int>
+}
+
+aspect Itr {
+    type Item<Nonexistent>
+    next(self)<Self::Item>
+}
+
+bind Itr -> Plain {
+    type Item = Plain
+    next(self)<Plain> -> { return self }
+}
+
+main()<Int> -> {
+    return 0
+}

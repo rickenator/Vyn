@@ -1474,9 +1474,12 @@ public:
     std::vector<std::unique_ptr<Identifier>> associatedTypes;
     // Optional default types, index-aligned with associatedTypes (nullptr = no default).
     std::vector<TypeNodePtr> associatedTypeDefaults;
+    // Optional aspect bounds for each associated type, index-aligned with
+    // associatedTypes (empty vector = no bound declared), e.g. type Item<Display>.
+    std::vector<std::vector<TypeNodePtr>> associatedTypeConstraints;
     std::vector<std::unique_ptr<FunctionDeclaration>> methods;
 
-    AspectDeclaration(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<std::unique_ptr<GenericParameter>> genericParams, std::vector<std::unique_ptr<Identifier>> superTypes, std::vector<std::unique_ptr<Identifier>> associatedTypes, std::vector<TypeNodePtr> associatedTypeDefaults, std::vector<std::unique_ptr<FunctionDeclaration>> methods);
+    AspectDeclaration(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<std::unique_ptr<GenericParameter>> genericParams, std::vector<std::unique_ptr<Identifier>> superTypes, std::vector<std::unique_ptr<Identifier>> associatedTypes, std::vector<TypeNodePtr> associatedTypeDefaults, std::vector<std::vector<TypeNodePtr>> associatedTypeConstraints, std::vector<std::unique_ptr<FunctionDeclaration>> methods);
     ~AspectDeclaration() override = default;
     NodeType getType() const override;
     std::string toString() const override;
