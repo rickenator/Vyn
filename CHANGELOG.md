@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Auto-import of core contracts (`core::*`)** — every non-stdlib module now
+  automatically gets the core contracts module (`core::aspects`, including its
+  pre-wired scalar binds) in scope, so `x.display()`, `a.equals(b)`,
+  `a.compare(b)`, and `a.clone()` work on built-in scalars with no explicit
+  import. Auto-import is skipped when the module already imports the contracts
+  (directly or via `prelude`/`core::prelude`), when it locally redefines any core
+  aspect or primitive bind, and when it opts out with the `no_core()` directive.
+  Stdlib modules wire their own imports and are excluded from auto-import.
+
 - **Binds carry across module imports** — `bind` declarations in an imported
   module are now carried to the importer (like shared structs/aspects/functions),
   so a library can ship aspect implementations that take effect on import. Binds

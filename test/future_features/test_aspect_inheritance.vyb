@@ -1,34 +1,11 @@
-// @test: Aspect inheritance (future)
-// @description: Aspect inheritance (aspect A : B) is planned; documents the intended syntax
+// @test: Aspect inheritance
+// @description: Aspect inheritance (`aspect Printable : Display`) composes a sub-aspect with a super-aspect; the core `Display` aspect is auto-imported, so the super-aspect reference resolves without an explicit import.
 // @category: aspect, types
-// @expect: fail
-// @tags: future, unimplemented
-
-// When implemented, aspects can inherit from other aspects:
-//
-//   aspect Equatable {
-//       eq(self<Self>, other<Self>)<Bool>
-//   }
-//
-//   aspect Comparable : Equatable {
-//       lt(self<Self>, other<Self>)<Bool>
-//       lte(self<Self>, other<Self>)<Bool> -> {
-//           return self.lt(other) || self.eq(other)
-//       }
-//   }
-//
-//   struct Score { value<Int> }
-//
-//   bind Comparable -> Score {
-//       eq(self<Self>, other<Self>)<Bool>  -> { return self.value == other.value }
-//       lt(self<Self>, other<Self>)<Bool>  -> { return self.value < other.value }
-//   }
-//
-// Aspect inheritance allows building rich hierarchies like:
-//   Equatable <- Comparable <- Orderable <- Sortable
+// @expect: pass
+// @expect-return: 0
 
 aspect Printable : Display {
-    render(self<Self>)<String>
+    render(self)<String>
 }
 
 main()<Int> -> {

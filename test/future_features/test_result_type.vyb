@@ -1,33 +1,24 @@
-// @test: Result type (future)
-// @description: Result<T,E> with Ok/Err variants is a planned stdlib type
+// @test: Result type
+// @description: Result<T,E> is a built-in generic enum with Ok/Err variants, constructible via Result<Int,String>::Ok/::Err or inferred bare Ok(e)/Err(e), and dispatchable via match.
 // @category: types, result, error_handling
-// @expect: fail
-// @tags: future, unimplemented
-
-// Transitional note:
-// `core::result` currently exists as a placeholder module only.
-// Canonical generic `Result<T,E>` remains intentionally unimplemented.
-//
-// When implemented, Result<T,E> will work like:
-//
-//   parse_int(s<String>)<Result<Int,String>> -> {
-//       // ... parse logic ...
-//       return Ok(42)
-//       // or: return Err("invalid number")
-//   }
-//
-//   main()<Int> -> {
-//       r<Result<Int,String>> = parse_int("42")
-//       match (r) {
-//           Ok(val)  -> println_int(val),
-//           Err(msg) -> println(msg)
-//       }
-//       return 0
-//   }
-
-import core::result
+// @expect: pass
+// @expect-return: 0
 
 main()<Int> -> {
     r<Result<Int,String>> = Ok(42)
-    return 0
+    e<Result<Int,String>> = Err("bad")
+    got<Int> = 0
+    gotErr<Int> = 0
+    match (r) {
+        Ok(val) -> { got = val },
+        Err(msg) -> { got = -1 }
+    }
+    match (e) {
+        Ok(val) -> { gotErr = val },
+        Err(msg) -> { gotErr = -1 }
+    }
+    if (got == 42 && gotErr == -1) {
+        return 0
+    }
+    return 1
 }

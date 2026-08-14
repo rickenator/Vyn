@@ -164,6 +164,60 @@ std::string bindKeyFromLine(const std::string& line) {
     return "bind:" + target + ":" + trait;
 }
 
+// Returns true when auto-importing `core::aspects` would collide with the module
+// (it already imports it, or locally redefines one of the core aspects / a
+// primitive bind that core::aspects pre-wires). Auto-import is skipped then.
+bool moduleHasCoreAutoImportConflict(const ast::Module* module) {
+    if (!module) {
+        return true;
+    }
+    static const std::unordered_set<std::string> coreAspects = {
+        "Display", "Debug", "Clone", "Equatable", "Hashable", "Comparable"};
+    static const std::unordered_set<std::string> scalarTargets = {
+        "Int", "Float", "Bool", "String"};
+    for (const auto& stmt : module->body) {
+        if (auto* imp = dynamic_cast<ast::ImportDeclaration*>(stmt.get())) {
+            if (imp->source) {
+                const std::string& src = imp->source->value;
+                if (src == "core::aspects" || src == "core::prelude" || src == "prelude") {
+                    return true; // already imports the core contracts (directly or via prelude)
+                }
+            }
+            continue;
+        }
+        if (auto* aspect = dynamic_cast<ast::AspectDeclaration*>(stmt.get())) {
+            if (aspect->name && coreAspects.count(aspect->name->name)) {
+                return true; // local redefinition of a core aspect
+            }
+            continue;
+        }
+        if (auto* bind = dynamic_cast<ast::BindDeclaration*>(stmt.get())) {
+            if (bind->selfType && bind->traitType) {
+                std::string target = bind->selfType->toString();
+                std::string trait = bind->traitType->toString();
+                if (scalarTargets.count(target) && coreAspects.count(trait)) {
+                    return true; // collides with a pre-wired primitive bind
+                }
+            }
+            continue;
+        }
+    }
+    return false;
+}
+
+bool pathIsUnder(const fs::path& path, const fs::path& root) {
+    std::error_code ec;
+    fs::path p = fs::weakly_canonical(fs::absolute(path, ec), ec);
+    fs::path r = fs::weakly_canonical(fs::absolute(root, ec), ec);
+    auto pit = p.begin(), rit = r.begin();
+    for (; pit != p.end() && rit != r.end(); ++pit, ++rit) {
+        if (*pit != *rit) {
+            return false;
+        }
+    }
+    return rit == r.end();
+}
+
 } // namespace
 
 ModuleRegistry::ModuleRegistry(ModuleRegistryOptions options)
@@ -234,6 +288,28 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
         currentRecord.bundles = metadata.bundles;
         currentRecord.sharesByName = metadata.sharesByName;
         currentRecord.importedModuleKeys.clear();
+
+        // Auto-import core::* contracts (core::aspects) unless opted out via the
+        // `no_core()` directive, the module is part of the stdlib itself (the stdlib
+        // wires its own imports precisely), or the module already imports/defines the
+        // contracts. The synthetic import is inserted at the front (like a top-of-file
+        // import) so the core aspects and their binds register before any program body
+        // runs; auto-import is skipped entirely on any potential name conflict, so the
+        // front-insertion cannot shadow the module's own declarations.
+        bool moduleIsUnderStdlib = false;
+        if (auto stdlibRoot = discoverStdlibRoot()) {
+            moduleIsUnderStdlib = pathIsUnder(currentPath, *stdlibRoot);
+        }
+        if (metadata.coreAutoImport && !moduleIsUnderStdlib &&
+            !moduleHasCoreAutoImportConflict(module.get())) {
+            // Reserve an empty importShare slot for the synthetic import so the
+            // positional importShares array stays aligned with the module's real imports.
+            metadata.importShares.insert(metadata.importShares.begin(), std::vector<std::string>{});
+            module->body.insert(module->body.begin(),
+                std::make_unique<ast::ImportDeclaration>(
+                    SourceLocation{}, ast::ImportKind::TrustedImport,
+                    std::make_unique<ast::StringLiteral>(SourceLocation{}, "core::aspects")));
+        }
 
         for (auto& stmt : module->body) {
             if (auto* importDecl = dynamic_cast<ast::ImportDeclaration*>(stmt.get())) {
@@ -605,6 +681,15 @@ ModuleRegistry::SourceMetadata ModuleRegistry::preprocessModuleSource(const std:
 
         if (auto shareArgs = consumeDirective(working, "share")) {
             pendingShare = *shareArgs;
+            if (working.empty()) {
+                cleaned << '\n';
+                continue;
+            }
+        }
+
+        if (auto noCore = consumeDirective(working, "no_core")) {
+            (void)noCore;
+            metadata.coreAutoImport = false;
             if (working.empty()) {
                 cleaned << '\n';
                 continue;

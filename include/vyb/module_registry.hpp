@@ -51,6 +51,7 @@ private:
         std::vector<std::string> bundles;
         std::unordered_map<std::string, std::vector<std::string>> sharesByName;
         std::vector<std::vector<std::string>> importShares;
+        bool coreAutoImport = true;
     };
 
     struct ResolvedImportPath {

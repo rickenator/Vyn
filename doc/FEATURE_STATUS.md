@@ -23,7 +23,7 @@ Legend: ✅ Implemented | 🚧 Partial / Stubbed | 📋 Planned
 | Module search paths | ✅ | Importer dir, `--module-path`, `VYB_MODULE_PATH`, then stdlib auto-discovery |
 | Stdlib auto-discovery | ✅ | `VYB_STDLIB`, then executable-relative probes (`../stdlib`, `./stdlib`) |
 | Stdlib module foundation (`core`/`collections`/`io`) | 🚧 | Minimal scaffold shipped; `Option<T>` is now a built-in enum (transitional `core::option::OptionInt` retained for source-compat); `Result<T,E>` is now a built-in enum (`Ok(T)`/`Err(E)`, `core::result` is placeholder) |
-| Stdlib prelude auto-import | 📋 | Current behavior is explicit-only (`import prelude` or `import core::prelude`) |
+| Stdlib core auto-import | ✅ | The core contracts module (`core::aspects`, incl. pre-wired primitive binds) is auto-imported into non-stdlib modules, skipped on explicit import / local redefinition, opt-out via `no_core()` directive. Transitional prelude helpers (`OptionInt`, `prelude_ok`) remain explicit-only (`import prelude` / `import core::prelude`) |
 | `bundle(...)` visibility | ✅ | Source-level directives are enforced by the local resolver |
 | `share(...)` exports | ✅ | `share(all)` and bundle-scoped shares export declarations/imports |
 | `smuggle` visibility bypass | ✅ | Smuggled imports bypass share/bundle checks |

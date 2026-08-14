@@ -240,7 +240,7 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
 - [ ] **Phase 1.6 — Standard Library as Modules**
   - [x] Foundation scaffold landed: `stdlib/core/`, `stdlib/io/`, `stdlib/collections/`, top-level/core preludes, transitional `core::option` bridge, and placeholder `core::result`
   - [ ] Expand with full module contents (`math`, collections, io, iterator/core aspects)
-  - Auto-import of `core::*` (opt-out with directive)
+  - [x] Auto-import of `core::*` (opt-out with directive) — the core contracts module (`core::aspects`, with its pre-wired primitive binds) is auto-imported into every non-stdlib module unless it already imports the contracts, locally redefines them, or opts out with a `no_core()` directive. This makes `x.display()`, `a.equals(b)`, `a.compare(b)`, and `a.clone()` available on built-in scalars with no import. The transitional prelude helpers (`OptionInt`, `prelude_ok`) remain explicit-import-only.
 
 ### 2. FFI — C Interop (HIGH PRIORITY)
 - [x] **`extern` function modifier** — Individual extern function declarations compile to LLVM `ExternalLinkage` via `ExternStatement` codegen; syntax: `extern funcName(params)<ReturnType>`
