@@ -1,0 +1,27 @@
+// @test: Generic function call with a type that violates an aspect bound is rejected
+// @description: Instantiating a bounded generic with a concrete type that does not bind
+//   the declared aspect produces a clean semantic error.
+// @category: aspect, generics, bounds
+// @expect: fail
+// @expect-error: does not satisfy aspect bound
+
+struct Point {
+    x<Int>
+}
+
+aspect Display {
+    show(self)<Int> -> { }
+}
+
+bind Display -> Point {
+    show(self<Point>)<Int> -> { return self.x }
+}
+
+idn<T<Display>>(v<T>)<T> -> {
+    return v
+}
+
+main()<Int> -> {
+    n<Int> = idn(42)          // Int does not bind Display -> must be rejected
+    return n
+}

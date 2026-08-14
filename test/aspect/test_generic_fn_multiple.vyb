@@ -1,0 +1,21 @@
+// @test: Multiple distinct generic functions can be called in one body
+// @description: Each distinct generic function monomorphizes independently without
+//   corrupting the caller's codegen scope stack (previously the second distinct generic
+//   call dropped the caller's scope).
+// @category: aspect, generics
+// @expect: pass
+// @expect-return: 18
+
+struct Point {
+    x<Int>
+}
+
+f1<T>(v<T>)<T> -> { return v }
+f2<T>(v<T>)<T> -> { return v }
+
+main()<Int> -> {
+    p<Point> = Point { x = 9 }
+    s<Point> = f1(p)
+    t<Point> = f2(p)          // distinct generic function, same body scope
+    return s.x + t.x
+}

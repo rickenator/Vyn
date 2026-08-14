@@ -185,7 +185,7 @@ is the working audit for what needs to be implemented next.
 - [x] **Associated types (first practical slice)** — `aspect Iterator { type Item }` declarations, `bind` assignments (`type Item = Int`), and semantic validation for missing/unknown/duplicate assignments are implemented. Remaining work: defaults, where-style constraints, dyn-dispatch integration.
 - [ ] **Aspect objects / dynamic dispatch** — `dyn Aspect` for runtime polymorphism
 - [ ] **Aspect inheritance** — `aspect Comparable : Equatable`
-- [ ] **Monomorphization with bounds validation** — Reject instantiation where bounds fail
+- [x] **Monomorphization with bounds validation** — Generic function calls infer type arguments from the call site, substitute them into the return type, and reject concrete instantiations whose type does not bind the declared aspect(s).
 - [x] **Bind selection precedence** — A bounded generic bind (`bind<T<Aspect>>`) deterministically takes precedence over an unbounded bind (`bind<T>`) for the same type shape, independent of declaration order.
 
 ### Pattern Matching — Completion (MEDIUM PRIORITY)

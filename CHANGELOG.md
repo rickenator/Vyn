@@ -31,6 +31,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `mild<T>.grab()` upgrades live weak handles to `our<T>` and returns a null `our<T>` placeholder for released targets until `Option<T>` exists.
 
 ### Changed
+- Generic function calls now infer type arguments from the call-site arguments,
+  substitute them into the return type, and validate declared aspect bounds —
+  a concrete instantiation whose type does not bind the bound aspect is rejected
+  with a clean diagnostic. Previously callers received the raw placeholder type
+  (e.g. `T`) and unsatisfied bounds silently passed.
+- Fixed a generic-function monomorphization scope imbalance: calling a second,
+  distinct generic function in one body popped the caller's codegen scope, causing
+  `ERROR: No active scope to register variable` for the second result. The function
+  scope is now balanced only when the monomorphized body falls through.
 - Bind selection precedence: when both a bounded and an unbounded generic aspect
   bind match the same type shape (`bind<T<Aspect>>` + `bind<T>`), the bounded
   (more specialized) bind now wins deterministically regardless of declaration

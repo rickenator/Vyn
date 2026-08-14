@@ -210,7 +210,8 @@ llvm::Function* LLVMCodegen::monomorphizeGenericFunction(const std::string& func
         templateFunc->body->accept(*this);
 
         // Ensure function has a return if needed
-        if (!builder->GetInsertBlock()->getTerminator()) {
+        bool bodyFellThrough = !builder->GetInsertBlock()->getTerminator();
+        if (bodyFellThrough) {
             generatePopFrameCall();
             if (returnType->isVoidTy()) {
                 builder->CreateRetVoid();
@@ -224,7 +225,14 @@ llvm::Function* LLVMCodegen::monomorphizeGenericFunction(const std::string& func
         // Restore context, including the caller's insertion point so that
         // instructions after the call are emitted into the caller's block
         // (not into the freshly monomorphized function's block).
-        exitScope();
+        // Balance the function's own scope. A body that returned already had its
+        // function scope popped by the block's terminated-path cleanup (the return
+        // pops the block scope, then the block's terminated cleanup pops the function
+        // scope). Only pop here when the body fell through and we inserted the return,
+        // so we never pop the caller's scope out from under it.
+        if (bodyFellThrough) {
+            exitScope();
+        }
         currentFunction = oldFunction;
         if (oldInsertBlock) builder->SetInsertPoint(oldInsertBlock);
         namedValues.swap(oldNamedValues);

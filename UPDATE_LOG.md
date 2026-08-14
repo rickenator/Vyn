@@ -3,6 +3,14 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-13: **Generic function call typing + aspect-bound validation**.
+  Generic function calls now infer type arguments from the call site, substitute them into
+  the return type (callers see `Point` instead of the placeholder `T`), and reject concrete
+  instantiations whose type does not bind the declared aspect(s). Also fixed a generic-function
+  monomorphization scope imbalance where calling a second distinct generic function in one body
+  popped the caller's scope (`ERROR: No active scope to register variable`). Added
+  `test_generic_fn_return_subst` / `test_generic_fn_bound_rejected` / `test_generic_fn_multiple`
+  regressions and re-affirmed bind selection precedence. Full suite 748/748.
 - 2026-08-13: **Polymorphic monomorphization hardening & ownership unwrap-on-read**.
   Added unwrap-on-read for primitive `my<T>`/`our<T>`/`mild<T>` (reads with the underlying
   value's type) plus compile-time move tracking for `my<T>` that rejects use-after-move and

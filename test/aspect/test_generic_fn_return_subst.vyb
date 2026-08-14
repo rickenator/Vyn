@@ -1,0 +1,29 @@
+// @test: Generic function calls substitute the return type from inferred args
+// @description: A bounded generic function returning T yields the concrete type at the
+//   call site, so the result can be used as that type.
+// @category: aspect, generics, bounds
+// @expect: pass
+// @expect-return: 9
+
+struct Point {
+    x<Int>
+}
+
+aspect Display {
+    show(self)<Int> -> { }
+}
+
+bind Display -> Point {
+    show(self<Point>)<Int> -> { return self.x }
+}
+
+idn<T<Display>>(v<T>)<T> -> {
+    return v
+}
+
+main()<Int> -> {
+    p<Point> = Point { x = 9 }
+    q<Point> = idn(p)         // return type must resolve to Point, not T
+    r<Int> = q.show()
+    return r
+}

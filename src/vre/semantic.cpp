@@ -1657,15 +1657,163 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
         // Normal function calls return the function's declared return type.
         auto registryIt = functionRegistry.find(name);
 
+        // Generic function calls: infer type arguments from the actual arguments
+        // (a type parameter that appears bare or inside a parameter type is unified
+        // with the argument's concrete type), validate declared aspect bounds against
+        // the inferred concrete types, then substitute the inferred types into the
+        // return type so callers see a concrete type instead of the placeholder T.
+        std::function<void(ast::TypeNode*, ast::TypeNode*,
+                           const std::set<std::string>&,
+                           std::map<std::string, ast::TypeNode*>&)> unifyGenericType;
+        unifyGenericType = [&](ast::TypeNode* paramType, ast::TypeNode* argType,
+                               const std::set<std::string>& genericParamNames,
+                               std::map<std::string, ast::TypeNode*>& substitutions) -> void {
+            if (!paramType || !argType) return;
+            if (auto tn = dynamic_cast<ast::TypeName*>(paramType)) {
+                if (tn->identifier && tn->genericArgs.empty() &&
+                    genericParamNames.count(tn->identifier->name)) {
+                    substitutions[tn->identifier->name] = argType;
+                    return;
+                }
+                if (auto argTn = dynamic_cast<ast::TypeName*>(argType)) {
+                    if (tn->identifier && argTn->identifier &&
+                        tn->identifier->name == argTn->identifier->name &&
+                        tn->genericArgs.size() == argTn->genericArgs.size()) {
+                        for (size_t i = 0; i < tn->genericArgs.size(); ++i) {
+                            unifyGenericType(tn->genericArgs[i].get(), argTn->genericArgs[i].get(),
+                                             genericParamNames, substitutions);
+                        }
+                    }
+                }
+                return;
+            }
+            if (auto vt = dynamic_cast<ast::VecType*>(paramType)) {
+                if (auto avt = dynamic_cast<ast::VecType*>(argType)) {
+                    unifyGenericType(vt->elementType.get(), avt->elementType.get(),
+                                     genericParamNames, substitutions);
+                }
+                return;
+            }
+            if (auto ft = dynamic_cast<ast::FutureType*>(paramType)) {
+                if (auto aft = dynamic_cast<ast::FutureType*>(argType)) {
+                    unifyGenericType(ft->resultType.get(), aft->resultType.get(),
+                                     genericParamNames, substitutions);
+                }
+                return;
+            }
+            if (auto ot = dynamic_cast<ast::OptionalType*>(paramType)) {
+                if (auto aot = dynamic_cast<ast::OptionalType*>(argType)) {
+                    unifyGenericType(ot->containedType.get(), aot->containedType.get(),
+                                     genericParamNames, substitutions);
+                }
+                return;
+            }
+            if (auto pt = dynamic_cast<ast::PointerType*>(paramType)) {
+                if (auto apt = dynamic_cast<ast::PointerType*>(argType)) {
+                    unifyGenericType(pt->pointeeType.get(), apt->pointeeType.get(),
+                                     genericParamNames, substitutions);
+                }
+                return;
+            }
+            if (auto tt = dynamic_cast<ast::TupleTypeNode*>(paramType)) {
+                auto argTuple = dynamic_cast<ast::TupleTypeNode*>(argType);
+                if (argTuple && tt->memberTypes.size() == argTuple->memberTypes.size()) {
+                    for (size_t i = 0; i < tt->memberTypes.size(); ++i) {
+                        unifyGenericType(tt->memberTypes[i].get(),
+                                         argTuple->memberTypes[i].get(),
+                                         genericParamNames, substitutions);
+                    }
+                }
+                return;
+            }
+        };
+
+        // Does a concrete type have a bind (concrete or generic matching) for an aspect?
+        auto hasAspectBind = [&](const std::string& concreteTypeStr,
+                                 const std::string& aspectName) -> bool {
+            auto it = traitImpls.find(concreteTypeStr);
+            if (it != traitImpls.end() && it->second.count(aspectName)) {
+                return true;
+            }
+            for (const auto& typeEntry : genericTraitImpls) {
+                if (matchesPattern(concreteTypeStr, typeEntry.first) &&
+                    typeEntry.second.count(aspectName)) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        // Build inferred substitutions + validate bounds + substitute the return type.
+        auto resolveGenericCallReturnType =
+            [&](ast::FunctionDeclaration* funcDecl) -> ast::TypeNodePtr {
+            std::set<std::string> genericParamNames;
+            for (const auto& gp : funcDecl->genericParams) {
+                if (gp && gp->name) {
+                    genericParamNames.insert(gp->name->name);
+                }
+            }
+
+            std::map<std::string, ast::TypeNode*> substitutions;
+            for (size_t i = 0; i < node->arguments.size() && i < funcDecl->params.size(); ++i) {
+                auto argTypeIt = expressionTypes.find(node->arguments[i].get());
+                ast::TypeNode* argType = (argTypeIt != expressionTypes.end()) ? argTypeIt->second : nullptr;
+                if (argType) {
+                    unifyGenericType(funcDecl->params[i].typeNode.get(), argType,
+                                     genericParamNames, substitutions);
+                }
+            }
+
+            // Bounds validation: each bounded type parameter's inferred concrete type
+            // must itself bind the declared aspect(s).
+            for (const auto& gp : funcDecl->genericParams) {
+                if (!gp || !gp->name || gp->bounds.empty()) continue;
+                auto sit = substitutions.find(gp->name->name);
+                if (sit != substitutions.end() && sit->second) {
+                    std::string concreteTypeStr = sit->second->toString();
+                    for (const auto& bound : gp->bounds) {
+                        if (!bound) continue;
+                        std::string boundName = bound->toString();
+                        if (!hasAspectBind(concreteTypeStr, boundName)) {
+                            addError("Type '" + concreteTypeStr + "' does not satisfy aspect bound '" +
+                                     boundName + "' on type parameter '" + gp->name->name +
+                                     "' for function '" + (funcDecl->id ? funcDecl->id->name : "<anonymous>") +
+                                     "'.", node);
+                        }
+                    }
+                }
+            }
+
+            ast::TypeNode* returnTypeNode = funcDecl->returnTypeNode
+                ? funcDecl->returnTypeNode.get() : nullptr;
+            if (!returnTypeNode) {
+                return nullptr;
+            }
+            if (substitutions.empty()) {
+                return ast::TypeNodePtr(returnTypeNode->clone());
+            }
+            return substituteGenericArgsForValidation(returnTypeNode, substitutions);
+        };
+
         SymbolInfo* functionSymbol = currentScope->lookup(name);
         if (functionSymbol && functionSymbol->kind == SymbolInfo::Kind::Function && functionSymbol->type) {
             if (auto functionType = dynamic_cast<ast::FunctionType*>(functionSymbol->type)) {
                 if (functionType->returnType) {
-                    ast::TypeNode* returnType = functionType->returnType->type
-                        ? functionType->returnType->type.get()
-                        : functionType->returnType.get();
-                    expressionTypes[node] = returnType;
-                    node->type = std::shared_ptr<ast::TypeNode>(returnType->clone());
+                    bool isGenericCall = registryIt != functionRegistry.end() &&
+                        registryIt->second && !registryIt->second->genericParams.empty();
+                    if (isGenericCall) {
+                        ast::TypeNodePtr substituted = resolveGenericCallReturnType(registryIt->second);
+                        if (substituted) {
+                            node->type = std::shared_ptr<ast::TypeNode>(substituted.release());
+                            expressionTypes[node] = node->type.get();
+                        }
+                    } else {
+                        ast::TypeNode* returnType = functionType->returnType->type
+                            ? functionType->returnType->type.get()
+                            : functionType->returnType.get();
+                        expressionTypes[node] = returnType;
+                        node->type = std::shared_ptr<ast::TypeNode>(returnType->clone());
+                    }
                 }
 
             // Move tracking: mark MY-owned argument identifiers as moved when passed to function
