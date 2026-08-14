@@ -1158,9 +1158,9 @@ Fine-grained visibility control with bundles:
 bundle(math, math.Core)
 
 # Control symbol visibility
-share(all) fn public_function() { ... }           # Public to all
-share(math.UI) fn ui_helper() { ... }             # Only to math.UI bundle
-fn internal_helper() { ... }                      # Private to this file
+share(all) public_function()<Int> -> { ... }      # Public to all
+share(math.UI) ui_helper()<Int> -> { ... }        # Only to math.UI bundle
+internal_helper()<Int> -> { ... }                 # Private to this file
 ```
 
 ### Arrays and Collections

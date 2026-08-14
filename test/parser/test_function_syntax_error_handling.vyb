@@ -11,8 +11,9 @@ main()<String> -> {
     return correct_syntax();
 }
 
-// Note: The following would cause a helpful error message:
+// Note: Vyb has no `fn`/`func` keyword and no C-style `-> ReturnType` suffix.
+// Functions are declared name-first: `name(args)<ReturnType> -> { ... }`.
+// A C-style declaration like the following is not valid Vyb:
 // fn incorrect_syntax() -> String {
 //     return "error";
 // }
-// Error: "Invalid function syntax. Vyb uses 'fn<ReturnType> name()' syntax, not 'fn name() -> ReturnType'"
