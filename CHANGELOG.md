@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `Option<T>` is now a first-class built-in generic data enum
+  (`enum Option<T> { Some(T), None }`), so nullable values no longer require the
+  transitional `core::option::OptionInt` bridge (kept for source-compat). It
+  supports qualified construction (`Option<Int>::Some(42)`, `Option<Int>::None`)
+  and type-inferred bare construction (`Some(x)` / `None` when the enclosing
+  variable declaration or function return type is `Option<T>`). It is registered
+  directly in the compiler (semantic generic-enum template plus a codegen
+  tagged-union layout, monomorphized per payload type), so it needs no `import`.
+  It integrates fully with `match`/`select` variant dispatch and exhaustiveness
+  checking, unwrapping both primitive and heap (e.g. `String`) payloads.
+
 ### Fixed
 - `select` now supports data-carrying enum variants directly: arms like
   `Circle(r) ->`, `Rect(w, h) ->`, and `Unit ->` dispatch on the runtime tag and

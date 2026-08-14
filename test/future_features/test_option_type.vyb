@@ -1,41 +1,36 @@
-// @test: Option type (future)
-// @description: Option<T> with Some/None variants is a planned stdlib type
-// @category: types, option
-// @expect: fail
-// @tags: future, unimplemented
+// @test: Option<T> built-in enum (Some/None)
+// @description: the canonical Option<T> type is implemented as a built-in generic
+//   data enum with Some(value) / None variants. `Option<Int>`, `Some(...)` and
+//   `None` work across construction (explicit and type-inferred), return values,
+//   and match/select dispatch with exhaustiveness.
+// @category: types, option, enum, match
+// @expect: pass
+// @expect-return: -77
+// @execute-jit: true
 
-// Transitional note:
-// `core::option` currently provides only `OptionInt` helpers as a bridge.
-// Canonical generic `Option<T>` remains intentionally unimplemented.
-//
-// When implemented, Option<T> will work like:
-//
-//   find_first(v<Vec<Int>>, target<Int>)<Option<Int>> -> {
-//       i<Int> = 0
-//       while (i < v.len()) {
-//           if (v.get(i) == target) {
-//               return Some(v.get(i))
-//           }
-//           i = i + 1
-//       }
-//       return None
-//   }
-//
-//   main()<Int> -> {
-//       v<Vec<Int>> = Vec::new()
-//       v.push(10)
-//       v.push(20)
-//       result<Option<Int>> = find_first(v, 20)
-//       match (result) {
-//           Some(val) -> println_int(val),
-//           None -> println("not found")
-//       }
-//       return 0
-//   }
-
-import core::option
+find_first(v<Vec<Int>>, target<Int>)<Option<Int>> -> {
+    i<Int> = 0
+    while (i < v.len()) {
+        if (v.get(i) == target) {
+            return Some(v.get(i))
+        }
+        i = i + 1
+    }
+    return None
+}
 
 main()<Int> -> {
-    result<Option<Int>> = None
-    return 0
+    v<Vec<Int>> = Vec::new()
+    v.push(10)
+    v.push(20)
+    result<Option<Int>> = find_first(v, 20)
+    match (result) {
+        Some(val) -> {
+            if (val == 20) {
+                return -77
+            }
+        }
+        None -> { }
+    }
+    return 1
 }

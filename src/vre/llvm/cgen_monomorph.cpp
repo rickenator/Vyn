@@ -209,6 +209,34 @@ llvm::StructType* LLVMCodegen::monomorphizeEnum(const std::string& baseName,
                                                  const std::vector<ast::TypeNodePtr>& typeArgs) {
     std::string mangledName = mangleGenericTypeName(baseName, typeArgs);
 
+    // Built-in generic data enum: `enum Option<T> { Some(T), None }`. It is not
+    // declared in source, so build its tagged-union layout directly from the
+    // single payload type argument rather than a codegen-registered template.
+    if (baseName == "Option" || baseName == "core::option::Option") {
+        auto cacheIt = taggedEnumInfo.find(mangledName);
+        if (cacheIt != taggedEnumInfo.end()) return cacheIt->second.llvmType;
+        TaggedEnumInfo info;
+        info.variantTags["Some"] = 0;
+        info.variantTags["None"] = 1;
+        unsigned payloadBytes = 0;
+        if (!typeArgs.empty() && typeArgs[0]) {
+            llvm::Type* payloadTy = codegenType(typeArgs[0].get());
+            if (!payloadTy) payloadTy = llvm::Type::getInt64Ty(*context);
+            llvm::StructType* payloadStruct = llvm::StructType::get(*context, {payloadTy}, false);
+            info.variantPayloadTypes["Some"] = payloadStruct;
+            llvm::TypeSize sz = module->getDataLayout().getTypeAllocSize(payloadStruct);
+            payloadBytes = static_cast<unsigned>(sz.getFixedValue());
+        }
+        if (payloadBytes == 0) payloadBytes = 1;
+        info.payloadBytes = payloadBytes;
+        llvm::StructType* enumStruct = llvm::StructType::create(*context, mangledName);
+        enumStruct->setBody({llvm::Type::getInt64Ty(*context),
+            llvm::ArrayType::get(llvm::Type::getInt8Ty(*context), payloadBytes)}, /*isPacked=*/false);
+        info.llvmType = enumStruct;
+        taggedEnumInfo[mangledName] = info;
+        return enumStruct;
+    }
+
     // Cached? (monomorphized structs are registered under their mangled name)
     auto cacheIt = taggedEnumInfo.find(mangledName);
     if (cacheIt != taggedEnumInfo.end()) return cacheIt->second.llvmType;

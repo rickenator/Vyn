@@ -251,6 +251,19 @@ SemanticAnalyzer::SemanticAnalyzer(Driver& driver) : driver_(driver), currentSco
         "addr", "at", "loc", "from",
         "lit", "notype", "bare", "deserial"
     };
+
+    // Built-in generic data enum: `enum Option<T> { Some(T), None }`. Registered
+    // as a template so `Option<T>` is a first-class type and `Some`/`None`
+    // variants participate in match/select dispatch and exhaustiveness, just
+    // like a source-declared generic enum (e.g. `Box<T>`).
+    enumGenericParamOrder["Option"] = std::vector<std::string>{"T"};
+    auto tPayload = std::make_unique<ast::TypeName>(
+        SourceLocation(),
+        std::make_unique<ast::Identifier>(SourceLocation(), "T"));
+    auto& optionTmpl = enumTemplatePayloadTypes["Option"];
+    std::vector<ast::TypeNodePtr>& somePayload = optionTmpl["Some"];
+    somePayload.push_back(tPayload->clone());
+    optionTmpl["None"] = std::vector<ast::TypeNodePtr>();
 }
 
 // --- Canonical block of helpers and basic visit methods ---
@@ -258,6 +271,28 @@ SemanticAnalyzer::SemanticAnalyzer(Driver& driver) : driver_(driver), currentSco
 // Helper methods (Single definitions)
 void SemanticAnalyzer::addError(const std::string& message, const ast::Node* node) {
     errors.push_back(message);
+}
+
+// If `expr` is a bare Option constructor (`Some(x)` call or `None` identifier)
+// and `targetType` is `Option<X>`, inject the concrete Option type into `expr`.
+// This lets `result<Option<Int>> = None` and `return Some(v.get(i))` infer the
+// payload type without explicit `Option<Int>::Some(...)` type arguments.
+static bool injectBareOptionType(ast::Expression* expr, ast::TypeNode* targetType) {
+    if (!expr || !targetType) return false;
+    auto* tn = dynamic_cast<ast::TypeName*>(targetType);
+    if (!tn || !tn->identifier || tn->identifier->name != "Option" || tn->genericArgs.size() != 1) {
+        return false;
+    }
+    bool isSome = false, isNone = false;
+    if (auto* call = dynamic_cast<ast::CallExpression*>(expr)) {
+        auto* id = dynamic_cast<ast::Identifier*>(call->callee.get());
+        isSome = id && id->name == "Some";
+    } else if (auto* id = dynamic_cast<ast::Identifier*>(expr)) {
+        isNone = id->name == "None";
+    }
+    if (!isSome && !isNone) return false;
+    expr->type = std::shared_ptr<ast::TypeNode>(targetType->clone());
+    return true;
 }
 
 void SemanticAnalyzer::enterScope() {
@@ -573,10 +608,20 @@ ast::TypeNode* SemanticAnalyzer::substituteSelfType(ast::TypeNode* returnType, c
 
 // Basic visit methods for expressions (Single definitions)
 void SemanticAnalyzer::visit(ast::Identifier* node) {
+    // Bare Option unit constructor: `None`. A surrounding annotation injects the
+    // target `Option<T>` type into this node so `None` is typed as that Option.
+    if (node->name == "None" && node->type) {
+        auto* optTn = dynamic_cast<ast::TypeName*>(node->type.get());
+        if (optTn && optTn->identifier && optTn->identifier->name == "Option") {
+            expressionTypes[node] = node->type.get();
+            return;
+        }
+    }
     // Handle built-in type identifiers that don't need to be in symbol table
     // These are used in contexts like Vec::new(), Int::from_string() where the type is a namespace
     if (node->name == "Vec" || node->name == "Int" || node->name == "Float" ||
-        node->name == "Bool" || node->name == "String") {
+        node->name == "Bool" || node->name == "String" ||
+        enumGenericParamOrder.count(node->name)) {
         // Built-in types - don't error on them
         // They will be properly typed in the context where they're used (e.g., Int::from_string())
         return;
@@ -1107,6 +1152,14 @@ void SemanticAnalyzer::visit(ast::VariableDeclaration* node) {
             }
         }
 
+        // Bare Option constructor injection: `result<Option<Int>> = None` or
+        // `result<Option<Int>> = Some(value)` infers the payload type from the
+        // variable's declared Option<T> annotation without explicit type args.
+        if (node->typeNode && node->init) {
+            ast::TypeNode* varType = node->typeNode->type ? node->typeNode->type.get() : node->typeNode.get();
+            if (varType) injectBareOptionType(node->init.get(), varType);
+        }
+
         node->init->accept(*this);
 
         // Type inference: if no annotation given, infer from initializer
@@ -1348,6 +1401,25 @@ void SemanticAnalyzer::visit(ast::BinaryExpression* node) {
     }
 }
 void SemanticAnalyzer::visit(ast::CallExpression* node) {
+    // Bare Option constructor: `Some(x)`. A surrounding annotation (variable
+    // declaration or return statement) injects the target `Option<T>` type into
+    // this node, so the constructor infers its payload without explicit type args.
+    if (auto calleeId = dynamic_cast<ast::Identifier*>(node->callee.get())) {
+        if (calleeId->name == "Some" && node->type) {
+            auto* optTn = dynamic_cast<ast::TypeName*>(node->type.get());
+            if (optTn && optTn->identifier && optTn->identifier->name == "Option" &&
+                optTn->genericArgs.size() == 1) {
+                if (node->arguments.size() != 1) {
+                    addError("Some expects exactly one payload argument, got " +
+                             std::to_string(node->arguments.size()), node);
+                    return;
+                }
+                node->arguments[0]->accept(*this);
+                expressionTypes[node] = node->type.get();
+                return;
+            }
+        }
+    }
     // Check if this is an intrinsic function call before visiting the callee
     bool isIntrinsic = false;
     if (auto ident = dynamic_cast<ast::Identifier*>(node->callee.get())) {
@@ -4365,6 +4437,14 @@ void SemanticAnalyzer::visit(ast::WhileStatement* node) {
 void SemanticAnalyzer::visit(ast::ReturnStatement* node) {
     // Visit the return value if it exists
     if (node->argument) {
+        // Bare Option constructor injection for `return Some(x)` / `return None`
+        // inside a function whose return type is `Option<T>`.
+        if (currentFunction && currentFunction->returnTypeNode) {
+            ast::TypeNode* retTy = currentFunction->returnTypeNode->type
+                ? currentFunction->returnTypeNode->type.get()
+                : currentFunction->returnTypeNode.get();
+            if (retTy) injectBareOptionType(node->argument.get(), retTy);
+        }
         node->argument->accept(*this);
     }
 }
@@ -5725,6 +5805,15 @@ void SemanticAnalyzer::visit(ast::TypeName* node) {
         // Create a FutureType instance
         auto futureType = std::make_unique<ast::FutureType>(node->loc, node->genericArgs[0]->clone());
         node->type = std::shared_ptr<ast::TypeNode>(futureType.release());
+    } else if (typeNameStr == "Option") {
+        // Built-in generic data enum `Option<T> { Some(T), None }`.
+        if (node->genericArgs.size() != 1 || !node->genericArgs[0]) {
+            addError("Option type requires exactly one type parameter (e.g., Option<Int>).", node);
+            return;
+        }
+        node->genericArgs[0]->accept(*this);
+        registerGenericEnumConcrete("Option", node->toString(), node->genericArgs);
+        node->type = std::shared_ptr<ast::TypeNode>(node->clone());
     } else if (typeNameStr == "loc" || typeNameStr == "CPtr") {
         if (node->genericArgs.empty() || !node->genericArgs[0]) {
             addError(typeNameStr + " type constructor requires a type parameter (e.g., " + typeNameStr + "<T>).", node);

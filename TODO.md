@@ -260,7 +260,7 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
 - [x] **`soft(expr)` semantic** — Creates `mild<T>` from `our<T>`; enforced
 
 ### 4. Standard Library Expansion (HIGH PRIORITY)
-- [ ] **`Option<T>`** — `Some(value)` / `None` for nullable values (transitional `core::option::OptionInt` bridge exists)
+- [x] **`Option<T>`** — `Some(value)` / `None` for nullable values; built-in generic enum (transitional `core::option::OptionInt` bridge retained for source-compat)
 - [ ] **`Result<T, E>`** — `Ok(value)` / `Err(error)` for fallible operations (`core::result` placeholder module exists)
 - [ ] **Core aspects** — `Display`, `Debug`, `Clone`, `Equatable`, `Comparable`, `Hashable`
 - [x] **String methods** — `.len()`, `.contains()`, `.starts_with()`, `.ends_with()`, `.to_upper()`, `.to_lower()`, `.substring()`, `.char_at()`, `.trim()`, `.replace()`, `String::from_bytes()`
@@ -284,7 +284,7 @@ and pattern matching, not be a separate OOP mechanism.
 - [x] **Enum variants with data** — `enum Shape { Circle(Float), Rect(Float, Float) }` and generic `enum Box<T> { Value(T), Empty }`: a value-semantics `{ i64 tag, [N x i8] data }` representation is built in codegen, monomorphized per concrete type for generic enums (`Box<Int>::Value(x)` with explicit type args)
 - [x] **Pattern matching on enums (match/select)** — In `match`, enum variant patterns (`Circle(r) ->`) dispatch on the runtime tag and bind payload fields; unit variants match bare (`Unit ->`), and a match must be exhaustive. `select` mirrors this, dispatching on variants and enforcing exhaustiveness the same way.
 - [ ] **Enum methods via `bind`** — `bind Drawable -> Shape { ... }` (natural fit!)
-- [ ] **`Option<T>` as built-in enum** — `Some(T)` / `None`
+- [x] **`Option<T>` as built-in enum** — `Some(T)` / `None`; registered in the compiler (no `import` needed), constructible via `Option<Int>::Some(x)` / `Option<Int>::None` and type-inferred bare `Some(x)` / `None`, with match/select dispatch and exhaustiveness
 - [ ] **`Result<T, E>` as built-in enum** — `Ok(T)` / `Err(E)`
 
 ### 6. Introspection System — Completion (MEDIUM PRIORITY)
@@ -559,7 +559,7 @@ For Vyb to be considered production-ready at 1.0, **all of the following must be
 - [ ] Ownership types runtime-enforced (borrow checking, move semantics)
 - [x] Minimal `mild<T>` control block implemented with `soft()`, `grab()`, and `released()`
 - [x] Error propagation (Phases 2-5) complete
-- [ ] `Option<T>` and `Result<T, E>` in stdlib
+- [x] `Option<T>` in stdlib (built-in enum); `Result<T, E>` remains
 - [ ] Core aspects (`Display`, `Debug`, `Clone`, `Equatable`, `Comparable`, `Hashable`)
 - [ ] Iterator aspect with `for` loop desugaring
 - [ ] Enum/sum types with pattern matching
@@ -676,5 +676,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: August 2026*
 *Current Version: Vyb v0.5.3 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 790 tests passing (harness, 100%)*
+*Overall Status: ~60-65% complete toward 1.0 — 792 tests passing (harness, 100%)*
 *SUGGESTIONS.md merged into this document.*

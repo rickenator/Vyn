@@ -1,8 +1,9 @@
 # core::option
 #
-# Transitional stdlib bridge while tagged enum payload variants are still
-# unimplemented in Vyb. This file intentionally provides only `OptionInt`.
-# Canonical `Option<T>` / `Some(T)` / `None` remains a future feature.
+# As of v0.5.3, the canonical `Option<T>` built-in generic enum (`Some(T)` /
+# `None`) is implemented in the compiler core and needs no import. This module
+# retains the transitional `OptionInt` struct/helper bridge for source-compat
+# with code written against the earlier provisional API.
 
 share(all)
 struct OptionInt {

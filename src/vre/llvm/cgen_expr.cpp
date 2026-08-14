@@ -708,7 +708,26 @@ void LLVMCodegen::visit(vyb::ast::BinaryExpression *node) {
 
 void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
 
-
+    // Bare Option constructor: `Some(x)`. The semantic layer injected the target
+    // Option<T> type into this node, so the payload type is recovered from it
+    // and the value is built as the `Some` tagged-union variant.
+    if (auto calleeId = dynamic_cast<ast::Identifier*>(node->callee.get())) {
+        if (calleeId->name == "Some" && node->type) {
+            auto* optTn = dynamic_cast<ast::TypeName*>(node->type.get());
+            if (optTn && optTn->identifier && optTn->identifier->name == "Option" &&
+                optTn->genericArgs.size() == 1) {
+                std::string mangled = mangleGenericTypeName("Option", optTn->genericArgs);
+                if (!taggedEnumInfo.count(mangled)) monomorphizeEnum("Option", optTn->genericArgs);
+                std::vector<llvm::Value*> payloadVals;
+                for (auto& arg : node->arguments) {
+                    arg->accept(*this);
+                    payloadVals.push_back(m_currentLLVMValue);
+                }
+                m_currentLLVMValue = buildTaggedEnumValue(mangled, "Some", payloadVals);
+                return;
+            }
+        }
+    }
 
     // Check for Vec::new() constructor calls
     // VYB_CDBG << "DEBUG: Checking if callee is MemberExpression..." << std::endl;
@@ -718,7 +737,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         if (auto gi = dynamic_cast<ast::GenericInstantiationExpression*>(memberExpr->object.get())) {
             if (auto enIdent = dynamic_cast<ast::Identifier*>(gi->baseExpression.get())) {
                 if (auto varIdent = dynamic_cast<ast::Identifier*>(memberExpr->property.get())) {
-                    if (genericEnumTemplates.count(enIdent->name)) {
+                    if (genericEnumTemplates.count(enIdent->name) || enIdent->name == "Option") {
                         std::string mangled = mangleGenericTypeName(enIdent->name, gi->genericArguments);
                         if (!taggedEnumInfo.count(mangled)) {
                             monomorphizeEnum(enIdent->name, gi->genericArguments);
@@ -3370,6 +3389,17 @@ void LLVMCodegen::visit(vyb::ast::ArrayElementExpression *node) {
 // --- Basic Expression Visitors ---
 
 void LLVMCodegen::visit(ast::Identifier* node) {
+    // Bare Option unit constructor: `None`. The semantic layer injected the
+    // target Option<T> type into this node, so build the `None` tagged value.
+    if (node->name == "None" && node->type) {
+        auto* optTn = dynamic_cast<ast::TypeName*>(node->type.get());
+        if (optTn && optTn->identifier && optTn->identifier->name == "Option") {
+            std::string mangled = mangleGenericTypeName("Option", optTn->genericArgs);
+            if (!taggedEnumInfo.count(mangled)) monomorphizeEnum("Option", optTn->genericArgs);
+            m_currentLLVMValue = buildTaggedEnumValue(mangled, "None", {});
+            return;
+        }
+    }
     // Look up the identifier in the named values map
     auto it = namedValues.find(node->name);
     if (it != namedValues.end()) {
@@ -3438,7 +3468,7 @@ void LLVMCodegen::visit(ast::MemberExpression* node) {
         if (auto* gi = dynamic_cast<ast::GenericInstantiationExpression*>(node->object.get())) {
             if (auto* baseIdent = dynamic_cast<ast::Identifier*>(gi->baseExpression.get())) {
                 if (auto* propIdent = dynamic_cast<ast::Identifier*>(node->property.get())) {
-                    if (genericEnumTemplates.count(baseIdent->name)) {
+                    if (genericEnumTemplates.count(baseIdent->name) || baseIdent->name == "Option") {
                         std::string mangled = mangleGenericTypeName(baseIdent->name, gi->genericArguments);
                         if (!taggedEnumInfo.count(mangled)) monomorphizeEnum(baseIdent->name, gi->genericArguments);
                         auto tagEnumIt = taggedEnumInfo.find(mangled);
