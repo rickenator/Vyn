@@ -1,0 +1,21 @@
+// @test: Aspect inheritance - cyclic super-aspects are rejected
+// @description: Two aspects that inherit from each other are invalid.
+// @category: aspect, bind
+// @expect: fail
+// @expect-error: cyclic super-aspect
+
+struct Point {
+    x<Int>
+}
+
+aspect A : B {
+    a(self)<Int> -> { }
+}
+
+aspect B : A {
+    b(self)<Int> -> { }
+}
+
+main()<Int> -> {
+    return 0
+}

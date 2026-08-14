@@ -1,0 +1,37 @@
+// @test: Aspect inheritance - sub-aspect and its required super-aspect coexist
+// @description: Binding Comparable (which requires Equatable) passes when the type
+//   also binds Equatable, and both method sets are available.
+// @category: aspect, bind
+// @expect: pass
+// @expect-return: 100
+
+struct Point {
+    x<Int>
+}
+
+aspect Equatable {
+    equals(self, other<Point>)<Bool> -> { }
+}
+
+aspect Comparable : Equatable {
+    cmp(self, other<Point>)<Int> -> { }
+}
+
+bind Equatable -> Point {
+    equals(self<Point>, other<Point>)<Bool> -> { return self.x == other.x }
+}
+
+bind Comparable -> Point {
+    cmp(self<Point>, other<Point>)<Int> -> { return self.x - other.x }
+}
+
+main()<Int> -> {
+    p<Point> = Point { x = 5 }
+    q<Point> = Point { x = 5 }
+    e<Bool> = p.equals(q)
+    c<Int> = p.cmp(q)
+    if (e) {
+        return c + 100
+    }
+    return 0
+}

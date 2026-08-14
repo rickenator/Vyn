@@ -3,6 +3,11 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-13: **Aspect inheritance (super-aspects)**. `aspect Comparable : Equatable` now
+  parses and registers super-aspects; super-aspect names are validated against defined
+  aspects, cyclic super-aspect dependencies are rejected, and binding a sub-aspect requires
+  the same type to also bind each super-aspect (enforced in an order-independent post-pass).
+  Added four aspect-inheritance regressions. Full suite 752/752.
 - 2026-08-13: **Generic function call typing + aspect-bound validation**.
   Generic function calls now infer type arguments from the call site, substitute them into
   the return type (callers see `Point` instead of the placeholder `T`), and reject concrete

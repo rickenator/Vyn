@@ -1,0 +1,25 @@
+// @test: Aspect inheritance - binding a sub-aspect requires the super-aspect too
+// @description: Binding Comparable without also binding Equatable is rejected.
+// @category: aspect, bind
+// @expect: fail
+// @expect-error: requires also binding super-aspect
+
+struct Point {
+    x<Int>
+}
+
+aspect Equatable {
+    equals(self, other<Point>)<Bool> -> { }
+}
+
+aspect Comparable : Equatable {
+    cmp(self, other<Point>)<Int> -> { }
+}
+
+bind Comparable -> Point {
+    cmp(self<Point>, other<Point>)<Int> -> { return 0 }
+}
+
+main()<Int> -> {
+    return 0
+}

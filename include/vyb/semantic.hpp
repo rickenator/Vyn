@@ -219,6 +219,13 @@ struct TraitInfo {
             }
         }
 
+        // Extract super-aspects
+        for (const auto& super : decl->superTypes) {
+            if (super) {
+                superTraits.push_back(super->name);
+            }
+        }
+
         for (const auto& associatedType : decl->associatedTypes) {
             if (associatedType) {
                 associatedTypes.push_back(associatedType->name);
@@ -535,6 +542,12 @@ private:
     // Pattern matching helper for generic type matching
     // Returns true if concrete type (e.g., "Box<Int>") matches pattern (e.g., "Box<T>")
     bool matchesPattern(const std::string& concreteType, const std::string& pattern);
+
+    // True if the concrete type has a bind (concrete or generic) for the given aspect.
+    bool hasAspectBinding(const std::string& typeStr, const std::string& aspectName);
+
+    // Validates super-aspects exist and that no aspect inheritance cycles exist.
+    void validateAspectInheritance();
 };
 
 } // namespace vyb

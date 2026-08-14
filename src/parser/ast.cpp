@@ -1685,8 +1685,8 @@ void MatchStatement::accept(Visitor& visitor) {
 }
 
 // --- AspectDeclaration ---
-AspectDeclaration::AspectDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<std::unique_ptr<GenericParameter>> gp, std::vector<std::unique_ptr<Identifier>> assoc_types, std::vector<std::unique_ptr<FunctionDeclaration>> meths)
-    : Declaration(loc), name(std::move(n)), genericParams(std::move(gp)), associatedTypes(std::move(assoc_types)), methods(std::move(meths)) {}
+AspectDeclaration::AspectDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<std::unique_ptr<GenericParameter>> gp, std::vector<std::unique_ptr<Identifier>> sup_types, std::vector<std::unique_ptr<Identifier>> assoc_types, std::vector<std::unique_ptr<FunctionDeclaration>> meths)
+    : Declaration(loc), name(std::move(n)), genericParams(std::move(gp)), superTypes(std::move(sup_types)), associatedTypes(std::move(assoc_types)), methods(std::move(meths)) {}
 
 NodeType AspectDeclaration::getType() const {
     return NodeType::ASPECT_DECLARATION;
@@ -1694,7 +1694,15 @@ NodeType AspectDeclaration::getType() const {
 
 std::string AspectDeclaration::toString() const {
     std::stringstream ss;
-    ss << "aspect " << (name ? name->toString() : "") << " {\n";
+    ss << "aspect " << (name ? name->toString() : "");
+    if (!superTypes.empty()) {
+        ss << " : ";
+        for (size_t i = 0; i < superTypes.size(); ++i) {
+            if (i > 0) ss << ", ";
+            if (superTypes[i]) ss << superTypes[i]->toString();
+        }
+    }
+    ss << " {\n";
     for (const auto& associatedType : associatedTypes) {
         if (associatedType) {
             ss << "  type " << associatedType->toString() << "\n";

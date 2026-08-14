@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Aspect inheritance (super-aspects): `aspect Comparable : Equatable` declares a
+  super-aspect. Super-aspect names are validated against defined aspects, cyclic
+  super-aspect dependencies are rejected, and binding a sub-aspect requires the
+  same type to also bind each super-aspect (checked in an order-independent pass
+  after all binds are registered).
 - Primitive ownership unwrap-on-read and move tracking:
   - Reading a `my<T>` / `our<T>` / `mild<T>` primitive now unwraps to the underlying value.
   - Compile-time move tracking for `my<T>` bindings rejects use-after-move and

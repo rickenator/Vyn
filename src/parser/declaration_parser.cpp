@@ -799,6 +799,19 @@ std::unique_ptr<vyb::ast::Declaration> DeclarationParser::parse_trait_declaratio
     // Parse generic parameters (e.g., trait Trait<T>)
     auto generic_params = this->parse_generic_params();
 
+    // Parse optional super-aspects (e.g., aspect Comparable : Equatable, Hashable)
+    std::vector<std::unique_ptr<ast::Identifier>> super_types;
+    if (this->peek().type == vyb::TokenType::COLON) {
+        this->consume(); // consume ':'
+        do {
+            if (this->peek().type != vyb::TokenType::IDENTIFIER) {
+                throw std::runtime_error("Expected super-aspect name (identifier) after ':' in aspect '"
+                    + name->name + "' at " + location_to_string(this->current_location()));
+            }
+            super_types.push_back(std::make_unique<ast::Identifier>(this->current_location(), this->consume().lexeme));
+        } while (this->match(vyb::TokenType::COMMA));
+    }
+
     // Expect opening brace for trait body
     this->expect(vyb::TokenType::LBRACE);
     this->skip_comments_and_newlines();
@@ -835,7 +848,7 @@ std::unique_ptr<vyb::ast::Declaration> DeclarationParser::parse_trait_declaratio
 
     this->expect(vyb::TokenType::RBRACE);
 
-    return std::make_unique<ast::AspectDeclaration>(loc, std::move(name), std::move(generic_params), std::move(associated_types), std::move(methods));
+    return std::make_unique<ast::AspectDeclaration>(loc, std::move(name), std::move(generic_params), std::move(super_types), std::move(associated_types), std::move(methods));
 }
 
 // ImplDeclNode not in ast.hpp. Assuming a Declaration type for it.

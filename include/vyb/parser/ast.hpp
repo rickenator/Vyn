@@ -1470,10 +1470,11 @@ class AspectDeclaration : public Declaration {
 public:
     std::unique_ptr<Identifier> name;
     std::vector<std::unique_ptr<GenericParameter>> genericParams;
+    std::vector<std::unique_ptr<Identifier>> superTypes; // Super-aspects (inheritance)
     std::vector<std::unique_ptr<Identifier>> associatedTypes;
     std::vector<std::unique_ptr<FunctionDeclaration>> methods;
 
-    AspectDeclaration(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<std::unique_ptr<GenericParameter>> genericParams, std::vector<std::unique_ptr<Identifier>> associatedTypes, std::vector<std::unique_ptr<FunctionDeclaration>> methods);
+    AspectDeclaration(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<std::unique_ptr<GenericParameter>> genericParams, std::vector<std::unique_ptr<Identifier>> superTypes, std::vector<std::unique_ptr<Identifier>> associatedTypes, std::vector<std::unique_ptr<FunctionDeclaration>> methods);
     ~AspectDeclaration() override = default;
     NodeType getType() const override;
     std::string toString() const override;

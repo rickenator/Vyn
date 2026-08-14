@@ -1,0 +1,17 @@
+// @test: Aspect inheritance - unknown super-aspect is rejected
+// @description: A super-aspect that does not name a defined aspect is an error.
+// @category: aspect, bind
+// @expect: fail
+// @expect-error: is not a defined aspect
+
+struct Point {
+    x<Int>
+}
+
+aspect Foo : NotDefinedAspect {
+    bar(self)<Int> -> { }
+}
+
+main()<Int> -> {
+    return 0
+}

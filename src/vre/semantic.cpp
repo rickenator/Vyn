@@ -822,6 +822,10 @@ void SemanticAnalyzer::visit(ast::Module* node) {
             validateCalls(funcDecl->body.get(), false, funcDecl);
         }
     }
+
+    // Validate aspect inheritance (super-aspect existence, no cycles) after all
+    // declaratons have been visited and registered.
+    validateAspectInheritance();
 }
 
 void SemanticAnalyzer::visit(ast::FunctionDeclaration* node) {
@@ -6370,6 +6374,82 @@ void SemanticAnalyzer::registerTraitImpl(ast::BindDeclaration* implDecl) {
         for (const auto& assocBinding : implDecl->associatedTypeBindings) {
             if (assocBinding.name && assocBinding.valueType) {
                 associatedMap[assocBinding.name->name] = assocBinding.valueType.get();
+            }
+        }
+    }
+}
+
+bool SemanticAnalyzer::hasAspectBinding(const std::string& typeStr, const std::string& aspectName) {
+    auto it = traitImpls.find(typeStr);
+    if (it != traitImpls.end() && it->second.count(aspectName)) {
+        return true;
+    }
+    for (const auto& typeEntry : genericTraitImpls) {
+        if (matchesPattern(typeStr, typeEntry.first) && typeEntry.second.count(aspectName)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void SemanticAnalyzer::validateAspectInheritance() {
+    // Run after every aspect and bind has been registered. Validates that every
+    // super-aspect names a defined aspect and that no inheritance cycle exists.
+    for (const auto& entry : traitRegistry) {
+        TraitInfo* info = entry.second.get();
+        if (!info || info->superTraits.empty()) {
+            continue;
+        }
+
+        std::vector<std::string> stack;
+        std::function<bool(const std::string&, const std::string&, int)> findCycle;
+        findCycle = [&](const std::string& start, const std::string& current, int depth) -> bool {
+            if (depth > 0 && current == start) {
+                return true;
+            }
+            auto curIt = traitRegistry.find(current);
+            if (curIt == traitRegistry.end()) {
+                // Unknown super-aspect; reported separately below.
+                return false;
+            }
+            for (const auto& next : curIt->second->superTraits) {
+                if (findCycle(start, next, depth + 1)) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        for (const auto& superName : info->superTraits) {
+            if (traitRegistry.find(superName) == traitRegistry.end()) {
+                addError("Super-aspect '" + superName + "' of aspect '" + info->name +
+                         "' is not a defined aspect.", info->declaration);
+                continue;
+            }
+            if (findCycle(info->name, superName, 1)) {
+                addError("Aspect '" + info->name + "' has a cyclic super-aspect dependency.", info->declaration);
+            }
+        }
+
+        // Bind requirement: every type (concrete or generic) that binds this
+        // sub-aspect must also bind each of its super-aspects. Runs after all
+        // binds are registered so declaration order does not matter.
+        for (const auto& superName : info->superTraits) {
+            for (const auto& typeEntry : traitImpls) {
+                if (typeEntry.second.count(info->name) &&
+                    !hasAspectBinding(typeEntry.first, superName)) {
+                    addError("Type '" + typeEntry.first + "' binds aspect '" + info->name +
+                             "' which requires also binding super-aspect '" + superName +
+                             "'.", info->declaration);
+                }
+            }
+            for (const auto& typeEntry : genericTraitImpls) {
+                if (typeEntry.second.count(info->name) &&
+                    !hasAspectBinding(typeEntry.first, superName)) {
+                    addError("Generic type '" + typeEntry.first + "' binds aspect '" + info->name +
+                             "' which requires also binding super-aspect '" + superName +
+                             "'.", info->declaration);
+                }
             }
         }
     }
