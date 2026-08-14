@@ -1,0 +1,17 @@
+// @test: Stdlib core::math module helpers
+// @description: core::math clamp/is_close composition helpers import and resolve over the global math intrinsics
+// @category: modules
+// @expect: pass
+// @expect-output: true
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import core::math::{clamp, is_close}
+
+main()<Int> -> {
+    println_int(clamp(15, 0, 10))   // 10
+    println_int(clamp(-4, 0, 10))   // 0
+    println_int(clamp(7, 0, 10))    // 7
+    println(is_close(1.0, 1.0001, 0.01))
+    return 0
+}

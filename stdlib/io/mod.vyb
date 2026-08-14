@@ -1,6 +1,13 @@
-# io placeholder until file/network APIs are implemented.
+# io - standard input/output module surface.
+#
+# Output is currently provided by the global `println()`, `print()` and the
+# typed `println_int()` / `print_int()` / `println_bool()` / `print_bool()`
+# intrinsics, all of which are available everywhere without an import. This
+# module is the surface where additional I/O (reading input, plus the File /
+# network APIs) will live once the dedicated compiler features land (see
+# TODO: Standard Library Expansion — File I/O).
 
 share(all)
 io_status_message()<String> -> {
-    return "io module scaffolded"
+    return "io: output via the global println/print intrinsics"
 }

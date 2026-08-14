@@ -22,7 +22,7 @@ Legend: ✅ Implemented | 🚧 Partial / Stubbed | 📋 Planned
 | Local path loading (`from "./..."`) | ✅ | Relative locators resolve from the importing file |
 | Module search paths | ✅ | Importer dir, `--module-path`, `VYB_MODULE_PATH`, then stdlib auto-discovery |
 | Stdlib auto-discovery | ✅ | `VYB_STDLIB`, then executable-relative probes (`../stdlib`, `./stdlib`) |
-| Stdlib module foundation (`core`/`collections`/`io`) | 🚧 | Minimal scaffold shipped; `Option<T>` is now a built-in enum (transitional `core::option::OptionInt` retained for source-compat); `Result<T,E>` is now a built-in enum (`Ok(T)`/`Err(E)`, `core::result` is placeholder) |
+| Stdlib module foundation (`core`/`collections`/`io`) | 🚧 | Foundation + `core::math` helpers shipped. `core::aspects` pre-wires scalar binds; `core::math` layers `clamp`/`is_close` over the global math intrinsics. `io`/`collections` surfaces are documented and importable; deeper contents (File/network I/O, `HashMap`/`HashSet`, higher-order `Vec<T>`, `Iterator`) track their compiler-feature items. `Option<T>`/`Result<T,E>` are built-in enums (transitional `core::option`/`core::result` retained for source-compat) |
 | Stdlib core auto-import | ✅ | The core contracts module (`core::aspects`, incl. pre-wired primitive binds) is auto-imported into non-stdlib modules, skipped on explicit import / local redefinition, opt-out via `no_core()` directive. Transitional prelude helpers (`OptionInt`, `prelude_ok`) remain explicit-only (`import prelude` / `import core::prelude`) |
 | `bundle(...)` visibility | ✅ | Source-level directives are enforced by the local resolver |
 | `share(...)` exports | ✅ | `share(all)` and bundle-scoped shares export declarations/imports |

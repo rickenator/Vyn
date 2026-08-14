@@ -1,6 +1,13 @@
-# collections placeholder until collection modules are split into dedicated files.
+# collections - collection module surface.
+#
+# The built-in `Vec<T>` (constructed with the vybish `Vec()` / `Vec(n)` calls)
+# already ships `push`, `pop`, `len`, `get`, `get_vec`, `clear`, `is_empty`,
+# `contains`, `remove_at`, and the array conversion helpers. This module is the
+# surface where `HashMap` / `HashSet` and the higher-order `Vec<T>` expansion
+# (`map`, `filter`, `reduce`, `find`, `sort`) will land once the dedicated
+# compiler features are implemented (see TODO: Standard Library Expansion).
 
 share(all)
 collections_status_message()<String> -> {
-    return "collections module scaffolded"
+    return "collections: built-in Vec<T>; HashMap/HashSet and higher-order expansion pending"
 }

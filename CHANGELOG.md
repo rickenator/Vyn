@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`core::math` stdlib module** — new `stdlib/core/math.vyb` with composition
+  helpers over the global math intrinsics: `clamp(value<Int>, lo<Int>, hi<Int>)<Int>`
+  (inclusive range clamping via `min`/`max`) and `is_close(a<Float>, b<Float>,
+  epsilon<Float>)<Bool>` (within-epsilon comparison via `abs`). Math and output
+  functionality already ships as global `sqrt`/`abs`/`println`/`print`-style
+  intrinsics and the built-in `Vec<T>`; the `io` and `collections` module surfaces
+  are now documented accurately and remain importable (`import io::{..}` /
+  `import collections::{..}`) while their deeper contents (file/network I/O,
+  `HashMap`/`HashSet`, higher-order `Vec<T>` expansion, and the `Iterator` aspect)
+  track their separate compiler-feature items. See
+  `test/modules/stdlib_core_math.vyb` and `test/modules/stdlib_io_collections_import.vyb`.
+
 - **Auto-import of core contracts (`core::*`)** — every non-stdlib module now
   automatically gets the core contracts module (`core::aspects`, including its
   pre-wired scalar binds) in scope, so `x.display()`, `a.equals(b)`,

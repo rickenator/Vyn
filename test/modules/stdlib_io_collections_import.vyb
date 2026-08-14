@@ -1,0 +1,16 @@
+// @test: Stdlib io and collections module surfaces
+// @description: io and collections modules resolve from VYB_STDLIB and expose their status helpers
+// @category: modules
+// @expect: pass
+// @expect-output: collections
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import io::{io_status_message}
+import collections::{collections_status_message}
+
+main()<Int> -> {
+    println(io_status_message())
+    println(collections_status_message())
+    return 0
+}
