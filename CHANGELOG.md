@@ -66,6 +66,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test/ffi/enum_by_value.vyb`.
 
 ### Fixed
+- **String-producing calls are wrapped when passed as arguments** — an inline
+  `t.to_string()` (or `substring`/`concat` results) lowers to a raw `char*`, but
+  call-argument marshalling only unwrapped String structs into char pointers, not
+  the reverse. Passing a computed string directly to a normal function
+  (`say(t.to_string())`) or to a bind/aspect method (`map.put(k.to_string(), v)`)
+  failed with "Argument type mismatch: Expected { ptr, i64 } but got ptr". Both
+  call paths now wrap a raw pointer into a Vyb `String { ptr, len }` (with a
+  `strlen`-computed length) when the declared parameter is a String struct.
+  Covered by `test/units/test_string_call_args.vyb`.
 - **`if { return }` no longer over-pops the codegen scope stack** — a block
   whose body terminates via `return` popped twice: the return's cleanup already
   ran `exitScope()`, then the enclosing block popped once more, so each

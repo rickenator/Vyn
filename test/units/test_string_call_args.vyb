@@ -1,0 +1,42 @@
+// @test: char*-producing String expressions wrap when passed as arguments
+// @description: an inline String-producing call such as `t.to_string()` lowers
+//   to a raw char*, which must be wrapped into the Vyb String { ptr, len } struct
+//   to match the callee's parameter. This applies to ordinary function calls and
+//   to bind/aspect method args (e.g. hash-bucket collections keyed by computed
+//   strings).
+// @category: strings, calls, bind, aspect, codegen
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @execute-jit: true
+
+import core::aspects
+
+say(s<String>)<String> -> { return s }
+
+struct Box {
+    v<Vec<String>>
+}
+aspect BA {
+    store(self<their<Box>>, s<String>)<Void>
+}
+bind BA -> Box {
+    store(self<their<Box>>, s<String>)<Void> -> { self.v.push(s); return }
+}
+
+main()<Int> -> {
+    t<Int> = 42
+    a<String> = say(t.to_string())
+    if (a != "42") {
+        return 1
+    }
+
+    b<Box> = Box { v = Vec<String>() }
+    b.store(t.to_string())
+    b.store((t + 1).to_string())
+    if (b.v.len() != 2 || b.v.get(1) != "43") {
+        return 2
+    }
+    println("ok")
+    return 0
+}

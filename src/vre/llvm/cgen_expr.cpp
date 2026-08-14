@@ -1457,7 +1457,24 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                                 m_currentLLVMValue = nullptr;
                                 return;
                             }
-                            argValues.push_back(m_currentLLVMValue);
+                            llvm::Value* argVal = m_currentLLVMValue;
+                            // When the parameter is a Vyb String { ptr, len } and the
+                            // evaluated argument is a raw char* (e.g. to_string(),
+                            // substring, concat), wrap it into the String struct;
+                            // literals and String variables already arrive as a struct.
+                            if (argVal->getType()->isPointerTy()) {
+                                llvm::Type* expectedParam = implFunc->getFunctionType()->getParamType(argValues.size());
+                                if (expectedParam && expectedParam->isStructTy()) {
+                                    llvm::StructType* st = llvm::dyn_cast<llvm::StructType>(expectedParam);
+                                    if (st && st->getNumElements() == 2 &&
+                                        st->getElementType(0)->isPointerTy() &&
+                                        st->getElementType(1)->isIntegerTy(64)) {
+                                        llvm::Value* wrapped = tryCast(argVal, expectedParam, arg->loc);
+                                        if (wrapped) argVal = wrapped;
+                                    }
+                                }
+                            }
+                            argValues.push_back(argVal);
                         }
 
                         if (implFunc->getReturnType()->isVoidTy()) {
@@ -2808,6 +2825,18 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                     } else if (expectedIntType->getBitWidth() > actualIntType->getBitWidth()) {
                         // Sign-extend to larger width (e.g., i32 to i64)
                         argValue = builder->CreateSExt(argValue, expectedArgType, "callargsext");
+                    }
+                } else if (expectedArgType->isStructTy() && argValue->getType()->isPointerTy()) {
+                    // Expected a Vyb String { ptr, len } and got a raw char* (e.g.
+                    // the result of to_string() / substring / concat). Fair
+                    // String-struct shapes only: wrap the pointer into the struct
+                    // using tryCast (which computes strlen for the length field).
+                    llvm::StructType* st = llvm::dyn_cast<llvm::StructType>(expectedArgType);
+                    if (st && st->getNumElements() == 2 &&
+                        st->getElementType(0)->isPointerTy() &&
+                        st->getElementType(1)->isIntegerTy(64)) {
+                        llvm::Value* wrapped = tryCast(argValue, expectedArgType, node->arguments[i]->loc);
+                        if (wrapped) argValue = wrapped;
                     }
                 }
                 // Add more sophisticated casting rules as needed

@@ -37,8 +37,7 @@ main()<Int> -> {
     s<HashSet<String>> = make_hash_set<String>()
     t<Int> = 0
     while (t < 100) {
-        sv<String> = t.to_string()
-        s.insert(sv)
+        s.insert(t.to_string())
         t = t + 1
     }
     if (s.size() != 100 || !s.contains("9") || !s.contains("77") || s.contains("nope")) {
