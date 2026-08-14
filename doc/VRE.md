@@ -43,9 +43,10 @@ Vyb's static type system will be mapped to efficient runtime representations.
     *   Field access will be direct memory offsets.
 *   **Enums:**
     *   **Simple Enums (C-like):** First-class typed values; at runtime each
-        variant is a tag-only tagged union (`{ i64 tag, [N x i8] data }` with no
-        payload), so `Direction::East` renders as `Direction::East` and matches
-        dispatch on the tag. The raw integer tag remains available for FFI.
+        variant is a single scalar `i64` tag, so `Direction::East` renders as
+        `Direction::East` and `match`/`select` dispatch on the scalar tag. Because
+        the representation is a plain int, an enum-typed extern parameter
+        interoperates with a C integer-backed enum passed by value.
     *   **Tagged Unions (Enums with data):** Represented as a struct containing a tag (integer) and a union of the possible data types. The layout will be optimized to minimize space, e.g., by placing the tag and data in a way that leverages alignment.
         ```
         // Vyb: enum Option<T> { Some(T), None }

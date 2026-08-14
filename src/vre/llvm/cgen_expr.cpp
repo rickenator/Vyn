@@ -5211,13 +5211,15 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
         return;
     }
 
-    // If the select target is a tagged-union enum, variant patterns such as
-    // `Circle(r)` or `Unit` dispatch on the runtime tag instead of literal compare.
+    // If the select target is an enum, variant patterns such as `Circle(r)` or
+    // `Unit` dispatch on the runtime tag. C-like enums are a scalar i64 tag, so
+    // resolve by the AST type name (unambiguous) rather than requiring a struct
+    // type; fall back to a structural lookup for data-carrying enums.
     const TaggedEnumInfo* matchedEnum =
-        (matchValue && matchValue->getType()->isStructTy())
-        ? ((node->expr && node->expr->type) ? findTaggedEnum(node->expr->type.get()) : nullptr)
-        : nullptr;
-    if (!matchedEnum && matchValue) matchedEnum = findTaggedEnum(matchValue->getType());
+        (node->expr && node->expr->type) ? findTaggedEnum(node->expr->type.get()) : nullptr;
+    if (!matchedEnum && matchValue && matchValue->getType()->isStructTy()) {
+        matchedEnum = findTaggedEnum(matchValue->getType());
+    }
 
     // Bind the payload fields of an enum-variant arm pattern (e.g. `Circle(r)`)
     // as locals in `namedValues`. Used both by the result-type inference preview
@@ -5448,7 +5450,11 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
             if (matchedEnum) {
                 auto tagIt = matchedEnum->variantTags.find(pid->name);
                 if (tagIt != matchedEnum->variantTags.end()) {
-                    llvm::Value* tagVal = builder->CreateExtractValue(matchValue, 0, "select.enum.tag");
+                    // C-like enums are a scalar i64 tag (matchValue is already the
+                    // tag); data enums store the tag as field 0 of the struct.
+                    llvm::Value* tagVal = matchedEnum->isScalar
+                        ? matchValue
+                        : builder->CreateExtractValue(matchValue, 0, "select.enum.tag");
                     cond = builder->CreateICmpEQ(
                         tagVal, llvm::ConstantInt::get(int64Type, tagIt->second, true), "select.variant.tag");
                 }

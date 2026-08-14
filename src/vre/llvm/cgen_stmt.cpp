@@ -1189,12 +1189,15 @@ void LLVMCodegen::codegenMatch(vyb::ast::MatchStatement* node, llvm::AllocaInst*
         }
     }
 
-    // If the matched value is a tagged-union enum (data-carrying), variant
-    // patterns such as `Circle(r)` or `Unit` dispatch on the runtime tag.
-    const TaggedEnumInfo* matchedEnum = (matchValue && matchValue->getType()->isStructTy())
-        ? ((node->expr && node->expr->type) ? findTaggedEnum(node->expr->type.get()) : nullptr)
-        : nullptr;
-    if (!matchedEnum && matchValue) matchedEnum = findTaggedEnum(matchValue->getType());
+    // If the matched value is an enum, variant patterns such as `Circle(r)` or
+    // `Unit` dispatch on the runtime tag. C-like enums are a scalar i64 tag, so
+    // resolve by the AST type name (which is unambiguous) rather than requiring a
+    // struct type; fall back to a structural lookup for data-carrying enums.
+    const TaggedEnumInfo* matchedEnum =
+        (node->expr && node->expr->type) ? findTaggedEnum(node->expr->type.get()) : nullptr;
+    if (!matchedEnum && matchValue && matchValue->getType()->isStructTy()) {
+        matchedEnum = findTaggedEnum(matchValue->getType());
+    }
 
     // Exhaustiveness: a match is exhaustive when it has an unguarded wildcard or,
     // for a tagged-union enum, arms that cover every variant. An exhaustive match
@@ -1385,7 +1388,11 @@ void LLVMCodegen::codegenMatch(vyb::ast::MatchStatement* node, llvm::AllocaInst*
                 auto* pid = static_cast<ast::Identifier*>(casePattern.get());
                 auto tagIt = matchedEnum->variantTags.find(pid->name);
                 if (tagIt != matchedEnum->variantTags.end()) {
-                    llvm::Value* tagVal = builder->CreateExtractValue(matchValue, 0, "enum.tag");
+                    // C-like enums are a scalar i64 tag (matchValue is already the
+                    // tag); data enums store the tag as field 0 of the struct.
+                    llvm::Value* tagVal = matchedEnum->isScalar
+                        ? matchValue
+                        : builder->CreateExtractValue(matchValue, 0, "enum.tag");
                     isMatch = builder->CreateICmpEQ(
                         tagVal, llvm::ConstantInt::get(int64Type, tagIt->second, true), "match.variant.tag");
                 }

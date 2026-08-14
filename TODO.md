@@ -253,7 +253,7 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
 - [x] **Native `--link <lib-or-path>` flow** — Repeatable build flag passes `-l<lib>` or explicit library/object paths to the native linker
 - [x] **Variadic C functions** — `extern "C" { printf(format<loc<Int8>>, ...)<Int> }`; a trailing `...` marks the declaration variadic, codegen emits `isVarArg`, and call sites accept any number of extra arguments (with Vyb String varargs auto-extracting their `char*` data pointer so `printf("%s", s)` works). `printf("%d-%s", 7, "vyb")` is covered by `test/ffi/variadic_c_printf.vyb`.
 - [x] **`vyb bindgen` (MVP)** — `vyb bindgen <header.h> [-o out.vyb]` parses a C subset (typedefs, `struct`/`enum` declarations, scalar/pointer types, trailing `...` varargs) and emits `share(all)` bodyless extern declarations + `#[repr(C)]` structs + enums. Functions, structs, and enums (C-like constants and payload enums) re-export across `import` and resolve against the host C ABI; covered by `test/bindgen/libsample.vyb` + `test/bindgen/test_libsample_bindings.vyb` (and `test/enum/test_import_c_like.vyb` / `test_import_data_enum.vyb`).
-- [ ] **`vyb bindgen` (full, v0.6+)** — libclang-based C parsing (preprocessor/macros, function pointers, bitfields, array-as-param shape). Note: C-like enum variants are now distinct typed values (see enum tests); FFI functions that take a C enum by value should type such params as the enum name or `Int`, and an explicit tag accessor is future work.
+- [ ] **`vyb bindgen` (full, v0.6+)** — libclang-based C parsing (preprocessor/macros, function pointers, bitfields, array-as-param shape). Note: C-like enum variants are distinct typed values backed by a scalar `i64` tag, so an extern function taking a C enum by value can type the param as the enum name and interoperates (see `test/ffi/enum_by_value.vyb`). An explicit `.tag` accessor to extract the raw positional tag is future work.
 
 ### 3. Ownership Types — Runtime Enforcement (HIGH PRIORITY)
 - [ ] **`my<T>` move semantics** — Enforce single-owner at compile time; error on copy. *Status: first-pass compile-time move tracking is in progress (working tree, uncommitted, tests in `test/ownership/move_*.vyb` incomplete).*
@@ -701,5 +701,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: August 2026*
 *Current Version: Vyb v0.5.4 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 819 tests passing (harness, 100%)*
+*Overall Status: ~60-65% complete toward 1.0 — 820 tests passing (harness, 100%)*
 *SUGGESTIONS.md merged into this document.*

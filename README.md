@@ -2603,7 +2603,7 @@ Vyb (freedom-1.0 series) compiles through JIT, AOT object files, and native exec
 2. ✅ **Module System** (landed): `import`/`smuggle`/`bundle`/`share`, module-path resolution, and stdlib auto-discovery. See `doc/bundles_and_sharing.md`.
 3. 🚧 **Lambda/Closure Codegen**: Parsing and indirect calls work; full captured-env closure structs are still pending. `|x<Int>| -> x * 2`.
 4. ✅ **Error Propagation Phases 2-5** (landed): `fail` propagation through call stacks and wildcard `trap (e<?>)`.
-5. ✅ **Enum / Sum Types**: C-like enums (`enum Direction { North, South, East, West }`) and data-carrying tagged unions (`enum Shape { Circle(Float), Rect(Float, Float) }`) are implemented. C-like enums are first-class typed values (render as `Direction::East`), and `match`/`select` dispatch on variants with exhaustiveness enforcement.
+5. ✅ **Enum / Sum Types**: C-like enums (`enum Direction { North, South, East, West }`) and data-carrying tagged unions (`enum Shape { Circle(Float), Rect(Float, Float) }`) are implemented. C-like enums are first-class typed values (render as `Direction::East`) backed by a scalar `i64` tag, so an extern parameter typed `Direction` interoperates with a C integer-backed enum; `match`/`select` dispatch on variants with exhaustiveness enforcement.
 6. ✅ **`Option<T>` and `Result<T,E>`**: Built-in sum types built on enums (`Some(T)`/`None`, `Ok(T)`/`Err(E)`) with match/select dispatch and exhaustiveness; transitional `core::option::OptionInt` bridge retained for source-compat.
 
 ### 📋 **Long-Term Goals**

@@ -1057,11 +1057,12 @@ void LLVMCodegen::visit(vyb::ast::EnumDeclaration* node) {
 
     if (!hasData || !node->genericParams.empty()) {
         if (!hasData && node->genericParams.empty()) {
-            // C-like enum → first-class typed value: build a tag-only tagged union
-            // { i64 tag, [1 x i8] data }, same value-semantics layout data enums use,
-            // so variant access, printing, and match/select all reuse the existing
-            // tagged-union machinery. The sequential i64 constants are retained so a
-            // variant's raw positional tag remains queryable for FFI-style access.
+            // C-like enum → first-class typed value backed by a single i64 tag
+            // (isScalar). This keeps `Enum` values distinct nominal types while
+            // dropping them into the same register/ABI slot a C integer-backed enum
+            // occupies, so an extern function taking the enum by value works across
+            // the FFI boundary (a `{ i64, [N x i8] }` struct would not). The variant
+            // constants double as the raw positional tag for explicit FFI access.
             TaggedEnumInfo info;
             unsigned currentValue = 0;
             for (const auto& variantNode : node->variants) {
@@ -1071,19 +1072,11 @@ void LLVMCodegen::visit(vyb::ast::EnumDeclaration* node) {
                     llvm::ConstantInt::get(int64Type, static_cast<int64_t>(currentValue), true);
                 currentValue++;
             }
-            info.payloadBytes = 1;
-            info.llvmType = llvm::StructType::get(*context,
-                {llvm::Type::getInt64Ty(*context),
-                 llvm::ArrayType::get(llvm::Type::getInt8Ty(*context), 1)},
-                false);
-
-            UserTypeInfo typeInfo;
-            typeInfo.llvmType = info.llvmType;
-            typeInfo.isStruct = true;
-            userTypeMap[enumName] = typeInfo;
+            info.isScalar = true;
+            info.llvmType = nullptr; // Scalars don't use a struct; codegenType maps the name to i64.
             taggedEnumInfo[enumName] = info;
 
-            VYB_CDBG << "DEBUG: Registered C-like enum " << enumName << " as a typed tag-only tagged union ("
+            VYB_CDBG << "DEBUG: Registered C-like enum " << enumName << " as a typed scalar (i64 tag, "
                      << info.variantTags.size() << " variants)" << std::endl;
             m_currentLLVMValue = nullptr;
             return;

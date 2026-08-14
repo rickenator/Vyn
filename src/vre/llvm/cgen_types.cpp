@@ -387,6 +387,15 @@ llvm::Type* LLVMCodegen::codegenType(vyb::ast::TypeNode* typeNode) {
             }
             std::string typeNameStr = typeNameNode->identifier->name; // Access name via identifier
 
+            // C-like enums are scalar i64 tags (distinct nominal types): a variable
+            // or extern parameter typed with the enum name lowers to a plain i64 so
+            // it is ABI-compatible with a C integer-backed enum at the FFI boundary.
+            auto scalarEnumIt = taggedEnumInfo.find(typeNameStr);
+            if (scalarEnumIt != taggedEnumInfo.end() && scalarEnumIt->second.isScalar) {
+                llvmType = int64Type;
+                break;
+            }
+
             size_t assocSep = typeNameStr.find("::");
             if (assocSep != std::string::npos && m_currentImplTypeNode && driver_.hasSemanticAnalyzer()) {
                 std::string traitName = typeNameStr.substr(0, assocSep);
@@ -849,7 +858,6 @@ void LLVMCodegen::visit(ast::TypeName* node) {
     m_currentLLVMValue = llvm::ConstantPointerNull::get(
         llvm::PointerType::get(*context, 0));
 }
-
 
 
 

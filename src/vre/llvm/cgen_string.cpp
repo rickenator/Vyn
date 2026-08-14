@@ -335,6 +335,15 @@ llvm::Value* LLVMCodegen::generateToStringCall(llvm::Value* value, llvm::Type* v
         }
     }
 
+    // C-like enums are a scalar i64 tag but a distinct nominal type: render them
+    // as `Enum::Variant` using the AST type name to disambiguate from plain Int.
+    if (astType) {
+        const TaggedEnumInfo* enumInfo = findTaggedEnum(astType);
+        if (enumInfo && enumInfo->isScalar) {
+            return generateTaggedEnumToString(value, *enumInfo, astType->toString(), loc);
+        }
+    }
+
     // Get the base type name, resolving type aliases
     std::string typeName = resolveTypeAliasToBaseName(astType);
     if (typeName.empty() && astType) {
@@ -402,14 +411,20 @@ llvm::Value* LLVMCodegen::generateToStringCall(llvm::Value* value, llvm::Type* v
     return builder->CreateCall(toStringFunc, {value}, "tostring");
 }
 
-// Render a tagged-union enum value as a readable string like `Shape::Circle(2.5)`
-// or `Shape::Circle` for a unit variant. Payload fields are converted individually
-// via generateToStringCall so nested enums/strings render correctly.
+// Render an enum value as a readable string like `Shape::Circle(2.5)` or
+// `Shape::Circle` for a unit variant. Works for both data-carrying enums (a
+// `{ i64 tag, [N x i8] data }` struct) and C-like scalar enums (a single i64
+// tag). Payload fields are converted individually via generateToStringCall so
+// nested enums/strings render correctly.
 llvm::Value* LLVMCodegen::generateTaggedEnumToString(llvm::Value* value, const TaggedEnumInfo& info,
                                                      const std::string& typeName, SourceLocation loc) {
     if (!value) return nullptr;
 
-    llvm::Value* tag = builder->CreateExtractValue(value, 0, "enum.tostring.tag");
+    // For a scalar (C-like) enum the value *is* the i64 tag; for a data enum it
+    // is the `{ i64 tag, [N x i8] data }` struct whose first field is the tag.
+    llvm::Value* tag = info.isScalar
+        ? value
+        : builder->CreateExtractValue(value, 0, "enum.tostring.tag");
     llvm::Function* currentFunc = builder->GetInsertBlock()->getParent();
     llvm::BasicBlock* origBB = builder->GetInsertBlock();
 

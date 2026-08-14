@@ -202,10 +202,12 @@ private:
     // Tagged-union layout for enums that carry data variants (e.g. enum Shape { Circle(Float) }).
     // Represented as a value-semantics struct { i64 tag, [N x i8] data } where N is the
     // largest payload (in bytes) among the variants. C-like enums with no data variants
-    // are untouched and remain plain i64 constants.
+    // are represented by a single scalar i64 tag (isScalar=true) so that `Enum` values
+    // interoperate with C integer-backed enums across the FFI boundary.
     struct TaggedEnumInfo {
         llvm::StructType* llvmType = nullptr;          // { i64 tag, [N x i8] data }
         unsigned payloadBytes = 0;                     // N
+        bool isScalar = false;                         // C-like enum: a single i64 tag, no struct
         std::map<std::string, unsigned> variantTags;   // VariantName -> tag value
         std::map<std::string, llvm::StructType*> variantPayloadTypes; // VariantName -> payload struct (absent = unit variant)
     };

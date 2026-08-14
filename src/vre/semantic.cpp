@@ -3110,6 +3110,7 @@ void SemanticAnalyzer::visit(ast::MemberExpression* node) {
                 auto enumType = std::make_unique<ast::TypeName>(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, baseId->name));
                 for (auto& a : gi->genericArguments) enumType->genericArgs.push_back(a->clone());
+                node->type = std::shared_ptr<ast::TypeNode>(enumType->clone());
                 expressionTypes[node] = enumType.release();
                 return;
             }
@@ -3137,13 +3138,17 @@ void SemanticAnalyzer::visit(ast::MemberExpression* node) {
                              " requires constructor arguments", node);
                     return;
                 }
-                expressionTypes[node] = new ast::TypeName(node->loc,
+                auto* enumVariantTy = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, typeName));
+                node->type = std::shared_ptr<ast::TypeNode>(enumVariantTy->clone());
+                expressionTypes[node] = enumVariantTy;
                 return;
             }
-            // C-like integer enum: variants are i64 constants
-            expressionTypes[node] = new ast::TypeName(node->loc,
-                std::make_unique<ast::Identifier>(node->loc, "Int"));
+            // C-like enums not otherwise registered: the variant carries the enum type.
+            auto* enumVariantTy = new ast::TypeName(node->loc,
+                std::make_unique<ast::Identifier>(node->loc, typeName));
+            node->type = std::shared_ptr<ast::TypeNode>(enumVariantTy->clone());
+            expressionTypes[node] = enumVariantTy;
             return;
         }
 

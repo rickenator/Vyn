@@ -12,19 +12,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **C-like enums are now first-class typed values** — `enum Color { Red, Green,
   Blue }` no longer lowers each variant to a raw `i64`. Variants are distinct
-  values of the named enum type (`r<Color> = Color::Red`), represented with the
-  same value-semantics `{ i64 tag, [N x i8] data }` tagged-union layout that
-  data-carrying enums use. `println(v)` renders `Color::Red`, and `match` /
-  `select` dispatch on named variants with the same exhaustiveness enforcement
-  as data enums (every variant or a wildcard). Structurally identical C-like
-  enums are disambiguated by their concrete type name because LLVM deduplicates
-  identical struct layouts. The raw positional tag of a variant remains
-  available for FFI-style access. Affected tests updated:
+  values of the named enum type (`r<Color> = Color::Red`), backed by a **single
+  scalar `i64` tag** rather than a struct. That keeps C-like enums first-class
+  while remaining ABI-compatible with a C integer-backed enum passed by value:
+  an extern function parameter typed `Color` lowers to `i64`, and
+  `labs(Color::Green)` → `1` across the FFI boundary (a `{ i64, [N x i8] }`
+  struct would not interoperate). `println(v)` renders `Color::Red`, and
+  `match` / `select` dispatch on the scalar tag by name with the same
+  exhaustiveness enforcement as data enums (every variant or a wildcard).
+  Structurally identical C-like enums are disambiguated by their concrete type
+  name (LLVM deduplicates identical struct layouts); the raw tag remains
+  available for explicit FFI use. Affected tests updated:
   `test/enum/test_import_c_like.vyb`, `test/new_features/test_enum_basic.vyb`,
   `test/new_features/test_enum_match.vyb`,
   `test/bindgen/test_libsample_bindings.vyb`; new coverage in
-  `test/units/test_enum_clike_select.vyb` and
-  `test/units/test_enum_clike_non_exhaustive.vyb`.
+  `test/units/test_enum_clike_select.vyb`,
+  `test/units/test_enum_clike_non_exhaustive.vyb`, and
+  `test/ffi/enum_by_value.vyb`.
 
 ### Fixed
 - **Printing a payload enum no longer crashes** — a tagged-union enum (a

@@ -288,7 +288,9 @@ p<Point> = Point { x = 10, y = 20 }
 C-like enums are first-class typed values — `Direction::East` has type
 `Direction`, `println` renders `East`'s value as `Direction::East`, and
 `match`/`select` dispatch on named variants with the same exhaustiveness
-requirement as data-carrying enums:
+requirement as data-carrying enums. Each value is backed by a single scalar
+`i64` tag (not a struct), so an extern function parameter typed `Direction`
+interoperates with a C integer-backed enum across the FFI boundary:
 
 ```vyb
 enum Direction {
@@ -300,6 +302,7 @@ enum Direction {
 
 d<Direction> = Direction::East
 println(d)                 // Direction::East
+println_int(labs(d))       // passes the scalar tag (2) into a C long
 match (d) {
     North -> "north",
     East  -> "east",

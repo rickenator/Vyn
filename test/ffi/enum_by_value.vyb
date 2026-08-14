@@ -1,0 +1,26 @@
+// @test: C-like enum passed by value to an extern C function
+// @description: C-like enum values lower to a scalar i64 tag (not a struct), so they
+//   are ABI-compatible with a C integer-backed enum passed by value: labs(Color::Red)
+//   -> 0, Green -> 1, Blue -> 2.
+// @category: ffi, interop, enum
+// @expect: pass
+// @expect-output: 0
+// @expect-output: 1
+// @expect-output: 2
+// @expect-return: 0
+// @tags: ffi, extern, enum
+
+enum Color { Red, Green, Blue }
+
+extern "C" {
+    labs(n<Color>)<Int>
+}
+
+main()<Int> -> {
+    freedom {
+        println_int(labs(Color::Red))
+        println_int(labs(Color::Green))
+        println_int(labs(Color::Blue))
+    }
+    return 0
+}

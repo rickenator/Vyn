@@ -487,6 +487,12 @@ llvm::Value* LLVMCodegen::buildTaggedEnumValue(const std::string& enumName, cons
         logError(SourceLocation(), "Unknown variant '" + variantName + "' of tagged enum " + enumName);
         return nullptr;
     }
+    // C-like enums are a single i64 tag, not a struct; return the tag constant.
+    // This keeps `Enum` values register-passable for C FFI while still disambiguating
+    // them by their nominal type at print/match time via the AST type name.
+    if (info.isScalar) {
+        return llvm::ConstantInt::get(int64Type, tagIt->second, true);
+    }
 
     llvm::StructType* enumTy = info.llvmType;
     llvm::AllocaInst* tmp = builder->CreateAlloca(enumTy, nullptr, "enum.construct.tmp");
