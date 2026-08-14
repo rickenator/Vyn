@@ -24,11 +24,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keyed collections built on `Vec` plus the `Hashable`/`Equatable` core aspects,
   with in-place mutation via by-ref (`self<their<...>>`) bind receiver methods.
   `HashMap` provides `put`, `get` (returning `Option<V>`), `contains_key`, and
-  `size`; `HashSet` provides `insert`, `contains`, and `size`. Linearly-scanning
-  `equals` lookup keeps them O(n) pending a hash-bucket layout. Import with
-  `import collections` and construct via struct literals
-  (`HashMap<String, Int> { keys = Vec<String>(), vals = Vec<Int>() }`).
+  `size`; `HashSet` provides `insert`, `contains`, and `size`.
   Covered by `test/modules/test_collections_hashmap.vyb`.
+- **`collections` lookup is now hash-bucketed (chained) instead of O(n)** —
+  `HashMap<K,V>` keeps parallel `keys`/`vals` vectors and adds a fixed 16-way
+  bucket index: a `head<Vec<Int>>` chain per hash and a per-key `next<Vec<Int>>`
+  link, so a lookup only scans the single bucket the `Hashable` hash selects
+  rather than the whole map. `HashSet<K>` uses the same bucket/chain index over
+  its `values` vector. Construct with the new `make_hash_map<K,V>()` /
+  `make_hash_set<K>()` (they initialize the bucket metadata); the old
+  struct-literal construction shape no longer applies.
+- **Returning a struct that embeds a `Vec` no longer frees the Vec's data** —
+  returning an object literal (or construction) that places an owning variable
+  into a field, e.g. a constructor building `HashMap { head = d, ... }`, now
+  transfers that binding's ownership to the caller instead of running its local
+  cleanup and leaving the returned field pointing at freed memory. The return
+  ownership-transfer walker now descends through `ObjectLiteral` /
+  `ConstructionExpression` field initializers in addition to bare identifiers.
 
 ### Changed
 - **C-like enums are now first-class typed values** — `enum Color { Red, Green,

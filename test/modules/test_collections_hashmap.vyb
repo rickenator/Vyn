@@ -1,12 +1,12 @@
 // @test: stdlib collections HashMap and HashSet
-// @description: `import collections` brings HashMap<String, Int> and
-//   HashSet<String> with by-ref-binding methods. HashMap provides put / get
-//   (returning Option<V>) / contains_key / size with linear equals lookup and
-//   persists in-place via the by-ref receiver; get results are drained with
-//   `.value`. HashSet provides insert / contains / size with duplicate
-//   suppression. Use the whole-module import so the carried generic bind methods
-//   and their equality probe resolve.
-// @category: modules, collections, aspect, bind, generics, option
+// @description: `import collections` brings HashMap<String, Int> / HashSet<String>
+//   via make_hash_map / make_hash_set with by-ref-binding methods. The maps use a
+//   hash-bucket (chained) key index: HashMap provides put / get (returning
+//   Option<V>) / contains_key / size and persists in-place via the by-ref
+//   receiver; get results are drained with `.value`. HashSet provides insert /
+//   contains / size with duplicate suppression. Use the whole-module import so
+//   the carried generic bind methods and their probes resolve.
+// @category: modules, collections, aspect, bind, generics, option, hash
 // @expect: pass
 // @expect-output: ok
 // @expect-return: 0
@@ -15,22 +15,23 @@
 import collections
 
 main()<Int> -> {
-    m<HashMap<String, Int>> = HashMap<String, Int> { keys = Vec<String>(), vals = Vec<Int>() }
+    m<HashMap<String, Int>> = make_hash_map<String, Int>()
     m.put("alpha", 1)
     m.put("beta", 2)
+    m.put("gamma", 3)
     m.put("alpha", 99)
-    if (m.size() != 2 || !m.contains_key("beta") || m.contains_key("gamma")) {
+    if (m.size() != 3 || !m.contains_key("beta") || m.contains_key("delta")) {
         return 1
     }
 
     found<Option<Int>> = m.get("alpha")
-    missing<Option<Int>> = m.get("gamma")
+    missing<Option<Int>> = m.get("delta")
 
-    s<HashSet<String>> = HashSet<String> { values = Vec<String>() }
-    if (!s.insert("x") || !s.insert("y") || s.insert("x")) {
+    s<HashSet<String>> = make_hash_set<String>()
+    if (!s.insert("x") || !s.insert("y") || !s.insert("z") || s.insert("x")) {
         return 3
     }
-    if (s.size() != 2 || !s.contains("x") || s.contains("missing")) {
+    if (s.size() != 3 || !s.contains("x") || !s.contains("z") || s.contains("missing")) {
         return 4
     }
 

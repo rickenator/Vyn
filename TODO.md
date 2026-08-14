@@ -241,7 +241,7 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
   - [x] Foundation scaffold landed: `stdlib/core/`, `stdlib/io/`, `stdlib/collections/`, top-level/core preludes, transitional `core::option` bridge, and placeholder `core::result`
   - [ ] Expand with full module contents (`math`, collections, io, iterator/core aspects)
     - [x] `core::math` — composition helpers (`clamp`, `is_close`) layered over the global math intrinsics, explicitly imported via `import core::math` (`test/modules/stdlib_core_math.vyb`)
-    - [x] `collections` — `HashMap<K,V>` / `HashSet<K>` shipped (`import collections`, by-ref bind methods, linear `equals` lookup; `test/modules/test_collections_hashmap.vyb`); higher-order `Vec<T>` expansion and File/network I/O still pending
+    - [x] `collections` — `HashMap<K,V>` / `HashSet<K>` shipped (`import collections`, by-ref bind methods, hash-bucket `Hashable` key lookup; `test/modules/test_collections_hashmap.vyb`); higher-order `Vec<T>` expansion and File/network I/O still pending
     - [ ] `Iterator` aspect + `for`-loop desugaring — compiler work, tracked under Standard Library Expansion (see [DECIDED] note)
   - [x] Auto-import of `core::*` (opt-out with directive) — the core contracts module (`core::aspects`, with its pre-wired primitive binds) is auto-imported into every non-stdlib module unless it already imports the contracts, locally redefines them, or opts out with a `no_core()` directive. This makes `x.display()`, `a.equals(b)`, `a.compare(b)`, and `a.clone()` available on built-in scalars with no import. The transitional prelude helpers (`OptionInt`, `prelude_ok`) remain explicit-import-only.
 
@@ -271,8 +271,8 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
 - [x] **String methods** — `.len()`, `.contains()`, `.starts_with()`, `.ends_with()`, `.to_upper()`, `.to_lower()`, `.substring()`, `.char_at()`, `.trim()`, `.replace()`, `String::from_bytes()`
 - [ ] **String methods (remaining)** — `.split()`, `.format()`
 - [ ] **String formatting** — Format strings or `fmt()` intrinsic
-- [x] **`HashMap<K, V>`** — Hash map with `Hashable + Equatable` bounds (backed by parallel `keys`/`vals` vectors with linear `equals` lookup; `import collections`)
-- [x] **`HashSet<T>`** — Hash set (backed by a single `values` vector with duplicate suppression; `import collections`)
+- [x] **`HashMap<K, V>`** — Hash map with `Hashable + Equatable` bounds (parallel `keys`/`vals` vectors indexed by hash-bucket chains; `import collections`)
+- [x] **`HashSet<T>`** — Hash set (`values` vector indexed by hash-bucket chains with duplicate suppression; `import collections`)
 - [ ] **`BTreeMap<K, V>`** — Ordered map with `Comparable` bounds
 - [ ] **File I/O** — `File::open()`, `File::read()`, `File::write()`, `File::close()`
 - [x] **Math library** — `sqrt`, `sin`, `cos`, `tan`, `exp`, `log`, `log2`, `log10`, `pow`, `floor`, `ceil`, `round`, `abs`, `min`, `max`

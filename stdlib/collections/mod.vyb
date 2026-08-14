@@ -6,19 +6,25 @@
 # the first real keyed/set collections on top of `Vec` and the canonical
 # `Hashable` / `Equatable` core aspects:
 #
-#   - `HashMap<K, V>`: a keyed map backed by parallel `keys` / `vals` vectors
-#     with linear `equals` lookup. Provides `put`, `get` (returning `Option<V>`),
-#     `contains_key` and `size`. Lookup is O(n) pending a hash-bucket layout.
-#   - `HashSet<K>`: a set of distinct keys backed by a single `values` vector.
-#     Provides `insert`, `contains` and `size`. Membership is O(n) for now.
+#   - `HashMap<K, V>`: a keyed map. Keys and values live in parallel
+#     `keys` / `vals` vectors; a fixed set of hash buckets (`head` + a per-key
+#     `next` chain) indexes the keys so a lookup only scans the single bucket
+#     the key hashes to instead of the whole map. Provides `put`, `get`
+#     (returning `Option<V>`), `contains_key` and `size`. Build one with
+#     `make_hash_map<K, V>()` (16 buckets).
+#   - `HashSet<K>`: a set of distinct keys backed by a `values` vector plus the
+#     same bucket/chain index. Provides `insert` (returns `Bool`), `contains`
+#     and `size`. Build one with `make_hash_set<K>()`.
+#   - `make_hash_map<K,V>()` / `make_hash_set<K>()`: the constructors return a
+#     fully initialized (bucket-indexed) instance. They are the supported way to
+#     build these collections because the bucket metadata must be set up.
 #
 # Import the whole module with `import collections` (the carried generic bind
-# methods reference the shared `samekey` equality probe, so a narrow named import
-# of just `HashMap`/`MapOps` would drop that dependency and the binds would not
-# resolve). Construct instances with struct literals, e.g.
-#   `m<HashMap<String, Int>> = HashMap<String, Int> { keys = Vec<String>(), vals = Vec<Int>() }`
-# Drain `get` results with `match` / `select` on the `Option<V>`, or read the
-# primary payload directly with `.value` (returns a default when the key is absent).
+# methods reference the shared `samekey` / `hashkey` probes and `bucket_for`, so
+# a narrow named import of just `HashMap`/`MapOps` would drop those dependencies
+# and the binds would not resolve). Drain `get` results with `match` / `select`
+# on the `Option<V>`, or read the primary payload directly with `.value`
+# (returns a default when the key is absent).
 
 import core::aspects
 
@@ -30,10 +36,30 @@ samekey<K<Equatable>>(a<K>, b<K>)<Bool> -> {
     return a.equals(b)
 }
 
+# Hash probe for bounded key types, mirroring `samekey`: `hash` resolves through
+# the `Hashable` bound so generic bind bodies can bucket keys without a concrete
+# receiver.
+share(all)
+hashkey<K<Hashable>>(k<K>)<Int> -> {
+    return k.hash()
+}
+
+# Map an arbitrary (possibly negative) hash onto a bucket index in [0, nb).
+share(all)
+bucket_for(h<Int>, nb<Int>)<Int> -> {
+    b<Int> = h % nb
+    if (b < 0) {
+        b = b + nb
+    }
+    return b
+}
+
 share(all)
 struct HashMap<K, V> {
     keys<Vec<K>>,
-    vals<Vec<V>>
+    vals<Vec<V>>,
+    head<Vec<Int>>,
+    next<Vec<Int>>
 }
 
 share(all)
@@ -47,32 +73,44 @@ aspect MapOps {
 share(all)
 bind<K<Hashable, Equatable>, V> MapOps -> HashMap<K, V> {
     put(self<their<HashMap<K, V>>>, key<K>, val<V>)<Void> -> {
-        i<Int> = 0
-        for (i = 0; i < self.keys.len(); i = i + 1) {
+        nb<Int> = self.head.len()
+        b<Int> = bucket_for(hashkey(key), nb)
+        i<Int> = self.head.get(b)
+        while (i != -1) {
             if (samekey(self.keys.get(i), key)) {
                 self.vals.set(i, val)
                 return
             }
+            i = self.next.get(i)
         }
         self.keys.push(key)
         self.vals.push(val)
+        idx<Int> = self.keys.len() - 1
+        self.next.push(self.head.get(b))
+        self.head.set(b, idx)
         return
     }
     get(self<their<HashMap<K, V>>>, key<K>)<Option<V>> -> {
-        i<Int> = 0
-        for (i = 0; i < self.keys.len(); i = i + 1) {
+        nb<Int> = self.head.len()
+        b<Int> = bucket_for(hashkey(key), nb)
+        i<Int> = self.head.get(b)
+        while (i != -1) {
             if (samekey(self.keys.get(i), key)) {
                 return Option<V>::Some(self.vals.get(i))
             }
+            i = self.next.get(i)
         }
         return Option<V>::None
     }
     contains_key(self<their<HashMap<K, V>>>, key<K>)<Bool> -> {
-        i<Int> = 0
-        for (i = 0; i < self.keys.len(); i = i + 1) {
+        nb<Int> = self.head.len()
+        b<Int> = bucket_for(hashkey(key), nb)
+        i<Int> = self.head.get(b)
+        while (i != -1) {
             if (samekey(self.keys.get(i), key)) {
                 return true
             }
+            i = self.next.get(i)
         }
         return false
     }
@@ -81,9 +119,31 @@ bind<K<Hashable, Equatable>, V> MapOps -> HashMap<K, V> {
     }
 }
 
+# Number of buckets each collection is pre-sized with. A power of two (16) keeps
+# the modulo cheap; loads above a few elements per bucket can be reindexed by
+# growing `head` in a future iteration.
+share(all)
+bucket_count()<Int> -> {
+    return 16
+}
+
+share(all)
+make_hash_map<K, V>()<HashMap<K, V>> -> {
+    head<Vec<Int>> = Vec<Int>()
+    i<Int> = 0
+    nb<Int> = bucket_count()
+    while (i < nb) {
+        head.push(-1)
+        i = i + 1
+    }
+    return HashMap<K, V> { keys = Vec<K>(), vals = Vec<V>(), head = head, next = Vec<Int>() }
+}
+
 share(all)
 struct HashSet<K> {
-    values<Vec<K>>
+    values<Vec<K>>,
+    head<Vec<Int>>,
+    next<Vec<Int>>
 }
 
 share(all)
@@ -96,21 +156,30 @@ aspect SetOps {
 share(all)
 bind<K<Hashable, Equatable>> SetOps -> HashSet<K> {
     insert(self<their<HashSet<K>>>, value<K>)<Bool> -> {
-        i<Int> = 0
-        for (i = 0; i < self.values.len(); i = i + 1) {
+        nb<Int> = self.head.len()
+        b<Int> = bucket_for(hashkey(value), nb)
+        i<Int> = self.head.get(b)
+        while (i != -1) {
             if (samekey(self.values.get(i), value)) {
                 return false
             }
+            i = self.next.get(i)
         }
         self.values.push(value)
+        idx<Int> = self.values.len() - 1
+        self.next.push(self.head.get(b))
+        self.head.set(b, idx)
         return true
     }
     contains(self<their<HashSet<K>>>, value<K>)<Bool> -> {
-        i<Int> = 0
-        for (i = 0; i < self.values.len(); i = i + 1) {
+        nb<Int> = self.head.len()
+        b<Int> = bucket_for(hashkey(value), nb)
+        i<Int> = self.head.get(b)
+        while (i != -1) {
             if (samekey(self.values.get(i), value)) {
                 return true
             }
+            i = self.next.get(i)
         }
         return false
     }
@@ -120,6 +189,18 @@ bind<K<Hashable, Equatable>> SetOps -> HashSet<K> {
 }
 
 share(all)
+make_hash_set<K>()<HashSet<K>> -> {
+    head<Vec<Int>> = Vec<Int>()
+    i<Int> = 0
+    nb<Int> = bucket_count()
+    while (i < nb) {
+        head.push(-1)
+        i = i + 1
+    }
+    return HashSet<K> { values = Vec<K>(), head = head, next = Vec<Int>() }
+}
+
+share(all)
 collections_status_message()<String> -> {
-    return "collections: built-in Vec<T> plus HashMap / HashSet keyed collections"
+    return "collections: HashMap / HashSet with hash-bucket (chained) key lookup"
 }
