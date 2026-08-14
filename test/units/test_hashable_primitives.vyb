@@ -1,0 +1,24 @@
+// @test: Hashable pre-wired hash for String, Float, Bool
+// @description: core::aspects ships hash(self)<Int> for Int, String, Float, and
+//   Bool (DJB2-style for String/Float), so keys hash deterministically and distinct
+//   values produce distinct hashes for typical keys.
+// @category: aspect, stdlib, core-aspects, hashable
+// @expect: pass
+// @expect-return: 0
+
+import core::aspects
+
+main()<Int> -> {
+    s1<String> = "hello"
+    s2<String> = "hello"
+    s3<String> = "world"
+    f1<Float> = 2.5
+    t<Bool> = true
+    fb<Bool> = false
+    if (s1.hash() == s2.hash() && s1.hash() != s3.hash() &&
+        f1.hash() == f1.hash() && f1.hash() != 0 &&
+        t.hash() == 1 && fb.hash() == 0 && t.hash() != fb.hash()) {
+        return 0
+    }
+    return 1
+}

@@ -39,7 +39,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Enum::Variant(payload)` strings (covered by `test/enum/test_print_enum.vyb`).
 
 ### Added
-- **`.tag` accessor on enum values** — every enum value (C-like scalar and
+- **`Hashable.hash` for `String`, `Float`, and `Bool`** — `core::aspects`
+  now ships `hash(self)<Int>` for all four core scalar types (Int already had it),
+  so any `Hashable`-bounded generic code can hash a `String`/`Float`/`Bool` key.
+  `String` (and `Float`, via its decimal rendering) use a DJB2-style hash over the
+  character codes; `Bool` hashes to `1`/`0`. Covered by
+  `test/units/test_hashable_primitives.vyb`.
+
+ — every enum value (C-like scalar and
   data-carrying tagged-union alike) now exposes its raw positional variant tag
   as an `Int` via `.tag`. C-like enums return the backing scalar directly; data
   enums extract field 0 of the `{ i64 tag, [N x i8] data }` struct at runtime.
