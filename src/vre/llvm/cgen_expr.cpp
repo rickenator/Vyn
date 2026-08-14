@@ -3625,6 +3625,28 @@ void LLVMCodegen::visit(ast::MemberExpression* node) {
         return;
     }
 
+    // `.tag` accessor on an enum value: returns the raw positional i64 tag as an Int.
+    // Works for C-like scalar enums (the value already IS the tag) and for
+    // data-carrying enums (extract field 0 of the { i64 tag, [N x i8] data } struct).
+    if (!node->computed) {
+        if (auto* tagPropIdent = dynamic_cast<ast::Identifier*>(node->property.get())) {
+            if (tagPropIdent->name == "tag") {
+                if (const TaggedEnumInfo* tei = findTaggedEnum(node->object->type.get())) {
+                    if (tei->isScalar) {
+                        m_currentLLVMValue = objectValue;
+                    } else if (objectValue->getType()->isPointerTy()) {
+                        llvm::Type* enumTy = codegenType(node->object->type.get());
+                        llvm::Value* loaded = builder->CreateLoad(enumTy, objectValue, "enum.tag.load");
+                        m_currentLLVMValue = builder->CreateExtractValue(loaded, 0, "enum.tag");
+                    } else {
+                        m_currentLLVMValue = builder->CreateExtractValue(objectValue, 0, "enum.tag");
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
     if (node->computed) {
         // Computed member access: obj[prop]
         if (!node->property) {

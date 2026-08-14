@@ -39,6 +39,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Enum::Variant(payload)` strings (covered by `test/enum/test_print_enum.vyb`).
 
 ### Added
+- **`.tag` accessor on enum values** — every enum value (C-like scalar and
+  data-carrying tagged-union alike) now exposes its raw positional variant tag
+  as an `Int` via `.tag`. C-like enums return the backing scalar directly; data
+  enums extract field 0 of the `{ i64 tag, [N x i8] data }` struct at runtime.
+  The accessor participates in normal expressions (`match`/`select`/arithmetic)
+  and is covered by `test/units/test_enum_tag.vyb`.
+
 - **`vyb bindgen` (MVP)** — new `vyb bindgen <header.h> [-o out.vyb]` subcommand that parses a C header subset (typedefs, `struct`/`enum` declarations, scalar/pointer types, trailing `...`) and emits an importable Vyb module: `share(all)` bodyless extern functions (which lower to ExternalLinkage forward declarations and resolve against the host C ABI), `#[repr(C)]` structs, and enums. Functions, structs, and enums re-export across `import` (including C-like enums as typed values once the language change landed). Covered by `test/bindgen/libsample.h`, `test/bindgen/libsample.vyb`, and `test/bindgen/test_libsample_bindings.vyb`. Full libclang/preprocessor-based parsing remains future work (see TODO FFI).
 
 - **Variadic C functions** — a trailing `...` in an extern C parameter list now marks the declaration as variadic. Codegen emits a true LLVM vararg function, and call sites accept any number of extra arguments beyond the fixed parameters (rejecting calls with too few). Vyb `String` varargs auto-extract their `char*` data pointer so C varargs such as `printf("%s", s)` receive a C string; `printf("%d-%s", 7, "vyb")` is covered by `test/ffi/variadic_c_printf.vyb`. Variadic functions must be extern/forward declarations (a body is rejected).

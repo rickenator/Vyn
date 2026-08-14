@@ -1,0 +1,48 @@
+// @test: .tag extracts the raw positional tag from an enum value
+// @description: every enum value exposes .tag returning its positional index as
+//   an Int, for both C-like scalar enums and data-carrying tagged-union enums.
+// @category: enum, tag, jit
+// @expect: pass
+// @expect-output: 0
+// @expect-output: 1
+// @expect-output: 2
+// @expect-output: 3
+// @expect-output: 0
+// @expect-output: 1
+// @expect-output: 2
+// @expect-return: 0
+
+enum Direction { North, South, East, West }
+enum Shape { Circle(Float), Rect(Float, Float), Unit }
+
+main()<Int> -> {
+    d<Direction> = Direction::East
+    println_int(d.tag)
+
+    west<Direction> = Direction::West
+    println_int(west.tag)
+
+    north<Direction> = Direction::North
+    println_int(north.tag)
+
+    // .tag participates in normal expressions / match dispatch.
+    r<Int> = match (Direction::South) {
+        North -> d.tag,
+        South -> Direction::South.tag,
+        East -> west.tag,
+        West -> 99
+    }
+    println_int(r)
+
+    // Data-carrying (tagged-union) enums expose their positional tag too.
+    circle<Shape> = Shape::Circle(2.5)
+    println_int(circle.tag)
+
+    rect<Shape> = Shape::Rect(3.0, 4.0)
+    println_int(rect.tag)
+
+    unit<Shape> = Shape::Unit
+    println_int(unit.tag)
+
+    return 0
+}

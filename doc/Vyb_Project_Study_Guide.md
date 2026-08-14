@@ -303,6 +303,7 @@ enum Direction {
 d<Direction> = Direction::East
 println(d)                 // Direction::East
 println_int(labs(d))       // passes the scalar tag (2) into a C long
+println_int(d.tag)         // .tag exposes the raw positional tag as an Int (East -> 2)
 match (d) {
     North -> "north",
     East  -> "east",
@@ -310,9 +311,13 @@ match (d) {
 }
 ```
 
-Data-carrying (tagged-union) enums — `enum Shape { Circle(Float),
-Rect(Float, Float) }` — compile to a value-semantics `{ i64 tag, [N x i8] data }`
-union and construct/match with payloads (`Shape::Circle(2.0)`, `Circle(r) ->`).
+Every enum value exposes its raw positional variant tag as an `Int` via `.tag` —
+this also holds for data-carrying (tagged-union) enums, where field 0 of the
+`{ i64 tag, [N x i8] data }` union is extracted at runtime
+(`Shape::Circle(2.0).tag` is `0`, `Shape::Rect(1.0, 2.0).tag` is `1`).
+Data-carrying enums — `enum Shape { Circle(Float), Rect(Float, Float) }` —
+compile to a value-semantics `{ i64 tag, [N x i8] data }` union and
+construct/match with payloads (`Shape::Circle(2.0)`, `Circle(r) ->`).
 
 Study:
 

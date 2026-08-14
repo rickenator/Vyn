@@ -3407,6 +3407,16 @@ void SemanticAnalyzer::visit(ast::MemberExpression* node) {
         }
     }
 
+    // `.tag` accessor: an enum value exposes its raw positional i64 tag as an Int.
+    // This works for both C-like scalar enums and data-carrying enums.
+    if (fieldName == "tag" && enumTypeNames.count(baseStructName)) {
+        auto* tagTy = new ast::TypeName(node->loc,
+            std::make_unique<ast::Identifier>(node->loc, "Int"));
+        expressionTypes[node] = tagTy;
+        node->type = std::shared_ptr<ast::TypeNode>(tagTy->clone());
+        return;
+    }
+
     // Special handling for built-in types with methods (Vec, Future, etc.)
     // These are not user-defined structs, so they won't be in structFieldTypes
     // Their methods are handled in CallExpression visitor
