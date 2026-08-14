@@ -21,6 +21,12 @@
 #     same auto-growing bucket/chain index. Provides `insert` (returns `Bool`),
 #     `contains` and `size`. Build one with `HashSet<K>()`, `HashSet<K>(cap)`,
 #     or the fixed `HashSet<K>(cap, true)`.
+#   - `VecOps` (on the built-in `Vec<T>`): non-mutating view helpers written in
+#     Vyb over the Vec primitives — `first` / `last` (head/tail element),
+#     `reversed` (a fresh reversed copy) and `find` (first matching index, or
+#     `-1`). Bound via `Equatable`; ordering (`sorted` / `min` / `max`) and the
+#     higher-order `map` / `filter` / `reduce` are deferred on compiler gaps
+#     (see the detailed note next to the bind below).
 #   - `HashMap<K,V>()` / `HashSet<K>()` (and their `(cap)` / `(cap, true)`
 #     capacity forms) are declared struct constructors: they return a fully initialized
 #     (bucket-indexed) instance, keeping the `Vec()` / `Vec(n)` construction
@@ -302,6 +308,63 @@ bind<K<Hashable, Equatable>> SetOps -> HashSet<K> {
     }
     size(self<their<HashSet<K>>>)<Int> -> {
         return self.values.len()
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Pure-Vyb `Vec<T>` extension operations.
+#
+# The built-in `Vec<T>` already ships the mutation/access primitives (`push`,
+# `pop`, `get`, `set`, `len`, `clear`, `is_empty`, `contains`, `remove_at`).
+# These binds layer analysis/view operations on top, written in Vyb over those
+# primitives. They are *non-mutating*: `reversed` returns a fresh vector and
+# `find` / `first` / `last` only read. `find` returns the index of the first
+# `==` match or `-1`; `first` / `last` return the head/tail element. On an
+# empty vector `reversed` is a no-op, while `first` / `last` (which read via
+# `Vec::get`) inherit `get`'s current out-of-range behavior (a known compiler
+# gap: the returned value is not a clean default). The ordering methods
+# (`sorted`, `min`, `max`) and the higher-order `map` / `filter` / `reduce`
+# are intentionally *not* shipped yet: the former need to call `compare` on a
+# generic element but codegen cannot yet lower an aspect-dispatch `compare` on
+# a type-parameter receiver inside a generic bind body (the same mechanism
+# that makes the `equals`-based helpers work), and the latter need closure
+# capture plus by-ref `their<Vec<T>>` receivers, neither implemented yet.
+#
+# ---------------------------------------------------------------------------
+share(all)
+aspect VecOps {
+    first(self<Vec<T>>)<T> -> { }
+    last(self<Vec<T>>)<T> -> { }
+    reversed(self<Vec<T>>)<Vec<T>> -> { }
+    find(self<Vec<T>>, value<T>)<Int> -> { }
+}
+
+share(all)
+bind<T<Equatable>> VecOps -> Vec<T> {
+    first(self<Vec<T>>)<T> -> {
+        return self.get(0)
+    }
+    last(self<Vec<T>>)<T> -> {
+        return self.get(self.len() - 1)
+    }
+    reversed(self<Vec<T>>)<Vec<T>> -> {
+        out<Vec<T>> = Vec()
+        i<Int> = self.len() - 1
+        while (i >= 0) {
+            out.push(self.get(i))
+            i = i - 1
+        }
+        return out
+    }
+    find(self<Vec<T>>, value<T>)<Int> -> {
+        i<Int> = 0
+        while (i < self.len()) {
+            if (samekey(self.get(i), value)) {
+                return i
+            }
+            i = i + 1
+        }
+        return -1
     }
 }
 

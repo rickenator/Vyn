@@ -1,0 +1,65 @@
+// @test: stdlib collections VecOps expansion methods
+// @description: pure-Vyb non-mutating Vec<T> extension operations shipped by
+//   `import collections` (bound to the built-in Vec<T> via an Equatable-gated
+//   aspect): first/last, reversed (fresh vector), and find (first matching
+//   index, or -1). Ordering (sorted/min/max) is deferred until codegen can
+//   lower `compare` on a type-parameter receiver; map/filter/reduce await
+//   closure capture. Two compiler gaps are avoided here: chaining a Vec
+//   method on a bind-method Vec return (e.g. `v.reversed().len()`) hits an
+//   ICmp codegen bug, and `Vec.get` on an empty vector returns garbage, so
+//   first/last are only exercised on non-empty vectors and results are bound
+//   to locals before indexing.
+// @category: modules, collections, vec, generics, aspects, bind
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import collections
+
+check(b<Bool>, out<Int>)<Int> -> {
+    if (!b) {
+        return out
+    }
+    return 0
+}
+
+main()<Int> -> {
+    v<Vec<Int>> = Vec()
+    v.push(3)
+    v.push(9)
+    v.push(5)
+    v.push(9)
+    v.push(1)
+
+    if (check(v.first() == 3, 1)) { return 1 }
+    if (check(v.last() == 1, 2)) { return 2 }
+
+    # find: first matching index, or -1
+    if (check(v.find(9) == 1, 3)) { return 3 }
+    if (check(v.find(7) == -1, 4)) { return 4 }
+
+    # reversed: fresh vector, original untouched
+    r<Vec<Int>> = v.reversed()
+    if (check(r.len() == 5 && r.get(0) == 1 && r.get(4) == 3, 5)) { return 5 }
+    if (check(v.last() == 1, 6)) { return 6 }
+
+    # works on String too (Equatable is pre-wired for String)
+    s<Vec<String>> = Vec()
+    s.push("red")
+    s.push("green")
+    s.push("blue")
+    if (check(s.first() == "red", 7)) { return 7 }
+    if (check(s.find("green") == 1, 8)) { return 8 }
+    if (check(s.find("violet") == -1, 9)) { return 9 }
+    sr<Vec<String>> = s.reversed()
+    if (check(sr.get(0) == "blue" && sr.get(2) == "red", 10)) { return 10 }
+
+    # reversed on an empty vector is a no-op
+    e<Vec<Int>> = Vec()
+    er<Vec<Int>> = e.reversed()
+    if (check(er.len() == 0, 11)) { return 11 }
+
+    println("ok")
+    return 0
+}

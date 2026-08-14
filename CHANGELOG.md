@@ -59,7 +59,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ownership-transfer walker now descends through `ObjectLiteral` /
   `ConstructionExpression` field initializers in addition to bare identifiers.
 
+- **`Vec<T>` view helpers via `VecOps`** — `import collections` now binds a
+  pure-Vyb `VecOps` aspect to the built-in `Vec<T>` (Equatable-gated) exposing
+  non-mutating helpers written over the Vec primitives: `first`/`last` (head /
+  tail element), `reversed` (a fresh reversed copy), and `find` (index of the
+  first `==` match, or `-1`). Ordering methods (`sorted`/`min`/`max`) are
+  deferred on a codegen gap (no `compare` dispatch on a type-parameter
+  receiver inside a generic bind body), and `map`/`filter`/`reduce` await
+  closure capture. Covered by `test/modules/test_vec_expansion.vyb`.
+
 ### Changed
+- **`FunctionType` grammar doc no longer contradicts the parser** — `vyb.hpp`
+  now documents the real function-pointer type syntax `fn(params) -> Return`
+  (the previously listed `(params)<Return> ->` form was never implemented in
+  `type_parser.cpp`). The `fn` token is a *type* keyword only; it is unrelated
+  to the removed `fn`/`func` function-declaration keywords.
 - **C-like enums are now first-class typed values** — `enum Color { Red, Green,
   Blue }` no longer lowers each variant to a raw `i64`. Variants are distinct
   values of the named enum type (`r<Color> = Color::Red`), backed by a **single

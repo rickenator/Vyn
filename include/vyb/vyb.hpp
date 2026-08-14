@@ -249,7 +249,7 @@ OwnershipWrapper       ::= 'my' | 'our' | 'their' | 'ptr'
 
 ArrayType              ::= '[' Type [ ';' Expression ] ']' // e.g., [Int], [Int; 5]
 TupleType              ::= '(' [ Type { ',' Type } [ ',' ] ] ')' // e.g., (Int, String)
-FunctionType           ::= [ 'async' ] '(' [ Type { ',' Type } ] ')' '<' Type '>' '->' [ 'throws' TypeList ] // Unified (params)<ReturnType> -> syntax
+FunctionType           ::= 'fn' '(' [ Type { ',' Type } ] ')' [ '->' Type ] // e.g., fn(Int) -> Int; ommitted return is void (see type_parser.cpp)
 
 // Path and Arguments (mostly from old EBNF, ensure compatibility)
 path                   ::= IDENTIFIER { ('::' | '.') IDENTIFIER }
