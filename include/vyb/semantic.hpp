@@ -627,6 +627,19 @@ private:
     // True if the concrete type has a bind (concrete or generic) for the given aspect.
     bool hasAspectBinding(const std::string& typeStr, const std::string& aspectName);
 
+    // True if aspect 'boundAspect' provides aspect 'requestedAspect' directly or
+    // via any transitive super-aspect inheritance chain.
+    bool boundAspectProvides(const std::string& boundAspect, const std::string& requestedAspect);
+
+    // Finds a method declared by aspect 'aspectName' or any of its transitive
+    // super-aspects. On success, 'declaringAspect' is set to the aspect that
+    // declares the method and 'outMethod' to the matching method. Returns false
+    // if no direct or inherited method matches.
+    bool findAspectMethod(const std::string& aspectName,
+                          const std::string& methodName,
+                          const TraitInfo*& declaringAspect,
+                          const TraitMethod*& outMethod);
+
     // Validates super-aspects exist and that no aspect inheritance cycles exist.
     void validateAspectInheritance();
 };

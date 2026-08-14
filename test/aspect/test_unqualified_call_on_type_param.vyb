@@ -1,0 +1,53 @@
+// @test: unqualified aspect method calls on bounded type parameters
+// @description: thing.method() resolves through a bounded type parameter inside a generic function, including inherited super-aspect methods and methods with arguments
+// @category: aspect, generics, unqualified, bounds
+// @expect: pass
+// @expect-return: 0
+
+aspect Named {
+    name(self)<String> -> { }
+}
+
+aspect Display : Named {
+    show(self)<String> -> { }
+}
+
+aspect Interactive : Display {
+    scale(self, k<Int>)<Int> -> { }
+}
+
+struct Point {
+    x<Int>
+}
+
+bind Named -> Point {
+    name(self<Point>)<String> -> { return "Pt" }
+}
+
+bind Display -> Point {
+    show(self<Point>)<String> -> { return "P" }
+}
+
+bind Interactive -> Point {
+    scale(self<Point>, k<Int>)<Int> -> { return self.x * k }
+}
+
+describe<T<Display>>(thing<T>)<String> -> {
+    return thing.show() + thing.name()
+}
+
+area<T<Interactive>>(thing<T>, multiplier<Int>)<Int> -> {
+    return thing.scale(multiplier)
+}
+
+main()<Int> -> {
+    p<Point> = Point { x = 3 }
+    label<String> = describe(p)
+    d<Int> = area(p, 9)
+    if (label == "PPt" && d == 27) {
+        return 0
+    }
+    println(label)
+    println(d)
+    return 1
+}

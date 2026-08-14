@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Unqualified method dispatch on bounded type parameters** — inside a generic
+  function, an unqualified dot call like `thing.show()` on a receiver typed as a
+  bounded type parameter (`thing<T<Display>>` / `thing<T<Named>>`) now resolves
+  the method through the bound aspect and substitutes `Self` in the return type,
+  without needing the qualified `Display::show(thing)` form. Method resolution
+  also walks the bound aspect's transitive super-aspect chain, so an inherited
+  method from a super-aspect (e.g. `thing.name()` where `Display : Named` and
+  `name` lives on `Named`) is dispatchable in both the unqualified and qualified
+  (`Named::name(thing)`) paths. The qualified `Aspect::method(receiver)` path now
+  accepts any bound whose aspect/inheritance chain provides the requested aspect,
+  and runtime dispatch still monomorphizes to the concrete type's bind method.
+
 - A startup **Type registry** now registers every compile-time-known type name
   (primitives and user structs) keyed by its type-ID hash, so `typename(t)` on a
   runtime `Type` value (`t<Type> = typeof(42)`) resolves the actual type name at

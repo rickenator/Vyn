@@ -1,0 +1,26 @@
+// @test: unqualified aspect call on unbounded type parameter rejected
+// @description: A generic receiver with no bound providing the method is rejected for an unqualified call
+// @category: aspect, generics, unqualified, diagnostics
+// @expect: fail
+// @expect-error: Type parameter 'T' does not have bound that provides method 'show'
+// @semantic-only: true
+
+aspect Display {
+    show(self)<String> -> { }
+}
+
+struct Point {
+    x<Int>
+}
+
+bind Display -> Point {
+    show(self<Point>)<String> -> { return "P" }
+}
+
+printIt<T>(thing<T>)<String> -> {
+    return thing.show()
+}
+
+main()<Int> -> {
+    return 0
+}

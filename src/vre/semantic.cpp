@@ -2675,20 +2675,17 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                             if (typeParamSym && typeParamSym->kind == SymbolInfo::Kind::TYPE_PARAMETER) {
                                 // This is a type parameter - check its bounds for the method
                                 for (const std::string& boundName : typeParamSym->bounds) {
-                                    TraitInfo* traitInfo = findTrait(boundName);
-                                    if (traitInfo) {
-                                        for (const auto& method : traitInfo->methods) {
-                                            if (method.name == methodName) {
-                                                // Found! Set return type from the aspect
-                                                if (method.returnType) {
-                                                    // Return type might be Self - substitute with type parameter
-                                                    ast::TypeNode* actualReturnType = substituteSelfType(method.returnType, typeStr);
-                                                    expressionTypes[node] = actualReturnType;
-                                                    node->type = std::shared_ptr<ast::TypeNode>(actualReturnType->clone());
-                                                }
-                                                return;
-                                            }
+                                    const TraitInfo* declaringAspect = nullptr;
+                                    const TraitMethod* method = nullptr;
+                                    if (findAspectMethod(boundName, methodName, declaringAspect, method)) {
+                                        // Found! Set return type from the aspect
+                                        if (method->returnType) {
+                                            // Return type might be Self - substitute with type parameter
+                                            ast::TypeNode* actualReturnType = substituteSelfType(method->returnType, typeStr);
+                                            expressionTypes[node] = actualReturnType;
+                                            node->type = std::shared_ptr<ast::TypeNode>(actualReturnType->clone());
                                         }
+                                        return;
                                     }
                                 }
                             }
@@ -2965,30 +2962,27 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                         if (typeParamSym && typeParamSym->kind == SymbolInfo::Kind::TYPE_PARAMETER) {
                             // Type parameter - check if any bound provides this method
                             for (const std::string& boundName : typeParamSym->bounds) {
-                                TraitInfo* traitInfo = findTrait(boundName);
-                                if (traitInfo) {
-                                    for (const auto& method : traitInfo->methods) {
-                                        if (method.name == methodName) {
-                                            VYB_CDBG << "DEBUG: CallExpression: Type parameter " << typeNameStr
-                                                      << " with bound " << boundName
-                                                      << " allows method " << methodName << std::endl;
-                                            // Found the method in bounds - substitute Self with type parameter
-                                            if (method.returnType) {
-                                                // Check if return type is Self - if so, replace with type parameter
-                                                ast::TypeNode* actualReturnType = method.returnType;
-                                                if (auto returnTypeName = dynamic_cast<ast::TypeName*>(method.returnType)) {
-                                                    if (returnTypeName->identifier && returnTypeName->identifier->name == "Self") {
-                                                        // Return Self -> substitute with type parameter
-                                                        actualReturnType = typeName; // The type parameter itself
-                                                        VYB_CDBG << "DEBUG: Substituting Self return type with type parameter " << typeNameStr << std::endl;
-                                                    }
-                                                }
-                                                expressionTypes[node] = actualReturnType;
-                                                node->type = std::shared_ptr<ast::TypeNode>(actualReturnType->clone());
+                                const TraitInfo* declaringAspect = nullptr;
+                                const TraitMethod* method = nullptr;
+                                if (findAspectMethod(boundName, methodName, declaringAspect, method)) {
+                                    VYB_CDBG << "DEBUG: CallExpression: Type parameter " << typeNameStr
+                                              << " with bound " << boundName
+                                              << " allows method " << methodName << std::endl;
+                                    // Found the method in bounds - substitute Self with type parameter
+                                    if (method->returnType) {
+                                        // Check if return type is Self - if so, replace with type parameter
+                                        ast::TypeNode* actualReturnType = method->returnType;
+                                        if (auto returnTypeName = dynamic_cast<ast::TypeName*>(method->returnType)) {
+                                            if (returnTypeName->identifier && returnTypeName->identifier->name == "Self") {
+                                                // Return Self -> substitute with type parameter
+                                                actualReturnType = typeName; // The type parameter itself
+                                                VYB_CDBG << "DEBUG: Substituting Self return type with type parameter " << typeNameStr << std::endl;
                                             }
-                                            return;
                                         }
+                                        expressionTypes[node] = actualReturnType;
+                                        node->type = std::shared_ptr<ast::TypeNode>(actualReturnType->clone());
                                     }
+                                    return;
                                 }
                             }
                         }
@@ -3211,18 +3205,14 @@ void SemanticAnalyzer::visit(ast::MemberExpression* node) {
             if (typeParamSym && typeParamSym->kind == SymbolInfo::Kind::TYPE_PARAMETER) {
                 // This object's type is a type parameter - check its bounds for the method
                 for (const std::string& boundName : typeParamSym->bounds) {
-                    TraitInfo* traitInfo = findTrait(boundName);
-                    if (traitInfo) {
-                        // Check if this aspect has the method
-                        for (const auto& method : traitInfo->methods) {
-                            if (method.name == fieldName) {
-                                VYB_CDBG << "DEBUG: Object of type parameter " << objTypeStr
-                                          << " with bound " << boundName
-                                          << " allows method " << fieldName << std::endl;
-                                // Found the method in one of the bounds - allow it
-                                return;
-                            }
-                        }
+                    const TraitInfo* declaringAspect = nullptr;
+                    const TraitMethod* method = nullptr;
+                    if (findAspectMethod(boundName, fieldName, declaringAspect, method)) {
+                        VYB_CDBG << "DEBUG: Object of type parameter " << objTypeStr
+                                  << " with bound " << boundName
+                                  << " allows method " << fieldName << std::endl;
+                        // Found the method in one of the bounds - allow it
+                        return;
                     }
                 }
                 // If we get here, no bound provides this method
@@ -3244,19 +3234,15 @@ void SemanticAnalyzer::visit(ast::MemberExpression* node) {
                     if (typeParamSym && typeParamSym->kind == SymbolInfo::Kind::TYPE_PARAMETER) {
                         // This variable's type is a type parameter - check its bounds for the method
                         for (const std::string& boundName : typeParamSym->bounds) {
-                            TraitInfo* traitInfo = findTrait(boundName);
-                            if (traitInfo) {
-                                // Check if this aspect has the method
-                                for (const auto& method : traitInfo->methods) {
-                                    if (method.name == fieldName) {
-                                        VYB_CDBG << "DEBUG: Variable " << objIdent->name
-                                                  << " has type parameter " << varTypeStr
-                                                  << " with bound " << boundName
-                                                  << " allowing method " << fieldName << std::endl;
-                                        // Found the method in one of the bounds - allow it
-                                        return;
-                                    }
-                                }
+                            const TraitInfo* declaringAspect = nullptr;
+                            const TraitMethod* method = nullptr;
+                            if (findAspectMethod(boundName, fieldName, declaringAspect, method)) {
+                                VYB_CDBG << "DEBUG: Variable " << objIdent->name
+                                          << " has type parameter " << varTypeStr
+                                          << " with bound " << boundName
+                                          << " allowing method " << fieldName << std::endl;
+                                // Found the method in one of the bounds - allow it
+                                return;
                             }
                         }
                         // If we get here, no bound provides this method
@@ -3273,18 +3259,14 @@ void SemanticAnalyzer::visit(ast::MemberExpression* node) {
     if (typeParamSym && typeParamSym->kind == SymbolInfo::Kind::TYPE_PARAMETER) {
         // This is a type parameter - check its bounds for the method
         for (const std::string& boundName : typeParamSym->bounds) {
-            TraitInfo* traitInfo = findTrait(boundName);
-            if (traitInfo) {
-                // Check if this aspect has the method
-                for (const auto& method : traitInfo->methods) {
-                    if (method.name == fieldName) {
-                        VYB_CDBG << "DEBUG: Type parameter " << structTypeName
-                                  << " with bound " << boundName
-                                  << " allows method " << fieldName << std::endl;
-                        // Found the method in one of the bounds - allow it
-                        return;
-                    }
-                }
+            const TraitInfo* declaringAspect = nullptr;
+            const TraitMethod* method = nullptr;
+            if (findAspectMethod(boundName, fieldName, declaringAspect, method)) {
+                VYB_CDBG << "DEBUG: Type parameter " << structTypeName
+                          << " with bound " << boundName
+                          << " allows method " << fieldName << std::endl;
+                // Found the method in one of the bounds - allow it
+                return;
             }
         }
         // If we get here, no bound provides this method
@@ -7002,7 +6984,7 @@ void SemanticAnalyzer::handleQualifiedAspectCall(ast::CallExpression* node,
     if (SymbolInfo* sym = currentScope->lookup(typeStr)) {
         if (sym->kind == SymbolInfo::Kind::TYPE_PARAMETER) {
             for (const std::string& bound : sym->bounds) {
-                if (bound == aspectName) {
+                if (boundAspectProvides(bound, aspectName)) {
                     isBoundTypeParameter = true;
                     break;
                 }
@@ -7049,14 +7031,11 @@ void SemanticAnalyzer::handleQualifiedAspectCall(ast::CallExpression* node,
         }
     }
 
-    // Determine whether the method is declared by the aspect itself.
+    // Determine whether the method is declared by the aspect itself or any of
+    // its transitive super-aspects (inherited methods are dispatchable too).
+    const TraitInfo* declaringAspect = nullptr;
     const TraitMethod* declaredMethod = nullptr;
-    for (const auto& tm : traitInfo->methods) {
-        if (tm.name == methodName) {
-            declaredMethod = &tm;
-            break;
-        }
-    }
+    findAspectMethod(aspectName, methodName, declaringAspect, declaredMethod);
     if (!declaredMethod && !methodDecl) {
         addError("Aspect '" + aspectName + "' does not define a method named '" +
                  methodName + "'.", node);
@@ -7517,6 +7496,63 @@ void SemanticAnalyzer::registerTraitImpl(ast::BindDeclaration* implDecl) {
             }
         }
     }
+}
+
+bool SemanticAnalyzer::boundAspectProvides(const std::string& boundAspect,
+                                            const std::string& requestedAspect) {
+    if (boundAspect == requestedAspect) {
+        return true;
+    }
+    std::unordered_set<std::string> visited;
+    std::vector<std::string> stack{boundAspect};
+    while (!stack.empty()) {
+        std::string cur = stack.back();
+        stack.pop_back();
+        if (!visited.insert(cur).second) {
+            continue;
+        }
+        if (cur == requestedAspect) {
+            return true;
+        }
+        TraitInfo* info = findTrait(cur);
+        if (!info) {
+            continue;
+        }
+        for (const auto& super : info->superTraits) {
+            if (!visited.count(super)) {
+                stack.push_back(super);
+            }
+        }
+    }
+    return false;
+}
+
+bool SemanticAnalyzer::findAspectMethod(const std::string& aspectName,
+                                        const std::string& methodName,
+                                        const TraitInfo*& declaringAspect,
+                                        const TraitMethod*& outMethod) {
+    std::function<bool(const TraitInfo*, std::unordered_set<const TraitInfo*>&)> search;
+    search = [&](const TraitInfo* info, std::unordered_set<const TraitInfo*>& visited) -> bool {
+        if (!info || !visited.insert(info).second) {
+            return false;
+        }
+        for (const auto& tm : info->methods) {
+            if (tm.name == methodName) {
+                declaringAspect = info;
+                outMethod = &tm;
+                return true;
+            }
+        }
+        for (const auto& superName : info->superTraits) {
+            TraitInfo* super = findTrait(superName);
+            if (super && search(super, visited)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    std::unordered_set<const TraitInfo*> visited;
+    return search(findTrait(aspectName), visited);
 }
 
 bool SemanticAnalyzer::hasAspectBinding(const std::string& typeStr, const std::string& aspectName) {
