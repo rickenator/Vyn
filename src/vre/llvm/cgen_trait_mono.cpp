@@ -350,6 +350,7 @@ llvm::Function* LLVMCodegen::monomorphizeTraitMethod(const std::string& concrete
                         if (scopeStack.size() > savedScopeDepth) {
                             exitScope();
                         }
+                        generatePopFrameCall();
                         if (returnType->isVoidTy()) {
                             builder->CreateRetVoid();
                         } else {

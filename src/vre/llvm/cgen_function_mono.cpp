@@ -148,6 +148,10 @@ llvm::Function* LLVMCodegen::monomorphizeGenericFunction(const std::string& func
         llvm::BasicBlock* entryBB = llvm::BasicBlock::Create(*context, "entry", specializedFunc);
         builder->SetInsertPoint(entryBB);
 
+        // Phase 6.4: Push a call frame for the monomorphized function so the
+        // pops emitted by its return statements balance (mirrors normal function codegen).
+        generatePushFrameCall(mangledName, templateFunc->loc);
+
         // Initialize scope
         enterScope();
 
@@ -207,6 +211,7 @@ llvm::Function* LLVMCodegen::monomorphizeGenericFunction(const std::string& func
 
         // Ensure function has a return if needed
         if (!builder->GetInsertBlock()->getTerminator()) {
+            generatePopFrameCall();
             if (returnType->isVoidTy()) {
                 builder->CreateRetVoid();
             } else {
