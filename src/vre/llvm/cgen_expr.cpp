@@ -5828,3 +5828,54 @@ void LLVMCodegen::visit(vyb::ast::TypenameExpression* node) {
 
     m_currentLLVMValue = stringStruct;
 }
+
+void LLVMCodegen::visit(vyb::ast::AsExpression* node) {
+    if (!node || !node->operand || !node->targetType) {
+        logError(node->loc, "Malformed 'as' cast expression.");
+        m_currentLLVMValue = nullptr;
+        return;
+    }
+    node->operand->accept(*this);
+    llvm::Value* operand = m_currentLLVMValue;
+    if (!operand) {
+        logError(node->loc, "Failed to evaluate operand of 'as' cast.");
+        m_currentLLVMValue = nullptr;
+        return;
+    }
+    llvm::Type* targetTy = codegenType(node->targetType.get());
+    if (!targetTy) {
+        logError(node->loc, "Cannot resolve target type of 'as' cast.");
+        m_currentLLVMValue = nullptr;
+        return;
+    }
+
+    // Wildcard trap error downcast: `e as TargetType` extracts the concrete
+    // payload from the VybError struct { type_hash, type_name, payload, file,
+    // line, col } by loading the heap payload at field index 2.
+    if (node->operandIsWildcardError) {
+        if (!operand->getType()->isPointerTy()) {
+            logError(node->loc, "'as' on a wildcard error requires an error pointer.");
+            m_currentLLVMValue = nullptr;
+            return;
+        }
+        llvm::Type* i8Ptr = llvm::PointerType::get(*context, 0);
+        llvm::StructType* vybErrorTy = llvm::StructType::get(
+            *context,
+            { builder->getInt64Ty(), i8Ptr, i8Ptr, i8Ptr,
+              builder->getInt32Ty(), builder->getInt32Ty() },
+            false);
+        llvm::Value* errStruct = builder->CreateBitCast(
+            operand, llvm::PointerType::get(vybErrorTy, 0), "as.err.ptr");
+        llvm::Value* payloadSlot = builder->CreateStructGEP(
+            vybErrorTy, errStruct, 2, "as.payload.slot");
+        llvm::Value* payloadPtr = builder->CreateLoad(
+            i8Ptr, payloadSlot, "as.payload.ptr");
+        llvm::Value* dataPtr = builder->CreateBitCast(
+            payloadPtr, llvm::PointerType::get(targetTy, 0), "as.data.ptr");
+        m_currentLLVMValue = builder->CreateLoad(targetTy, dataPtr, "as.value");
+        return;
+    }
+
+    // Identity / same-type cast: the value already has the target type.
+    m_currentLLVMValue = operand;
+}

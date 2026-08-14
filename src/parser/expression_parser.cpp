@@ -1281,16 +1281,33 @@ regular_array_literal:
         DEBUG_PRINT("Entering parse_multiplicative_expr");
         DEBUG_TOKEN(peek());
         auto expr = parse_binary_expression([this]() {
-            DEBUG_PRINT("parse_multiplicative_expr: calling nested parse_unary_expr");
+            DEBUG_PRINT("parse_multiplicative_expr: calling nested parse_cast_expr");
             DEBUG_TOKEN(peek());
-            auto inner_expr = parse_unary_expr();
-            DEBUG_PRINT("parse_multiplicative_expr: returned from nested parse_unary_expr");
+            auto inner_expr = parse_cast_expr();
+            DEBUG_PRINT("parse_multiplicative_expr: returned from nested parse_cast_expr");
             DEBUG_TOKEN(peek());
             return inner_expr;
         }, {TokenType::MULTIPLY, TokenType::DIVIDE, TokenType::MODULO});
         DEBUG_PRINT("Exiting parse_multiplicative_expr");
         DEBUG_TOKEN(peek());
         return expr;
+    }
+
+    // `value as TargetType`: safe downcasting. Parses a unary/primary operand then,
+    // if followed by the `as` keyword, a target type name (loops for chained casts).
+    vyb::ast::ExprPtr ExpressionParser::parse_cast_expr() {
+        auto left = parse_unary_expr();
+        while (match(TokenType::KEYWORD_AS)) {
+            token::Token as_token = previous_token();
+            TypeParser type_parser(tokens_, pos_, current_file_path_, *this);
+            ast::TypeNodePtr target = type_parser.parse();
+            if (!target) {
+                throw error(as_token, "Expected a type after 'as'.");
+            }
+            left = std::make_unique<ast::AsExpression>(
+                as_token.location, std::move(left), std::move(target));
+        }
+        return left;
     }
 
     vyb::ast::ExprPtr ExpressionParser::parse_unary_expr() {

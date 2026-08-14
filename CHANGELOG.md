@@ -53,6 +53,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for `v.push(x)`, the `Vec<T>` element type) is injected into the matching bare
   constructor before it is resolved, enabling `unwrap(Some(7))`,
   `classify(Ok(11))`, and `v.push(Some(x))` on a `Vec<Option<Int>>`.
+- `as` safe-downcasting operator (`value as TargetType`), Phase 2 of the
+  introspection system. It is lexed/parsed as an infix expression (new
+  `AsExpression` AST node + `parse_cast_expr`), typed as the target type, and
+  code-generated as a safe downcast. In a wildcard trap (`e<?>`) it extracts the
+  concrete payload from the error struct so the handler can read its fields
+  (`g<GErr> = e as GErr` then `g.code`), and same-type casts pass through
+  (`x as Int`); incompatible static casts are a semantic error.
 
 ### Fixed
 - A `match`/`select` arm whose value is a primitive `.to_string()` now stores a

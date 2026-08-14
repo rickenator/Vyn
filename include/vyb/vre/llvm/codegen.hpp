@@ -488,6 +488,7 @@ public:
     void visit(vyb::ast::ArrayInitializationExpression* node) override; // Existing "Added
     void visit(vyb::ast::TypeofExpression* node) override;
     void visit(vyb::ast::TypenameExpression* node) override;
+    void visit(vyb::ast::AsExpression* node) override;
     void visit(vyb::ast::LogicalExpression* node) override;
     void visit(vyb::ast::ConditionalExpression* node) override;
     void visit(vyb::ast::SequenceExpression* node) override;

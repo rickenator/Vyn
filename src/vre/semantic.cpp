@@ -7848,6 +7848,59 @@ void SemanticAnalyzer::visit(ast::TypenameExpression* node) {
 
 
 
+// `value as TargetType`: safe downcasting. Types the expression as TargetType
+// and marks a wildcard trap error operand (`e<?>`) so codegen extracts its payload.
+void SemanticAnalyzer::visit(ast::AsExpression* node) {
+    if (!node || !node->operand || !node->targetType) {
+        addError("Malformed 'as' cast expression.", node);
+        return;
+    }
+    node->operand->accept(*this);
+    node->targetType->accept(*this);
+
+    ast::TypeNode* targetType = node->targetType->type
+        ? node->targetType->type.get() : node->targetType.get();
+    if (!targetType) {
+        addError("Cannot resolve target type of 'as' cast.", node);
+        expressionTypes[node] = nullptr;
+        return;
+    }
+
+    // Result type is the target type.
+    node->type = std::shared_ptr<ast::TypeNode>(targetType->clone());
+    expressionTypes[node] = node->type.get();
+
+    // Determine the operand's static type, if any.
+    ast::TypeNode* operandType = node->operand->type
+        ? node->operand->type.get() : nullptr;
+    if (!operandType) {
+        auto it = expressionTypes.find(node->operand.get());
+        if (it != expressionTypes.end()) operandType = it->second;
+    }
+
+    // A wildcard trap error (`e<?>`) has no static type; `e as TargetType` is the
+    // canonical safe downcast that extracts the concrete payload from the error
+    // struct at codegen.
+    bool isWildcardError = false;
+    if (auto* id = dynamic_cast<ast::Identifier*>(node->operand.get())) {
+        SymbolInfo* sym = currentScope->lookup(id->name);
+        if (sym && sym->type == nullptr) isWildcardError = true;
+    }
+    if (isWildcardError || !operandType) {
+        node->operandIsWildcardError = true;
+        return;
+    }
+
+    // Identity / same-type cast: allowed.
+    if (targetType->toString() == operandType->toString() ||
+        areTypesCompatible(targetType, operandType)) {
+        return;
+    }
+
+    addError("Unsupported 'as' cast from '" + operandType->toString() + "' to '" +
+             targetType->toString() + "'.", node);
+}
+
 // TupleDestructureAssignment: x, y = expr
 void SemanticAnalyzer::visit(ast::TupleDestructureAssignment* node) {
     if (!node || !node->expression) {

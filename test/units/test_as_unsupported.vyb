@@ -1,0 +1,12 @@
+// @test: unsupported `as` cast is rejected
+// @description: an `as` cast between incompatible static types (e.g. Int as String)
+//   is a semantic error; only same-type casts and wildcard-error downcasts are allowed.
+// @category: introspection, as, downcast, semantic, error
+// @expect: fail
+// @expect-error: Unsupported 'as' cast
+
+main()<Int> -> {
+    x<Int> = 42
+    s<String> = x as String
+    return 0
+}

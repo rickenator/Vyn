@@ -1,0 +1,30 @@
+// @test: `as` safe downcasting operator (wildcard error + identity)
+// @description: `e as TargetType` in a wildcard trap (e<?>) extracts the concrete
+//   payload from the error struct so the handler can read its fields, and an
+//   identity `value as T` passes a same-typed value through unchanged.
+// @category: introspection, as, downcast, trap, error
+// @expect: pass
+// @expect-return: -77
+// @execute-jit: true
+
+struct GErr { code<Int>, msg<String> }
+
+risky()<Int> -> {
+    fail<GErr>(GErr { code = 11, msg = "boom" })
+    return 0
+}
+
+main()<Int> -> {
+    x<Int> = 42
+    y<Int> = x as Int
+
+    caught<Bool> = { risky() } trap (e<?>) -> {
+        g<GErr> = e as GErr
+        g.code == 11 && g.msg == "boom"
+    }
+
+    if (y == 42 && caught) {
+        return -77
+    }
+    return 1
+}

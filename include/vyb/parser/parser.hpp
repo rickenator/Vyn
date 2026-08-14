@@ -141,6 +141,7 @@ namespace vyb { // Changed Vyb to vyb
         vyb::ast::ExprPtr parse_additive_expr();
         vyb::ast::ExprPtr parse_multiplicative_expr();
         vyb::ast::ExprPtr parse_unary_expr();
+        vyb::ast::ExprPtr parse_cast_expr();
         vyb::ast::ExprPtr parse_postfix_expr();
         vyb::ast::ExprPtr parse_primary_expr(); // If this is different from parse_atom/parse_primary
         vyb::ast::ExprPtr parse_atom();

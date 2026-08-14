@@ -62,6 +62,7 @@ class ComparisonPattern; // Comparison pattern for match/select (e.g., >= 18)
 class StructPattern; // Struct destructuring pattern (e.g., Point { x, y })
 class TypeofExpression; // Introspection: typeof(expr) returns Type
 class TypenameExpression; // Introspection: typename(expr) returns String
+class AsExpression; // Introspection/safe downcasting: value as TargetType
 
 // Statements
 class BlockStatement;
@@ -219,6 +220,7 @@ enum class NodeType {
     STRUCT_PATTERN, // Struct destructuring pattern (e.g., Point { x, y })
     TYPEOF_EXPRESSION, // Introspection: typeof(expr) returns Type
     TYPENAME_EXPRESSION, // Introspection: typename(expr) returns String
+    AS_EXPRESSION, // Safe downcasting: value as TargetType
 
 
     // Statements
@@ -327,6 +329,7 @@ public:
     virtual void visit(StructPattern* node) = 0;
     virtual void visit(TypeofExpression* node) = 0;
     virtual void visit(TypenameExpression* node) = 0;
+    virtual void visit(AsExpression* node) {}
 
     // Statements
     virtual void visit(BlockStatement* node) = 0;
@@ -1462,6 +1465,24 @@ public:
     ExprPtr operand;  // Expression to get type name of
 
     TypenameExpression(SourceLocation loc, ExprPtr operand);
+    NodeType getType() const override;
+    std::string toString() const override;
+    void accept(Visitor& visitor) override;
+};
+
+// --- AsExpression ---
+// Safe downcasting: value as TargetType. Types the expression as TargetType and,
+// for a wildcard trap error operand, extracts the concrete payload from the error
+// struct so the handler can access its fields.
+class AsExpression : public Expression {
+public:
+    ExprPtr operand;       // The value being downcast
+    TypeNodePtr targetType; // The type to downcast to
+    bool operandIsWildcardError; // Set by semantic when operand is a wildcard `e<?>`
+
+    AsExpression(SourceLocation loc, ExprPtr operand, TypeNodePtr targetType)
+        : Expression(loc), operand(std::move(operand)), targetType(std::move(targetType)),
+          operandIsWildcardError(false) {}
     NodeType getType() const override;
     std::string toString() const override;
     void accept(Visitor& visitor) override;

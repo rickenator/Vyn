@@ -74,7 +74,8 @@ Legend: ✅ Implemented | 🚧 Partial / Stubbed | 📋 Planned
 | `Vec<T>` | ✅ | |
 | String methods | ✅ | `.len()`, `.contains()`, `.starts_with()`, `.ends_with()`, `.to_upper()`, `.to_lower()`, `.substring()`, `.char_at()`, `.trim()`, `.replace()` |
 | Math intrinsics | ✅ | |
-| `typeof` / `typename` | ✅ | |
+| `typeof` / `typename` | ✅ | Runtime type identity (`Type`) and type-name String |
+| `as` (safe downcasting) | ✅ | `value as TargetType`, lexed/parsed as an infix expression and typed as the target type; in a wildcard trap (`e<?>`) it extracts the concrete payload from the error struct (`g<GErr> = e as GErr`) so the handler reads its fields; same-type casts pass through, incompatible casts are a semantic error |
 | Templates | ✅ | |
 
 ## Vec<T>

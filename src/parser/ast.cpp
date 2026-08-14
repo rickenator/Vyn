@@ -1669,6 +1669,20 @@ void TypenameExpression::accept(Visitor& visitor) {
     visitor.visit(this);
 }
 
+// --- AsExpression ---
+NodeType AsExpression::getType() const {
+    return NodeType::AS_EXPRESSION;
+}
+
+std::string AsExpression::toString() const {
+    return (operand ? operand->toString() : "nullptr") + " as " +
+           (targetType ? targetType->toString() : "nullptr");
+}
+
+void AsExpression::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
 // --- ThrowStatement ---
 ThrowStatement::ThrowStatement(SourceLocation loc, ExprPtr expr)
     : Statement(loc), expr(std::move(expr)) {}
