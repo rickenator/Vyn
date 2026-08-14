@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `fail` inside a callee (e.g. an `if`/`else` branch or an `ensure cond else
+  fail<...>(...)`) is now trapped correctly by the caller. Trap contexts were a
+  shared, non-function-local stack, so a `fail` in a callee could branch into the
+  caller's trap landing pad and store into the caller's error slot, producing
+  invalid IR and a crash. Trap contexts are now scoped per function, so a `fail`
+  in a callee propagates through the failable ABI instead.
+- Monomorphized generic function bodies now isolate trap context and scope
+  tracking from the caller. Previously a generic callee that returned from an
+  `else` branch could leave the caller's scope stack empty (spurious
+  "No active scope to register variable" warnings) and a `fail` inside a generic
+  callee could escape into the caller's trap context.
+
 ### Added
 - `ensure` contract statements: `ensure cond else handling` runs `handling`
   whenever `cond` is false. It desugars to `if (cond) { } else { handling }`

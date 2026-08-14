@@ -1,0 +1,33 @@
+// @test: fail fired in a callee branch is caught by the caller's trap
+// @description: a `fail` inside an if-branch (or an `ensure`-else) of a callee propagates via the failable ABI and is trapped by the caller, instead of branching into the caller's trap landing pad
+// @category: error_handling, fail, trap
+// @expect: pass
+// @expect-return: -99
+// @execute-jit: true
+
+struct OpError {
+    code<Int>
+}
+
+might_fail(flag<Int>)<Int> -> {
+    if (flag == 0) {
+        fail<OpError>(OpError { code = 7 })
+        return 1
+    }
+    return 42
+}
+
+div_checked(a<Int>, b<Int>)<Int> -> {
+    ensure b != 0 else fail<OpError>(OpError { code = 99 })
+    return a / b
+}
+
+main()<Int> -> {
+    c1<Int> = { might_fail(0) } trap (e<OpError>) -> { -99 }
+    c2<Int> = { might_fail(1) } trap (e<OpError>) -> { -1 }
+    c3<Int> = { div_checked(10, 0) } trap (e<OpError>) -> { -99 }
+    if (c1 == -99 && c2 == 42 && c3 == -99) {
+        return -99
+    }
+    return 1
+}

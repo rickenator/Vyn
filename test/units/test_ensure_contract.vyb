@@ -4,25 +4,24 @@
 // @expect: pass
 // @expect-return: 0
 
-ensure_pass<Int>(x<Int>)<Int> -> {
+ensure_pass(x<Int>)<Int> -> {
     ensure x > 0 else return -10
     return 100
 }
 
-ensure_fail<Int>(x<Int>)<Int> -> {
+ensure_fail(x<Int>)<Int> -> {
     ensure x > 0 else return -10
     return 100
 }
 
-ensure_mid_block<Int>(x<Int>, y<Int>)<Int> -> {
+ensure_mid_block(x<Int>, y<Int>)<Int> -> {
     ensure x > 0 else return -10
     z<Int> = y * 2
     return z
 }
 
-ensure_block_handling<Int>(x<Int>, flag<Int>)<Int> -> {
+ensure_block_handling(x<Int>, flag<Int>)<Int> -> {
     ensure x > 0 else {
-        println("contract violated")
         return flag
     }
     return 200

@@ -1,0 +1,22 @@
+// @test: repeated calls that return via an else branch keep caller scope stable
+// @description: monomorphized generic callees that exit through an else-branch no longer leave the caller's scope stack empty (no `No active scope` warnings); results are correct
+// @category: control_flow, scope, generics
+// @expect: pass
+// @expect-return: 14
+// @execute-jit: true
+
+calc<T>(x<T>, y<Int>)<Int> -> {
+    ensure x > 0 else return -10
+    z<Int> = y * 2
+    return z
+}
+
+main()<Int> -> {
+    r1<Int> = calc(-1, 7)
+    r2<Int> = calc(2, 7)
+    r3<Int> = calc(3, 5)
+    if (r1 == -10 && r2 == 14 && r3 == 10) {
+        return 14
+    }
+    return 1
+}

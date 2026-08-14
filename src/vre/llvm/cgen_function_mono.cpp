@@ -142,6 +142,18 @@ llvm::Function* LLVMCodegen::monomorphizeGenericFunction(const std::string& func
         std::map<std::string, llvm::Value*> oldNamedValues;
         oldNamedValues.swap(namedValues);
 
+        // This monomorphized body is a distinct function, generated inline while
+        // the caller's trap/scope context is still active. Isolate trap contexts
+        // and scope tracking so that a `fail` here propagates via the failable
+        // ABI (instead of branching into the caller's trap landing pad) and so
+        // the function's own scopes are discarded without popping the caller's.
+        std::vector<TrapContext> savedTrapStack;
+        savedTrapStack.swap(trapStack);
+        int savedTrapHandlerIndex = currentTrapHandlerIndex;
+        currentTrapHandlerIndex = -1;
+        auto savedScopeStack = std::move(scopeStack);
+        scopeStack.clear();
+
         currentFunction = specializedFunc;
 
         // Create entry block
@@ -224,15 +236,18 @@ llvm::Function* LLVMCodegen::monomorphizeGenericFunction(const std::string& func
 
         // Restore context, including the caller's insertion point so that
         // instructions after the call are emitted into the caller's block
-        // (not into the freshly monomorphized function's block).
-        // Balance the function's own scope. A body that returned already had its
-        // function scope popped by the block's terminated-path cleanup (the return
-        // pops the block scope, then the block's terminated cleanup pops the function
-        // scope). Only pop here when the body fell through and we inserted the return,
-        // so we never pop the caller's scope out from under it.
+        // (not into the freshly monomorphized function's block). Restore the
+        // caller's trap context, handler index, and scope tracking wholesale so
+        // nothing from this function's generation leaks into the caller.
+        trapStack.swap(savedTrapStack);
+        currentTrapHandlerIndex = savedTrapHandlerIndex;
+        // Release the function's own scope (only for the fell-through path; a
+        // returned body already balanced its scopes) before discarding it, so
+        // ownership cleanup still runs, then restore the caller's scope stack.
         if (bodyFellThrough) {
             exitScope();
         }
+        scopeStack = std::move(savedScopeStack);
         currentFunction = oldFunction;
         if (oldInsertBlock) builder->SetInsertPoint(oldInsertBlock);
         namedValues.swap(oldNamedValues);

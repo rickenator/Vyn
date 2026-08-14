@@ -649,6 +649,15 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
         VYB_CDBG << "DEBUG: FunctionDeclaration - about to process function body" << std::endl;
         // Push a new defer scope for this function
         m_deferStack.push_back({});
+        // Trap contexts are local to the function being generated. Clear any
+        // context left over from an enclosing function so that a `fail` in this
+        // callee propagates via the failable ABI instead of branching into a
+        // caller's trap landing pad. Restored after the body is generated.
+        std::vector<TrapContext> savedTrapStack;
+        savedTrapStack.swap(trapStack);
+        int savedTrapHandlerIndex = currentTrapHandlerIndex;
+        currentTrapHandlerIndex = -1;
+
         node->body->accept(*this); // Generate code for the function body
         // Pop defer scope (any remaining deferred statements for implicit returns)
         if (!m_deferStack.empty()) {
@@ -716,6 +725,9 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
             popDebugScope();
         }
 
+        // Restore the caller's trap contexts now that this function's body is done.
+        trapStack.swap(savedTrapStack);
+        currentTrapHandlerIndex = savedTrapHandlerIndex;
     } // else it's a forward declaration or extern, no body to generate now.
 
     // Restore outer scope and async state
