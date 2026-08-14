@@ -4986,6 +4986,28 @@ void LLVMCodegen::visit(ast::StructPattern* node) {
     (void)node;
 }
 
+void LLVMCodegen::visit(ast::MatchExpression* node) {
+    if (!node->match) {
+        logError(node->loc, "match expression missing inner statement");
+        m_currentLLVMValue = nullptr;
+        return;
+    }
+    // Resolve the result type (inferred during semantic analysis). All arms
+    // store their value into a shared result slot that becomes the expression.
+    llvm::Type* resultType = nullptr;
+    if (node->resultType) {
+        resultType = codegenType(node->resultType.get());
+    }
+    if (!resultType) {
+        logError(node->loc, "Cannot determine result type of match expression");
+        m_currentLLVMValue = nullptr;
+        return;
+    }
+    llvm::AllocaInst* resultAlloca = builder->CreateAlloca(resultType, nullptr, "match.expr.result");
+    builder->CreateStore(llvm::Constant::getNullValue(resultType), resultAlloca);
+    codegenMatch(node->match.get(), resultAlloca);
+}
+
 void LLVMCodegen::visit(ast::SelectExpression* node) {
     // Select expression: pattern match and return a value
     // Supports both naked expressions (auto-return) and blocks with pass keyword

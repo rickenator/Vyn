@@ -1,0 +1,16 @@
+// @test: guard clause inside a match expression
+// @description: a `pattern if cond -> val` arm yields its value when both pattern and guard match
+// @category: pattern matching, match, expressions, guards
+// @expect: pass
+// @expect-return: 60
+
+main()<Int> -> {
+    v<Int> = 5
+    r<Int> = match (v) {
+        1 if v > 3 -> 10,
+        5 if v > 3 -> 60,
+        5 -> 0,
+        ? -> 30
+    }
+    return r
+}

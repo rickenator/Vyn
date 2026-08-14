@@ -1,0 +1,16 @@
+// @test: match as a value-returning expression (basic)
+// @description: `r = match (v) { pat -> val, ? -> val }` yields the matched arm's value
+// @category: pattern matching, match, expressions
+// @expect: pass
+// @expect-return: 20
+
+main()<Int> -> {
+    v<Int> = 5
+    r<Int> = match (v) {
+        1..3 -> 10,
+        4..6 -> 20,
+        7..9 -> 25,
+        ? -> 30
+    }
+    return r
+}

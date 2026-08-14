@@ -351,6 +351,7 @@ public:
     void visit(ast::EmptyStatement* node) override;
     void visit(ast::AssertStatement* node) override;
     void visit(ast::MatchStatement* node) override;
+    void visit(ast::MatchExpression* node) override;
     void visit(ast::YieldStatement* node) override;
     void visit(ast::YieldReturnStatement* node) override;
     void visit(ast::ExternStatement* node) override; // Added

@@ -1,0 +1,15 @@
+// @test: match expression falls back to wildcard
+// @description: when no arm matches, the `?` wildcard arm determines the match expression value
+// @category: pattern matching, match, expressions
+// @expect: pass
+// @expect-return: 30
+
+main()<Int> -> {
+    v<Int> = 100
+    r<Int> = match (v) {
+        1 -> 10,
+        2 -> 20,
+        ? -> 30
+    }
+    return r
+}

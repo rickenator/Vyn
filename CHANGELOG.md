@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `match` as a value-returning expression: `r<Int> = match (v) {
+  1..3 -> 10, 4..6 -> 20, ? -> 30 }` stores the matched arm's value into
+  the variable. The result type is inferred from the first arm's body
+  expression and codegen shares a zero-initialized result slot across all
+  arms, so naked-expression arms (including ranges, guards, and struct
+  destructuring) yield their value; a plain statement-position `match`
+  still produces no value.
 - Guard clauses in `match` arms: `pattern if condition ->` only runs the arm
   when the pattern matches AND the condition is true. The guard runs after the
   pattern matches (so it can read destructured struct fields); a false guard

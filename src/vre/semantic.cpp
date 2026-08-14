@@ -3846,6 +3846,25 @@ void SemanticAnalyzer::visit(ast::StructPattern* node) {
     (void)node;
 }
 
+void SemanticAnalyzer::visit(ast::MatchExpression* node) {
+    if (node->match) {
+        node->match->accept(*this);
+    }
+    // Infer the result type from the first arm's body expression. Only
+    // naked-expression arms yield a value; block arms must terminate (e.g.
+    // via return), so the first arm must be a naked expression for a useful
+    // result type. Codegen uses this type for the shared result slot.
+    if (node->match && !node->match->cases.empty()) {
+        ast::ExprPtr& body = node->match->cases[0].second;
+        if (body) {
+            auto it = expressionTypes.find(body.get());
+            if (it != expressionTypes.end() && it->second) {
+                node->resultType = it->second->clone();
+            }
+        }
+    }
+}
+
 void SemanticAnalyzer::visit(ast::ListComprehension* node) {}
 void SemanticAnalyzer::visit(ast::GenericInstantiationExpression* node) {
     if (!node || !node->baseExpression) {

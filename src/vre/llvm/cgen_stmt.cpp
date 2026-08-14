@@ -1098,7 +1098,7 @@ void LLVMCodegen::visit(vyb::ast::ThrowStatement* node) {
     logWarning(node->loc, "ThrowStatement implemented with basic functionality. Full exception handling support requires additional runtime support.");
 }
 
-void LLVMCodegen::visit(vyb::ast::MatchStatement* node) {
+void LLVMCodegen::codegenMatch(vyb::ast::MatchStatement* node, llvm::AllocaInst* resultAlloca) {
     // Get the current function
     llvm::Function* function = getCurrentFunction();
     if (!function) {
@@ -1379,7 +1379,12 @@ void LLVMCodegen::visit(vyb::ast::MatchStatement* node) {
 
         if (caseBody) {
             caseBody->accept(*this);
-            // Value from the body becomes the match result
+            // If we are generating a value-returning match expression, store the
+            // arm's resulting value into the shared result slot.
+            if (resultAlloca && m_currentLLVMValue &&
+                !builder->GetInsertBlock()->getTerminator()) {
+                builder->CreateStore(m_currentLLVMValue, resultAlloca);
+            }
         }
         // Scoped destructured field bindings per case arm.
         namedValues = std::move(savedCaseNamedValues);
@@ -1420,9 +1425,19 @@ void LLVMCodegen::visit(vyb::ast::MatchStatement* node) {
         // Don't change the insertion point since all paths terminated
     }
 
-    // The match result is determined by the Phi node that combines all case results
-    // But for now, we'll just set the result to null to indicate no value
-    m_currentLLVMValue = nullptr;
+    // If this is a value-returning match expression and a real merge point
+    // exists, load the stored result. Otherwise (statement form, or every arm
+    // returned/broke) the match produces no value.
+    if (resultAlloca && !endMatchBB->use_empty()) {
+        m_currentLLVMValue = builder->CreateLoad(
+            resultAlloca->getAllocatedType(), resultAlloca, "match.expr.value");
+    } else {
+        m_currentLLVMValue = nullptr;
+    }
+}
+
+void LLVMCodegen::visit(vyb::ast::MatchStatement* node) {
+    codegenMatch(node, nullptr);
 }
 
 void LLVMCodegen::visit(vyb::ast::AssertStatement* node) {

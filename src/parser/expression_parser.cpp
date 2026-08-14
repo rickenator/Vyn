@@ -190,6 +190,22 @@ namespace vyb {
             return std::make_unique<vyb::ast::SelectExpression>(select_loc, std::move(select_expr), std::move(cases));
         }
 
+        // Handle `match` used as a value-returning expression: the matched arm's
+        // value becomes the expression result. Reuses the match statement parser.
+        if (peek().type == TokenType::KEYWORD_MATCH) {
+            if (!stmt_parser_) {
+                throw error(peek(), "match expression requires a statement parser");
+            }
+            vyb::ast::StmtPtr matchStmt = stmt_parser_->parse_match();
+            auto* ms = dynamic_cast<vyb::ast::MatchStatement*>(matchStmt.get());
+            if (!ms) {
+                throw error(peek(), "internal error: expected match statement");
+            }
+            std::unique_ptr<vyb::ast::MatchStatement> owned(
+                static_cast<vyb::ast::MatchStatement*>(matchStmt.release()));
+            return std::make_unique<vyb::ast::MatchExpression>(ms->loc, std::move(owned));
+        }
+
         // Handle if statements as expressions (e.g. `let x = if cond { 1 } else { 0 }`)
         if (match(TokenType::KEYWORD_IF)) {
             expect(TokenType::LPAREN); // Expect \\\'(\\\' after \\\'if\\\'

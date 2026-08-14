@@ -493,6 +493,8 @@ public:
     void visit(vyb::ast::YieldStatement* node) override;
     void visit(vyb::ast::YieldReturnStatement* node) override;
     void visit(vyb::ast::MatchStatement* node) override; // Added this line
+    void visit(vyb::ast::MatchExpression* node) override;
+    void codegenMatch(vyb::ast::MatchStatement* node, llvm::AllocaInst* resultAlloca);
     void visit(vyb::ast::TryStatement* node) override; // Added this line
 
     // Declarations

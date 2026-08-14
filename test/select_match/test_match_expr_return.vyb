@@ -1,0 +1,12 @@
+// @test: match expression in return position
+// @description: a match expression can be the returned value directly
+// @category: pattern matching, match, expressions
+// @expect: pass
+// @expect-return: 70
+
+main()<Int> -> {
+    v<Int> = 7
+    return match (v) {
+        ? -> v * 10
+    }
+}

@@ -1711,6 +1711,22 @@ void MatchStatement::accept(Visitor& visitor) {
     visitor.visit(this);
 }
 
+// --- MatchExpression ---
+MatchExpression::MatchExpression(SourceLocation loc, std::unique_ptr<MatchStatement> match)
+    : Expression(loc), match(std::move(match)) {}
+
+NodeType MatchExpression::getType() const {
+    return NodeType::MATCH_EXPRESSION;
+}
+
+std::string MatchExpression::toString() const {
+    return (match ? match->toString() : "match <missing>");
+}
+
+void MatchExpression::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
 // --- AspectDeclaration ---
 AspectDeclaration::AspectDeclaration(SourceLocation loc, std::unique_ptr<Identifier> n, std::vector<std::unique_ptr<GenericParameter>> gp, std::vector<std::unique_ptr<Identifier>> sup_types, std::vector<std::unique_ptr<Identifier>> assoc_types, std::vector<TypeNodePtr> assoc_defaults, std::vector<std::vector<TypeNodePtr>> assoc_constraints, std::vector<std::unique_ptr<FunctionDeclaration>> meths)
     : Declaration(loc), name(std::move(n)), genericParams(std::move(gp)), superTypes(std::move(sup_types)), associatedTypes(std::move(assoc_types)), associatedTypeDefaults(std::move(assoc_defaults)), associatedTypeConstraints(std::move(assoc_constraints)), methods(std::move(meths)) {}

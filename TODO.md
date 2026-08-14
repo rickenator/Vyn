@@ -195,7 +195,11 @@ is the working audit for what needs to be implemented next.
 - [x] **Range patterns** — `1..10 ->` in match arms: an inclusive `[start, end]` bound check compiled for integer/float match values; inverted (`start > end`) ranges are rejected as never-matchable.
 - [x] **Guard clauses** — `pattern if condition ->` in match arms: a guard runs after the pattern matches (destructured struct fields are available to it); if false the arm is skipped and matching falls through to later arms or the default. A guarded wildcard is treated as non-exhaustive so downstream arms stay reachable.
 - [ ] **Exhaustiveness checking** — Compiler rejects non-exhaustive match
-- [ ] **`match` as expression** — Return a value from match directly
+- [x] **`match` as expression** — `r<Int> = match (v) { pattern -> val, ? -> val }`
+  yields the matched arm's value. The result type is inferred from the first
+  arm's body expression; codegen allocates a zero-initialized result slot and
+  stores the value from naked-expression arms (including ranges, guards, and
+  struct destructuring). The statement form still produces no value.
 
 ### Lambda / Closures (MEDIUM PRIORITY)
 - [x] Parsing — `|x, y| -> x + y` and `|x<Int>| -> { ... }`
@@ -663,5 +667,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: August 2026*
 *Current Version: Vyb v0.5.3 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 767 tests passing (harness, 100%)*
+*Overall Status: ~60-65% complete toward 1.0 — 772 tests passing (harness, 100%)*
 *SUGGESTIONS.md merged into this document.*

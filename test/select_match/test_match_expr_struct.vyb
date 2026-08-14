@@ -1,0 +1,20 @@
+// @test: struct destructuring in a match expression
+// @description: `Point { x, y } -> expr` binds fields and yields the arm value
+// @category: pattern matching, match, expressions, structs
+// @expect: pass
+// @expect-return: 12
+
+struct Point {
+    x<Int>,
+    y<Int>
+}
+
+main()<Int> -> {
+    p<Point> = Point { x = 3, y = 9 }
+    r<Int> = match (p) {
+        Point { x, y } if y > 5 -> x + y,
+        Point { x, y } -> x * y,
+        ? -> 0
+    }
+    return r
+}

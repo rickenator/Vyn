@@ -79,6 +79,7 @@ class EmptyStatement;
 class ExternStatement; // Added
 class ThrowStatement; // Added
 class MatchStatement; // Added
+class MatchExpression; // match used as a value-returning expression
 class YieldStatement; // Added
 class YieldReturnStatement; // Added
 class AssertStatement; // Added
@@ -236,6 +237,7 @@ enum class NodeType {
     EXTERN_STATEMENT, // Added
     THROW_STATEMENT, // Added
     MATCH_STATEMENT, // Added
+    MATCH_EXPRESSION, // match as a value-returning expression
     YIELD_STATEMENT, // Added
     YIELD_RETURN_STATEMENT, // Added
     ASSERT_STATEMENT, // Added
@@ -342,6 +344,7 @@ public:
     virtual void visit(ExternStatement* node) = 0;
     virtual void visit(ThrowStatement* node) = 0;
     virtual void visit(MatchStatement* node) = 0;
+    virtual void visit(MatchExpression* node) = 0;
     virtual void visit(YieldStatement* node) = 0;
     virtual void visit(YieldReturnStatement* node) = 0;
     virtual void visit(AssertStatement* node) = 0;
@@ -1481,6 +1484,21 @@ public:
     std::vector<ExprPtr> guards;
     MatchStatement(SourceLocation loc, ExprPtr expr, std::vector<std::pair<ExprPtr, ExprPtr>> cases,
                    std::vector<ExprPtr> guards = {});
+    NodeType getType() const override;
+    std::string toString() const override;
+    void accept(Visitor& visitor) override;
+};
+
+
+// --- MatchExpression ---
+// `match` used as a value-returning expression. Wraps a MatchStatement whose
+// arms yield values; the matched arm's value becomes the expression's result.
+class MatchExpression : public Expression {
+public:
+    std::unique_ptr<MatchStatement> match; // The underlying match statement
+    TypeNodePtr resultType;                // Inferred result type (set by semantic analysis)
+
+    MatchExpression(SourceLocation loc, std::unique_ptr<MatchStatement> match);
     NodeType getType() const override;
     std::string toString() const override;
     void accept(Visitor& visitor) override;
