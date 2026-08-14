@@ -1,0 +1,27 @@
+// @test: Bind selection precedence favors the bounded bind (declared last)
+// @description: The bounded bind must win even when it is declared after the
+//   unbounded bind for the same type shape (no last-write-wins dependence).
+// @category: aspect, bind, generics, bounds
+// @expect: pass
+// @expect-return: 2
+
+aspect Value {
+    get(self)<Int> -> { }
+}
+
+struct Box<T> {
+    value<T>
+}
+
+bind<T> Value -> Box<T> {
+    get(self)<Int> -> { return 1 }
+}
+
+bind<T<Value>> Value -> Box<T> {
+    get(self)<Int> -> { return 2 }
+}
+
+main()<Int> -> {
+    b<Box<Int>> = Box<Int> { value = 42 }
+    return b.get()
+}

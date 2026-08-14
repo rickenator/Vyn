@@ -186,7 +186,7 @@ is the working audit for what needs to be implemented next.
 - [ ] **Aspect objects / dynamic dispatch** — `dyn Aspect` for runtime polymorphism
 - [ ] **Aspect inheritance** — `aspect Comparable : Equatable`
 - [ ] **Monomorphization with bounds validation** — Reject instantiation where bounds fail
-- [ ] **Bind selection precedence** — Bounded bind takes precedence over unbounded
+- [x] **Bind selection precedence** — A bounded generic bind (`bind<T<Aspect>>`) deterministically takes precedence over an unbounded bind (`bind<T>`) for the same type shape, independent of declaration order.
 
 ### Pattern Matching — Completion (MEDIUM PRIORITY)
 - [x] Literal patterns, wildcard `?`, comparison operators

@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `mild<T>.grab()` upgrades live weak handles to `our<T>` and returns a null `our<T>` placeholder for released targets until `Option<T>` exists.
 
 ### Changed
+- Bind selection precedence: when both a bounded and an unbounded generic aspect
+  bind match the same type shape (`bind<T<Aspect>>` + `bind<T>`), the bounded
+  (more specialized) bind now wins deterministically regardless of declaration
+  order. Previously the registry keyed generic binds by pattern only, so the
+  duplicate overwrote itself in last-declared-wins order.
 - Ownership transfer-on-return now covers expression returns: an owning value
   (Vec with malloc'd data, `our<T>`, `mild<T>`) returned through a `select` expression
   (or any whole-value read) transfers to the caller instead of being freed first,

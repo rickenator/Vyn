@@ -6186,10 +6186,24 @@ void SemanticAnalyzer::registerTraitImpl(ast::BindDeclaration* implDecl) {
 
     if (isGeneric) {
         // Store generic implementation separately
-        VYB_CDBG << "DEBUG: Storing generic trait impl: " << traitName << " for " << typeName << std::endl;
-
         auto genericInfo = std::make_unique<GenericImplInfo>(implDecl);
-        genericTraitImpls[typeName][traitName] = std::move(genericInfo);
+        bool newIsBounded = genericInfo->isBounded;
+
+        // Bind selection precedence: when both a bounded and an unbounded generic
+        // bind exist for the same trait and type shape, the bounded (more
+        // specialized) bind wins regardless of declaration order.
+        auto& traitMap = genericTraitImpls[typeName];
+        auto existing = traitMap.find(traitName);
+        if (existing != traitMap.end()) {
+            if (!newIsBounded && existing->second->isBounded) {
+                VYB_CDBG << "DEBUG: Keeping bounded generic trait impl for " << traitName
+                         << " " << typeName << " over unbounded duplicate" << std::endl;
+                return;
+            }
+        }
+
+        VYB_CDBG << "DEBUG: Storing generic trait impl: " << traitName << " for " << typeName << std::endl;
+        traitMap[traitName] = std::move(genericInfo);
     } else {
         // Store concrete implementation
         VYB_CDBG << "DEBUG: Storing concrete trait impl: " << traitName << " for " << typeName << std::endl;

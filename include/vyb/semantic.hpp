@@ -150,6 +150,7 @@ struct GenericImplInfo {
     std::string typePattern;           // e.g., "Box<T>"
     std::string traitName;             // e.g., "Display"
     std::vector<std::string> typeParams; // e.g., ["T"]
+    bool isBounded = false;            // true when any type parameter declares aspect bounds
     ast::BindDeclaration* declaration; // Original AST node
     std::map<std::string, ast::FunctionDeclaration*> methods; // method name -> AST
     std::map<std::string, ast::TypeNode*> associatedTypeBindings; // associated type name -> assigned type AST
@@ -166,6 +167,9 @@ struct GenericImplInfo {
         for (const auto& param : decl->genericParams) {
             if (param && param->name) {
                 typeParams.push_back(param->name->name);
+                if (!param->bounds.empty()) {
+                    isBounded = true;
+                }
             }
         }
 
