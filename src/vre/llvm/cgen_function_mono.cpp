@@ -112,15 +112,31 @@ llvm::Function* LLVMCodegen::monomorphizeGenericFunction(const std::string& func
 
     // Generate return type with substitutions
     llvm::Type* returnType = nullptr;
+    llvm::Type* originalReturnType = nullptr;
     if (templateFunc->returnTypeNode) {
-        returnType = resolveReturnTypeWithSubstitution(templateFunc->returnTypeNode.get(), typeSubstitutions);
-        if (!returnType) {
+        originalReturnType = resolveReturnTypeWithSubstitution(templateFunc->returnTypeNode.get(), typeSubstitutions);
+        if (!originalReturnType) {
             std::cerr << "ERROR: Could not resolve return type" << std::endl;
             currentTypeSubstitutions = oldSubstitutions;
             return nullptr;
         }
+        returnType = originalReturnType;
     } else {
-        returnType = llvm::Type::getVoidTy(*context);
+        originalReturnType = llvm::Type::getVoidTy(*context);
+        returnType = originalReturnType;
+    }
+    // Mirror normal function codegen: a failable template returns {T, i8*}
+    // (or {i1, i8*} for Void) so that a `fail` in the monomorphized body can
+    // propagate the error back to the caller's trap instead of hitting the
+    // untrapped runtime handler.
+    const bool monoNeedsErrorReturn = (templateFunc->needsErrorReturn != 0);
+    if (monoNeedsErrorReturn) {
+        llvm::Type* errorPtrType = llvm::PointerType::get(*context, 0);
+        if (returnType->isVoidTy()) {
+            returnType = llvm::StructType::get(*context, {llvm::Type::getInt1Ty(*context), errorPtrType});
+        } else {
+            returnType = llvm::StructType::get(*context, {returnType, errorPtrType});
+        }
     }
 
     // Create the specialized function
@@ -138,9 +154,14 @@ llvm::Function* LLVMCodegen::monomorphizeGenericFunction(const std::string& func
     if (templateFunc->body) {
         // Save current function context
         llvm::Function* oldFunction = currentFunction;
+        vyb::ast::FunctionDeclaration* oldFunctionAST = currentFunctionAST;
         llvm::BasicBlock* oldInsertBlock = builder->GetInsertBlock();
         std::map<std::string, llvm::Value*> oldNamedValues;
         oldNamedValues.swap(namedValues);
+
+        // This body is a distinct failable function: point currentFunctionAST at
+        // the template so a `fail` here takes the failable-return path.
+        currentFunctionAST = templateFunc;
 
         // This monomorphized body is a distinct function, generated inline while
         // the caller's trap/scope context is still active. Isolate trap contexts
@@ -248,6 +269,7 @@ llvm::Function* LLVMCodegen::monomorphizeGenericFunction(const std::string& func
             exitScope();
         }
         scopeStack = std::move(savedScopeStack);
+        currentFunctionAST = oldFunctionAST;
         currentFunction = oldFunction;
         if (oldInsertBlock) builder->SetInsertPoint(oldInsertBlock);
         namedValues.swap(oldNamedValues);

@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `else` branch could leave the caller's scope stack empty (spurious
   "No active scope to register variable" warnings) and a `fail` inside a generic
   callee could escape into the caller's trap context.
+- Failable generic functions now use the same `{T, i8*}` error-return ABI as
+  normal functions: a monomorphized body's `fail` returns the error through the
+  failable ABI, and the call site detects the error and routes it to the
+  caller's `trap` at runtime (or errors as an untrapped failure). Previously a
+  generic `fail` was compiled as if non-failable, so it surfaced as an
+  untrapped failure even when the caller trapped it.
 
 ### Added
 - `ensure` contract statements: `ensure cond else handling` runs `handling`

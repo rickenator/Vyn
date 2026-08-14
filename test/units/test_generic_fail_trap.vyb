@@ -1,0 +1,25 @@
+// @test: generic function fail is trapped by the caller
+// @description: a monomorphized generic function that `fail`s uses the failable ABI ({T, i8*}) and is caught by the caller's trap at runtime
+// @category: error_handling, generics, fail, trap
+// @expect: pass
+// @expect-return: -77
+// @execute-jit: true
+
+struct GErr { code<Int> }
+
+probe<T>(value<T>, flag<Int>)<Int> -> {
+    if (flag == 0) {
+        fail<GErr>(GErr { code = 7 })
+        return 1
+    }
+    return 77
+}
+
+main()<Int> -> {
+    caught<Int> = { probe(0, 0) } trap (e<GErr>) -> { -77 }
+    ok<Int> = { probe(0, 1) } trap (e<GErr>) -> { -1 }
+    if (caught == -77 && ok == 77) {
+        return -77
+    }
+    return 1
+}
