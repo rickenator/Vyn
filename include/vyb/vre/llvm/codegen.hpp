@@ -225,6 +225,7 @@ private:
     llvm::StructType* monomorphizeEnum(const std::string& baseName, const std::vector<vyb::ast::TypeNodePtr>& typeArgs);   // Generate specialized tagged-union enum
     void generateTypeMetadata(const std::string& typeName, vyb::ast::StructDeclaration* structDecl); // Generate type metadata for JSON/reflection
     void registerTypeMetadata(); // Register all type metadata at program startup
+    void registerTypeNames(); // Register all compile-time-known type names in the runtime type registry
     llvm::Function* getCurrentFunction();
     llvm::BasicBlock* getCurrentBasicBlock();
     void createFunctionForwardDeclaration(vyb::ast::FunctionDeclaration* funcDecl); // Forward declaration helper

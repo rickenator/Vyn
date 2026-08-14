@@ -1661,7 +1661,8 @@ void TypeofExpression::accept(Visitor& visitor) {
 
 // --- TypenameExpression ---
 TypenameExpression::TypenameExpression(SourceLocation loc, ExprPtr operand)
-    : Expression(loc), operand(std::move(operand)), operandFromWildcardError(false) {}
+    : Expression(loc), operand(std::move(operand)), operandFromWildcardError(false),
+      operandFromTypeValue(false) {}
 
 NodeType TypenameExpression::getType() const {
     return NodeType::TYPENAME_EXPRESSION;

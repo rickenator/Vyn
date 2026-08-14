@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A startup **Type registry** now registers every compile-time-known type name
+  (primitives and user structs) keyed by its type-ID hash, so `typename(t)` on a
+  runtime `Type` value (`t<Type> = typeof(42)`) resolves the actual type name at
+  runtime (e.g. `"Int"`, `"ParseError"`) instead of the static `Type` label. The
+  registry is populated from `main` (reliable in the JIT): `__vyb_module_init()`
+  calls `__vyb_register_typename(id, name)` and `typename(t)` looks it up via
+  `__vyb_get_typename(id)`.
+
 - `Type` is now a first-class type identity: `t<Type> = typeof(42)` (and the
   compile-time `typeof<Int>()` form) declares/assigns an opaque 8-byte type ID,
   `==` / `!=` compare type IDs, `Type` values flow through function calls, and

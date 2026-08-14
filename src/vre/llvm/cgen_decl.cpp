@@ -569,6 +569,19 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
         // Phase 6.4: Push call frame for stack trace capture
         generatePushFrameCall(functionName, node->loc);
 
+        // Register all module types in the runtime type registry before any
+        // program logic runs. (Called from main so it is reliable in the JIT,
+        // where llvm.global_ctors may not be executed.)
+        if (node->id->name == "main") {
+            llvm::FunctionType* initTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*context), false);
+            llvm::Function* initFn = module->getFunction("__vyb_module_init");
+            if (!initFn) {
+                initFn = llvm::Function::Create(initTy, llvm::Function::ExternalLinkage,
+                                                "__vyb_module_init", module.get());
+            }
+            builder->CreateCall(initFn, {});
+        }
+
         // Initialize scope management for function body
         enterScope();
 

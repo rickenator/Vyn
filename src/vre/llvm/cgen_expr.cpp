@@ -5893,6 +5893,35 @@ void LLVMCodegen::visit(vyb::ast::TypenameExpression* node) {
         return;
     }
 
+    // A `Type` value operand: its runtime value is an opaque uint64 type ID, so
+    // look up the registered type name at runtime.
+    if (node->operandFromTypeValue) {
+        node->operand->accept(*this);
+        llvm::Value* typeId = m_currentLLVMValue;
+        llvm::Type* i8Ptr = llvm::PointerType::get(*context, 0);
+        llvm::Type* i64Ty = llvm::Type::getInt64Ty(*context);
+        llvm::FunctionType* getTy = llvm::FunctionType::get(i8Ptr, {i64Ty}, false);
+        llvm::Function* getFn = module->getFunction("__vyb_get_typename");
+        if (!getFn) {
+            getFn = llvm::Function::Create(getTy, llvm::Function::ExternalLinkage,
+                                           "__vyb_get_typename", module.get());
+        }
+        llvm::Value* namePtr = builder->CreateCall(getFn, {typeId}, "typename.name");
+        llvm::Function* strlenFn = module->getFunction("strlen");
+        if (!strlenFn) {
+            strlenFn = llvm::Function::Create(
+                llvm::FunctionType::get(i64Ty, {i8Ptr}, false),
+                llvm::Function::ExternalLinkage, "strlen", module.get());
+        }
+        llvm::Value* len = builder->CreateCall(strlenFn, {namePtr}, "typename.len");
+        llvm::StructType* sTy = llvm::StructType::get(*context, {i8Ptr, i64Ty});
+        llvm::Value* s = llvm::UndefValue::get(sTy);
+        s = builder->CreateInsertValue(s, namePtr, 0, "typename.ptr");
+        s = builder->CreateInsertValue(s, len, 1, "typename.len");
+        m_currentLLVMValue = s;
+        return;
+    }
+
     // Get the type name from the operand's type field (set by semantic analysis)
     std::string typeName = "Unknown";
     if (node->operand->type) {

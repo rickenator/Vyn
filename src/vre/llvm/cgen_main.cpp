@@ -238,6 +238,7 @@ void LLVMCodegen::visit(vyb::ast::Module* node) {
     // FOURTH PASS: Register all type metadata for runtime JSON serialization
     VYB_CDBG << "DEBUG: Fourth pass - registering type metadata" << std::endl;
     registerTypeMetadata();
+    registerTypeNames();
 
     m_currentVybModule = previousModule;
     m_currentLLVMValue = nullptr;

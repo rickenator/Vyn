@@ -2,6 +2,8 @@
 // Generates runtime type metadata for JSON serialization and reflection
 
 #include "vyb/vre/llvm/codegen.hpp"
+#include <algorithm>
+#include <functional>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/GlobalVariable.h>
 
@@ -275,6 +277,68 @@ void LLVMCodegen::registerTypeMetadata() {
     );
 
     VYB_CDBG << "DEBUG: Type metadata registration complete" << std::endl;
+}
+
+// Register every compile-time-known type name in the runtime type identity
+// registry so a runtime `Type` value (an opaque uint64 hash) can be resolved
+// back to its name via `__vyb_get_typename` (used by `typename(t)` where `t` is
+// a `Type`). Runs before main via an llvm.global_ctors entry.
+void LLVMCodegen::registerTypeNames() {
+    std::vector<std::string> names = {
+        "Type", "Int", "Float", "Bool", "String", "Char", "Rune",
+        "Int8", "Int16", "Int32", "Int64",
+        "UInt8", "UInt16", "UInt32", "UInt64",
+        "Float32", "Float64"
+    };
+    for (const auto& kv : userTypeMap) {
+        names.push_back(kv.first);
+    }
+
+    std::vector<std::string> unique;
+    for (const auto& n : names) {
+        if (std::find(unique.begin(), unique.end(), n) == unique.end()) {
+            unique.push_back(n);
+        }
+    }
+
+    llvm::Type* i64Ty = llvm::Type::getInt64Ty(*context);
+    llvm::PointerType* i8Ptr = llvm::PointerType::get(*context, 0);
+
+    // Declare the runtime registration function __vyb_register_typename(id, name)
+    llvm::FunctionType* registerFnTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*context), {i64Ty, i8Ptr}, false);
+    llvm::Function* registerFn = module->getFunction("__vyb_register_typename");
+    if (!registerFn) {
+        registerFn = llvm::Function::Create(registerFnTy, llvm::Function::ExternalLinkage,
+                                            "__vyb_register_typename", module.get());
+    }
+
+    // Build __vyb_module_init() that registers each type name under its type hash.
+    // It may already exist as a declaration (main calls it); fill in the body here.
+    llvm::FunctionType* initTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*context), false);
+    llvm::Function* initFunc = module->getFunction("__vyb_module_init");
+    bool defineInit = false;
+    if (!initFunc) {
+        initFunc = llvm::Function::Create(initTy, llvm::Function::ExternalLinkage,
+                                          "__vyb_module_init", module.get());
+        defineInit = true;
+    } else if (initFunc->size() == 0) {
+        defineInit = true; // declaration only; needs a body
+    }
+    if (defineInit) {
+        llvm::BasicBlock* entry = llvm::BasicBlock::Create(*context, "entry", initFunc);
+        llvm::IRBuilder<> initBuilder(entry);
+
+        for (const auto& name : unique) {
+            uint64_t typeHash = std::hash<std::string>{}(name);
+            llvm::Value* id = llvm::ConstantInt::get(i64Ty, typeHash);
+            llvm::Value* nameStr = initBuilder.CreateGlobalStringPtr(name);
+            initBuilder.CreateCall(registerFn, {id, nameStr});
+        }
+        initBuilder.CreateRetVoid();
+    }
+
+    VYB_CDBG << "DEBUG: Registered " << unique.size() << " type names in module init" << std::endl;
 }
 
 } // namespace vyb

@@ -79,6 +79,10 @@ extern "C" {
     // Type metadata registration
     void __vyb_register_type(void* metadata);
 
+    // Type identity registry (id -> name)
+    void __vyb_register_typename(uint64_t type_id, const char* type_name);
+    const char* __vyb_get_typename(uint64_t type_id);
+
     // Error handling runtime functions (from error_handling.cpp)
     void __vyb_runtime_panic(const char* message) __attribute__((noreturn));
     void __vyb_runtime_untrapped_error(void* error) __attribute__((noreturn));
@@ -850,6 +854,12 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
         // Register type metadata functions
         runtimeSymbols[mangle("__vyb_register_type")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_register_type), llvm::JITSymbolFlags::Exported);
+
+        // Register the type identity registry
+        runtimeSymbols[mangle("__vyb_register_typename")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_register_typename), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_get_typename")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_get_typename), llvm::JITSymbolFlags::Exported);
 
         // Add all the runtime symbols to the main dylib
         auto defineErr = mainDylib.define(llvm::orc::absoluteSymbols(runtimeSymbols));

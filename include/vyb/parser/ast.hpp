@@ -1469,6 +1469,7 @@ class TypenameExpression : public Expression {
 public:
     ExprPtr operand;  // Expression to get type name of
     bool operandFromWildcardError; // Set by semantic: operand is a wildcard trap `e<?>`
+    bool operandFromTypeValue;     // Set by semantic: operand's static type is `Type`
 
     TypenameExpression(SourceLocation loc, ExprPtr operand);
     NodeType getType() const override;

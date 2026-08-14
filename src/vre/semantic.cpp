@@ -7926,6 +7926,12 @@ void SemanticAnalyzer::visit(ast::TypenameExpression* node) {
     if (isWildcardErrorExpr(node->operand.get())) {
         node->operandFromWildcardError = true;
     }
+
+    // A `Type` value operand: its static type is the opaque `Type`, so the actual
+    // type name must be resolved at runtime from the type ID via the registry.
+    if (node->operand->type && node->operand->type->toString() == "Type") {
+        node->operandFromTypeValue = true;
+    }
 }
 
 

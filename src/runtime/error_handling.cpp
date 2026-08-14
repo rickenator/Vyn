@@ -10,6 +10,7 @@
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 
 // Platform-specific includes for stack trace
 #ifdef __linux__
@@ -48,6 +49,22 @@ typedef struct VybTypeMetadata {
 
 VybTypeMetadata* __vyb_lookup_type(const char* type_name);
 char* __vyb_complex_to_json_with_metadata(void* instance, VybTypeMetadata* metadata);
+
+// ===== Type identity registry (id -> name) =====
+static std::unordered_map<uint64_t, std::string> g_type_id_names;
+static std::mutex g_type_id_names_mutex;
+
+void __vyb_register_typename(uint64_t type_id, const char* type_name) {
+    if (!type_name) return;
+    std::lock_guard<std::mutex> lock(g_type_id_names_mutex);
+    g_type_id_names[type_id] = type_name;
+}
+
+const char* __vyb_get_typename(uint64_t type_id) {
+    std::lock_guard<std::mutex> lock(g_type_id_names_mutex);
+    auto it = g_type_id_names.find(type_id);
+    return it != g_type_id_names.end() ? it->second.c_str() : "Unknown";
+}
 
 // ===== Global State =====
 

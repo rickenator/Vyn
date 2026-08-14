@@ -1,0 +1,21 @@
+// @test: startup Type registry resolves runtime type names
+// @description: a `Type` value (`typeof<T>()` / `typeof(expr)`) resolves back to
+//   its registered type name via `typename(t)` using the runtime type registry,
+//   populated at startup for both primitives and user structs.
+// @category: introspection, typeof, typename, Type, registry, codegen
+// @expect: pass
+// @expect-return: -77
+// @execute-jit: true
+
+struct ParseError { code<Int> }
+
+main()<Int> -> {
+    i<String> = typename(typeof(42))
+    f<String> = typename(typeof<Float>())
+    b<String> = typename(typeof<Bool>())
+    e<ParseError> = ParseError { code = 7 }
+    p<String> = typename(typeof(e))
+
+    if (i == "Int" && i.len() == 3 && f == "Float" && b == "Bool" && p == "ParseError") { return -77 }
+    return 1
+}

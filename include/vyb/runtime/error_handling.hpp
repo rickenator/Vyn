@@ -116,6 +116,11 @@ void* __vyb_runtime_cast_error(VybError* error, const char* target_type_name);
 
 // Defer/ensure support (for future integration with ownership)
 void __vyb_runtime_register_defer(void (*cleanup_fn)(void*), void* context);
+
+// Type identity registry (id -> name), populated at module startup so a runtime
+// `Type` value (an opaque uint64 type ID) can be resolved back to its name.
+void __vyb_register_typename(uint64_t type_id, const char* type_name);
+const char* __vyb_get_typename(uint64_t type_id);
 void __vyb_runtime_execute_defers();
 void __vyb_runtime_push_ensure_block(void (*ensure_fn)());
 void __vyb_runtime_pop_ensure_block();
