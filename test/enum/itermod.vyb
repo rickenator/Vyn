@@ -1,0 +1,8 @@
+// @test: Enum import fixture module
+// @parse-only: true
+
+share(all)
+enum Direction { North, South, East, West }
+
+share(all)
+enum Shape { Circle(Float), Rect(Float, Float) }

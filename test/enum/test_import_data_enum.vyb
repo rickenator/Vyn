@@ -1,0 +1,23 @@
+// @test: Data enum across import (construction + match)
+// @description: importing a module re-exports a payload enum; construction and match payload-binding work
+// @category: enums, modules, import, match
+// @expect: pass
+// @expect-output: rect
+// @expect-return: 0
+
+import itermod
+
+describe(s<Shape>)<String> -> {
+    result<String> = "?"
+    match (s) {
+        Circle(r) -> { result = "circle" }
+        Rect(w, h) -> { result = "rect" }
+    }
+    return result
+}
+
+main()<Int> -> {
+    r<Shape> = Shape::Rect(3.0, 4.0)
+    println(describe(r))
+    return 0
+}
