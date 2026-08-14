@@ -698,7 +698,7 @@ void SemanticAnalyzer::visit(ast::Identifier* node) {
     // Handle built-in type identifiers that don't need to be in symbol table
     // These are used in contexts like Vec::new(), Int::from_string() where the type is a namespace
     if (node->name == "Vec" || node->name == "Int" || node->name == "Float" ||
-        node->name == "Bool" || node->name == "String" ||
+        node->name == "Bool" || node->name == "String" || node->name == "Type" ||
         enumGenericParamOrder.count(node->name)) {
         // Built-in types - don't error on them
         // They will be properly typed in the context where they're used (e.g., Int::from_string())
@@ -1433,6 +1433,15 @@ void SemanticAnalyzer::visit(ast::BinaryExpression* node) {
     if (!leftType || !rightType) {
         // Cannot determine type without both operands
         VYB_CDBG << "DEBUG: Binary expression - could not determine operand types" << std::endl;
+        return;
+    }
+
+    // `Type` is an opaque type identity: only equality / inequality is meaningful.
+    bool leftIsType = leftType->toString() == "Type";
+    bool rightIsType = rightType->toString() == "Type";
+    if ((leftIsType || rightIsType) &&
+        node->op.type != TokenType::EQEQ && node->op.type != TokenType::NOTEQ) {
+        addError("Operator '" + node->op.lexeme + "' is not allowed on Type values; only '==' and '!=' are supported.", node);
         return;
     }
 
@@ -6043,7 +6052,8 @@ void SemanticAnalyzer::visit(ast::TypeName* node) {
                typeNameStr == "UInt8" || typeNameStr == "UInt16" || typeNameStr == "UInt32" || typeNameStr == "UInt64" ||
                typeNameStr == "Float32" || typeNameStr == "Float64" ||
                typeNameStr == "Char" || typeNameStr == "Rune" ||
-               typeNameStr == "String" || typeNameStr == "Future" || typeNameStr == "Void" ||
+               typeNameStr == "String" || typeNameStr == "Type" ||
+               typeNameStr == "Future" || typeNameStr == "Void" ||
                typeNameStr == "CChar" || typeNameStr == "CUChar" || typeNameStr == "CShort" ||
                typeNameStr == "CUShort" || typeNameStr == "CInt" || typeNameStr == "CUInt" ||
                typeNameStr == "CLong" || typeNameStr == "CULong" || typeNameStr == "CSize" ||

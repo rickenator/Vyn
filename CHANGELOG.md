@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `Type` is now a first-class type identity: `t<Type> = typeof(42)` (and the
+  compile-time `typeof<Int>()` form) declares/assigns an opaque 8-byte type ID,
+  `==` / `!=` compare type IDs, `Type` values flow through function calls, and
+  any other operator on a `Type` value (e.g. `+`) is a semantic error — only
+  `==` / `!=` are supported, per the introspection design.
+
 - A `trap (e<Type1 | Type2>)` multi-type union handler now catches an error of
   any listed type and binds `e` as an opaque error pointer, so the handler
   resolves the concrete payload via the safe-downcasting / introspection

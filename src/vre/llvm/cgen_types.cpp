@@ -569,6 +569,10 @@ llvm::Type* LLVMCodegen::codegenType(vyb::ast::TypeNode* typeNode) {
             } else if (typeNameStr == "Bool") {
                 llvmType = int1Type;
 
+            // Type identity (opaque 8-byte type hash)
+            } else if (typeNameStr == "Type") {
+                llvmType = int64Type;
+
             // Void type
             } else if (typeNameStr == "Void" || typeNameStr == "CVoid") {
                 llvmType = voidType;

@@ -1,0 +1,22 @@
+// @test: Type is a first-class type identity
+// @description: `t<Type> = typeof(42)` declares a first-class `Type` value; `==`/`!=`
+//   compare type IDs (including the `typeof<T>()` compile-time form), a `Type` flows
+//   through functions, and non-equality operators on `Type` are reported as errors.
+// @category: introspection, typeof, Type, codegen, semantic
+// @expect: pass
+// @expect-return: -77
+// @execute-jit: true
+
+which_type()<Type> -> {
+    return typeof<Int>()
+}
+
+main()<Int> -> {
+    t<Type> = typeof(42)
+    u<Type> = typeof<Int>()
+    s<Type> = typeof<String>()
+    w<Type> = which_type()
+
+    if (t == u && w == typeof<Int>() && s != u) { return -77 }
+    return 1
+}

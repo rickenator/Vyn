@@ -1,0 +1,12 @@
+// @test: arithmetic on Type values is rejected
+// @description: `Type` is an opaque type identity; operators other than `==`/`!=`
+//   (here `+`) are reported as semantic errors.
+// @category: introspection, typeof, Type, semantic, error
+// @expect: fail
+// @expect-error: not allowed on Type
+
+main()<Int> -> {
+    t<Type> = typeof(42)
+    n<Int> = t + 1
+    return n
+}

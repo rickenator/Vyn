@@ -75,6 +75,7 @@ Legend: ✅ Implemented | 🚧 Partial / Stubbed | 📋 Planned
 | String methods | ✅ | `.len()`, `.contains()`, `.starts_with()`, `.ends_with()`, `.to_upper()`, `.to_lower()`, `.substring()`, `.char_at()`, `.trim()`, `.replace()` |
 | Math intrinsics | ✅ | |
 | `typeof` / `typename` | ✅ | Runtime type identity (`Type`) and type-name String; `typeof<T>()` compile-time type-hash form |
+| `Type` (first-class identity) | ✅ | `t<Type> = typeof(42)` and `typeof<Int>()` declare/assign an opaque 8-byte type ID; `==` / `!=` compare type IDs; `Type` flows through function calls; other operators are rejected |
 | `typeof` / `typename` on wildcard trap errors | ✅ | In `trap (e<?>)`, `typeof(e)` extracts the error's runtime type ID and `typename(e)` its type-name string, so handlers can dispatch on failed-error type (`typeof(e) == typeof<ParseError>()`) |
 | `as` (safe downcasting) | ✅ | `value as TargetType`, lexed/parsed as an infix expression and typed as the target type; in a wildcard trap (`e<?>`) it extracts the concrete payload from the error struct (`g<GErr> = e as GErr`) so the handler reads its fields; same-type casts pass through, incompatible casts are a semantic error |
 | Templates | ✅ | |
