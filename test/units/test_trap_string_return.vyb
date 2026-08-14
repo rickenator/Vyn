@@ -1,0 +1,25 @@
+// @test: trap block as a value returns a String with correct length
+// @description: a trap block whose handler returns a String (literal or a raw
+//   char* from .to_string()) resolves to the String type and is stored into a
+//   String { ptr, i64 } result slot instead of a hardcoded i64, so == and .len()
+//   behave correctly.
+// @category: trap, string, to_string, codegen
+// @expect: pass
+// @expect-return: -77
+// @execute-jit: true
+
+risky()<Int> -> {
+    fail "boom"
+}
+
+main()<Int> -> {
+    a<String> = { risky() } trap (e<?>) -> { "hello" }
+    n<Int> = 42
+    b<String> = { risky() } trap (e<?>) -> { n.to_string() }
+
+    if (a == "hello" && a.len() == 5 &&
+        b == "42" && b.len() == 2) {
+        return -77
+    }
+    return 1
+}

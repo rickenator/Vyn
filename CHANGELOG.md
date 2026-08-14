@@ -68,6 +68,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `typeof` / `typename` are recognized as expression-statement starts.
 
 ### Fixed
+- A `trap` block used as a value (`s<String> = { risky() } trap (e<?>) -> { "hello" }`)
+  now sizes its merge result slot from the handler's inferred result type, and the
+  semantic analyzer stamps that type on the block expression. Aggregates like
+  `String` are stored/loaded as a `{ ptr, len }` struct instead of a hardcoded
+  `i64`, so a String handler round-trips correctly (`==` and `.len()`). Previously
+  only Bool/Int trap handlers worked; a String handler resolved to the body's
+  last-expression type (`i64`) and was rejected as "initializer type i64 is not
+  assignable to String".
 - A `match`/`select` arm whose value is a primitive `.to_string()` now stores a
   proper `{ ptr, len }` String into the expression's result slot (wrapping the
   raw `char*` with a `strlen`-computed length). Previously the raw pointer was

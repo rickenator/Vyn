@@ -4008,6 +4008,46 @@ void SemanticAnalyzer::visit(ast::BlockExpression* node) {
     if (node->ensureClause) {
         node->ensureClause->accept(*this);
     }
+
+    // A block used as a value (e.g. `s<String> = { risky() } trap (e<?>) -> { "hi" }`)
+    // gets its result type from the last trap handler's yielded expression, mirroring
+    // MatchExpression/SelectExpression resultType inference. Without this the block
+    // resolves to the enclosing body's last expression type (e.g. i64), which makes
+    // aggregates like String get flagged as "expected String but got i64".
+    ast::TypeNode* yielded = nullptr;
+    if (!node->trapClauses.empty()) {
+        auto& lastClause = node->trapClauses.back();
+        if (lastClause && lastClause->handler) {
+            if (auto* handlerBlock = dynamic_cast<ast::BlockStatement*>(lastClause->handler.get())) {
+                for (auto it = handlerBlock->body.rbegin(); it != handlerBlock->body.rend(); ++it) {
+                    if (auto* exprStmt = dynamic_cast<ast::ExpressionStatement*>(it->get())) {
+                        if (exprStmt->expression) {
+                            auto eIt = expressionTypes.find(exprStmt->expression.get());
+                            if (eIt != expressionTypes.end() && eIt->second) yielded = eIt->second;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    if (!yielded && node->block && !node->block->body.empty()) {
+        for (auto it = node->block->body.rbegin(); it != node->block->body.rend(); ++it) {
+            if (auto* exprStmt = dynamic_cast<ast::ExpressionStatement*>(it->get())) {
+                if (exprStmt->expression) {
+                    auto eIt = expressionTypes.find(exprStmt->expression.get());
+                    if (eIt != expressionTypes.end() && eIt->second) yielded = eIt->second;
+                }
+                break;
+            }
+        }
+    }
+    // A void handler/body (e.g. an error-catch print) means the block is not used
+    // as a value, so don't stamp a void result type on it.
+    if (yielded && yielded->toString() != "Void") {
+        node->type = std::shared_ptr<ast::TypeNode>(yielded->clone());
+        expressionTypes[node] = node->type.get();
+    }
 }
 void SemanticAnalyzer::visit(ast::SelectExpression* node) {
     // Visit the expression being matched

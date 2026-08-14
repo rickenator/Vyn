@@ -4612,8 +4612,17 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
     llvm::BasicBlock* ensureBB = hasEnsure ? llvm::BasicBlock::Create(*context, "block.ensure", func) : nullptr;
     llvm::BasicBlock* continueBB = llvm::BasicBlock::Create(*context, "block.continue", func);
 
-    // Create alloca for block result (used when hasTrap || hasEnsure)
-    llvm::AllocaInst* blockResultAlloca = builder->CreateAlloca(builder->getInt64Ty(), nullptr, "block.result.alloca");
+    // Alloca for block result (used when hasTrap || hasEnsure). Sized from the
+    // block's inferred semantic type so aggregates like String { ptr, i64 } are
+    // stored/loaded with the correct type instead of a hardcoded i64. The alloca
+    // is created before any branches so it dominates the merge point's load.
+    llvm::Type* blockResultTy = nullptr;
+    if (node->type) blockResultTy = codegenType(node->type.get());
+    // A block that yields no value (e.g. used as a statement with a void trap
+    // handler) must not size the slot with a void/codegen-invalid type; fall back
+    // to a neutral scalar so the (unused) merge load stays well-formed.
+    if (!blockResultTy || blockResultTy->isVoidTy()) blockResultTy = builder->getInt64Ty();
+    llvm::AllocaInst* blockResultAlloca = builder->CreateAlloca(blockResultTy, nullptr, "block.result.alloca");
 
     // Create error slot and landing pad if we have trap clauses
     llvm::Value* errorSlot = nullptr;
@@ -4717,9 +4726,17 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
     if (!builder->GetInsertBlock()->getTerminator()) {
         normalExitBB = builder->GetInsertBlock();
 
-        // Store block result in alloca for PHI merge (when hasTrap || hasEnsure)
-        if (blockResultAlloca && blockResult) {
-            builder->CreateStore(blockResult, blockResultAlloca);
+        // Store block result in alloca for merge (when hasTrap || hasEnsure).
+        // Only store when the value is compatible with the slot (the slot type
+        // comes from the trap handler result, which may differ from this path's
+        // static value, e.g. a body that always fails).
+        if (blockResult) {
+            llvm::Type* slotAllocatedTy = blockResultAlloca->getAllocatedType();
+            bool compatible = (blockResult->getType() == slotAllocatedTy) ||
+                              (blockResult->getType()->isPointerTy() && slotAllocatedTy->isStructTy());
+            if (compatible) {
+                storeIntoResultSlot(blockResult, blockResultAlloca, node->loc);
+            }
         }
 
         if (hasEnsure) {
@@ -4998,10 +5015,8 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
                 builder->CreateCall(freeErrFn, {errorPtr});
 
                 // Store handler result in alloca for merge point
-                if (blockResultAlloca) {
-                    llvm::Type* resType = clauseResult ? clauseResult->getType() : builder->getInt64Ty();
-                    llvm::Value* storeVal = clauseResult ? clauseResult : llvm::ConstantInt::get(resType, 0);
-                    builder->CreateStore(storeVal, blockResultAlloca);
+                if (clauseResult) {
+                    storeIntoResultSlot(clauseResult, blockResultAlloca, node->loc);
                 }
 
                 llvm::BasicBlock* handlerExitBB = builder->GetInsertBlock();
@@ -5065,7 +5080,8 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
     // Merge results from different paths
     if (blockResultAlloca) {
         // Alloca-based result passing - all paths stored to the same alloca
-        m_currentLLVMValue = builder->CreateLoad(builder->getInt64Ty(), blockResultAlloca, "block.result.load");
+        llvm::Type* loadedTy = blockResultAlloca->getAllocatedType();
+        m_currentLLVMValue = builder->CreateLoad(loadedTy, blockResultAlloca, "block.result.load");
     } else if (hasTrap && (blockResult || !trapExits.empty())) {
         // PHI-based result passing (fallback for edge cases without alloca)
         // Determine result type
