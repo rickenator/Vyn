@@ -1,0 +1,29 @@
+// @test: select over a C-like enum dispatches on named variants
+// @description: C-like enum variants are distinct typed values; select matches them
+//   by name and the exhaustive form needs every variant or a wildcard.
+// @category: enum, select, jit
+// @expect: pass
+// @expect-output: other
+// @expect-return: 0
+
+enum Direction { North, South, East, West }
+
+sign()<String> -> {
+    return select(Direction::West) -> {
+        North -> "north",
+        South -> "south",
+        ? -> "other"
+    }
+}
+
+main()<Int> -> {
+    println(sign())
+    m<Int> = select(Direction::West) -> {
+        North -> 1,
+        South -> 2,
+        East -> 3,
+        West -> 4
+    }
+    println_int(m)
+    return 0
+}

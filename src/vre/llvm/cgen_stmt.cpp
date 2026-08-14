@@ -1191,10 +1191,10 @@ void LLVMCodegen::codegenMatch(vyb::ast::MatchStatement* node, llvm::AllocaInst*
 
     // If the matched value is a tagged-union enum (data-carrying), variant
     // patterns such as `Circle(r)` or `Unit` dispatch on the runtime tag.
-    const TaggedEnumInfo* matchedEnum =
-        (matchValue && matchValue->getType()->isStructTy())
-        ? findTaggedEnum(matchValue->getType())
+    const TaggedEnumInfo* matchedEnum = (matchValue && matchValue->getType()->isStructTy())
+        ? ((node->expr && node->expr->type) ? findTaggedEnum(node->expr->type.get()) : nullptr)
         : nullptr;
+    if (!matchedEnum && matchValue) matchedEnum = findTaggedEnum(matchValue->getType());
 
     // Exhaustiveness: a match is exhaustive when it has an unguarded wildcard or,
     // for a tagged-union enum, arms that cover every variant. An exhaustive match

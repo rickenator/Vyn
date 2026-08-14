@@ -374,13 +374,13 @@ void LLVMCodegen::visit(vyb::ast::BinaryExpression *node) {
 
                 if (L->getType()->isStructTy()) {
                     llvm::StructType* structType = llvm::cast<llvm::StructType>(L->getType());
-                    if (structType->getNumElements() == 2) {
+                    if (structType->getNumElements() == 2 && structType->getElementType(0)->isPointerTy()) {
                         leftIsStringStruct = true;
                     }
                 }
                 if (R->getType()->isStructTy()) {
                     llvm::StructType* structType = llvm::cast<llvm::StructType>(R->getType());
-                    if (structType->getNumElements() == 2) {
+                    if (structType->getNumElements() == 2 && structType->getElementType(0)->isPointerTy()) {
                         rightIsStringStruct = true;
                     }
                 }
@@ -1872,7 +1872,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             } else {
                 if (arg->getType()->isPointerTy() && arg->getType() == int8PtrType) {
                     serialized = arg;
-                } else if (arg->getType()->isStructTy() && arg->getType()->getStructNumElements() == 2) {
+                } else if (arg->getType()->isStructTy() && arg->getType()->getStructNumElements() == 2 &&
+                           arg->getType()->getStructElementType(0)->isPointerTy()) {
                     serialized = builder->CreateExtractValue(arg, 0, "str.ptr");
                 } else {
                     serialized = generateToStringCall(arg, arg->getType(), nullptr, argExpr->loc);
@@ -1965,7 +1966,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 serializedValue = arg;
             }
             // Check if it's a struct (might be a string struct)
-            else if (arg->getType()->isStructTy() && arg->getType()->getStructNumElements() == 2) {
+            else if (arg->getType()->isStructTy() && arg->getType()->getStructNumElements() == 2 &&
+                     arg->getType()->getStructElementType(0)->isPointerTy()) {
                 // Might be a string struct {ptr, len} - extract ptr
                 serializedValue = builder->CreateExtractValue(arg, 0, "str.ptr");
             }
@@ -2044,7 +2046,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             } else {
                 if (arg->getType()->isPointerTy()) {
                     serializedValue = arg;
-                } else if (arg->getType()->isStructTy() && arg->getType()->getStructNumElements() == 2) {
+                } else if (arg->getType()->isStructTy() && arg->getType()->getStructNumElements() == 2 &&
+                           arg->getType()->getStructElementType(0)->isPointerTy()) {
                     serializedValue = builder->CreateExtractValue(arg, 0, "str.ptr");
                 } else {
                     serializedValue = generateToStringCall(arg, arg->getType(), nullptr, node->loc);
@@ -5212,8 +5215,9 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
     // `Circle(r)` or `Unit` dispatch on the runtime tag instead of literal compare.
     const TaggedEnumInfo* matchedEnum =
         (matchValue && matchValue->getType()->isStructTy())
-        ? findTaggedEnum(matchValue->getType())
+        ? ((node->expr && node->expr->type) ? findTaggedEnum(node->expr->type.get()) : nullptr)
         : nullptr;
+    if (!matchedEnum && matchValue) matchedEnum = findTaggedEnum(matchValue->getType());
 
     // Bind the payload fields of an enum-variant arm pattern (e.g. `Circle(r)`)
     // as locals in `namedValues`. Used both by the result-type inference preview

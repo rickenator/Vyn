@@ -1,0 +1,17 @@
+// @test: non-exhaustive match on a C-like enum is rejected
+// @description: C-like enums now enforce the same exhaustiveness as data enums:
+//   every variant (or a wildcard) must be covered.
+// @category: enum, match, semantic, error
+// @expect: fail
+// @expect-error: not exhaustive
+
+enum Direction { North, South, East, West }
+
+main()<Int> -> {
+    d<Direction> = Direction::East
+    match (d) {
+        North -> println("n"),
+        East -> println("e")
+    }
+    return 0
+}

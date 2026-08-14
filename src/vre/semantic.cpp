@@ -5154,7 +5154,23 @@ void SemanticAnalyzer::visit(ast::EnumDeclaration* node) {
     for (const auto& v : node->variants) {
         if (v && !v->associatedTypes.empty()) { hasData = true; break; }
     }
-    if (!hasData) return; // C-like integer enums need no further semantic work.
+    if (!hasData) {
+        // C-like enums are now first-class typed values: every variant is a unit
+        // (zero-payload) variant of the named enum type rather than a raw i64. This
+        // lets `r<Color> = Color::Red` take the enum type, variant access resolve to
+        // `Color`, and `match`/`select` dispatch on a runtime tag with the same
+        // exhaustiveness handling as data-carrying enums.
+        if (node->genericParams.empty()) {
+            auto& payloadMap = enumVariantPayloadTypes[enumName];
+            for (const auto& v : node->variants) {
+                if (v && v->name) payloadMap[v->name->name]; // default-construct (unit variant)
+            }
+            currentScope->add(SymbolInfo{SymbolInfo::Kind::Type, enumName, false,
+                ast::OwnershipKind::MY,
+                new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, enumName))});
+        }
+        return;
+    }
 
     // Generic data enums keep an unsubstituted template plus the parameter order;
     // concrete instantiations (`Box<Int>`) are materialized on demand via

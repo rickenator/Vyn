@@ -285,7 +285,10 @@ Construction:
 p<Point> = Point { x = 10, y = 20 }
 ```
 
-C-like enums currently lower to sequential `i64` constants:
+C-like enums are first-class typed values — `Direction::East` has type
+`Direction`, `println` renders `East`'s value as `Direction::East`, and
+`match`/`select` dispatch on named variants with the same exhaustiveness
+requirement as data-carrying enums:
 
 ```vyb
 enum Direction {
@@ -294,9 +297,19 @@ enum Direction {
     East,
     West
 }
+
+d<Direction> = Direction::East
+println(d)                 // Direction::East
+match (d) {
+    North -> "north",
+    East  -> "east",
+    ?     -> "other"
+}
 ```
 
-Tagged unions with payloads are planned for a later release.
+Data-carrying (tagged-union) enums — `enum Shape { Circle(Float),
+Rect(Float, Float) }` — compile to a value-semantics `{ i64 tag, [N x i8] data }`
+union and construct/match with payloads (`Shape::Circle(2.0)`, `Circle(r) ->`).
 
 Study:
 

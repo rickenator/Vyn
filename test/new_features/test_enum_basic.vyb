@@ -1,20 +1,17 @@
-// @test: C-like enum declaration and variant access
-// @description: Enum variants map to sequential integer constants (0, 1, 2, ...)
+// @test: C-like enum variant produces a distinct typed value
+// @description: enum variants are first-class typed values (not raw Int); println renders Enum::Variant
 // @category: types, enum
 // @expect: pass
-// @expect-output: 0
-// @expect-output: 1
-// @expect-output: 2
-// @expect-output: 0
+// @expect-output: Color::Red
+// @expect-output: Color::Green
+// @expect-return: 0
 
 enum Color { Red, Green, Blue }
 
 main()<Int> -> {
-    r<Int> = Color::Red
-    g<Int> = Color::Green
-    b<Int> = Color::Blue
+    r<Color> = Color::Red
+    g<Color> = Color::Green
     println(r)
     println(g)
-    println(b)
-    return r
+    return 0
 }

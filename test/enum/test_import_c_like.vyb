@@ -1,14 +1,14 @@
-// @test: C-like enum constants across import
-// @description: importing a module re-exports C-like enum variant constants (i64 by design)
+// @test: C-like enum typed values across import
+// @description: importing a module re-exports a C-like enum as a distinct typed value; Enum::Variant renders Enum::Variant
 // @category: enums, modules, import
 // @expect: pass
-// @expect-output: 2
-// @expect-return: 2
+// @expect-output: Direction::East
+// @expect-return: 0
 
 import itermod
 
 main()<Int> -> {
-    d<Int> = Direction::East
-    println_int(d)
-    return d
+    d<Direction> = Direction::East
+    println(d)
+    return 0
 }

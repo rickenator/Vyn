@@ -1,17 +1,17 @@
 // @test: Enum with match statement
-// @description: Enum variants can be used with match for dispatch
+// @description: C-like enum variants are matched by name and dispatch on the runtime tag
 // @category: types, enum, match
 // @expect: pass
 // @expect-output: East
-// @expect-output: 0
+// @expect-return: 0
 
 enum Direction { North, South, East, West }
 
 main()<Int> -> {
-    d<Int> = Direction::East
+    d<Direction> = Direction::East
     match (d) {
-        0 -> println("North"),
-        2 -> println("East"),
+        North -> println("North"),
+        East -> println("East"),
         ? -> println("Other")
     }
     return 0

@@ -1,0 +1,17 @@
+// @test: println/pack of a payload enum renders a readable value
+// @description: printing a tagged-union enum no longer crashes (it was mistakenly treated as a String struct); renders Shape::Circle(payload) and handles unit variants + string concat
+// @category: enums, print, string
+// @expect: pass
+// @expect-output: Shape::Circle(2.5)
+// @expect-return: 0
+
+enum Shape { Circle(Float), Rect(Float, Float), Empty }
+
+main()<Int> -> {
+    c<Shape> = Shape::Circle(2.5)
+    e<Shape> = Shape::Empty
+    println(c)
+    println(e)
+    println("shape: " + Shape::Rect(1.5, 2.5))
+    return 0
+}

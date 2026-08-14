@@ -9,8 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **C-like enums are now first-class typed values** — `enum Color { Red, Green,
+  Blue }` no longer lowers each variant to a raw `i64`. Variants are distinct
+  values of the named enum type (`r<Color> = Color::Red`), represented with the
+  same value-semantics `{ i64 tag, [N x i8] data }` tagged-union layout that
+  data-carrying enums use. `println(v)` renders `Color::Red`, and `match` /
+  `select` dispatch on named variants with the same exhaustiveness enforcement
+  as data enums (every variant or a wildcard). Structurally identical C-like
+  enums are disambiguated by their concrete type name because LLVM deduplicates
+  identical struct layouts. The raw positional tag of a variant remains
+  available for FFI-style access. Affected tests updated:
+  `test/enum/test_import_c_like.vyb`, `test/new_features/test_enum_basic.vyb`,
+  `test/new_features/test_enum_match.vyb`,
+  `test/bindgen/test_libsample_bindings.vyb`; new coverage in
+  `test/units/test_enum_clike_select.vyb` and
+  `test/units/test_enum_clike_non_exhaustive.vyb`.
+
+### Fixed
+- **Printing a payload enum no longer crashes** — a tagged-union enum (a
+  2-element struct `{ i64 tag, [N x i8] data }`) was mistaken for a Vyb `String`
+  `{ ptr, len }` during string conversion, extracting the tag as a `char*` and
+  failing module verification with a segfault. String-struct detection now
+  requires a pointer first field, and enum values render as readable
+  `Enum::Variant(payload)` strings (covered by `test/enum/test_print_enum.vyb`).
+
 ### Added
-- **`vyb bindgen` (MVP)** — new `vyb bindgen <header.h> [-o out.vyb]` subcommand that parses a C header subset (typedefs, `struct`/`enum` declarations, scalar/pointer types, trailing `...`) and emits an importable Vyb module: `share(all)` bodyless extern functions (which lower to ExternalLinkage forward declarations and resolve against the host C ABI), `#[repr(C)]` structs, and enums. Functions, structs, and enums re-export across `import` (C-like variant constants remain `Int` by design). Covered by `test/bindgen/libsample.h`, `test/bindgen/libsample.vyb`, and `test/bindgen/test_libsample_bindings.vyb`. Full libclang/preprocessor-based parsing remains future work (see TODO FFI).
+- **`vyb bindgen` (MVP)** — new `vyb bindgen <header.h> [-o out.vyb]` subcommand that parses a C header subset (typedefs, `struct`/`enum` declarations, scalar/pointer types, trailing `...`) and emits an importable Vyb module: `share(all)` bodyless extern functions (which lower to ExternalLinkage forward declarations and resolve against the host C ABI), `#[repr(C)]` structs, and enums. Functions, structs, and enums re-export across `import` (including C-like enums as typed values once the language change landed). Covered by `test/bindgen/libsample.h`, `test/bindgen/libsample.vyb`, and `test/bindgen/test_libsample_bindings.vyb`. Full libclang/preprocessor-based parsing remains future work (see TODO FFI).
 
 - **Variadic C functions** — a trailing `...` in an extern C parameter list now marks the declaration as variadic. Codegen emits a true LLVM vararg function, and call sites accept any number of extra arguments beyond the fixed parameters (rejecting calls with too few). Vyb `String` varargs auto-extract their `char*` data pointer so C varargs such as `printf("%s", s)` receive a C string; `printf("%d-%s", 7, "vyb")` is covered by `test/ffi/variadic_c_printf.vyb`. Variadic functions must be extern/forward declarations (a body is rejected).
 

@@ -455,6 +455,23 @@ const LLVMCodegen::TaggedEnumInfo* LLVMCodegen::findTaggedEnum(llvm::Type* struc
     return nullptr;
 }
 
+// Resolve the tagged-union enum info for a concrete AST type name. This is
+// preferred over the structural lookup above because LLVM deduplicates identical
+// struct layouts, so two C-like enums (both `{ i64, [1 x i8] }`) or two data
+// enums with the same payload would otherwise be ambiguous.
+const LLVMCodegen::TaggedEnumInfo* LLVMCodegen::findTaggedEnum(vyb::ast::TypeNode* typeNode) {
+    if (!typeNode) return nullptr;
+    auto* tn = dynamic_cast<ast::TypeName*>(typeNode);
+    if (!tn || !tn->identifier) return nullptr;
+    const std::string base = tn->identifier->name;
+    std::string lookup = base;
+    if (!tn->genericArgs.empty()) {
+        lookup = mangleGenericTypeName(base, tn->genericArgs);
+    }
+    auto it = taggedEnumInfo.find(lookup);
+    return (it != taggedEnumInfo.end()) ? &it->second : nullptr;
+}
+
 // Build a tagged-union enum value for the given variant. For unit variants pass
 // an empty payloadVals. The result is an in-memory struct { i64 tag, [N x i8] data }.
 llvm::Value* LLVMCodegen::buildTaggedEnumValue(const std::string& enumName, const std::string& variantName,

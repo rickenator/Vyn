@@ -14,8 +14,8 @@ main()<Int> -> {
         println_int(n)
         puts("hey from bindgen")
         p<Point> = Point { x = 1, y = 2 }
-        c<Int> = Color::COLOR_GREEN
-        println_int(c)
+        c<Color> = Color::COLOR_GREEN
+        println(c)
     }
     return 0
 }

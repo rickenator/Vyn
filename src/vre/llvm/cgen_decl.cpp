@@ -1056,7 +1056,40 @@ void LLVMCodegen::visit(vyb::ast::EnumDeclaration* node) {
     }
 
     if (!hasData || !node->genericParams.empty()) {
-        // C-like integer enum: each variant maps to a sequential i64 constant.
+        if (!hasData && node->genericParams.empty()) {
+            // C-like enum → first-class typed value: build a tag-only tagged union
+            // { i64 tag, [1 x i8] data }, same value-semantics layout data enums use,
+            // so variant access, printing, and match/select all reuse the existing
+            // tagged-union machinery. The sequential i64 constants are retained so a
+            // variant's raw positional tag remains queryable for FFI-style access.
+            TaggedEnumInfo info;
+            unsigned currentValue = 0;
+            for (const auto& variantNode : node->variants) {
+                if (!variantNode || !variantNode->name) continue;
+                info.variantTags[variantNode->name->name] = currentValue;
+                enumVariantValues[enumName + "::" + variantNode->name->name] =
+                    llvm::ConstantInt::get(int64Type, static_cast<int64_t>(currentValue), true);
+                currentValue++;
+            }
+            info.payloadBytes = 1;
+            info.llvmType = llvm::StructType::get(*context,
+                {llvm::Type::getInt64Ty(*context),
+                 llvm::ArrayType::get(llvm::Type::getInt8Ty(*context), 1)},
+                false);
+
+            UserTypeInfo typeInfo;
+            typeInfo.llvmType = info.llvmType;
+            typeInfo.isStruct = true;
+            userTypeMap[enumName] = typeInfo;
+            taggedEnumInfo[enumName] = info;
+
+            VYB_CDBG << "DEBUG: Registered C-like enum " << enumName << " as a typed tag-only tagged union ("
+                     << info.variantTags.size() << " variants)" << std::endl;
+            m_currentLLVMValue = nullptr;
+            return;
+        }
+
+        // Generic C-like enum (rare): fall back to sequential i64 constants.
         int64_t currentValue = 0;
         for (const auto& variantNode : node->variants) {
             if (!variantNode || !variantNode->name) continue;

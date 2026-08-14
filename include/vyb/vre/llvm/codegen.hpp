@@ -214,6 +214,7 @@ private:
     // Helper methods
     llvm::Type* codegenType(vyb::ast::TypeNode* typeNode); // Converts vyb::TypeNode to llvm::Type
     const TaggedEnumInfo* findTaggedEnum(llvm::Type* structTy) const;
+    const TaggedEnumInfo* findTaggedEnum(vyb::ast::TypeNode* typeNode); // Resolve by concrete AST type name
     llvm::Value* buildTaggedEnumValue(const std::string& enumName, const std::string& variantName,
                                       std::vector<llvm::Value*> payloadVals);
     llvm::Value* extractEnumVariantField(llvm::Value* enumVal, llvm::StructType* payloadTy, unsigned fieldIdx);
@@ -307,6 +308,7 @@ private:
 
     // ToString conversion helpers for mixed-type string concatenation
     llvm::Value* generateToStringCall(llvm::Value* value, llvm::Type* valueType, vyb::ast::TypeNode* astType, SourceLocation loc);
+    llvm::Value* generateTaggedEnumToString(llvm::Value* value, const TaggedEnumInfo& info, const std::string& typeName, SourceLocation loc);
     llvm::Value* generateMixedStringConcatenation(llvm::Value* leftValue, llvm::Value* rightValue,
                                                 vyb::ast::TypeNode* leftTypeNode, vyb::ast::TypeNode* rightTypeNode, SourceLocation loc);
     std::string resolveTypeAliasToBaseName(vyb::ast::TypeNode* typeNode);

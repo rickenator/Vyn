@@ -17,13 +17,13 @@ llvm::Value* LLVMCodegen::generateStringConcatenation(llvm::Value* leftStr, llvm
     // If either operand is a String struct {ptr, len}, extract the pointer
     if (leftStr->getType()->isStructTy()) {
         llvm::StructType* st = llvm::cast<llvm::StructType>(leftStr->getType());
-        if (st->getNumElements() == 2) {
+        if (st->getNumElements() == 2 && st->getElementType(0)->isPointerTy()) {
             leftStr = builder->CreateExtractValue(leftStr, 0, "left.str.data");
         }
     }
     if (rightStr->getType()->isStructTy()) {
         llvm::StructType* st = llvm::cast<llvm::StructType>(rightStr->getType());
-        if (st->getNumElements() == 2) {
+        if (st->getNumElements() == 2 && st->getElementType(0)->isPointerTy()) {
             rightStr = builder->CreateExtractValue(rightStr, 0, "right.str.data");
         }
     }
@@ -243,9 +243,23 @@ llvm::Value* LLVMCodegen::generateToStringCall(llvm::Value* value, llvm::Type* v
     if (valueType->isStructTy()) {
         llvm::StructType* structType = llvm::cast<llvm::StructType>(valueType);
         if (structType->getNumElements() == 2) {
-            // This is a String struct {ptr, len}, extract the data pointer
-            llvm::Value* dataPtr = builder->CreateExtractValue(value, 0, "str.data_for_concat");
-            return dataPtr;
+            // A tagged-union enum is also a 2-element struct { i64 tag, [N x i8] data }.
+            // Distinguish it from a Vyb String { ptr, len } before extracting the "data".
+            // Prefer a name-based lookup: LLVM deduplicates identical struct
+            // layouts, so two C-like enums both lower to `{ i64, [1 x i8] }` and
+            // a purely structural match could resolve the wrong variant names.
+            const TaggedEnumInfo* enumInfo = astType ? findTaggedEnum(astType) : nullptr;
+            if (!enumInfo) enumInfo = findTaggedEnum(valueType);
+            if (enumInfo) {
+                std::string typeName = astType ? astType->toString() : "";
+                return generateTaggedEnumToString(value, *enumInfo, typeName, loc);
+            }
+            // Only treat it as a String struct {ptr, len} when the first field is a
+            // pointer; otherwise fall through to the custom-struct JSON path below.
+            if (structType->getElementType(0)->isPointerTy()) {
+                llvm::Value* dataPtr = builder->CreateExtractValue(value, 0, "str.data_for_concat");
+                return dataPtr;
+            }
         }
 
         // Check if this is a complex/custom struct type that needs JSON serialization
@@ -388,6 +402,85 @@ llvm::Value* LLVMCodegen::generateToStringCall(llvm::Value* value, llvm::Type* v
     return builder->CreateCall(toStringFunc, {value}, "tostring");
 }
 
+// Render a tagged-union enum value as a readable string like `Shape::Circle(2.5)`
+// or `Shape::Circle` for a unit variant. Payload fields are converted individually
+// via generateToStringCall so nested enums/strings render correctly.
+llvm::Value* LLVMCodegen::generateTaggedEnumToString(llvm::Value* value, const TaggedEnumInfo& info,
+                                                     const std::string& typeName, SourceLocation loc) {
+    if (!value) return nullptr;
+
+    llvm::Value* tag = builder->CreateExtractValue(value, 0, "enum.tostring.tag");
+    llvm::Function* currentFunc = builder->GetInsertBlock()->getParent();
+    llvm::BasicBlock* origBB = builder->GetInsertBlock();
+
+    llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(*context, "enum.tostring.merge", currentFunc);
+    builder->SetInsertPoint(mergeBB);
+    llvm::PHINode* resultPhi = builder->CreatePHI(int8PtrType, info.variantTags.size() + 1, "enum.tostring.result");
+    builder->SetInsertPoint(origBB);
+
+    auto concatFragment = [&](llvm::Value* acc, llvm::Value* fragment) -> llvm::Value* {
+        if (!acc) return fragment;
+        return generateStringConcatenation(acc, fragment, loc);
+    };
+
+    std::map<unsigned, llvm::BasicBlock*> tagToBB;
+    for (const auto& vt : info.variantTags) {
+        llvm::BasicBlock* bb = llvm::BasicBlock::Create(*context, "enum.tostring." + vt.first, currentFunc);
+        tagToBB[vt.second] = bb;
+    }
+    llvm::BasicBlock* defaultBB = llvm::BasicBlock::Create(*context, "enum.tostring.unknown", currentFunc);
+
+    const std::string prefix = typeName.empty() ? "enum" : typeName;
+    for (const auto& vt : info.variantTags) {
+        const std::string& variantName = vt.first;
+        builder->SetInsertPoint(tagToBB[vt.second]);
+
+        llvm::Value* acc = builder->CreateGlobalStringPtr(prefix, "enum.tostring.prefix");
+        acc = concatFragment(acc, builder->CreateGlobalStringPtr("::", "enum.tostring.sep"));
+        acc = concatFragment(acc, builder->CreateGlobalStringPtr(variantName, "enum.tostring.variant"));
+
+        auto payIt = info.variantPayloadTypes.find(variantName);
+        if (payIt != info.variantPayloadTypes.end() && payIt->second) {
+            llvm::StructType* payloadTy = payIt->second;
+            acc = concatFragment(acc, builder->CreateGlobalStringPtr("(", "enum.tostring.lparen"));
+            for (unsigned i = 0; i < payloadTy->getNumElements(); ++i) {
+                if (i > 0) {
+                    acc = concatFragment(acc, builder->CreateGlobalStringPtr(", ", "enum.tostring.comma"));
+                }
+                llvm::Value* fieldStr = builder->CreateGlobalStringPtr("?", "enum.tostring.q");
+                llvm::Value* fieldVal = extractEnumVariantField(value, payloadTy, i);
+                if (fieldVal) {
+                    llvm::Value* converted = generateToStringCall(fieldVal, fieldVal->getType(), nullptr, loc);
+                    if (converted) fieldStr = converted;
+                }
+                acc = concatFragment(acc, fieldStr);
+            }
+            acc = concatFragment(acc, builder->CreateGlobalStringPtr(")", "enum.tostring.rparen"));
+        }
+
+        if (!acc) acc = builder->CreateGlobalStringPtr("", "enum.tostring.empty");
+        builder->CreateBr(mergeBB);
+        resultPhi->addIncoming(acc, tagToBB[vt.second]);
+    }
+
+    builder->SetInsertPoint(defaultBB);
+    llvm::Value* unknownStr = builder->CreateGlobalStringPtr(prefix, "enum.tostring.unknownstr");
+    builder->CreateBr(mergeBB);
+    resultPhi->addIncoming(unknownStr, defaultBB);
+
+    builder->SetInsertPoint(origBB);
+    llvm::SwitchInst* switchInst = builder->CreateSwitch(tag, defaultBB, static_cast<unsigned>(tagToBB.size()));
+    for (const auto& kv : tagToBB) {
+        auto* tagConst = llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(int64Type, kv.first, true));
+        switchInst->addCase(tagConst, kv.second);
+    }
+
+    // Continue emitting the rest of the function inside the merge block so the
+    // forwarded enum string is dominated and the block terminates normally.
+    builder->SetInsertPoint(mergeBB);
+    return resultPhi;
+}
+
 // Enhanced string concatenation that handles mixed types by converting non-strings to strings
 llvm::Value* LLVMCodegen::generateMixedStringConcatenation(llvm::Value* leftValue, llvm::Value* rightValue,
                                                          vyb::ast::TypeNode* leftTypeNode, vyb::ast::TypeNode* rightTypeNode, SourceLocation loc) {
@@ -405,7 +498,7 @@ llvm::Value* LLVMCodegen::generateMixedStringConcatenation(llvm::Value* leftValu
     // Also check for String struct type
     if (leftValue->getType()->isStructTy()) {
         llvm::StructType* st = llvm::cast<llvm::StructType>(leftValue->getType());
-        if (st->getNumElements() == 2) leftIsString = true;
+        if (st->getNumElements() == 2 && st->getElementType(0)->isPointerTy()) leftIsString = true;
     }
 
     // Determine if right operand is already a string
@@ -414,7 +507,7 @@ llvm::Value* LLVMCodegen::generateMixedStringConcatenation(llvm::Value* leftValu
     // Also check for String struct type
     if (rightValue->getType()->isStructTy()) {
         llvm::StructType* st = llvm::cast<llvm::StructType>(rightValue->getType());
-        if (st->getNumElements() == 2) rightIsString = true;
+        if (st->getNumElements() == 2 && st->getElementType(0)->isPointerTy()) rightIsString = true;
     }
 
     // Convert left operand to string if needed

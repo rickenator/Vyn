@@ -69,7 +69,7 @@ is the working audit for what needs to be implemented next.
 - [x] **Vec mutation through borrowed struct fields** — `s.items.push(val)` where `s<their<T>>` now correctly mutates in-place; member-expression Vec calls now get a field *pointer* (not a loaded copy)
 - [x] **Semantic use-after-free fix** — `handleVecMethodCallOnMember` no longer stores raw pointers from temporary `VecType` objects into `expressionTypes`; all return types are cloned into `node->type` first
 - [x] **`test/new_features` 100% pass** — All new-features tests pass (quicksort, stack, insertion sort, etc.)
-- [x] **C-like enum codegen** — `enum Color { Red, Green, Blue }` compiles; variants become sequential `i64` constants (0, 1, 2); `Color::Red` resolves correctly in all expression contexts including `match`
+- [x] **C-like enum codegen** — `enum Color { Red, Green, Blue }` compiles; variants are first-class typed values (`r<Color> = Color::Red`) rendered as `Color::Red` by `println`, matching by name in `match`/`select` with the same exhaustiveness as data enums; the raw positional tag stays available for FFI
 - [x] **Silence optimization pass messages** — `"Applying IR optimization passes"` / `"Skipping IR optimization"` now gated behind `--debug-codegen`; compiler is quiet in normal use
 
 ---
@@ -253,7 +253,7 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
 - [x] **Native `--link <lib-or-path>` flow** — Repeatable build flag passes `-l<lib>` or explicit library/object paths to the native linker
 - [x] **Variadic C functions** — `extern "C" { printf(format<loc<Int8>>, ...)<Int> }`; a trailing `...` marks the declaration variadic, codegen emits `isVarArg`, and call sites accept any number of extra arguments (with Vyb String varargs auto-extracting their `char*` data pointer so `printf("%s", s)` works). `printf("%d-%s", 7, "vyb")` is covered by `test/ffi/variadic_c_printf.vyb`.
 - [x] **`vyb bindgen` (MVP)** — `vyb bindgen <header.h> [-o out.vyb]` parses a C subset (typedefs, `struct`/`enum` declarations, scalar/pointer types, trailing `...` varargs) and emits `share(all)` bodyless extern declarations + `#[repr(C)]` structs + enums. Functions, structs, and enums (C-like constants and payload enums) re-export across `import` and resolve against the host C ABI; covered by `test/bindgen/libsample.vyb` + `test/bindgen/test_libsample_bindings.vyb` (and `test/enum/test_import_c_like.vyb` / `test_import_data_enum.vyb`).
-- [ ] **`vyb bindgen` (full, v0.6+)** — libclang-based C parsing (preprocessor/macros, function pointers, bitfields, array-as-param shape). Note: C-like enum variants are i64 constants by design (see enum tests); a distinct typed enum value for C-like enums would be a separate language change.
+- [ ] **`vyb bindgen` (full, v0.6+)** — libclang-based C parsing (preprocessor/macros, function pointers, bitfields, array-as-param shape). Note: C-like enum variants are now distinct typed values (see enum tests); FFI functions that take a C enum by value should type such params as the enum name or `Int`, and an explicit tag accessor is future work.
 
 ### 3. Ownership Types — Runtime Enforcement (HIGH PRIORITY)
 - [ ] **`my<T>` move semantics** — Enforce single-owner at compile time; error on copy. *Status: first-pass compile-time move tracking is in progress (working tree, uncommitted, tests in `test/ownership/move_*.vyb` incomplete).*
@@ -286,7 +286,7 @@ Vyb needs a way to express sum types. Essential for `Option<T>`, `Result<T,E>`, 
 expressive APIs. **Vyb-natural approach:** enums should integrate with the aspect system
 and pattern matching, not be a separate OOP mechanism.
 
-- [x] **Enum declaration syntax** — `enum Direction { North, South, East, West }` — variants compile to sequential `i64` integer constants (0, 1, 2, …); access via `Direction::North`
+- [x] **Enum declaration syntax** — `enum Direction { North, South, East, West }` — variants are distinct typed values of the enum type (`Direction::North`), rendered `Direction::North`, with `match`/`select` dispatch and exhaustiveness
 - [x] **Enum variants with data** — `enum Shape { Circle(Float), Rect(Float, Float) }` and generic `enum Box<T> { Value(T), Empty }`: a value-semantics `{ i64 tag, [N x i8] data }` representation is built in codegen, monomorphized per concrete type for generic enums (`Box<Int>::Value(x)` with explicit type args)
 - [x] **Pattern matching on enums (match/select)** — In `match`, enum variant patterns (`Circle(r) ->`) dispatch on the runtime tag and bind payload fields; unit variants match bare (`Unit ->`), and a match must be exhaustive. `select` mirrors this, dispatching on variants and enforcing exhaustiveness the same way.
 - [x] **Enum methods via `bind`** — `bind Drawable -> Shape { ... }` — an aspect `bind` can target a user-defined enum (concrete or generic, e.g. `bind Render -> Box<Int>`), and the built-in generic enums `Option<T>` / `Result<T,E>`; methods dispatch on the concrete variant with substituted payloads
@@ -701,5 +701,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: August 2026*
 *Current Version: Vyb v0.5.4 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 816 tests passing (harness, 100%)*
+*Overall Status: ~60-65% complete toward 1.0 — 819 tests passing (harness, 100%)*
 *SUGGESTIONS.md merged into this document.*
