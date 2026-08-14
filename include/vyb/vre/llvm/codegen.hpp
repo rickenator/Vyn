@@ -226,6 +226,7 @@ private:
     std::string mangleGenericTypeName(const std::string& baseName, const std::vector<vyb::ast::TypeNodePtr>& typeArgs); // Generate mangled name like Box_Int
     llvm::StructType* monomorphizeStruct(const std::string& baseName, const std::vector<vyb::ast::TypeNodePtr>& typeArgs); // Generate specialized struct
     llvm::StructType* monomorphizeEnum(const std::string& baseName, const std::vector<vyb::ast::TypeNodePtr>& typeArgs);   // Generate specialized tagged-union enum
+    std::vector<vyb::ast::TypeNodePtr> applyTypeSubstitutions(const std::vector<vyb::ast::TypeNodePtr>& typeArgs);
     void generateTypeMetadata(const std::string& typeName, vyb::ast::StructDeclaration* structDecl); // Generate type metadata for JSON/reflection
     void registerTypeMetadata(); // Register all type metadata at program startup
     void registerTypeNames(); // Register all compile-time-known type names in the runtime type registry
@@ -289,6 +290,7 @@ private:
                                                      const std::map<std::string, std::string>& substitutions);
     llvm::Type* resolveReturnTypeWithSubstitution(vyb::ast::TypeNode* typeNode,
                                                   const std::map<std::string, std::string>& substitutions);
+    std::string replaceTypeTokens(const std::string& s, const std::string& token, const std::string& repl);
 
     // Current type substitutions active during monomorphization
     std::map<std::string, std::string> currentTypeSubstitutions;

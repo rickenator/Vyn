@@ -31,6 +31,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test/ffi/enum_by_value.vyb`.
 
 ### Fixed
+- **Generic functions returning generic struct/enum types monomorphize to the
+  concrete type** — a call like `make_box<Int>(7)` (or the inferred
+  `make_box("hi")`) now resolves its return type to `Box<Int>`/`Box<String>`
+  instead of an unresolved `Box<T>`. Explicit type arguments are honored when
+  resolving the return type, and a `ConstructionExpression` written with explicit
+  generic args (`make_box<Int>(7)`) is dispatched through the generic-call path
+  (mirroring LLVM codegen). Two distinct instantiations in one program (e.g.
+  `Box<Int>` and `Box<String>` side by side) no longer collide: the LLVM type
+  cache is bypassed while generic-function substitutions are active so shared
+  template AST nodes resolve per-instantiation, and struct/enum monomorphization
+  applies substitutions only when one is active so resolved type metadata is
+  preserved. Covered by `test/units/test_generic_struct_return.vyb`.
 - **Printing a payload enum no longer crashes** — a tagged-union enum (a
   2-element struct `{ i64 tag, [N x i8] data }`) was mistaken for a Vyb `String`
   `{ ptr, len }` during string conversion, extracting the tag as a `char*` and

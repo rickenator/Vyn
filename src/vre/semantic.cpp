@@ -2053,12 +2053,23 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             }
 
             std::map<std::string, ast::TypeNode*> substitutions;
-            for (size_t i = 0; i < node->arguments.size() && i < funcDecl->params.size(); ++i) {
-                auto argTypeIt = expressionTypes.find(node->arguments[i].get());
-                ast::TypeNode* argType = (argTypeIt != expressionTypes.end()) ? argTypeIt->second : nullptr;
-                if (argType) {
-                    unifyGenericType(funcDecl->params[i].typeNode.get(), argType,
-                                     genericParamNames, substitutions);
+            if (!node->explicitTypeArgs.empty()) {
+                // Explicit type arguments (e.g. `make_box<Int>(7)`) determine the
+                // substitutions directly, matched positionally to the type params.
+                for (size_t i = 0; i < node->explicitTypeArgs.size() && i < funcDecl->genericParams.size(); ++i) {
+                    if (funcDecl->genericParams[i] && funcDecl->genericParams[i]->name &&
+                        node->explicitTypeArgs[i]) {
+                        substitutions[funcDecl->genericParams[i]->name->name] = node->explicitTypeArgs[i].get();
+                    }
+                }
+            } else {
+                for (size_t i = 0; i < node->arguments.size() && i < funcDecl->params.size(); ++i) {
+                    auto argTypeIt = expressionTypes.find(node->arguments[i].get());
+                    ast::TypeNode* argType = (argTypeIt != expressionTypes.end()) ? argTypeIt->second : nullptr;
+                    if (argType) {
+                        unifyGenericType(funcDecl->params[i].typeNode.get(), argType,
+                                         genericParamNames, substitutions);
+                    }
                 }
             }
 
@@ -6139,6 +6150,32 @@ void SemanticAnalyzer::visit(ast::ConstructionExpression* node) {
          return;
     }
     const std::string& constructedName = typeNameNode->identifier->name;
+    // A ConstructionExpression whose "constructed type" is actually a generic
+    // function template invoked with explicit type args (e.g. `make_box<Int>(7)`)
+    // is a generic function call, not a struct construction. Delegate to the
+    // call path so the explicit type args are honored and the return type
+    // resolves to the substituted concrete type. The children are moved into a
+    // temporary CallExpression for analysis and then moved back, so the shared
+    // AST remains intact for the LLVM codegen pass (which re-dispatches this).
+    {
+        auto fnIt = functionRegistry.find(constructedName);
+        if (fnIt != functionRegistry.end() && fnIt->second &&
+            !fnIt->second->genericParams.empty() && !typeNameNode->genericArgs.empty()) {
+            for (auto& arg : node->arguments) if (arg) arg->accept(*this);
+            auto calleeId = std::make_unique<ast::Identifier>(node->loc, constructedName);
+            auto callExpr = std::make_unique<ast::CallExpression>(node->loc, std::move(calleeId), std::move(node->arguments));
+            callExpr->explicitTypeArgs = std::move(typeNameNode->genericArgs);
+            this->visit(static_cast<ast::CallExpression*>(callExpr.get()));
+            if (callExpr->type) {
+                node->type = callExpr->type;
+                expressionTypes[node] = node->type.get();
+            }
+            // Restore the moved children so the AST is unchanged for codegen.
+            node->arguments = std::move(callExpr->arguments);
+            typeNameNode->genericArgs = std::move(callExpr->explicitTypeArgs);
+            return;
+        }
+    }
     if (constructedName == "addr") {
         // ... (addr handling logic as before, ensure it's correct) ...
         if (node->arguments.size() != 1 || !node->arguments[0]) {

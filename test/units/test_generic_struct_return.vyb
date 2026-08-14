@@ -1,0 +1,24 @@
+// @test: generic functions returning generic struct types
+// @description: a generic function whose return type is a parameterized struct
+//   (e.g. `make_box<T>(v)<Box<T>>`) monomorphizes to the concrete struct for both
+//   explicit type args (`make_box<Int>(7)`) and inferred type args (`make_box("s")`),
+//   so the caller sees Box<Int>/Box<String> rather than an unresolved Box<T>.
+// @category: generics, monomorphization, structs, type-inference
+// @expect: pass
+// @expect-return: -77
+// @execute-jit: true
+
+struct Box<T> {
+    value<T>
+}
+
+make_box<T>(v<T>)<Box<T>> -> { return Box<T> { value = v } }
+
+main()<Int> -> {
+    b1<Box<Int>> = make_box<Int>(7)
+    b2<Box<String>> = make_box("hi")
+    if (b1.value == 7 && b2.value == "hi") {
+        return -77
+    }
+    return 1
+}

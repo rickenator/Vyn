@@ -350,10 +350,17 @@ llvm::Type* LLVMCodegen::codegenType(vyb::ast::TypeNode* typeNode) {
         return nullptr;
     }
 
-    // Check cache first
-    auto it = m_typeCache.find(typeNode);
-    if (it != m_typeCache.end()) {
-        return it->second;
+    // Check cache first. Skip the cache entirely while generic-function type
+    // substitutions are active: monomorphization reuses a single shared template
+    // AST for every instantiation, so the same TypeNode (e.g. `Box<T>`) resolves
+    // to *different* concrete types per instantiation and must not be cached
+    // globally (e.g. Box_Int for one call and Box_String for another).
+    const bool substitutionsActive = !currentTypeSubstitutions.empty();
+    if (!substitutionsActive) {
+        auto it = m_typeCache.find(typeNode);
+        if (it != m_typeCache.end()) {
+            return it->second;
+        }
     }
 
     llvm::Type* llvmType = nullptr;
@@ -831,7 +838,7 @@ llvm::Type* LLVMCodegen::codegenType(vyb::ast::TypeNode* typeNode) {
             return nullptr;
     }
 
-    if (llvmType) {
+    if (llvmType && !substitutionsActive) {
         m_typeCache[typeNode] = llvmType;
     }
     return llvmType;
@@ -858,6 +865,5 @@ void LLVMCodegen::visit(ast::TypeName* node) {
     m_currentLLVMValue = llvm::ConstantPointerNull::get(
         llvm::PointerType::get(*context, 0));
 }
-
 
 

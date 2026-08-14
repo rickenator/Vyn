@@ -99,12 +99,42 @@ ast::TypeNodePtr substituteTypeParameter(ast::TypeNode* typeNode,
     return typeNode->clone();
 }
 
+
+// Apply the currently-active generic-function type substitutions (e.g. T -> Int,
+// T -> Vec<Int>) to a list of generic type arguments, so a construction inside a
+// monomorphized body such as `Box<T> { value = v }` lands on the concrete struct
+// (Box_Int) instead of an unresolved Box_T.
+std::vector<vyb::ast::TypeNodePtr> LLVMCodegen::applyTypeSubstitutions(
+        const std::vector<vyb::ast::TypeNodePtr>& typeArgs) {
+    std::vector<vyb::ast::TypeNodePtr> out;
+    out.reserve(typeArgs.size());
+    for (const auto& arg : typeArgs) {
+        if (!arg) { out.emplace_back(); continue; }
+        if (currentTypeSubstitutions.empty()) {
+            out.push_back(arg->clone());
+            continue;
+        }
+        std::string subst = arg->toString();
+        for (const auto& kv : currentTypeSubstitutions) {
+            subst = replaceTypeTokens(subst, kv.first, kv.second);
+        }
+        out.push_back(typePatternToTypeNode(TypePattern::parse(subst), arg->loc));
+    }
+    return out;
+}
+
 // Monomorphize a generic struct: create specialized LLVM type with type parameters substituted
 // Example: Box<T> + [Int] -> Box_Int struct with field type T replaced by Int
 llvm::StructType* LLVMCodegen::monomorphizeStruct(const std::string& baseName,
                                                    const std::vector<ast::TypeNodePtr>& typeArgs) {
+    // Apply generic-function type substitutions only when one is active; otherwise
+    // use the caller's type args directly so resolved type metadata is preserved.
+    std::vector<ast::TypeNodePtr> substArgs;
+    const std::vector<ast::TypeNodePtr>& effectiveArgs =
+        currentTypeSubstitutions.empty() ? typeArgs
+                                         : (substArgs = applyTypeSubstitutions(typeArgs), substArgs);
     // Generate mangled name for this instantiation
-    std::string mangledName = mangleGenericTypeName(baseName, typeArgs);
+    std::string mangledName = mangleGenericTypeName(baseName, effectiveArgs);
 
     VYB_CDBG << "DEBUG: Monomorphizing " << baseName << " with " << typeArgs.size()
               << " type arguments -> " << mangledName << std::endl;
@@ -139,9 +169,9 @@ llvm::StructType* LLVMCodegen::monomorphizeStruct(const std::string& baseName,
         const auto& param = templateNode->genericParams[i];
         if (param && param->name) {
             std::string paramName = param->name->name;
-            typeParamMap[paramName] = typeArgs[i].get();
+            typeParamMap[paramName] = effectiveArgs[i].get();
             VYB_CDBG << "DEBUG: Type parameter mapping: " << paramName << " -> "
-                      << typeArgs[i]->toString() << std::endl;
+                      << effectiveArgs[i]->toString() << std::endl;
         }
     }
 
@@ -207,7 +237,13 @@ llvm::StructType* LLVMCodegen::monomorphizeStruct(const std::string& baseName,
 // Box_Int { i64 tag, [N x i8] data } with Value's payload field typed Int.
 llvm::StructType* LLVMCodegen::monomorphizeEnum(const std::string& baseName,
                                                  const std::vector<ast::TypeNodePtr>& typeArgs) {
-    std::string mangledName = mangleGenericTypeName(baseName, typeArgs);
+    // Apply generic-function type substitutions only when one is active; otherwise
+    // use the caller's type args directly so resolved type metadata is preserved.
+    std::vector<ast::TypeNodePtr> substArgs;
+    const std::vector<ast::TypeNodePtr>& effectiveArgs =
+        currentTypeSubstitutions.empty() ? typeArgs
+                                         : (substArgs = applyTypeSubstitutions(typeArgs), substArgs);
+    std::string mangledName = mangleGenericTypeName(baseName, effectiveArgs);
 
     // Built-in generic data enums: `enum Option<T> { Some(T), None }` and
     // `enum Result<T, E> { Ok(T), Err(E) }`. They are not declared in source, so
@@ -234,8 +270,8 @@ llvm::StructType* LLVMCodegen::monomorphizeEnum(const std::string& baseName,
         }
         unsigned payloadBytes = 0;
         for (const auto& pv : payloadVariants) {
-            if (pv.typeArgIdx >= typeArgs.size() || !typeArgs[pv.typeArgIdx]) continue;
-            llvm::Type* payloadTy = codegenType(typeArgs[pv.typeArgIdx].get());
+            if (pv.typeArgIdx >= effectiveArgs.size() || !effectiveArgs[pv.typeArgIdx]) continue;
+            llvm::Type* payloadTy = codegenType(effectiveArgs[pv.typeArgIdx].get());
             if (!payloadTy) payloadTy = llvm::Type::getInt64Ty(*context);
             llvm::StructType* payloadStruct = llvm::StructType::get(*context, {payloadTy}, false);
             info.variantPayloadTypes[pv.name] = payloadStruct;
@@ -263,7 +299,7 @@ llvm::StructType* LLVMCodegen::monomorphizeEnum(const std::string& baseName,
         return nullptr;
     }
     ast::EnumDeclaration* templateNode = templateIt->second;
-    if (typeArgs.size() != templateNode->genericParams.size()) {
+    if (effectiveArgs.size() != templateNode->genericParams.size()) {
         logError(SourceLocation(), "Type argument count mismatch for generic enum " + baseName);
         return nullptr;
     }
@@ -272,7 +308,7 @@ llvm::StructType* LLVMCodegen::monomorphizeEnum(const std::string& baseName,
     std::map<std::string, ast::TypeNode*> typeParamMap;
     for (size_t i = 0; i < templateNode->genericParams.size(); ++i) {
         const auto& param = templateNode->genericParams[i];
-        if (param && param->name) typeParamMap[param->name->name] = typeArgs[i].get();
+        if (param && param->name) typeParamMap[param->name->name] = effectiveArgs[i].get();
     }
 
     TaggedEnumInfo info;

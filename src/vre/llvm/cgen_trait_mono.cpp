@@ -525,11 +525,46 @@ llvm::Type* LLVMCodegen::resolveParameterTypeWithSubstitution(vyb::ast::TypeNode
                 );
                 return codegenType(concreteTypeNode.get());
             }
+
+            // Recursively substitute generic arguments so a parameterized type
+            // like Box<T> resolves to the concrete monomorphized struct Box_Int
+            // instead of falling through to codegenType(Box<T>) -> Box_T.
+            if (!typeName->genericArgs.empty()) {
+                std::string substituted = typeName->toString();
+                for (const auto& kv : substitutions) {
+                    substituted = replaceTypeTokens(substituted, kv.first, kv.second);
+                }
+                auto concreteNode = typePatternToTypeNode(TypePattern::parse(substituted), typeName->loc);
+                return codegenType(concreteNode.get());
+            }
         }
     }
 
     // Otherwise, use normal type resolution
     return codegenType(typeNode);
+}
+
+// Replace whole-word occurrences of `token` with `repl` in a type string, so a
+// substitution like T -> Vec<Int> composes with surrounding generic syntax.
+std::string LLVMCodegen::replaceTypeTokens(const std::string& s, const std::string& token, const std::string& repl) {
+    if (token.empty()) return s;
+    auto isIdChar = [](char c) {
+        return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+    };
+    std::string out;
+    out.reserve(s.size());
+    for (size_t i = 0; i < s.size();) {
+        if (i + token.size() <= s.size() && s.compare(i, token.size(), token) == 0 &&
+            (i == 0 || !isIdChar(s[i - 1])) &&
+            (i + token.size() == s.size() || !isIdChar(s[i + token.size()]))) {
+            out += repl;
+            i += token.size();
+        } else {
+            out += s[i];
+            ++i;
+        }
+    }
+    return out;
 }
 
 // Helper: Resolve return type with substitution
