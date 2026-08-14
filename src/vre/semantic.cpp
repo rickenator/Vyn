@@ -3489,8 +3489,28 @@ void SemanticAnalyzer::visit(ast::MemberExpression* node) {
         return;
     }
 
-    // Set the type of the member expression to the field's type
+    // Set the type of the member expression to the field's type, substituting the
+    // object's concrete generic arguments into the declared field type so e.g.
+    // `self.keys` on a `Map<Int, Int>` receiver types as `Vec<Int>` rather than the
+    // raw `Vec<K>` from the struct template (broken bare field access in generic
+    // bind bodies, and in any code touching a field of a concretely-typed generic).
     ast::TypeNode* fieldType = fieldIt->second;
+    auto genericOrderIt = structGenericParamOrder.find(baseStructName);
+    if (genericOrderIt != structGenericParamOrder.end()) {
+        if (auto* objTn = dynamic_cast<ast::TypeName*>(it->second)) {
+            if (objTn->identifier && objTn->identifier->name == baseStructName &&
+                objTn->genericArgs.size() == genericOrderIt->second.size()) {
+                std::map<std::string, ast::TypeNode*> typeArgs;
+                for (size_t i = 0; i < genericOrderIt->second.size(); ++i) {
+                    typeArgs[genericOrderIt->second[i]] = objTn->genericArgs[i].get();
+                }
+                ast::TypeNodePtr substituted = substituteGenericArgsForValidation(fieldType, typeArgs);
+                if (substituted) {
+                    fieldType = substituted.release();
+                }
+            }
+        }
+    }
     expressionTypes[node] = fieldType;
     node->type = std::shared_ptr<ast::TypeNode>(fieldType->clone());
 

@@ -1,0 +1,64 @@
+// @test: generic bind self member type resolution
+// @description: inside a bind method body, `self`'s concrete generic arguments
+//   are substituted into the declared struct field type, so `self.keys` on a
+//   `Map<Int, Int>` receiver types as `Vec<Int>` (not the raw `Vec<K>` template
+//   type), and a bounded bind's own type parameter resolves a struct payload
+//   field so it can be passed to a bounded helper like `hashit(self.v)`.
+// @category: aspect, bind, generics, type-resolution
+// @expect: pass
+// @expect-return: 0
+// @execute-jit: true
+
+import core::aspects
+
+struct Holder<T> {
+    v<T>
+}
+
+hashit<K<Hashable>>(k<K>)<Int> -> { return k.hash() }
+
+aspect Run {
+    go(self)<Int>
+}
+
+bind<K<Hashable>> Run -> Holder<K> {
+    go(self)<Int> -> {
+        return hashit(self.v)
+    }
+}
+
+struct Map<K, V> {
+    keys<Vec<K>>,
+    vals<Vec<V>>
+}
+
+aspect Assoc {
+    concrete_len(self)<Int>
+    let_len(self)<Int>
+}
+
+bind Assoc -> Map<Int, Int> {
+    concrete_len(self)<Int> -> {
+        k<Vec<Int>> = self.keys
+        return k.len()
+    }
+    let_len(self)<Int> -> {
+        return self.keys.len()
+    }
+}
+
+main()<Int> -> {
+    h<Holder<Int>> = Holder<Int> { v = 7 }
+    if (h.go() != hashit(7)) {
+        return 1
+    }
+
+    m<Map<Int, Int>> = Map<Int, Int> { keys = Vec<Int>(), vals = Vec<Int>() }
+    m.keys.push(1)
+    m.keys.push(2)
+    if (m.concrete_len() != 2 || m.let_len() != 2) {
+        return 2
+    }
+
+    return 0
+}

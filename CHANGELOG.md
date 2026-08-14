@@ -31,6 +31,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test/ffi/enum_by_value.vyb`.
 
 ### Fixed
+- **Struct field access substitutes the receiver's concrete generic args** — a
+  bare field read like `self.keys` now types against the receiver's actual generic
+  arguments instead of the raw struct-template types. Inside a generic bind (or
+  any concretely-typed generic value), `self.keys` on a `Map<Int, Int>` receiver
+  types as `Vec<Int>` rather than `Vec<K>`, so it can be assigned to a typed local
+  and `.len()` reads the correct size field; and a bounded bind's own type
+  parameter now resolves a struct payload field (`self.v` on `Holder<K>` types as
+  `K`), so the payload can be passed to a bounded helper like `hashit(self.v)`.
+  Covered by `test/units/test_bind_self_member_resolution.vyb`.
 - **Explicitly-typed `Vec` constructor `Vec<T>()` / `Vec<T>(n)` now works** — a
   typed construction (`Vec<Int>()`) parses `Vec<Int>` as a type name, so it was
   routed through generic struct-construction codegen, which returned a pointer to
