@@ -202,4 +202,69 @@ llvm::StructType* LLVMCodegen::monomorphizeStruct(const std::string& baseName,
     return specializedType;
 }
 
+// Monomorphize a generic data enum: create a specialized tagged-union LLVM type
+// with the type parameters substituted. Example: Box<T> + [Int] ->
+// Box_Int { i64 tag, [N x i8] data } with Value's payload field typed Int.
+llvm::StructType* LLVMCodegen::monomorphizeEnum(const std::string& baseName,
+                                                 const std::vector<ast::TypeNodePtr>& typeArgs) {
+    std::string mangledName = mangleGenericTypeName(baseName, typeArgs);
+
+    // Cached? (monomorphized structs are registered under their mangled name)
+    auto cacheIt = taggedEnumInfo.find(mangledName);
+    if (cacheIt != taggedEnumInfo.end()) return cacheIt->second.llvmType;
+
+    auto templateIt = genericEnumTemplates.find(baseName);
+    if (templateIt == genericEnumTemplates.end()) {
+        logError(SourceLocation(), "No generic enum template found for: " + baseName);
+        return nullptr;
+    }
+    ast::EnumDeclaration* templateNode = templateIt->second;
+    if (typeArgs.size() != templateNode->genericParams.size()) {
+        logError(SourceLocation(), "Type argument count mismatch for generic enum " + baseName);
+        return nullptr;
+    }
+
+    // Mapping from generic parameter name to concrete type argument (T -> Int).
+    std::map<std::string, ast::TypeNode*> typeParamMap;
+    for (size_t i = 0; i < templateNode->genericParams.size(); ++i) {
+        const auto& param = templateNode->genericParams[i];
+        if (param && param->name) typeParamMap[param->name->name] = typeArgs[i].get();
+    }
+
+    TaggedEnumInfo info;
+    unsigned payloadBytes = 0;
+    int64_t tag = 0;
+    for (const auto& v : templateNode->variants) {
+        if (!v || !v->name) continue;
+        const std::string& vname = v->name->name;
+        info.variantTags[vname] = static_cast<unsigned>(tag);
+        if (!v->associatedTypes.empty()) {
+            std::vector<llvm::Type*> fieldTypes;
+            for (const auto& t : v->associatedTypes) {
+                ast::TypeNodePtr sub = substituteTypeParameter(t.get(), typeParamMap);
+                llvm::Type* ft = sub ? codegenType(sub.get()) : nullptr;
+                if (!ft) ft = llvm::Type::getInt64Ty(*context);
+                fieldTypes.push_back(ft);
+            }
+            llvm::StructType* payloadTy = llvm::StructType::get(*context, fieldTypes, false);
+            info.variantPayloadTypes[vname] = payloadTy;
+            const llvm::DataLayout& dl = module->getDataLayout();
+            llvm::TypeSize sz = dl.getTypeAllocSize(payloadTy);
+            if (sz.getFixedValue() > payloadBytes) {
+                payloadBytes = static_cast<unsigned>(sz.getFixedValue());
+            }
+        }
+        tag++;
+    }
+    if (payloadBytes == 0) payloadBytes = 1;
+    info.payloadBytes = payloadBytes;
+
+    llvm::StructType* enumStruct = llvm::StructType::create(*context, mangledName);
+    enumStruct->setBody({llvm::Type::getInt64Ty(*context),
+        llvm::ArrayType::get(llvm::Type::getInt8Ty(*context), payloadBytes)}, /*isPacked=*/false);
+    info.llvmType = enumStruct;
+    taggedEnumInfo[mangledName] = info;
+    return enumStruct;
+}
+
 } // namespace vyb

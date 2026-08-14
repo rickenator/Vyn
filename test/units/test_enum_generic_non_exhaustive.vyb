@@ -1,0 +1,18 @@
+// @test: non-exhaustive match on a generic data enum is rejected
+// @description: a match on a generic tagged-union enum that does not cover every
+//   concrete variant is reported as not exhaustive.
+// @category: enum, generics, match, semantic, error
+// @expect: fail
+// @expect-error: not exhaustive
+
+enum Box<T> { Value(T), Empty }
+
+unwrap(b<Box<Int>>)<Int> -> {
+    match (b) {
+        Value(x) -> { return x }
+    }
+}
+
+main()<Int> -> {
+    return 0
+}

@@ -1023,6 +1023,15 @@ void LLVMCodegen::visit(vyb::ast::EnumDeclaration* node) {
         if (v && !v->associatedTypes.empty()) { hasData = true; break; }
     }
 
+    // Generic data enum (`enum Box<T> { Value(T), Empty }`): register the AST
+    // template. The concrete tagged-union struct for each instantiation (e.g.
+    // `Box_Int`) is monomorphized lazily when the type is used or constructed.
+    if (hasData && !node->genericParams.empty()) {
+        genericEnumTemplates[node->name->name] = node;
+        m_currentLLVMValue = nullptr;
+        return;
+    }
+
     if (!hasData || !node->genericParams.empty()) {
         // C-like integer enum: each variant maps to a sequential i64 constant.
         int64_t currentValue = 0;

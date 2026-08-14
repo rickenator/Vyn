@@ -1,0 +1,36 @@
+// @test: generic data enums in match and select
+// @description: a generic tagged-union enum (enum Box<T> { Value(T), Empty })
+//   constructs via explicit type args (Box<Int>::Value(42), Box<Int>::Empty),
+//   and match/select dispatch on the variant with substituted payload bindings.
+// @category: enum, generics, match, select, sum-types
+// @expect: pass
+// @expect-return: -77
+// @execute-jit: true
+
+enum Box<T> { Value(T), Empty }
+
+unwrap(b<Box<Int>>)<Int> -> {
+    match (b) {
+        Value(x) -> { return x }
+        Empty -> { return -1 }
+    }
+}
+
+pick(b<Box<String>>)<Int> -> {
+    s<Int> = select(b) -> {
+        Value(v) -> v.len(),
+        Empty -> -1
+    }
+    return s
+}
+
+main()<Int> -> {
+    a<Int> = unwrap(Box<Int>::Value(42))
+    z<Int> = unwrap(Box<Int>::Empty)
+    h<Int> = pick(Box<String>::Value("hello"))
+    e<Int> = pick(Box<String>::Empty)
+    if (a == 42 && z == -1 && h == 5 && e == -1) {
+        return -77
+    }
+    return 1
+}

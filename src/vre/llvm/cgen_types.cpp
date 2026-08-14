@@ -509,6 +509,16 @@ llvm::Type* LLVMCodegen::codegenType(vyb::ast::TypeNode* typeNode) {
             // MONOMORPHIZATION: Check if this is a generic struct instantiation (e.g., Box<Int>)
             // Before checking for primitive types, see if this matches a generic template
             if (!typeNameNode->genericArgs.empty()) {
+                // Generic data enum (e.g. Box<Int>): monomorphize the tagged union.
+                if (genericEnumTemplates.count(typeNameStr)) {
+                    llvm::StructType* enumTy = monomorphizeEnum(typeNameStr, typeNameNode->genericArgs);
+                    if (!enumTy) {
+                        logError(typeNode->loc, "Failed to monomorphize generic enum " + typeNameStr);
+                        return nullptr;
+                    }
+                    llvmType = enumTy;
+                    break;
+                }
                 auto templateIt = genericStructTemplates.find(typeNameStr);
                 if (templateIt != genericStructTemplates.end()) {
                     VYB_CDBG << "DEBUG: Detected generic struct instantiation: " << typeNameStr
@@ -834,7 +844,6 @@ void LLVMCodegen::visit(ast::TypeName* node) {
     m_currentLLVMValue = llvm::ConstantPointerNull::get(
         llvm::PointerType::get(*context, 0));
 }
-
 
 
 

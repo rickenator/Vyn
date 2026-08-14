@@ -714,6 +714,26 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
     // VYB_CDBG << "DEBUG: Checking if callee is MemberExpression..." << std::endl;
     if (auto memberExpr = dynamic_cast<vyb::ast::MemberExpression*>(node->callee.get())) {
         // Tagged-union enum variant constructor: Shape::Circle(x), Shape::Rect(a, b).
+        // Generic data enum variant constructor: Box<Int>::Value(x).
+        if (auto gi = dynamic_cast<ast::GenericInstantiationExpression*>(memberExpr->object.get())) {
+            if (auto enIdent = dynamic_cast<ast::Identifier*>(gi->baseExpression.get())) {
+                if (auto varIdent = dynamic_cast<ast::Identifier*>(memberExpr->property.get())) {
+                    if (genericEnumTemplates.count(enIdent->name)) {
+                        std::string mangled = mangleGenericTypeName(enIdent->name, gi->genericArguments);
+                        if (!taggedEnumInfo.count(mangled)) {
+                            monomorphizeEnum(enIdent->name, gi->genericArguments);
+                        }
+                        std::vector<llvm::Value*> payloadVals;
+                        for (auto& arg : node->arguments) {
+                            arg->accept(*this);
+                            payloadVals.push_back(m_currentLLVMValue);
+                        }
+                        m_currentLLVMValue = buildTaggedEnumValue(mangled, varIdent->name, payloadVals);
+                        return;
+                    }
+                }
+            }
+        }
         if (auto enIdent = dynamic_cast<vyb::ast::Identifier*>(memberExpr->object.get())) {
             if (auto varIdent = dynamic_cast<vyb::ast::Identifier*>(memberExpr->property.get())) {
                 auto tagIt = taggedEnumInfo.find(enIdent->name);
@@ -3414,6 +3434,32 @@ void LLVMCodegen::visit(ast::MemberExpression* node) {
 
     // Check for enum variant access: EnumName::VariantName
     if (!node->computed && node->property) {
+        // Generic data enum, unit variant used as a value: `Box<Int>::Empty`.
+        if (auto* gi = dynamic_cast<ast::GenericInstantiationExpression*>(node->object.get())) {
+            if (auto* baseIdent = dynamic_cast<ast::Identifier*>(gi->baseExpression.get())) {
+                if (auto* propIdent = dynamic_cast<ast::Identifier*>(node->property.get())) {
+                    if (genericEnumTemplates.count(baseIdent->name)) {
+                        std::string mangled = mangleGenericTypeName(baseIdent->name, gi->genericArguments);
+                        if (!taggedEnumInfo.count(mangled)) monomorphizeEnum(baseIdent->name, gi->genericArguments);
+                        auto tagEnumIt = taggedEnumInfo.find(mangled);
+                        const TaggedEnumInfo& tei = tagEnumIt->second;
+                        if (tei.variantPayloadTypes.count(propIdent->name)) {
+                            logError(node->loc, "Enum variant '" + propIdent->name +
+                                     "' of generic enum " + mangled + " requires constructor arguments");
+                            m_currentLLVMValue = nullptr;
+                            return;
+                        }
+                        if (!tei.variantTags.count(propIdent->name)) {
+                            logError(node->loc, "Unknown enum variant: " + baseIdent->name + "::" + propIdent->name);
+                            m_currentLLVMValue = nullptr;
+                            return;
+                        }
+                        m_currentLLVMValue = buildTaggedEnumValue(mangled, propIdent->name, {});
+                        return;
+                    }
+                }
+            }
+        }
         if (auto* objIdent = dynamic_cast<ast::Identifier*>(node->object.get())) {
             if (enumTypeNames.count(objIdent->name)) {
                 if (auto* propIdent = dynamic_cast<ast::Identifier*>(node->property.get())) {

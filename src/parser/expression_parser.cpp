@@ -609,6 +609,64 @@ regular_array_literal:
                 ident_idx++;
             }
 
+            // Generic enum construction: `Ident<Args>::Variant(...)` — e.g.
+            // `Box<Int>::Value(42)`. If the identifier is followed by a generic
+            // argument list whose matching `>` is followed by `::`, parse the
+            // args into a GenericInstantiationExpression and let the postfix
+            // `::` member-access handler attach the variant name and call.
+            {
+                bool is_generic_scoped = false;
+                size_t scan_pos = pos_;
+                while (scan_pos < tokens_.size() &&
+                       (tokens_[scan_pos].type == TokenType::COMMENT ||
+                        tokens_[scan_pos].type == TokenType::NEWLINE ||
+                        tokens_[scan_pos].type == TokenType::INDENT ||
+                        tokens_[scan_pos].type == TokenType::DEDENT)) {
+                    scan_pos++;
+                }
+                if (scan_pos + 1 < tokens_.size() && tokens_[scan_pos + 1].type == TokenType::LT) {
+                    int adepth = 0;
+                    size_t g = scan_pos + 1;
+                    bool closed = false;
+                    while (g < tokens_.size()) {
+                        if (tokens_[g].type == TokenType::LT) adepth++;
+                        else if (tokens_[g].type == TokenType::GT) {
+                            adepth--;
+                            if (adepth == 0) { closed = true; break; }
+                        }
+                        g++;
+                    }
+                    if (closed) {
+                        size_t after_gt = next_significant(g + 1);
+                        if (after_gt < tokens_.size() &&
+                            tokens_[after_gt].type == TokenType::COLONCOLON) {
+                            is_generic_scoped = true;
+                        }
+                    }
+                }
+                if (is_generic_scoped) {
+                    SourceLocation id_loc = peek().location;
+                    auto base = std::make_unique<ast::Identifier>(id_loc, peek().lexeme);
+                    consume(); // Consume the identifier
+                    SourceLocation lt_loc = peek().location;
+                    expect(TokenType::LT);
+                    std::vector<ast::TypeNodePtr> args;
+                    while (!check(TokenType::GT) && !IsAtEnd()) {
+                        TypeParser tp(tokens_, pos_, current_file_path_, *this);
+                        ast::TypeNodePtr arg = tp.parse();
+                        if (!arg) {
+                            throw error(peek(), "Expected type argument in generic enum construction");
+                        }
+                        args.push_back(std::move(arg));
+                        if (!match(TokenType::COMMA)) break;
+                    }
+                    SourceLocation gt_loc = peek().location;
+                    expect(TokenType::GT);
+                    return std::make_unique<ast::GenericInstantiationExpression>(
+                        id_loc, std::move(base), std::move(args), lt_loc, gt_loc);
+                }
+            }
+
             // Look ahead to check for Type { or Type<Args> { patterns
             if (ident_idx + 1 < tokens_.size()) {
                 size_t after_ident = next_significant(ident_idx + 1);

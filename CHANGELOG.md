@@ -59,6 +59,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   untrapped failure even when the caller trapped it.
 
 ### Added
+- **Generic data enums** — `enum Box<T> { Value(T), Empty }` now builds a
+  value-semantics tagged-union struct (`{ i64 tag, [N x i8] data }`) per concrete
+  instantiation, constructed via explicit type arguments (`Box<Int>::Value(42)`,
+  `Box<Int>::Empty`). The payload type is substituted for the type parameter
+  (e.g. `Value` carries `Int` in `Box<Int>`, `String` in `Box<String>`), and
+  `match`/`select` dispatch on the variant and bind the substituted payload, with
+  the same exhaustiveness checks as non-generic enums.
 - Tagged-union (data-carrying) enums and enum variant patterns in `match`:
   `enum Shape { Circle(Float), Rect(Float, Float), Unit }` now compiles to a
   value-semantics `{ i64 tag, [N x i8] data }` union, constructs via

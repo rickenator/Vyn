@@ -1381,6 +1381,41 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
     // Validates arity and types the call as the enum (so `s = Shape::Circle(1.5)`
     // infers the enum type) before the callee is consumed as a generic expression.
     if (auto memCtor = dynamic_cast<ast::MemberExpression*>(node->callee.get())) {
+        // Generic data enum: `Box<Int>::Value(x)`.
+        if (auto gi = dynamic_cast<ast::GenericInstantiationExpression*>(memCtor->object.get())) {
+            if (auto baseId = dynamic_cast<ast::Identifier*>(gi->baseExpression.get())) {
+                if (auto varId = dynamic_cast<ast::Identifier*>(memCtor->property.get())) {
+                    if (enumGenericParamOrder.count(baseId->name)) {
+                        const std::string concreteStr = gi->toString();
+                        registerGenericEnumConcrete(baseId->name, concreteStr, gi->genericArguments);
+                        auto enumIt = enumVariantPayloadTypes.find(concreteStr);
+                        if (enumIt != enumVariantPayloadTypes.end()) {
+                            auto varIt = enumIt->second.find(varId->name);
+                            if (varIt == enumIt->second.end()) {
+                                addError("Unknown variant '" + varId->name + "' of enum " + concreteStr, node);
+                                return;
+                            }
+                            const auto& payload = varIt->second;
+                            if (payload.size() != node->arguments.size()) {
+                                addError("Enum variant '" + varId->name + "' of " + concreteStr +
+                                         " expects " + std::to_string(payload.size()) + " argument(s), got " +
+                                         std::to_string(node->arguments.size()), node);
+                                return;
+                            }
+                            auto enumType = std::make_unique<ast::TypeName>(node->loc,
+                                std::make_unique<ast::Identifier>(node->loc, baseId->name));
+                            for (auto& a : gi->genericArguments) enumType->genericArgs.push_back(a->clone());
+                            node->type = std::shared_ptr<ast::TypeNode>(enumType.release());
+                            expressionTypes[node] = node->type.get();
+                            for (auto& arg : node->arguments) {
+                                if (arg) arg->accept(*this);
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+        }
         if (auto objId = dynamic_cast<ast::Identifier*>(memCtor->object.get())) {
             if (auto varId = dynamic_cast<ast::Identifier*>(memCtor->property.get())) {
                 auto enumIt = enumVariantPayloadTypes.find(objId->name);
@@ -2848,6 +2883,34 @@ void SemanticAnalyzer::visit(ast::MemberExpression* node) {
         return;
     }
 
+    // Generic data enum variant access: `Box<Int>::Value` / `Box<Int>::Empty`.
+    if (auto gi = dynamic_cast<ast::GenericInstantiationExpression*>(node->object.get())) {
+        auto* baseId = dynamic_cast<ast::Identifier*>(gi->baseExpression.get());
+        if (baseId && enumGenericParamOrder.count(baseId->name)) {
+            auto typeIt = expressionTypes.find(gi);
+            const std::string concreteStr = (typeIt != expressionTypes.end() && typeIt->second)
+                ? typeIt->second->toString() : gi->toString();
+            auto enumPayIt = enumVariantPayloadTypes.find(concreteStr);
+            if (enumPayIt != enumVariantPayloadTypes.end()) {
+                auto varIt = enumPayIt->second.find(propertyId->name);
+                if (varIt == enumPayIt->second.end()) {
+                    addError("Unknown variant '" + propertyId->name + "' of enum " + concreteStr, node);
+                    return;
+                }
+                if (!varIt->second.empty()) {
+                    addError("Enum variant '" + propertyId->name + "' of " + concreteStr +
+                             " requires constructor arguments", node);
+                    return;
+                }
+                auto enumType = std::make_unique<ast::TypeName>(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, baseId->name));
+                for (auto& a : gi->genericArguments) enumType->genericArgs.push_back(a->clone());
+                expressionTypes[node] = enumType.release();
+                return;
+            }
+        }
+    }
+
     // Check for static method calls (e.g., Vec::new(), Int::from_string())
     // In these cases, the object is a type identifier, not a value
     if (auto objectIdent = dynamic_cast<ast::Identifier*>(node->object.get())) {
@@ -4048,6 +4111,17 @@ void SemanticAnalyzer::visit(ast::GenericInstantiationExpression* node) {
 
     // Try to identify if this is a template instantiation
     if (auto identifier = dynamic_cast<ast::Identifier*>(node->baseExpression.get())) {
+        if (enumGenericParamOrder.count(identifier->name)) {
+            // Generic data enum concrete type, e.g. `Box<Int>`. Materialize its
+            // payload types and type the expression as the concrete enum type.
+            registerGenericEnumConcrete(identifier->name, node->toString(), node->genericArguments);
+            auto* tn = new ast::TypeName(node->loc,
+                std::make_unique<ast::Identifier>(node->loc, identifier->name));
+            for (auto& a : node->genericArguments) tn->genericArgs.push_back(a->clone());
+            expressionTypes[node] = tn;
+            node->type = std::shared_ptr<ast::TypeNode>(tn->clone());
+            return;
+        }
         handleTemplateInstantiation(identifier, node->genericArguments, node);
     } else if (auto memberExpr = dynamic_cast<ast::MemberExpression*>(node->baseExpression.get())) {
         // Handle something like Container<Int>::create
@@ -4841,6 +4915,30 @@ void SemanticAnalyzer::visit(ast::EnumDeclaration* node) {
     }
     if (!hasData) return; // C-like integer enums need no further semantic work.
 
+    // Generic data enums keep an unsubstituted template plus the parameter order;
+    // concrete instantiations (`Box<Int>`) are materialized on demand via
+    // registerGenericEnumConcrete.
+    if (!node->genericParams.empty()) {
+        std::vector<std::string> paramNames;
+        for (const auto& p : node->genericParams) {
+            if (p && p->name) paramNames.push_back(p->name->name);
+        }
+        enumGenericParamOrder[enumName] = paramNames;
+        auto& tmplMap = enumTemplatePayloadTypes[enumName];
+        for (const auto& v : node->variants) {
+            if (!v || !v->name) continue;
+            std::vector<ast::TypeNodePtr> payload;
+            for (const auto& t : v->associatedTypes) {
+                if (t) payload.push_back(t->clone());
+            }
+            tmplMap[v->name->name] = std::move(payload);
+        }
+        currentScope->add(SymbolInfo{SymbolInfo::Kind::Type, enumName, false,
+            ast::OwnershipKind::MY,
+            new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, enumName))});
+        return;
+    }
+
     auto& payloadMap = enumVariantPayloadTypes[enumName];
     for (const auto& v : node->variants) {
         if (!v || !v->name) continue;
@@ -4856,6 +4954,32 @@ void SemanticAnalyzer::visit(ast::EnumDeclaration* node) {
     currentScope->add(SymbolInfo{SymbolInfo::Kind::Type, enumName, false,
         ast::OwnershipKind::MY,
         new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, enumName))});
+}
+
+void SemanticAnalyzer::registerGenericEnumConcrete(
+        const std::string& enumName, const std::string& concreteTypeStr,
+        const std::vector<ast::TypeNodePtr>& typeArgs) {
+    auto paramIt = enumGenericParamOrder.find(enumName);
+    auto tmplIt = enumTemplatePayloadTypes.find(enumName);
+    if (paramIt == enumGenericParamOrder.end() || tmplIt == enumTemplatePayloadTypes.end()) return;
+    const auto& params = paramIt->second;
+    if (params.size() != typeArgs.size()) return; // arity mismatch reported at the use site
+    std::map<std::string, ast::TypeNode*> subs;
+    bool ok = true;
+    for (size_t i = 0; i < params.size(); ++i) {
+        if (!typeArgs[i]) { ok = false; break; }
+        subs[params[i]] = typeArgs[i].get();
+    }
+    if (!ok) return;
+    auto& concrete = enumVariantPayloadTypes[concreteTypeStr];
+    concrete.clear();
+    for (const auto& kv : tmplIt->second) {
+        std::vector<ast::TypeNodePtr> concretePayload;
+        for (const auto& t : kv.second) {
+            concretePayload.push_back(t ? substituteGenericArgsForValidation(t.get(), subs) : nullptr);
+        }
+        concrete[kv.first] = std::move(concretePayload);
+    }
 }
 // void SemanticAnalyzer::visit(ast::TraitDeclaration* node) {} // Handled above (commented out)
 // void SemanticAnalyzer::visit(ast::ImplDeclaration* node) {} // Handled above
@@ -5614,6 +5738,14 @@ void SemanticAnalyzer::visit(ast::TypeName* node) {
                  return;
             }
         }
+        node->type = std::shared_ptr<ast::TypeNode>(node->clone());
+    } else if (enumGenericParamOrder.count(typeNameStr)) {
+        // Generic data enum: materialize the concrete payload types (with the
+        // given type arguments substituted) for the concrete type string.
+        for (auto& arg : node->genericArgs) {
+            if (arg) arg->accept(*this);
+        }
+        registerGenericEnumConcrete(typeNameStr, node->toString(), node->genericArgs);
         node->type = std::shared_ptr<ast::TypeNode>(node->clone());
     } else if (typeNameStr == "i8" || typeNameStr == "i16" || typeNameStr == "i32" || typeNameStr == "i64" ||
                typeNameStr == "u8" || typeNameStr == "u16" || typeNameStr == "u32" || typeNameStr == "u64" ||

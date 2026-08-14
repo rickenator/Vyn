@@ -187,6 +187,7 @@ private:
     // Monomorphization: Generic type instantiation
     std::map<std::string, vyb::ast::StructDeclaration*> genericStructTemplates; // Store generic struct AST nodes (e.g., Box<T>)
     std::map<std::string, llvm::StructType*> monomorphizedStructs; // Cache instantiated types (e.g., "Box<Int>" -> Box_Int LLVM type)
+    std::map<std::string, vyb::ast::EnumDeclaration*> genericEnumTemplates;   // Generic data-enum AST nodes (enum Box<T> { ... })
     std::map<std::string, llvm::GlobalVariable*> typeMetadataGlobals; // Type metadata for JSON serialization
 
     // Generic function templates
@@ -218,6 +219,7 @@ private:
     llvm::Value* extractEnumVariantField(llvm::Value* enumVal, llvm::StructType* payloadTy, unsigned fieldIdx);
     std::string mangleGenericTypeName(const std::string& baseName, const std::vector<vyb::ast::TypeNodePtr>& typeArgs); // Generate mangled name like Box_Int
     llvm::StructType* monomorphizeStruct(const std::string& baseName, const std::vector<vyb::ast::TypeNodePtr>& typeArgs); // Generate specialized struct
+    llvm::StructType* monomorphizeEnum(const std::string& baseName, const std::vector<vyb::ast::TypeNodePtr>& typeArgs);   // Generate specialized tagged-union enum
     void generateTypeMetadata(const std::string& typeName, vyb::ast::StructDeclaration* structDecl); // Generate type metadata for JSON/reflection
     void registerTypeMetadata(); // Register all type metadata at program startup
     llvm::Function* getCurrentFunction();

@@ -499,6 +499,19 @@ private:
     // enumName -> variantName -> payload TypeNodes (empty vector = unit variant).
     std::unordered_map<std::string, std::unordered_map<std::string, std::vector<ast::TypeNodePtr>>> enumVariantPayloadTypes;
 
+    // Generic data enums (tagged unions with type parameters; e.g. `enum Box<T>`
+    // { Value(T), Empty }`): keep the template payload types and the type-parameter
+    // order so a concrete instantiation like `Box<Int>` can be materialized with
+    // substituted payload types under its concrete type string.
+    std::unordered_map<std::string, std::vector<std::string>> enumGenericParamOrder;
+    std::unordered_map<std::string, std::unordered_map<std::string, std::vector<ast::TypeNodePtr>>> enumTemplatePayloadTypes;
+
+    // Materialize payload types for a concrete generic enum instantiation (e.g.
+    // `Box<Int>`) into `enumVariantPayloadTypes` under the concrete type string,
+    // substituting the type arguments for the enum's type parameters.
+    void registerGenericEnumConcrete(const std::string& enumName, const std::string& concreteTypeStr,
+                                     const std::vector<ast::TypeNodePtr>& typeArgs);
+
     // Context for resolving 'Self' type in aspect implementations
     ast::TypeNode* currentImplType = nullptr;  // Set to Box<T> when processing bind Display -> Box<T>
     std::string currentImplTraitName;          // Set to Display when processing bind Display -> Type
