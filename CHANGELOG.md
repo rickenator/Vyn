@@ -31,6 +31,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test/ffi/enum_by_value.vyb`.
 
 ### Fixed
+- **By-ref bind receivers now work — `self<their<T>>` mutates in place** — a bind
+  method whose receiver is declared by reference lowers `self` to a pointer to the
+  caller's object, and the call site passes the receiver's address instead of a
+  by-value copy. Previously the call site always passed a by-value load, which
+  mismatched the generated pointer `self` (`Call parameter type does not match
+  function signature!` → segfault), and generic binds never produced a pointer
+  `self` at all. Now in-place mutations to `self` (e.g. pushing into a Vec field)
+  persist on the caller, for both concrete binds and generic bound binds like a
+  `Map<K,V>` `put`/`size` pair. The by-ref machinery rides the existing ownership
+  receiver types: `their<T>` (borrow, no cleanup) is the natural mutable receiver;
+  `my<T>` remains a move/ownership-taking receiver whose scope-exit cleanup would
+  free a collection's data. Covered by
+  `test/aspect/test_bind_by_ref_receiver.vyb`.
 - **Struct field access substitutes the receiver's concrete generic args** — a
   bare field read like `self.keys` now types against the receiver's actual generic
   arguments instead of the raw struct-template types. Inside a generic bind (or

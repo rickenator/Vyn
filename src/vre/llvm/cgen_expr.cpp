@@ -1411,9 +1411,18 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
 
                     if (implFunc) {
                         // Build arguments: first argument is the receiver struct.
+                        // When the bind's receiver is declared by reference (an
+                        // ownership-qualified receiver such as `self<their<T>>`),
+                        // the specialized method's first parameter is a pointer to the
+                        // receiver. Pass the receiver's address (its alloca) so
+                        // in-place mutations to `self` persist on the caller's object
+                        // instead of loading a by-value copy that is discarded.
+                        bool selfIsByRef = implFunc->getArg(0)->getType()->isPointerTy();
                         std::vector<llvm::Value*> argValues;
                         if (isQualifiedAspectCall) {
                             argValues.push_back(receiverValue);
+                        } else if (selfIsByRef && receiverAlloca) {
+                            argValues.push_back(receiverAlloca);
                         } else if (auto allocaType = llvm::dyn_cast<llvm::AllocaInst>(receiverAlloca)) {
                             argValues.push_back(builder->CreateLoad(
                                 allocaType->getAllocatedType(),

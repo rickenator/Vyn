@@ -230,13 +230,34 @@ llvm::Function* LLVMCodegen::monomorphizeTraitMethod(const std::string& concrete
                     // Get the method's signature
                     std::vector<llvm::Type*> paramTypes;
 
-                    // First parameter is always Self (the object type)
+                    // First parameter is always Self (the object type). When the
+                    // receiver is declared by reference (an ownership-qualified
+                    // receiver such as `self<their<Map<K,V>>>`), Self is lowered to a
+                    // pointer to the concrete instantiation so in-place mutations to
+                    // `self` persist on the caller's object.
+                    bool selfIsByRef = false;
+                    std::string selfOwnershipKw;
+                    if (!methodAST->params.empty() && methodAST->params[0].typeNode) {
+                        if (auto* recvTn = dynamic_cast<ast::TypeName*>(methodAST->params[0].typeNode.get())) {
+                            if (recvTn->identifier) {
+                                const std::string& kw = recvTn->identifier->name;
+                                if (kw == "their" || kw == "my" || kw == "our" ||
+                                    kw == "mild" || kw == "borrow" || kw == "view") {
+                                    selfIsByRef = true;
+                                    selfOwnershipKw = kw;
+                                }
+                            }
+                        }
+                    }
                     llvm::Type* selfType = resolveTypeForMonomorphization(concretePattern, typeSubstitutions);
                     if (!selfType) {
                         logError(SourceLocation(), "Failed to resolve Self type for " + concreteType);
                         m_currentImplTypeNode = origImplTypeNode;
                         m_currentImplTraitName = origImplTraitName;
                         return nullptr;
+                    }
+                    if (selfIsByRef) {
+                        selfType = llvm::PointerType::get(*context, 0);
                     }
                     paramTypes.push_back(selfType);
 
@@ -333,7 +354,19 @@ llvm::Function* LLVMCodegen::monomorphizeTraitMethod(const std::string& concrete
                             }
                             builder->CreateStore(&arg, alloca);
                             namedValues["self"] = alloca;
-                            valueTypeMap[alloca] = std::shared_ptr<ast::TypeNode>(currentImplConcreteTypeNode->clone());
+                            // Register the receiver's type. A by-ref receiver keeps
+                            // its ownership wrapper (e.g. `their<Map<String,Int>>`)
+                            // so member access dereferences the pointer rather than
+                            // treating the alloca as an inline struct value.
+                            if (selfIsByRef) {
+                                auto ownType = std::make_unique<ast::TypeName>(
+                                    methodAST->loc,
+                                    std::make_unique<ast::Identifier>(methodAST->loc, selfOwnershipKw));
+                                ownType->genericArgs.push_back(currentImplConcreteTypeNode->clone());
+                                valueTypeMap[alloca] = std::shared_ptr<ast::TypeNode>(ownType.release());
+                            } else {
+                                valueTypeMap[alloca] = std::shared_ptr<ast::TypeNode>(currentImplConcreteTypeNode->clone());
+                            }
                         } else {
                             size_t paramListIdx = argIdx - 1;
                             if (paramListIdx < nonReceiverParamIndices.size()) {

@@ -1,0 +1,69 @@
+// @test: by-ref (ownership-qualified) bind receiver persists mutations
+// @description: a bind method whose receiver is declared by reference
+//   (`self<their<T>>`) is passed a pointer to the caller's object, so in-place
+//   mutations to `self` (e.g. pushing into a Vec field) persist on the caller.
+//   This works for concrete binds and for generic bound binds like a Map
+//   `put`/`size` pair, which is the basis for a mutating collection.
+// @category: aspect, bind, receiver, ownership, generics
+// @expect: pass
+// @expect-return: 0
+// @execute-jit: true
+
+import core::aspects
+
+struct Counter {
+    n<Int>
+}
+
+aspect CounterInc {
+    increment(self<their<Counter>>)<Int>
+    peek(self<their<Counter>>)<Int>
+}
+
+bind CounterInc -> Counter {
+    increment(self<their<Counter>>)<Int> -> {
+        self.n = self.n + 1
+        return self.n
+    }
+    peek(self<their<Counter>>)<Int> -> {
+        return self.n
+    }
+}
+
+struct Map<K, V> {
+    keys<Vec<K>>,
+    vals<Vec<V>>
+}
+
+aspect Assoc {
+    put(self<their<Map<K, V>>>, key<K>, val<V>)<Void>
+    size(self<their<Map<K, V>>>)<Int>
+}
+
+bind<K<Hashable>, V> Assoc -> Map<K, V> {
+    put(self<their<Map<K, V>>>, key<K>, val<V>)<Void> -> {
+        self.keys.push(key)
+        self.vals.push(val)
+        return
+    }
+    size(self<their<Map<K, V>>>)<Int> -> {
+        return self.keys.len()
+    }
+}
+
+main()<Int> -> {
+    c<Counter> = Counter { n = 5 }
+    c.increment()
+    if (c.peek() != 6) {
+        return 1
+    }
+
+    m<Map<String, Int>> = Map<String, Int> { keys = Vec<String>(), vals = Vec<Int>() }
+    m.put("alpha", 1)
+    m.put("beta", 2)
+    if (m.size() != 2) {
+        return 2
+    }
+
+    return 0
+}
