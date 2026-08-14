@@ -6011,40 +6011,57 @@ void SemanticAnalyzer::handleQualifiedAspectCall(ast::CallExpression* node,
         return;
     }
 
-    // Locate an explicit bind implementation for this concrete type.
-    ast::FunctionDeclaration* methodDecl = nullptr;
-    bool typeMatchesImpl = false;
-    auto typeImplsIt = traitImpls.find(typeStr);
-    if (typeImplsIt != traitImpls.end()) {
-        auto traitIt = typeImplsIt->second.find(aspectName);
-        if (traitIt != typeImplsIt->second.end()) {
-            typeMatchesImpl = true;
-            for (ast::FunctionDeclaration* m : traitIt->second) {
-                if (m && m->id && m->id->name == methodName) {
-                    methodDecl = m;
+    // A receiver may be a bounded type parameter (e.g. thing<T> where T has a
+    // Display bound). Such a receiver has no concrete bind entry; the return
+    // type is resolved from the bound aspect's declared method signature.
+    bool isBoundTypeParameter = false;
+    if (SymbolInfo* sym = currentScope->lookup(typeStr)) {
+        if (sym->kind == SymbolInfo::Kind::TYPE_PARAMETER) {
+            for (const std::string& bound : sym->bounds) {
+                if (bound == aspectName) {
+                    isBoundTypeParameter = true;
                     break;
                 }
             }
         }
     }
 
-    // Fall back to a generic impl pattern (e.g., bind<T> Container -> Vec<T>).
-    if (!typeMatchesImpl) {
-        for (const auto& typeEntry : genericTraitImpls) {
-            if (!matchesPattern(typeStr, typeEntry.first)) continue;
-            const auto& traitMap = typeEntry.second;
-            auto traitIt = traitMap.find(aspectName);
-            if (traitIt == traitMap.end()) continue;
-            const GenericImplInfo* implInfo = traitIt->second.get();
-            if (!implInfo || !implInfo->declaration) continue;
-            typeMatchesImpl = true;
-            for (const auto& m : implInfo->declaration->methods) {
-                if (m && m->id && m->id->name == methodName) {
-                    methodDecl = m.get();
-                    break;
+    // Locate an explicit bind implementation for this concrete type.
+    ast::FunctionDeclaration* methodDecl = nullptr;
+    bool typeMatchesImpl = false;
+    if (!isBoundTypeParameter) {
+        auto typeImplsIt = traitImpls.find(typeStr);
+        if (typeImplsIt != traitImpls.end()) {
+            auto traitIt = typeImplsIt->second.find(aspectName);
+            if (traitIt != typeImplsIt->second.end()) {
+                typeMatchesImpl = true;
+                for (ast::FunctionDeclaration* m : traitIt->second) {
+                    if (m && m->id && m->id->name == methodName) {
+                        methodDecl = m;
+                        break;
+                    }
                 }
             }
-            break;
+        }
+
+        // Fall back to a generic impl pattern (e.g., bind<T> Container -> Vec<T>).
+        if (!typeMatchesImpl) {
+            for (const auto& typeEntry : genericTraitImpls) {
+                if (!matchesPattern(typeStr, typeEntry.first)) continue;
+                const auto& traitMap = typeEntry.second;
+                auto traitIt = traitMap.find(aspectName);
+                if (traitIt == traitMap.end()) continue;
+                const GenericImplInfo* implInfo = traitIt->second.get();
+                if (!implInfo || !implInfo->declaration) continue;
+                typeMatchesImpl = true;
+                for (const auto& m : implInfo->declaration->methods) {
+                    if (m && m->id && m->id->name == methodName) {
+                        methodDecl = m.get();
+                        break;
+                    }
+                }
+                break;
+            }
         }
     }
 
@@ -6061,7 +6078,7 @@ void SemanticAnalyzer::handleQualifiedAspectCall(ast::CallExpression* node,
                  methodName + "'.", node);
         return;
     }
-    if (!typeMatchesImpl) {
+    if (!isBoundTypeParameter && !typeMatchesImpl) {
         addError("Type '" + typeStr + "' does not implement aspect '" + aspectName +
                  "' (no bind found).", node);
         return;

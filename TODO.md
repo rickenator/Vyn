@@ -185,7 +185,7 @@ is the working audit for what needs to be implemented next.
 - [x] **Associated types (first practical slice)** — `aspect Iterator { type Item }` declarations, `bind` assignments (`type Item = Int`), and semantic validation for missing/unknown/duplicate assignments are implemented. Remaining work: defaults, where-style constraints, dyn-dispatch integration.
 - [ ] **Aspect objects / dynamic dispatch** — `dyn Aspect` for runtime polymorphism
 - [x] **Aspect inheritance** — `aspect Comparable : Equatable` super-aspects: declared super-aspects are validated against defined aspects, cyclic dependencies are rejected, and binding a sub-aspect requires the same type to also bind each super-aspect (order-independent).
-- [x] **Qualified aspect-method disambiguation** — `DisplayA::show(thing)` selects a specific aspect whenever multiple bound aspects declare the same method name for a type; unqualified ambiguous dot-calls (`thing.show()`) remain rejected. Bind method symbols are emitted per `Type_Trait_Method` so distinct implementations coexist.
+- [x] **Qualified aspect-method disambiguation** — `DisplayA::show(thing)` selects a specific aspect whenever multiple bound aspects declare the same method name for a type; unqualified ambiguous dot-calls (`thing.show()`) remain rejected. Bind method symbols are emitted per `Type_Trait_Method` so distinct implementations coexist. Also works on bounded type parameters (`Aspect::show(thing)` for `thing<T<Aspect>>` inside generic functions).
 - [x] **Monomorphization with bounds validation** — Generic function calls infer type arguments from the call site, substitute them into the return type, and reject concrete instantiations whose type does not bind the declared aspect(s).
 - [x] **Bind selection precedence** — A bounded generic bind (`bind<T<Aspect>>`) deterministically takes precedence over an unbounded bind (`bind<T>`) for the same type shape, independent of declaration order.
 
@@ -647,5 +647,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: August 2026*
 *Current Version: Vyb v0.5.3 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 745 tests passing (harness, 100%)*
+*Overall Status: ~60-65% complete toward 1.0 — 748 tests passing (harness, 100%)*
 *SUGGESTIONS.md merged into this document.*

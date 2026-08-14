@@ -1,0 +1,30 @@
+// @test: qualified aspect call on bounded type parameter
+// @description: Aspect::method(receiver) works when the receiver is a bounded type parameter inside a generic function
+// @category: aspect, generics, qualified, bounds
+// @expect: pass
+// @expect-return: 0
+
+aspect Display {
+    show(self)<String> -> { }
+}
+
+struct Point {
+    x<Int>
+}
+
+bind Display -> Point {
+    show(self<Point>)<String> -> { return "P" }
+}
+
+printIt<T<Display>>(thing<T>)<String> -> {
+    return Display::show(thing)
+}
+
+main()<Int> -> {
+    p<Point> = Point { x = 3 }
+    label<String> = printIt(p)
+    if (label == "P") {
+        return 0
+    }
+    return 1
+}

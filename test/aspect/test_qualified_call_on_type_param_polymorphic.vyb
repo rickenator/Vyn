@@ -1,0 +1,40 @@
+// @test: qualified type-parameter call dispatches per concrete type
+// @description: A generic function using Display::show on a bounded type parameter resolves the right bind for each concrete instantiation
+// @category: aspect, generics, qualified, monomorphization
+// @expect: pass
+// @expect-return: 0
+
+aspect Display {
+    show(self)<String> -> { }
+}
+
+struct Point {
+    x<Int>
+}
+
+struct Circle {
+    r<Int>
+}
+
+bind Display -> Point {
+    show(self<Point>)<String> -> { return "point" }
+}
+
+bind Display -> Circle {
+    show(self<Circle>)<String> -> { return "circle" }
+}
+
+describe<T<Display>>(thing<T>)<String> -> {
+    return Display::show(thing)
+}
+
+main()<Int> -> {
+    p<Point> = Point { x = 3 }
+    c<Circle> = Circle { r = 1 }
+    pn<String> = describe(p)
+    cn<String> = describe(c)
+    if (pn == "point" && cn == "circle") {
+        return 0
+    }
+    return 1
+}

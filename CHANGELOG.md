@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Unqualified ambiguous dot-calls (`thing.show()`) remain rejected. To support
   this, bind-method symbols are emitted per `Type_Trait_Method` so distinct
   implementations coexist in the same module.
+- Qualified aspect calls also work on bounded type parameters inside generic
+  functions: `Aspect::method(thing)` where `thing<T<Aspect>>` resolves the return
+  type from the bound aspect's signature and dispatches to the correct concrete
+  bind for each instantiation.
 - Aspect inheritance (super-aspects): `aspect Comparable : Equatable` declares a
   super-aspect. Super-aspect names are validated against defined aspects, cyclic
   super-aspect dependencies are rejected, and binding a sub-aspect requires the

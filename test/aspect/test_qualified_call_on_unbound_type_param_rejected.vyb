@@ -1,0 +1,26 @@
+// @test: qualified aspect call on unbounded type parameter rejected
+// @description: A generic receiver not bound to the requested aspect is rejected even via a qualified call
+// @category: aspect, generics, qualified, diagnostics
+// @expect: fail
+// @expect-error: Type 'T' does not implement aspect 'Display' (no bind found).
+// @semantic-only: true
+
+aspect Display {
+    show(self)<String> -> { }
+}
+
+struct Point {
+    x<Int>
+}
+
+bind Display -> Point {
+    show(self<Point>)<String> -> { return "P" }
+}
+
+printIt<T>(thing<T>)<String> -> {
+    return Display::show(thing)
+}
+
+main()<Int> -> {
+    return 0
+}
