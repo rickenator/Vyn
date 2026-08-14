@@ -284,7 +284,7 @@ and pattern matching, not be a separate OOP mechanism.
 - [x] **Enum declaration syntax** — `enum Direction { North, South, East, West }` — variants compile to sequential `i64` integer constants (0, 1, 2, …); access via `Direction::North`
 - [x] **Enum variants with data** — `enum Shape { Circle(Float), Rect(Float, Float) }` and generic `enum Box<T> { Value(T), Empty }`: a value-semantics `{ i64 tag, [N x i8] data }` representation is built in codegen, monomorphized per concrete type for generic enums (`Box<Int>::Value(x)` with explicit type args)
 - [x] **Pattern matching on enums (match/select)** — In `match`, enum variant patterns (`Circle(r) ->`) dispatch on the runtime tag and bind payload fields; unit variants match bare (`Unit ->`), and a match must be exhaustive. `select` mirrors this, dispatching on variants and enforcing exhaustiveness the same way.
-- [ ] **Enum methods via `bind`** — `bind Drawable -> Shape { ... }` (natural fit!)
+- [x] **Enum methods via `bind`** — `bind Drawable -> Shape { ... }` — an aspect `bind` can target a user-defined enum (concrete or generic, e.g. `bind Render -> Box<Int>`), and the built-in generic enums `Option<T>` / `Result<T,E>`; methods dispatch on the concrete variant with substituted payloads
 - [x] **`Option<T>` as built-in enum** — `Some(T)` / `None`; registered in the compiler (no `import` needed), constructible via `Option<Int>::Some(x)` / `Option<Int>::None` and type-inferred bare `Some(x)` / `None`, with match/select dispatch and exhaustiveness
 - [ ] **`Option<T>` ergonomics — bare `Some(x)` / `None` anywhere** — bare constructors currently infer only when the enclosing variable declaration or function return type is `Option<T>`; needs general expected-type propagation so they can appear as subexpressions (e.g. `unwrap(Some(7))`, `v.push(Some(x))`)
 - [x] **`Result<T, E>` as built-in enum** — `Ok(T)` / `Err(E)`; registered in the compiler (no `import`), constructible via `Result<Int, String>::Ok(x)` / `::Err(e)` and type-inferred bare `Ok(x)` / `Err(e)`, with match/select dispatch and exhaustiveness
@@ -696,5 +696,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: August 2026*
 *Current Version: Vyb v0.5.3 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 794 tests passing (harness, 100%)*
+*Overall Status: ~60-65% complete toward 1.0 — 795 tests passing (harness, 100%)*
 *SUGGESTIONS.md merged into this document.*

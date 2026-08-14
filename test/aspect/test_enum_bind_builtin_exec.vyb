@@ -1,0 +1,51 @@
+// @test: enum methods via bind (built-in Option/Result execution)
+// @description: an aspect bind onto the built-in generic enums Option<T> and Result<T,E>
+//   (bind Tag -> Option<Int>, bind Describe -> Result<Int, String>) is accepted without an
+//   import and dispatches on the concrete variant in both positions.
+// @category: aspect, bind, enum, option, result, match, execution
+// @expect: pass
+// @expect-return: 0
+// @execute-jit: true
+
+aspect Tag {
+    is_some(self)<Bool>
+}
+
+bind Tag -> Option<Int> {
+    is_some(self)<Bool> -> {
+        return match (self) {
+            Some(v) -> true
+            None -> false
+        }
+    }
+}
+
+aspect Describe {
+    is_ok(self)<Bool>
+}
+
+bind Describe -> Result<Int, String> {
+    is_ok(self)<Bool> -> {
+        return match (self) {
+            Ok(v) -> true
+            Err(e) -> false
+        }
+    }
+}
+
+main()<Int> -> {
+    o1<Option<Int>> = Some(5)
+    o2<Option<Int>> = None
+    r1<Result<Int, String>> = Result<Int, String>::Ok(3)
+    r2<Result<Int, String>> = Result<Int, String>::Err("x")
+
+    b1<Bool> = o1.is_some()
+    b2<Bool> = o2.is_some()
+    c1<Bool> = r1.is_ok()
+    c2<Bool> = r2.is_ok()
+
+    if (b1 && !b2 && c1 && !c2) {
+        return 0
+    }
+    return 1
+}

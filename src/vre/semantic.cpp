@@ -5399,16 +5399,37 @@ void SemanticAnalyzer::visit(ast::BindDeclaration* node) {
                 bool resolvedInstantiation = false;
                 auto* selfT = dynamic_cast<ast::TypeName*>(node->selfType.get());
                 if (selfT && selfT->identifier) {
-                    SymbolInfo* baseSym = currentScope->lookup(selfT->identifier->name);
-                    auto paramOrderIt = structGenericParamOrder.find(selfT->identifier->name);
-                    if (baseSym && baseSym->kind == SymbolInfo::Kind::Type &&
-                        paramOrderIt != structGenericParamOrder.end()) {
-                        resolvedInstantiation = true;
-                        size_t expectedParams = paramOrderIt->second.size();
+                    const std::string& baseId = selfT->identifier->name;
+                    const std::vector<std::string>* paramOrder = nullptr;
+                    auto structIt = structGenericParamOrder.find(baseId);
+                    auto enumIt = enumGenericParamOrder.find(baseId);
+                    if (structIt != structGenericParamOrder.end()) {
+                        SymbolInfo* baseSym = currentScope->lookup(baseId);
+                        if (baseSym && baseSym->kind == SymbolInfo::Kind::Type) {
+                            resolvedInstantiation = true;
+                            paramOrder = &structIt->second;
+                        }
+                    } else if (enumIt != enumGenericParamOrder.end()) {
+                        // Generic enum bind target: a user-defined generic enum
+                        // (e.g. bind ToStr -> Box<Int>) or a built-in generic enum
+                        // (Option<T> / Result<T,E>).
+                        if (enumIt->first == "Option" || enumIt->first == "Result") {
+                            resolvedInstantiation = true;  // built-in: no scope symbol
+                            paramOrder = &enumIt->second;
+                        } else {
+                            SymbolInfo* baseSym = currentScope->lookup(baseId);
+                            if (baseSym && baseSym->kind == SymbolInfo::Kind::Type) {
+                                resolvedInstantiation = true;
+                                paramOrder = &enumIt->second;
+                            }
+                        }
+                    }
+                    if (resolvedInstantiation && paramOrder) {
+                        size_t expectedParams = paramOrder->size();
                         if (!selfT->genericArgs.empty() && expectedParams != 0 &&
                             selfT->genericArgs.size() != expectedParams) {
                             addError("Type '" + typeName + "' has " + std::to_string(selfT->genericArgs.size()) +
-                                     " type argument(s) but '" + selfT->identifier->name + "' expects " +
+                                     " type argument(s) but '" + baseId + "' expects " +
                                      std::to_string(expectedParams) + ".", node);
                             if (hasGenericParams) exitScope();
                             return;

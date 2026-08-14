@@ -1,0 +1,54 @@
+// @test: enum methods via bind (concrete enum execution)
+// @description: an aspect bind onto a user-defined enum target type (bind HasArea ->
+//   Shape) dispatches on the concrete variant through dot-call dispatch, unwrapping the
+//   payload and returning both Float and String (via a helper) results.
+// @category: aspect, bind, enum, match, execution
+// @expect: pass
+// @expect-return: 0
+// @execute-jit: true
+
+aspect HasArea {
+    area(self)<Float>
+    describe(self)<String>
+}
+
+enum Shape {
+    Circle(Float),
+    Rect(Float, Float)
+}
+
+label(f<Float>)<String> -> {
+    return f.to_string()
+}
+
+bind HasArea -> Shape {
+    area(self)<Float> -> {
+        return match (self) {
+            Circle(r) -> r * r * 3.14159
+            Rect(w, h) -> w * h
+        }
+    }
+    describe(self)<String> -> {
+        return match (self) {
+            Circle(r) -> label(r)
+            Rect(w, h) -> "rect"
+        }
+    }
+}
+
+main()<Int> -> {
+    c<Shape> = Shape::Circle(2.0)
+    r<Shape> = Shape::Rect(3.0, 4.0)
+
+    ac<Float> = c.area()
+    ar<Float> = r.area()
+
+    dc<String> = c.describe()
+    dr<String> = r.describe()
+
+    if (ac > 12.0 && ac < 13.0 && ar == 12.0 &&
+        dc == "2" && dr == "rect") {
+        return 0
+    }
+    return 1
+}

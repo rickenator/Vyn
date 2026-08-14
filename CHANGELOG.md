@@ -40,6 +40,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unwrapping both primitive and heap (e.g. `String`) payloads in either the
   `Ok` or `Err` position.
 
+- Enum methods via `bind` on enum target types: an aspect `bind` can now target a
+  user-defined enum (concrete or generic, e.g. `bind Render -> Box<Int>`) and the
+  built-in generic enums `Option<T>` / `Result<T,E>` — the semantic gate no longer
+  rejects enum instantiations as unknown types, and methods dispatch on the
+  concrete variant with the substituted payload (e.g. `area(self)<Float>` on
+  `bind HasArea -> Shape { ... }`, matched over `Circle(r)` / `Rect(w,h)`).
+
 ### Fixed
 - `select` now supports data-carrying enum variants directly: arms like
   `Circle(r) ->`, `Rect(w, h) ->`, and `Unit ->` dispatch on the runtime tag and
