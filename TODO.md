@@ -641,10 +641,13 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 - Keep `UPDATE_LOG.md` current as the source-biased implementation audit.
 - Fix or move non-Vyb *.vyb fixtures (e.g. extracted tests containing C++ snippets).
 - Pick a single canonical test runner.
+- On the next `feat`, bump `CMakeLists.txt` project version to match the documented release
+  version — `README.md`/`FEATURE_STATUS.md` now say **v0.5.1** while `CMakeLists.txt` is still
+  **0.5.0** (go higher than 0.5.1 if the feat warrants it).
 
 ---
 
-*Last Updated: February 2026*
-*Current Version: Vyb v0.5.0 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 657 tests, 315 passing (47.9%)*
+*Last Updated: August 2026*
+*Current Version: Vyb v0.5.1 (freedom-1.0 series)*
+*Overall Status: ~60-65% complete toward 1.0 — 742 tests passing (harness, 100%)*
 *SUGGESTIONS.md merged into this document.*
