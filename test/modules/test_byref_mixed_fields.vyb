@@ -1,0 +1,50 @@
+// @test: by-ref receiver layout for mixed-type generic struct
+// @description: a generic struct whose fields mix Vec and scalar types
+//   (`cap<Int>`, `fixed<Bool>`) must lay out correctly when accessed through a
+//   `self<their<Struct<K>>>` by-ref receiver. Regression for a codegen bug where
+//   a trailing scalar/Bool field falsely resolved to `Vec` via a stale
+//   raw-pointer-backed type cache, crashing with an LLVM ICmp type mismatch.
+// @category: modules, generics, struct, byref, receiver, bind
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+
+share(all)
+struct Budget<K> {
+    items<Vec<K>>,
+    cap<Int>,
+    fixed<Bool>
+}
+
+share(all)
+aspect BudOps {
+    room(self<their<Budget<K>>>, n<Int>)<Bool>
+}
+
+share(all)
+bind<K> BudOps -> Budget<K> {
+    room(self<their<Budget<K>>>, n<Int>)<Bool> -> {
+        if (self.fixed) {
+            return self.items.len() + n <= self.cap
+        }
+        return true
+    }
+}
+
+share(all)
+make_budget<K>(cap<Int>, fixed<Bool>)<Budget<K>> -> {
+    return Budget<K> { items = Vec<K>(), cap = cap, fixed = fixed }
+}
+
+main()<Int> -> {
+    b<Budget<String>> = make_budget<String>(3, true)
+    if (!b.room(2) || b.room(4)) {
+        return 1
+    }
+    g<Budget<Int>> = make_budget<Int>(10, false)
+    if (!g.room(5) || !g.room(20)) {
+        return 2
+    }
+    println("ok")
+    return 0
+}

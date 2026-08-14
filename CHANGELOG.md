@@ -81,6 +81,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test/ffi/enum_by_value.vyb`.
 
 ### Fixed
+- **Generic structs with mixed-field (Vec + scalar/Bool) layouts resolve
+  correctly through by-ref receivers** — `LLVMCodegen::codegenType` memoized
+  types by the raw `TypeNode*`, but transient substitution clones (created while
+  monomorphizing a struct's fields) were freed and their heap addresses reused,
+  so a later field could hit a stale cache entry and resolve to the wrong type
+  (e.g. a trailing `Bool` field laying out as a `Vec`, crashing with an LLVM
+  `ICmpInst` operand-type assertion). The cache now keys by the node pointer
+  **and** validates the stored `toString()` against the current node, treating a
+  stale entry at a reused address as a miss while still keeping distinct
+  same-string nodes separate (context-sensitive, e.g. `Self` in trait binds).
+  Covered by `test/modules/test_byref_mixed_fields.vyb`.
 - **String-producing calls are wrapped when passed as arguments** — an inline
   `t.to_string()` (or `substring`/`concat` results) lowers to a raw `char*`, but
   call-argument marshalling only unwrapped String structs into char pointers, not

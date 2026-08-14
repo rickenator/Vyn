@@ -358,8 +358,8 @@ llvm::Type* LLVMCodegen::codegenType(vyb::ast::TypeNode* typeNode) {
     const bool substitutionsActive = !currentTypeSubstitutions.empty();
     if (!substitutionsActive) {
         auto it = m_typeCache.find(typeNode);
-        if (it != m_typeCache.end()) {
-            return it->second;
+        if (it != m_typeCache.end() && it->second.second == typeNode->toString()) {
+            return it->second.first;
         }
     }
 
@@ -839,7 +839,7 @@ llvm::Type* LLVMCodegen::codegenType(vyb::ast::TypeNode* typeNode) {
     }
 
     if (llvmType && !substitutionsActive) {
-        m_typeCache[typeNode] = llvmType;
+        m_typeCache[typeNode] = { llvmType, typeNode->toString() };
     }
     return llvmType;
 }
@@ -865,5 +865,3 @@ void LLVMCodegen::visit(ast::TypeName* node) {
     m_currentLLVMValue = llvm::ConstantPointerNull::get(
         llvm::PointerType::get(*context, 0));
 }
-
-

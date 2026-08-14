@@ -130,7 +130,16 @@ private:
     std::map<std::string, UserTypeInfo> userTypeMap;
     std::map<std::string, llvm::Type*> typeParameterMap;
     std::map<std::string, llvm::Type*> typeAliasMap; // Maps type alias names to their underlying LLVM types
-    std::map<vyb::ast::TypeNode*, llvm::Type*> m_typeCache;
+    // Memo of AST TypeNode -> LLVM type. Keyed by the raw TypeNode pointer but
+    // each entry also records the node's `toString()` at store time and the hit
+    // is validated against the current node's string. Transient substitution
+    // clones (created in `monomorphizeStruct` etc.) are freed and their heap
+    // addresses reused, so a raw-pointer key alone produced stale false hits
+    // (e.g. `Bool` false-resolving to `Vec`); the string check makes a stale
+    // entry for a *different* type at a reused address a miss. Distinct nodes
+    // with the same string are still keyed separately, preserving context that
+    // can change how a type resolves (e.g. `Self` inside trait binds).
+    std::map<vyb::ast::TypeNode*, std::pair<llvm::Type*, std::string>> m_typeCache;
     std::map<llvm::Value*, std::shared_ptr<vyb::ast::TypeNode>> valueTypeMap; // Maps LLVM values to AST types
     std::map<std::string, llvm::FunctionType*> localLambdaTypes; // Maps lambda variable name to its function type
     vyb::ast::TypeNode* m_currentImplTypeNode = nullptr; // Initialize

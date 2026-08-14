@@ -67,7 +67,8 @@ struct HashMap<K, V> {
     vals<Vec<V>>,
     head<Vec<Int>>,
     next<Vec<Int>>,
-    meta<Vec<Int>>
+    cap<Int>,
+    fixed<Bool>
 
     # Empty map starting at the default bucket count.
     constructor() {
@@ -100,17 +101,7 @@ struct HashMap<K, V> {
             head.push(-1)
             i = i + 1
         }
-        # `meta` stores [capacity, fixed(0|1)]. Kept as a Vec<Int> (rather than
-        # scalar fields) so the by-ref receiver lays the struct out correctly;
-        # scalar trailing fields currently mis-resolve in by-ref member access.
-        meta<Vec<Int>> = Vec<Int>()
-        meta.push(cap)
-        fix<Int> = 0
-        if (fixed) {
-            fix = 1
-        }
-        meta.push(fix)
-        return HashMap<K, V> { keys = Vec<K>(), vals = Vec<V>(), head = head, next = Vec<Int>(), meta = meta }
+        return HashMap<K, V> { keys = Vec<K>(), vals = Vec<V>(), head = head, next = Vec<Int>(), cap = cap, fixed = fixed }
     }
 }
 
@@ -136,7 +127,7 @@ bind<K<Hashable, Equatable>, V> MapOps -> HashMap<K, V> {
             i = self.next.get(i)
         }
         # Fixed maps never auto-grow: refuse a new key at full capacity.
-        if (self.meta.get(1) == 1 && self.keys.len() >= self.meta.get(0)) {
+        if (self.fixed && self.keys.len() >= self.cap) {
             return false
         }
         self.keys.push(key)
@@ -146,7 +137,7 @@ bind<K<Hashable, Equatable>, V> MapOps -> HashMap<K, V> {
         self.head.set(b, idx)
         # Grow and re-hash once each bucket holds more than ~2 keys on average,
         # doubling the bucket count. Chains are rebuilt from the full key list.
-        if (self.meta.get(1) == 0 && self.keys.len() > self.head.len() * 2) {
+        if (!self.fixed && self.keys.len() > self.head.len() * 2) {
             new_nb<Int> = self.head.len() * 2
             grow<Int> = self.head.len()
             while (grow < new_nb) {
@@ -208,7 +199,8 @@ struct HashSet<K> {
     values<Vec<K>>,
     head<Vec<Int>>,
     next<Vec<Int>>,
-    meta<Vec<Int>>
+    cap<Int>,
+    fixed<Bool>
 
     # Empty set starting at the default bucket count.
     constructor() {
@@ -237,16 +229,7 @@ struct HashSet<K> {
             head.push(-1)
             i = i + 1
         }
-        # See HashMap: `meta` holds [capacity, fixed(0|1)] as a Vec so the by-ref
-        # receiver lays the struct out correctly.
-        meta<Vec<Int>> = Vec<Int>()
-        meta.push(cap)
-        fix<Int> = 0
-        if (fixed) {
-            fix = 1
-        }
-        meta.push(fix)
-        return HashSet<K> { values = Vec<K>(), head = head, next = Vec<Int>(), meta = meta }
+        return HashSet<K> { values = Vec<K>(), head = head, next = Vec<Int>(), cap = cap, fixed = fixed }
     }
 }
 
@@ -270,14 +253,14 @@ bind<K<Hashable, Equatable>> SetOps -> HashSet<K> {
             i = self.next.get(i)
         }
         # Fixed sets never auto-grow: refuse a new value at full capacity.
-        if (self.meta.get(1) == 1 && self.values.len() >= self.meta.get(0)) {
+        if (self.fixed && self.values.len() >= self.cap) {
             return false
         }
         self.values.push(value)
         idx<Int> = self.values.len() - 1
         self.next.push(self.head.get(b))
         self.head.set(b, idx)
-        if (self.meta.get(1) == 0 && self.values.len() > self.head.len() * 2) {
+        if (!self.fixed && self.values.len() > self.head.len() * 2) {
             new_nb<Int> = self.head.len() * 2
             grow<Int> = self.head.len()
             while (grow < new_nb) {
