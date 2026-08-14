@@ -117,10 +117,19 @@ void LLVMCodegen::visit(ast::NamespaceDeclaration* node) {
 }
 
 std::unique_ptr<llvm::Module> LLVMCodegen::releaseModule() {
+    // The DIBuilder holds metadata tracking state that references both the
+    // module and the context. Destroy it here, while both are still owned by
+    // this codegen object. Otherwise, after releaseContext() moves the context
+    // out of scope, the codegen destructor's DIBuilder teardown runs against a
+    // freed context, causing a use-after-free in LLVM metadata cleanup.
+    debugBuilder.reset();
     return std::move(module);
 }
 
 std::unique_ptr<llvm::LLVMContext> LLVMCodegen::releaseContext() {
+    // Defensive: if releaseContext() is ever called without releaseModule(),
+    // tear the DIBuilder down here while the context is still alive.
+    debugBuilder.reset();
     return std::move(context);
 }
 
