@@ -1,5 +1,6 @@
 // Comprehensive Vec<T> iteration tests
 
+import collections
 main()<Int> -> {
     // Test 1: Basic iteration with chained push
     v1<Vec<Int>> = Vec();

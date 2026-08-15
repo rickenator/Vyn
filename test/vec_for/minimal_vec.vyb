@@ -1,5 +1,6 @@
 // Minimal Vec iteration test
 // @expect-return: 5
+import collections
 main()<Int> -> {
     v<Vec<Int>> = Vec();
     v.push(5);

@@ -1,6 +1,7 @@
 // Test Vec with chained push operations
 // @expect-return: 150
 
+import collections
 main()<Int> -> {
     // Test chained push - more concise syntax
     numbers<Vec<Int>> = Vec();

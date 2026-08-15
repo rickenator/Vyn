@@ -1,5 +1,6 @@
 // Simple Vec iteration without conditions
 // @expect-return: 6
+import collections
 main()<Int> -> {
     v<Vec<Int>> = Vec();
     v.push(1);

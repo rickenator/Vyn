@@ -1,4 +1,5 @@
 // @expect-return: 60
+import collections
 main()<Int> -> {
     numbers<Vec<Int>> = Vec();
     numbers.push(10);

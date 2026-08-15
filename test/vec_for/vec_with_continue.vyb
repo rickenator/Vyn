@@ -1,5 +1,6 @@
 // Test Vec iteration with continue
 // @expect-return: 12
+import collections
 main()<Int> -> {
     v<Vec<Int>> = Vec();
     v.push(1);

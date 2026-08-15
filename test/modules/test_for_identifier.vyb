@@ -1,0 +1,86 @@
+// @test: identifier iterables route onto the Iterator protocol
+// @description: `for (x in vec)` now desugars exactly like `for (x in vec.iter())`,
+//   driving `core::iter::Iterator` over `.iter() -> .next()` instead of the old
+//   index-based Vec path. A stored iterator value is itself iterable (its `iter()`
+//   returns a fresh iterator), so `for (y in storedIter)` works too. Verifies the
+//   plain-identifier collection case, the skip/step parameter, stored-iterator
+//   iteration, and `break`/`continue` re-entry.
+// @category: collections, iterator, stdlib, vec, for
+// @expect: pass
+// @expect-output: for-ident-ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import collections
+
+main()<Int> -> {
+    v<Vec<Int>> = Vec<Int>()
+    v.push(10)
+    v.push(20)
+    v.push(30)
+    v.push(40)
+
+    // 1) Plain identifier Vec path now goes through the protocol.
+    total<Int> = 0
+    for (x in v) {
+        total = total + x
+    }
+    if (total != 100) {
+        println("for-ident-vec-fail total=" + total)
+        return 1
+    }
+
+    // 2) Skip/step over an identifier Vec matches the iterator desugar.
+    stepped<Int> = 0
+    for (n in v, 2) {
+        stepped = stepped + n
+    }
+    if (stepped != 40) {
+        println("for-ident-step-fail stepped=" + stepped)
+        return 2
+    }
+
+    // 3) A stored iterator identifier is iterable via its self-`iter()`.
+    it<VecIter<Int>> = v.iter()
+    itotal<Int> = 0
+    for (y in it) {
+        itotal = itotal + y
+    }
+    if (itotal != 100) {
+        println("for-ident-iter-fail itotal=" + itotal)
+        return 3
+    }
+
+    // 4) A stored MapIter identifier iterates key/value pairs.
+    m<HashMap<String, Int>> = HashMap<String, Int>()
+    m.put("a", 1)
+    m.put("b", 2)
+    mput<MapIter<String, Int>> = m.iter()
+    msum<Int> = 0
+    for (kv in mput) {
+        msum = msum + kv.value
+    }
+    if (msum != 3) {
+        println("for-ident-map-fail msum=" + msum)
+        return 4
+    }
+
+    // 5) break / continue still re-enter `next()` correctly over an identifier.
+    acc<Int> = 0
+    for (z in v) {
+        if (z == 20) {
+            continue
+        }
+        if (z == 40) {
+            break
+        }
+        acc = acc + z
+    }
+    if (acc != 40) {
+        println("for-ident-brk-fail acc=" + acc)
+        return 5
+    }
+
+    println("for-ident-ok")
+    return 0
+}

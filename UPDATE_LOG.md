@@ -3,6 +3,22 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-15: **Identifier iterables route onto the `Iterator` protocol**. `for (x in vec)`
+  now desugars exactly like `for (x in vec.iter())`: the parser's identifier branch drops the
+  old index-based `__idx`/`__len` over `vec.get(i)` desugar in `StatementParser::parse_for`
+  and instead wraps the identifier in `<ident>.iter()` and hands it to
+  `buildForLoopIteratorDesugar`, so every loop drives `core::iter::Iterator` over
+  `.iter() -> .next()`. Because this is parse-time and type-blind, the uniform rule is that an
+  iterable value must expose `iter()`: Vec collections get it from `import collections`
+  (`VecHigherOps`), and the stdlib iterators (`VecIter`, `MapIter<K,V>` via `MapEntry`,
+  `HashIter`) gained a self-`iter()` that returns a fresh iterator over the same underlying
+  collection, so a stored iterator identifier (`for (y in storedIter)`) also iterates. Effect
+  on tests: the `vec_for`/`new_features` Vec loops that relied on the builtin (no-import) index
+  path now `import collections`, since `.iter()`/`VecIter` live there. Covered by
+  `test/modules/test_for_identifier.vyb` (identifier Vec, step, stored VecIter/MapIter,
+  break/continue). Leak-free under ASAN; full suite 866/862 pass (same 4 pre-existing
+  trap/vec-edge failures).
+
 - 2026-08-15: **Two-parameter iterator `Item` monomorphization + `MapIter` key/value
   pairs**. Fixed `TypePattern::parse` in `cgen_trait_mono.cpp`, which split generic
   arguments on every comma regardless of nesting depth: `Option<MapEntry<String, Int>>`

@@ -1,5 +1,6 @@
 // Comprehensive test combining chained push and skip parameter
 
+import collections
 main()<Int> -> {
     // Test chained push with skip parameter
     data<Vec<Int>> = Vec();

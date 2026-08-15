@@ -73,6 +73,12 @@ bind<T> Iterator -> VecIter<T> {
         }
         return None
     }
+
+    # Iterators are themselves iterable: `it.iter()` yields a fresh iterator over
+    # the same underlying slice so a stored iterator value can drive `for`.
+    iter(self<their<VecIter<T>>>)<VecIter<T>> -> {
+        return VecIter<T> { data = self.data, index = self.index }
+    }
 }
 
 # Equality probe for bounded key types. The `equals` method is resolved via the
@@ -176,6 +182,11 @@ bind<K<Hashable, Equatable>, V> Iterator -> MapIter<K, V> {
             return Some(e)
         }
         return None
+    }
+
+    # Iterators are themselves iterable over the same underlying map.
+    iter(self<their<MapIter<K, V>>>)<MapIter<K, V>> -> {
+        return MapIter<K, V> { map = self.map, index = self.index }
     }
 }
 
@@ -330,6 +341,11 @@ bind<K<Hashable, Equatable>> Iterator -> HashIter<K> {
             return Some(v)
         }
         return None
+    }
+
+    # Iterators are themselves iterable over the same underlying set.
+    iter(self<their<HashIter<K>>>)<HashIter<K>> -> {
+        return HashIter<K> { set = self.set, index = self.index }
     }
 }
 

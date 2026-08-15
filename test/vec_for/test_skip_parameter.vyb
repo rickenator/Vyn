@@ -1,5 +1,6 @@
 // Test Vec iteration with skip parameter
 
+import collections
 main()<Int> -> {
     // Create a vector with 10 elements
     numbers<Vec<Int>> = Vec();

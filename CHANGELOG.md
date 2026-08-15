@@ -11,14 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Identifier iterables route onto the `Iterator` protocol** — `for (x in vec)`
+  now desugars exactly like `for (x in vec.iter())`, iterating over
+  `core::iter::Iterator` instead of the old index-based Vec path. Any iterable
+  value exposes an `iter()` that yields an `Iterator`: Vec collections provide
+  `iter()` via `import collections`, and the stdlib iterators (`VecIter`,
+  `MapIter<K,V>` via `MapEntry`, `HashIter`) are now self-iterable so a stored
+  iterator identifier (`for (y in storedIter)`) iterates too. The result is one
+  uniform iteration story — `for` always drives `.iter().next()`. Covered by
+  `test/modules/test_for_identifier.vyb`.
 - **`for`-loop desugar over `Iterator`** — `for (item in <iter-expr>)` now
   desugars onto the `core::iter::Iterator` protocol whenever the iterable is a
   non-identifier expression (e.g. `ints.iter()`); the parser expands it to a
   temp-isolated `while (true) { match (it.next()) { Some(item) -> { body }
   None -> { break } } }` loop. Because the transform is parse-time and
-  type-blind it keys off the non-identifier form: plain identifiers keep the
-  existing index-based `Vec<T>` path and `0..n` ranges keep the inclusive range
-  path, so those loops are untouched. `break`/`continue` re-enter `next()`, and
+  type-blind it keys off any iterable expression; `0..n` ranges keep the inclusive
+  range path. (Identifier iterables now also route via `.iter()` — see below.)
+  `break`/`continue` re-enter `next()`, and
   re-evaluating the producer each loop starts a fresh iterator. Covered by
   `test/modules/test_for_iter.vyb`.
 - **`for`-loop `skip`/step parameter over `Iterator`** — `for (item in <iter-expr>, step)`
