@@ -188,8 +188,21 @@ void LLVMCodegen::visit(vyb::ast::ObjectLiteral* node) {
         // Create GEP to get pointer to field
         llvm::Value* fieldPtr = builder->CreateStructGEP(structTy, allocaInst, fieldIndex, fieldName + "_ptr");
 
-        // Store the value into the field
+        // Store the value into the field. Cast the initializer to the field's
+        // declared LLVM type (e.g. truncate a Vyb i64 literal to a CInt i32
+        // slot) so the struct is stored at its real width. Without this the
+        // literal lands at i64 width in an i32 field, corrupting the offsets
+        // and values of later fields.
         llvm::Value* fieldValue = m_currentLLVMValue;
+        auto* stLeaf = llvm::cast<llvm::StructType>(structTy);
+        llvm::Type* fieldTy = stLeaf->getElementType(static_cast<unsigned>(fieldIndex));
+        if (fieldValue->getType() != fieldTy) {
+            fieldValue = tryCast(fieldValue, fieldTy, prop.value->loc);
+            if (!fieldValue) {
+                m_currentLLVMValue = nullptr;
+                return;
+            }
+        }
         builder->CreateStore(fieldValue, fieldPtr);
     }
 

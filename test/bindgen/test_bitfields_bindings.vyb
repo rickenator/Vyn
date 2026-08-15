@@ -1,15 +1,15 @@
 // @test: vyb bindgen skips bitfield structs
-// @description: a struct containing C bitfields cannot be ABI-represented and is skipped with a warning, while plain structs beside it still bind; the generated module imports
+// @description: a struct containing C bitfields cannot be ABI-represented and is skipped with a warning, while plain structs beside it still bind, construct, and read back correctly
 // @category: ffi, bindgen
 // @expect: pass
+// @expect-output: fd= 7
 // @expect-return: 0
 // @tags: ffi, bindgen, bitfield, struct
 
 import bitfields
 
 main()<Int> -> {
-    // The golden fixture proves `Flags` (bitfields) is omitted and PlainHandle
-    // binds. Constructing/reading repr(C) struct fields is a separate known
-    // codegen gap, so this test only verifies the module imports cleanly.
+    h<PlainHandle> = PlainHandle { fd = 7 }
+    println("fd=", h.fd)
     return 0
 }

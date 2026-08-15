@@ -32,6 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   C function pointer that ABIs to a single `ptr` and carries the callsite's
   declared name. Covered by `test/bindgen/fnpointer.h` /
   `test/bindgen/test_fnpointer_bindings.vyb`.
+- **`#[repr(C)]` struct field construction** — a struct literal now casts each
+  initializer to its field's declared LLVM width (e.g. truncates a Vyb `Int`
+  literal to an `i32` `CInt` slot) instead of storing everything at `i64`
+  width. Previously the 8-byte stores into 4-byte fields corrupted the offsets
+  and values of later fields (`T { a = 10, b = 99 }` read `b` as `0`). Covered
+  by `test/ffi/repr_c_struct_fields.vyb`.
 - **FFI callbacks through function pointers** — a Vyb function can be passed to a
   C callback parameter (`loc<fn(...)>`), C invokes it, and a function pointer
   returned/stored from C can be called from Vyb via an indirect call. Previously

@@ -1,0 +1,30 @@
+// @test: repr(C) struct field construction
+// @description: constructing a #[repr(C)] struct casts each initializer to its field's width (i32/i64/f64) instead of storing it at Vyb i64 width, so later fields are neither corrupted nor shifted
+// @category: ffi, interop
+// @expect: pass
+// @expect-output: sum= 600
+// @expect-return: 0
+// @tags: ffi, repr-c, structs, codegen
+
+#[repr(C)]
+struct Sample {
+    first<CInt>,
+    second<CInt>,
+    third<CInt>,
+}
+
+#[repr(C)]
+struct Pair {
+    x<CInt>,
+    y<CDouble>,
+}
+
+main()<Int> -> {
+    s<Sample> = Sample { first = 100, second = 200, third = 300 }
+    t<CInt> = s.first + s.second + s.third
+    println("sum=", t)
+    p<Pair> = Pair { x = 7, y = 2.5 }
+    println("pair x=", p.x)
+    println("pair y=", p.y)
+    return 0
+}
