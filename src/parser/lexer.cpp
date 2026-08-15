@@ -237,14 +237,34 @@ std::vector<vyb::token::Token> Lexer::tokenize() {
         }
         break;
       case '<':
-        if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '=') {
+        if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '<') {
+          if (pos_ + 2 < source_.size() && source_[pos_ + 2] == '=') {
+            emit_token(vyb::TokenType::LSHIFTEQ, "<<=");
+          } else {
+            // `<<` is lexed as two `LT` tokens so nested generic closes (which are
+            // also `>>`) stay unambiguous; the expression parser recognizes the
+            // adjacent-pair form as a shift operator.
+            emit_token(vyb::TokenType::LT, "<");
+            emit_token(vyb::TokenType::LT, "<");
+          }
+        } else if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '=') {
           emit_token(vyb::TokenType::LTEQ, "<=");
         } else {
           emit_token(vyb::TokenType::LT, "<");
         }
         break;
       case '>':
-        if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '=') {
+        if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '>') {
+          if (pos_ + 2 < source_.size() && source_[pos_ + 2] == '=') {
+            emit_token(vyb::TokenType::RSHIFTEQ, ">>=");
+          } else {
+            // `>>` is lexed as two `GT` tokens so nested generic closes (which are
+            // also `>>`) stay unambiguous; the expression parser recognizes the
+            // adjacent-pair form as a shift operator.
+            emit_token(vyb::TokenType::GT, ">");
+            emit_token(vyb::TokenType::GT, ">");
+          }
+        } else if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '=') {
           emit_token(vyb::TokenType::GTEQ, ">=");
         } else {
           emit_token(vyb::TokenType::GT, ">");
@@ -282,6 +302,8 @@ std::vector<vyb::token::Token> Lexer::tokenize() {
       case '&':
         if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '&') {
           emit_token(vyb::TokenType::AND, "&&");
+        } else if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '=') {
+          emit_token(vyb::TokenType::BITWISEANDEQ, "&=");
         } else {
           emit_token(vyb::TokenType::AMPERSAND, "&");
         }
@@ -289,9 +311,21 @@ std::vector<vyb::token::Token> Lexer::tokenize() {
       case '|':
         if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '|') {
           emit_token(vyb::TokenType::OR, "||");
+        } else if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '=') {
+          emit_token(vyb::TokenType::BITWISEOREQ, "|=");
         } else {
           emit_token(vyb::TokenType::PIPE, "|");
         }
+        break;
+      case '^':
+        if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '=') {
+            emit_token(vyb::TokenType::BITWISEXOREQ, "^=");
+        } else {
+            emit_token(vyb::TokenType::CARET, "^");
+        }
+        break;
+      case '~':
+        emit_token(vyb::TokenType::TILDE, "~");
         break;
       case '-':
         if (pos_ + 1 < source_.size() && source_[pos_ + 1] == '>') {

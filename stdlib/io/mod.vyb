@@ -8,7 +8,7 @@
 #
 # Usage:
 #   import io::{open_write, write_str, close, open_read, read_all}
-#   f<File> = open_write("data.txt")     # FILE_WRITE + FILE_CREATE + FILE_TRUNC
+#   f<File> = open_write("data.txt")     # FILE_WRITE | FILE_CREATE | FILE_TRUNC
 #   write_str(f, "hello"); close(f)
 #   r<File> = open_read("data.txt")      # FILE_READ
 #   println(read_all(r)); close(r)
@@ -58,13 +58,13 @@ open_read(path<String>)<File> -> {
 # Convenience: create/truncate a file for writing.
 share(all)
 open_write(path<String>)<File> -> {
-    return open(path, FILE_WRITE() + FILE_CREATE() + FILE_TRUNC())
+    return open(path, FILE_WRITE() | FILE_CREATE() | FILE_TRUNC())
 }
 
 # Convenience: open for appending, creating the file if absent.
 share(all)
 open_append(path<String>)<File> -> {
-    return open(path, FILE_APPEND() + FILE_CREATE())
+    return open(path, FILE_APPEND() | FILE_CREATE())
 }
 
 # Close an open file. Returns 0 on success, -1 on failure.

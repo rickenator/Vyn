@@ -376,6 +376,7 @@ These features were completed in the current release cycle and are fully tested:
 - **`defer` statement**: `defer expr` — LIFO scope-exit execution for cleanup
 - **Select Expressions**: `select(expr) -> { pattern -> result }` — pattern matching that returns a value; `pass` keyword for multi-statement arms
 - **Arithmetic**: Full binary operators (`+`, `-`, `*`, `/`, `==`, `!=`, `<`, `>`, etc.)
+- **Bitwise Operators**: `|`, `&`, `^`, `~`, `<<`, `>>` on `Int` with `&=`, `|=`, `^=`, `<<=`, `>>=` compound-assigns
 - **Pattern Matching**: `match (expr) { pattern -> result }` with comparison patterns (`>= 90`, `< 0`) and wildcard `?`
 - **Error Handling**: `fail`/`trap` system with zero-cost success path and type-safe error propagation
 - **I/O**: `println()` for all types (auto-stringifies primitives); `print()` without newline
@@ -2779,7 +2780,7 @@ See `doc/` directory for detailed design documents and RFCs.
 - ✅ **Break/Continue**: Loop control flow statements working in all loop types
 - ✅ **Vec<T> Collections**: Fully functional resizable arrays with all methods (`new`, `push`, `pop`, `len`, `get`)
 - ✅ **Modern Struct Syntax**: Updated to `field<Type>` syntax with perfect field access
-- ✅ **Complete Binary Operations**: All arithmetic, comparison, and logical operators
+- ✅ **Complete Binary Operations**: All arithmetic, comparison, logical, and bitwise operators
 - ✅ **Dual Parameter Syntax**: Both `var<Type> name` and `Type name` forms working seamlessly
 - ✅ **Member Access**: Object field access (`obj.field`) and array indexing (`arr[index]`)
 - ✅ **Auto-serialization**: Complex return types with smart JSON-like output

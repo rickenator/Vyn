@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Bitwise operators** — `|` (or), `&` (and), `^` (xor), `~` (not), `<<` (left
+  shift), `>>` (right shift) on `Int`, plus `&=`, `|=`, `^=`, `<<=`, `>>=`
+  compound-assigns. Shifts are lexed as adjacent `<`/`>` pairs (keeping nested
+  generic closes like `Vec<String>>` intact) while `<<=`/`>>=` stay single
+  tokens; codegen lowers to `and`/`or`/`xor`/`shl`/`ashr`/`lshr`. The stdlib File
+  I/O module now combines `FILE_*` open-mode bits with `|` instead of `+`. Covered
+  by `test/expressions/test_bitwise.vyb`.
 - **`String::split()` and `String::format()`** — `split(sep)` (a `StringOps`
   aspect bound to `String`, auto-imported via `core`) returns a fresh
   `Vec<String>` of the parts between each occurrence of `sep` (an empty

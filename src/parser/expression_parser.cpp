@@ -1272,7 +1272,39 @@ regular_array_literal:
     }
 
     vyb::ast::ExprPtr ExpressionParser::parse_shift_expr() {
-        return parse_binary_expression([this]() { return parse_additive_expr(); }, {TokenType::LSHIFT, TokenType::RSHIFT});
+        // `<<`/`>>` are lexed as two adjacent `<`/`>` tokens so that nested generic
+        // closes (which use the same `>>` spelling) stay unambiguous: the type
+        // parser sees two `>` closes, while here, when an operator is expected,
+        // an adjacent pair is interpreted as a shift.
+        vyb::ast::ExprPtr left = parse_additive_expr();
+        while (true) {
+            vyb::token::Token op_token = previous_token();
+            bool isShift = false;
+            if (check(TokenType::LSHIFT)) {
+                op_token = consume();
+                isShift = true;
+            } else if (check(TokenType::RSHIFT)) {
+                op_token = consume();
+                isShift = true;
+            } else if (check(TokenType::LT) && peekNext().type == TokenType::LT) {
+                const vyb::token::Token& first = peek();
+                consume();
+                consume();
+                op_token = vyb::token::Token(TokenType::LSHIFT, "<<", first.location);
+                isShift = true;
+            } else if (check(TokenType::GT) && peekNext().type == TokenType::GT) {
+                const vyb::token::Token& first = peek();
+                consume();
+                consume();
+                op_token = vyb::token::Token(TokenType::RSHIFT, ">>", first.location);
+                isShift = true;
+            }
+            if (!isShift) break;
+
+            vyb::ast::ExprPtr right = parse_additive_expr();
+            left = std::make_unique<ast::BinaryExpression>(op_token.location, std::move(left), op_token, std::move(right));
+        }
+        return left;
     }
 
     vyb::ast::ExprPtr ExpressionParser::parse_additive_expr() {

@@ -113,14 +113,15 @@ is the working audit for what needs to be implemented next.
 
 ### Expressions & Operations
 - [x] **Binary operations** — `+`, `-`, `*`, `/`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `&&`, `||`
-- [ ] **Bitwise operators** — `|` (or), `&` (and), `^` (xor), `~` (not), `<<` (left
-  shift), `>>` (right shift) on `Int`. **Needed, not just nice-to-have**: Vyb has no
-  bitwise operators at all. The stdlib File I/O module currently combines its
-  non-overlapping `FILE_*` open-mode bits by **addition**
-  (`FILE_WRITE() + FILE_CREATE() + FILE_TRUNC()`) because `|` does not exist — a real
-  gap for POSIX flags/permissions and any FFI. Add the tokens to the lexer, the
-  arithmetic branch in semantic analysis, and LLVM `and`/`or`/`xor`/`shl`/`lshr`/`ashr`
-  codegen; keywords (`and`/`or`) must stay distinct from the new symbol operators.
+- [x] **Bitwise operators** — `|` (or), `&` (and), `^` (xor), `~` (not), `<<` (left
+  shift), `>>` (right shift) on `Int`, plus the `&=`, `|=`, `^=`, `<<=`, `>>=`
+  compound-assign forms. `<<`/`>>` are lexed as adjacent `<`/`>` tokens (not dedicated
+  shift tokens) so nested generic closes like `Vec<String>>` keep working, while
+  `<<=`/`>>=` remain single tokens. The stdlib File I/O module now combines its
+  `FILE_*` open-mode bits with `|` (`FILE_WRITE() | FILE_CREATE() | FILE_TRUNC()`)
+  instead of addition. Emits LLVM `and`/`or`/`xor`/`shl`/`ashr`/`lshr` codegen; the
+  `and`/`or` keywords stay distinct from the new symbol operators. Covered by
+  `test/expressions/test_bitwise.vyb`.
 - [x] **Unary operations** — `!`, `-`
 - [x] **Member access** — `obj.field`, `arr[index]`
 - [x] **String concatenation** — `str1 + str2` with mixed-type auto-`toString`

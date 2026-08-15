@@ -1548,6 +1548,22 @@ void SemanticAnalyzer::visit(ast::BinaryExpression* node) {
                 std::make_unique<ast::Identifier>(node->loc, "Bool")));
             break;
 
+        case TokenType::PIPE:
+        case TokenType::AMPERSAND:
+        case TokenType::CARET:
+        case TokenType::LSHIFT:
+        case TokenType::RSHIFT:
+            // Bitwise operations require integer operands; the result type is the
+            // same integer type as the operands.
+            if (leftType->toString().find("Float") != std::string::npos ||
+                rightType->toString().find("Float") != std::string::npos) {
+                addError("Bitwise operator '" + node->op.lexeme +
+                         "' requires integer operands, got float.", node);
+                return;
+            }
+            resultType = leftType;
+            break;
+
         default:
             // Unknown operator
             addError("Unknown binary operator in expression.", node);

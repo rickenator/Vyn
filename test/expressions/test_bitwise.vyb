@@ -1,0 +1,32 @@
+// @test: Bitwise operators
+// @description: Test | & ^ ~ << >> on Int, precedence, and compound-assigns
+// @category: expressions
+// @expect: pass
+// @expect-output: or=15 and=4 xor=15 not=-1 shl=16 shr=4 pre=13 ca=4 co=15 cx=3 cl=32 cr=2
+
+main()<Int> -> {
+    print("or="); print_int(12 | 3)        // 12|3 = 15
+    print(" and="); print_int(12 & 5)      // 12&5 = 4
+    print(" xor="); print_int(12 ^ 3)      // 12^3 = 15
+    print(" not="); print_int(~0)          // ~0 = -1
+    print(" shl="); print_int(1 << 4)      // 1<<4 = 16
+    print(" shr="); print_int(16 >> 2)     // 16>>2 = 4
+    print(" pre="); print_int(12 | 3 & 5)  // & binds tighter: 12 | 1 = 13
+    a<Int> = 12
+    a &= 5
+    print(" ca="); print_int(a)            // 12&5 = 4
+    o<Int> = 12
+    o |= 3
+    print(" co="); print_int(o)            // 12|3 = 15
+    x<Int> = 12
+    x ^= 15
+    print(" cx="); print_int(x)            // 12^15 = 3
+    l<Int> = 2
+    l <<= 4
+    print(" cl="); print_int(l)            // 2<<4 = 32
+    r<Int> = 8
+    r >>= 2
+    print(" cr="); print_int(r)            // 8>>2 = 2
+    println("")
+    return 0
+}

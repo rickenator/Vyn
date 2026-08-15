@@ -296,7 +296,15 @@ void LLVMCodegen::visit(vyb::ast::UnaryExpression *node) {
                 m_currentLLVMValue = nullptr;
             }
             break;
-        // TODO: Handle other unary operators like TILDE (bitwise NOT)
+        case vyb::TokenType::TILDE: // Reverted to vyb::TokenType::TILDE
+            // Bitwise NOT: one's complement of an integer
+            if (operandValue->getType()->isIntegerTy()) {
+                m_currentLLVMValue = builder->CreateNot(operandValue, "bwnottmp");
+            } else {
+                logError(node->loc, "Unary '~' operator can only be applied to integer types.");
+                m_currentLLVMValue = nullptr;
+            }
+            break;
         default:
             logError(node->loc, "Unsupported unary operator.");
             m_currentLLVMValue = nullptr;
@@ -705,6 +713,36 @@ void LLVMCodegen::visit(vyb::ast::BinaryExpression *node) {
             }
             if (isFloatOp) m_currentLLVMValue = builder->CreateFCmpOGE(L, R, "fcmpgetmp");
             else m_currentLLVMValue = builder->CreateICmpSGE(L, R, "icmpsgetmp");
+            break;
+        // Bitwise operators (integer operands only)
+        case vyb::TokenType::AMPERSAND:
+            m_currentLLVMValue = builder->CreateAnd(L, R, "bwandtmp");
+            break;
+        case vyb::TokenType::PIPE:
+            m_currentLLVMValue = builder->CreateOr(L, R, "bwortmp");
+            break;
+        case vyb::TokenType::CARET:
+            m_currentLLVMValue = builder->CreateXor(L, R, "bwxortmp");
+            break;
+        case vyb::TokenType::LSHIFT:
+            m_currentLLVMValue = builder->CreateShl(L, R, "shltmp");
+            break;
+        case vyb::TokenType::RSHIFT:
+            {
+                // Signed Int types use an arithmetic (sign-extending) shift;
+                // UInt* types use a logical shift.
+                bool isUnsigned = false;
+                if (leftTypeNode) {
+                    if (auto tn = dynamic_cast<ast::TypeName*>(leftTypeNode)) {
+                        if (tn->identifier) {
+                            const std::string& n = tn->identifier->name;
+                            isUnsigned = (n == "UInt8" || n == "UInt16" || n == "UInt32" || n == "UInt64");
+                        }
+                    }
+                }
+                if (isUnsigned) m_currentLLVMValue = builder->CreateLShr(L, R, "lshrtmp");
+                else m_currentLLVMValue = builder->CreateAShr(L, R, "ashrtmp");
+            }
             break;
         // Logical operators (short-circuiting needs careful handling with basic blocks)
         // For simplicity, this example evaluates both sides. Proper logical ops need control flow.
@@ -3776,6 +3814,53 @@ void LLVMCodegen::visit(vyb::ast::AssignmentExpression *node) {
     } else if (node->op.type == vyb::TokenType::MODEQ) {
         llvm::Value *lhsVal = builder->CreateLoad(destPointeeType, LHS, "lhs.load");
         lhsVal = builder->CreateSRem(lhsVal, RHS, "compound.rem");
+        builder->CreateStore(lhsVal, LHS);
+        writeThroughMutable(lhsVal);
+        m_currentLLVMValue = lhsVal;
+        return;
+    } else if (node->op.type == vyb::TokenType::BITWISEANDEQ) {
+        llvm::Value *lhsVal = builder->CreateLoad(destPointeeType, LHS, "lhs.load");
+        lhsVal = builder->CreateAnd(lhsVal, RHS, "compound.bwand");
+        builder->CreateStore(lhsVal, LHS);
+        writeThroughMutable(lhsVal);
+        m_currentLLVMValue = lhsVal;
+        return;
+    } else if (node->op.type == vyb::TokenType::BITWISEOREQ) {
+        llvm::Value *lhsVal = builder->CreateLoad(destPointeeType, LHS, "lhs.load");
+        lhsVal = builder->CreateOr(lhsVal, RHS, "compound.bwor");
+        builder->CreateStore(lhsVal, LHS);
+        writeThroughMutable(lhsVal);
+        m_currentLLVMValue = lhsVal;
+        return;
+    } else if (node->op.type == vyb::TokenType::BITWISEXOREQ) {
+        llvm::Value *lhsVal = builder->CreateLoad(destPointeeType, LHS, "lhs.load");
+        lhsVal = builder->CreateXor(lhsVal, RHS, "compound.bwxor");
+        builder->CreateStore(lhsVal, LHS);
+        writeThroughMutable(lhsVal);
+        m_currentLLVMValue = lhsVal;
+        return;
+    } else if (node->op.type == vyb::TokenType::LSHIFTEQ) {
+        llvm::Value *lhsVal = builder->CreateLoad(destPointeeType, LHS, "lhs.load");
+        lhsVal = builder->CreateShl(lhsVal, RHS, "compound.shl");
+        builder->CreateStore(lhsVal, LHS);
+        writeThroughMutable(lhsVal);
+        m_currentLLVMValue = lhsVal;
+        return;
+    } else if (node->op.type == vyb::TokenType::RSHIFTEQ) {
+        llvm::Value *lhsVal = builder->CreateLoad(destPointeeType, LHS, "lhs.load");
+        // Signed Int types use an arithmetic (sign-extending) shift; UInt* types
+        // use a logical shift (consistent with the `>>` binary operator).
+        bool isUnsigned = false;
+        if (lhsTypeNode) {
+            if (auto tn = dynamic_cast<ast::TypeName*>(lhsTypeNode.get())) {
+                if (tn->identifier) {
+                    const std::string& n = tn->identifier->name;
+                    isUnsigned = (n == "UInt8" || n == "UInt16" || n == "UInt32" || n == "UInt64");
+                }
+            }
+        }
+        if (isUnsigned) lhsVal = builder->CreateLShr(lhsVal, RHS, "compound.lshr");
+        else lhsVal = builder->CreateAShr(lhsVal, RHS, "compound.ashr");
         builder->CreateStore(lhsVal, LHS);
         writeThroughMutable(lhsVal);
         m_currentLLVMValue = lhsVal;
