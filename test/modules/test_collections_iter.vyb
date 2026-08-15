@@ -1,9 +1,10 @@
 // @test: HashMap/HashSet iteration via the Iterator protocol (for loops)
 // @description: `import collections` now ships `MapIter<K,V>` and `HashIter<K>`
-//   bound to core::iter::Iterator, produced by `m.iter()` (yields keys) and
-//   `s.iter()` (yields values). Drives `for (k in m.iter())` and
-//   `for (v in s.iter())`, reading values back via `m.get(k)`. Verifies the
-//   nested `their<HashMap<K,V>>` / `their<HashSet<K>>` view-field reads that
+//   bound to core::iter::Iterator, produced by `m.iter()` (yields `MapEntry<K,V>`
+//   key/value pairs) and `s.iter()` (yields values). Drives `for (kv in m.iter())`
+//   reading `kv.key` / `kv.value`, and `for (v in s.iter())`. Verifies the
+//   two-parameter `Iterator` `Item` monomorphization (`Option<MapEntry<String,Int>>`)
+//   and the nested `their<HashMap<K,V>>` / `their<HashSet<K>>` view-field reads that
 //   were previously a compiler gap.
 // @category: collections, iterator, stdlib, map, set, for
 // @expect: pass
@@ -22,12 +23,12 @@ main()<Int> -> {
     ks<String> = ""
     total<Int> = 0
     count<Int> = 0
-    for (k in m.iter()) {
+    for (kv in m.iter()) {
         if (ks.len() > 0) {
             ks = ks + ","
         }
-        ks = ks + k
-        total = total + m.get(k).value
+        ks = ks + kv.key
+        total = total + kv.value
         count = count + 1
     }
     if (total != 6 || count != 3) {

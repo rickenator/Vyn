@@ -35,13 +35,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `their<HashSet<K>>` / `their<HashMap<K,V>>` field. Previously only
   `their<Vec<T>>` fields had this (Vec-specific) support.
 - **`HashMap`/`HashSet` iterators (`import collections`)** — `MapIter<K,V>`
-  (`m.iter()`, yields keys; values back via `m.get(k)`) and `HashIter<K>`
-  (`s.iter()`, yields values) are bound to `core::iter::Iterator` and drive the
-  `for`-loop desugar. They hold the collection by reference (no copy), so
-  re-evaluating the producer each loop starts a fresh iteration. Covered by
-  `test/modules/test_collections_iter.vyb`. Known limit: a two-generic-parameter
-  struct as the `Item` type isn't monomorphized yet, so `MapIter` yields keys
-  rather than key/value pairs.
+  (`m.iter()`, yields key/value pairs as `MapEntry<K,V>`, read via `kv.key` /
+  `kv.value`) and `HashIter<K>` (`s.iter()`, yields values) are bound to
+  `core::iter::Iterator` and drive the `for`-loop desugar. They hold the
+  collection by reference (no copy), so re-evaluating the producer each loop
+  starts a fresh iteration. Covered by `test/modules/test_collections_iter.vyb`.
+- **Depth-aware `TypePattern` argument parsing** — the generic-type splitter no
+  longer chops nested generics on inner commas, so a two-parameter iterator
+  `Item` such as `Option<MapEntry<String,Int>>` monomorphizes to
+  `Option_MapEntry_String_Int` instead of the malformed `Option_MapEntry_Int>`.
+  This unblocked `MapIter<K,V>` yielding key/value pairs rather than keys only.
 - **Closure capture via a uniform environment struct** — every lambda now
   lowers to a closure value `struct { ptr env, ptr fn }` instead of a bare
   function pointer. The semantic analyzer detects free-variable references in a

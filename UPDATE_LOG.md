@@ -3,6 +3,20 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-15: **Two-parameter iterator `Item` monomorphization + `MapIter` key/value
+  pairs**. Fixed `TypePattern::parse` in `cgen_trait_mono.cpp`, which split generic
+  arguments on every comma regardless of nesting depth: `Option<MapEntry<String, Int>>`
+  was parsed as two bogus arguments (`MapEntry<String` and `Int>`), mangling the
+  monomorphized return type to the malformed `Option_MapEntry_Int>`, which then failed
+  LLVM module verification (payload also shrunk to `[8 x i8]`). The splitter is now
+  depth-aware (commas inside `<...>` are kept), so the type parses as a single
+  `MapEntry<String, Int>` and mangles to the correct `Option_MapEntry_String_Int`
+  (`{ i64, [24 x i8] }`). `MapIter<K,V>` now ships `type Item = MapEntry<K,V>` and
+  `next` yields the key/value pair (`Some(e)`), so `for (kv in m.iter())` reads
+  `kv.key` / `kv.value` directly (`test/modules/test_collections_iter.vyb`). Verified
+  with `/tmp/test_mapentry_repro.vyb` (`total=3`), leak-free under ASAN; full suite
+  865/861 pass (same 4 pre-existing trap/vec-edge failures).
+
 - 2026-08-15: **Nested `their<T>` view-field member access + `HashMap`/`HashSet`
   iterators**. Root cause of the earlier "cannot read a collection through a
   `their<T>` view field" gap: cgen_expr's property-member-access path only knew a

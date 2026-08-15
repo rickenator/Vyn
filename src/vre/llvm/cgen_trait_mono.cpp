@@ -40,10 +40,32 @@ LLVMCodegen::TypePattern LLVMCodegen::TypePattern::parse(const std::string& type
 
     std::string argsStr = typeStr.substr(start, end - start);
 
-    // Split by comma (simple split, doesn't handle nested generics yet)
-    std::stringstream ss(argsStr);
-    std::string arg;
-    while (std::getline(ss, arg, ',')) {
+    // Split arguments on commas at depth 0 so nested generics like
+    // `Option<MapEntry<String, Int>>` are kept intact as a single argument
+    // (a naive comma split would wrongly yield `MapEntry<String` and `Int>`).
+    std::vector<std::string> args;
+    int depth = 0;
+    std::string cur;
+    for (size_t i = start; i < end; ++i) {
+        const char c = typeStr[i];
+        if (c == '<') {
+            ++depth;
+            cur += c;
+        } else if (c == '>') {
+            --depth;
+            cur += c;
+        } else if (c == ',' && depth == 0) {
+            args.push_back(cur);
+            cur.clear();
+        } else {
+            cur += c;
+        }
+    }
+    if (!cur.empty()) {
+        args.push_back(cur);
+    }
+
+    for (auto& arg : args) {
         // Trim whitespace
         arg.erase(0, arg.find_first_not_of(" \t"));
         arg.erase(arg.find_last_not_of(" \t") + 1);

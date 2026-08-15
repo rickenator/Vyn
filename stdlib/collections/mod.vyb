@@ -152,8 +152,14 @@ struct HashMap<K, V> {
 
 # MapIter<K, V> - cursor iterator over a `HashMap<K, V>`, bound to
 # `core::iter::Iterator`. Holds the map by reference (a `their<HashMap<K, V>>`
-# view) and a next index; `next` yields `Some(key)` per slot (in insertion
-# order) / `None`. Values of a yielded key read back via `m.get(key)`.
+# view) and a next index; `next` yields `Some(MapEntry<K, V>)` per slot (in
+# insertion order) / `None`. Each entry carries the pair's `key` and `value`.
+share(all)
+struct MapEntry<K, V> {
+    key<K>,
+    value<V>
+}
+
 share(all)
 struct MapIter<K, V> {
     map<their<HashMap<K, V>>>,
@@ -162,12 +168,12 @@ struct MapIter<K, V> {
 
 share(all)
 bind<K<Hashable, Equatable>, V> Iterator -> MapIter<K, V> {
-    type Item = K
-    next(self<their<MapIter<K, V>>>)<Option<K>> -> {
+    type Item = MapEntry<K, V>
+    next(self<their<MapIter<K, V>>>)<Option<MapEntry<K, V>>> -> {
         if (self.index < self.map.keys.len()) {
-            v<K> = self.map.keys.get(self.index)
+            e<MapEntry<K, V>> = MapEntry<K, V> { key = self.map.keys.get(self.index), value = self.map.vals.get(self.index) }
             self.index = self.index + 1
-            return Some(v)
+            return Some(e)
         }
         return None
     }
