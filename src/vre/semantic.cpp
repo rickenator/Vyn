@@ -909,7 +909,10 @@ void SemanticAnalyzer::visit(ast::Identifier* node) {
 }
 
 void SemanticAnalyzer::visit(ast::IntegerLiteral* node) {
-    auto* type = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "Int"));
+    // A `u`-suffixed literal (e.g. `255u`) is unsigned; the default unsigned
+    // width is UInt64, and assignment range-fitting narrows it where it fits.
+    auto* type = new ast::TypeName(node->loc,
+        std::make_unique<ast::Identifier>(node->loc, node->isUnsigned ? "UInt64" : "Int"));
     expressionTypes[node] = retainType(type);
     node->type = std::shared_ptr<ast::TypeNode>(type->clone());
 }

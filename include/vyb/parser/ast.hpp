@@ -445,8 +445,9 @@ public:
 class IntegerLiteral : public Expression {
 public:
     int64_t value;
+    bool isUnsigned; // true for a `u`-suffixed literal, e.g. `255u`
 
-    IntegerLiteral(SourceLocation loc, int64_t value);
+    IntegerLiteral(SourceLocation loc, int64_t value, bool isUnsigned = false);
     virtual ~IntegerLiteral(); // Added destructor declaration
     NodeType getType() const override;
     std::string toString() const override;

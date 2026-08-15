@@ -1,0 +1,15 @@
+// @test: u-suffixed unsigned integer literals
+// @description: `255u`, `0xffffu`, and large decimal u-literals are unsigned
+//   and print correctly; fitting narrows via range check.
+// @category: expressions, types
+// @expect: pass
+// @expect-return: 0
+// @expect-output: 255 65535 4294967295
+
+main()<Int> -> {
+    b<UInt8> = 255u
+    h<UInt16> = 0xffffu
+    l<UInt64> = 4294967295u
+    println("{} {} {}".format(b, h, l))
+    return 0
+}

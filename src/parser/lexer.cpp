@@ -94,6 +94,12 @@ std::vector<vyb::token::Token> Lexer::tokenize() {
           if (!has_digits) {
             throw std::runtime_error("Invalid hexadecimal literal: missing digits after 0x at line " + std::to_string(line_) + ", column " + std::to_string(column_));
           }
+          // Unsigned suffix: `0xffu`
+          if (pos_ < source_.size() && (source_[pos_] == 'u' || source_[pos_] == 'U')) {
+            int_part_str += source_[pos_];
+            pos_++;
+            column_++;
+          }
           tokens.emplace_back(vyb::TokenType::INT_LITERAL, int_part_str, vyb::SourceLocation{current_file_path_, current_line_start_for_token, current_column_start_for_token});
           maybe_print_token(tokens.back());
           continue;
@@ -113,6 +119,12 @@ std::vector<vyb::token::Token> Lexer::tokenize() {
           if (!has_digits) {
             throw std::runtime_error("Invalid binary literal: missing digits after 0b at line " + std::to_string(line_) + ", column " + std::to_string(column_));
           }
+          // Unsigned suffix: `0b1010u`
+          if (pos_ < source_.size() && (source_[pos_] == 'u' || source_[pos_] == 'U')) {
+            int_part_str += source_[pos_];
+            pos_++;
+            column_++;
+          }
           tokens.emplace_back(vyb::TokenType::INT_LITERAL, int_part_str, vyb::SourceLocation{current_file_path_, current_line_start_for_token, current_column_start_for_token});
           maybe_print_token(tokens.back());
           continue;
@@ -122,6 +134,12 @@ std::vector<vyb::token::Token> Lexer::tokenize() {
       int_part_str = consume_while([this](char char_digit_pred) {
         return is_digit(char_digit_pred);
       });
+      // Unsigned suffix: `42u`
+      if (pos_ < source_.size() && (source_[pos_] == 'u' || source_[pos_] == 'U')) {
+        int_part_str += source_[pos_];
+        pos_++;
+        column_++;
+      }
       // Check for range operator ".."
       // pos_ is at the character immediately after int_part_str
       if (pos_ + 1 < source_.size() && source_[pos_] == '.' && source_[pos_ + 1] == '.') {

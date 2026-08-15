@@ -106,8 +106,8 @@ void ListComprehension::accept(Visitor& visitor) {
 ListComprehension::~ListComprehension() = default;
 
 // --- IntegerLiteral ---
-IntegerLiteral::IntegerLiteral(SourceLocation loc, int64_t val)
-    : Expression(loc), value(val) {}
+IntegerLiteral::IntegerLiteral(SourceLocation loc, int64_t val, bool unsignedLit)
+    : Expression(loc), value(val), isUnsigned(unsignedLit) {}
 
 NodeType IntegerLiteral::getType() const {
     return NodeType::INTEGER_LITERAL;

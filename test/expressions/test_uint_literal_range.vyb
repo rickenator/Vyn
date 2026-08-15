@@ -1,0 +1,12 @@
+// @test: u-literal out of range for signed target
+// @description: a u-suffixed constant that overflows the target signed type is
+//   an error (must cast), consistent with the explicit-width policy.
+// @category: expressions, types
+// @expect: fail
+// @semantic-only: true
+// @expect-error: out of range for type
+
+main()<Int> -> {
+    x<Int8> = 255u          // does not fit Int8 (-128..127)
+    return 0
+}

@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Unsigned integer literal suffix `u`** — `255u`, `0xffffu`, `0b101u`, and
+  `4294967295u` parse as unsigned literals (default width `UInt64`) instead of a
+  signed `Int`, and participate in the explicit-width assignment policy (a
+  fitting `u`-constant still assigns to narrower unsigned types; an overflow to a
+  signed type is an error). Covered by `test/expressions/test_uint_literals.vyb`
+  and `test_uint_literal_range.vyb`.
 - **Hex and binary integer literals** — `0x`/`0X` (base 16) and `0b`/`0B`
   (base 2) integer literals now parse to their true value. Previously the lexer
   emitted the raw `0x11`/`0b1100` lexeme and `std::stoll` truncated it at the
@@ -304,6 +310,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test/ffi/enum_by_value.vyb`.
 
 ### Fixed
+- **Unsigned integers print as unsigned** — `println_int`, `println`, and
+  `"{}".format(...)` no longer sign-extend `UInt*` values, so a `UInt8` holding
+  `250` prints `250` instead of `-6` (and a `UInt16` of `65535` prints `65535`,
+  not `-1`). A new `__vyb_uint_to_string` runtime helper formats unsigned
+  values; the codegen zero-extends them. Covered by
+  `test/expressions/test_uint_print_int.vyb` and `test_uint_print_gen.vyb`.
 - **String methods work on non-identifier receivers** — previously only a
   receiver bound to a named variable could call String methods (so
   `"hello ".to_upper()`, `full_name().substring(0, 5)`, or `p.name.split(",")`

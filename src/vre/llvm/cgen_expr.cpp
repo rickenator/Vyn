@@ -28,6 +28,14 @@ static bool vybIntClass(const std::string& name, bool& isUnsigned, unsigned& bit
     return false;
 }
 
+// Is this a sized unsigned integer type name?
+static bool isUnsignedIntName(const std::string& n) {
+    return n == "UInt8" || n == "UInt16" || n == "UInt32" || n == "UInt64" ||
+           n == "u8" || n == "u16" || n == "u32" || n == "u64" ||
+           n == "Byte" || n == "CUChar" || n == "CUShort" || n == "CUInt" ||
+           n == "CULong" || n == "CSize";
+}
+
 // --- Literal Codegen ---
 void LLVMCodegen::visit(vyb::ast::IntegerLiteral *node) {
     m_currentLLVMValue = llvm::ConstantInt::get(*context, llvm::APInt(64, node->value, true));
@@ -2258,7 +2266,16 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             return;
         }
         if (!arg->getType()->isIntegerTy(64)) {
-            arg = builder->CreateIntCast(arg, llvm::Type::getInt64Ty(*context), true, "cast_i64");
+            // Sign-extend signed integer types; zero-extend unsigned ones so a
+            // UInt8 value with its high bit set prints as itself, not as a
+            // negative signed value.
+            bool unsign = false;
+            if (node->arguments[0]->type) {
+                if (auto tn = dynamic_cast<ast::TypeName*>(node->arguments[0]->type.get())) {
+                    if (tn->identifier) unsign = isUnsignedIntName(tn->identifier->name);
+                }
+            }
+            arg = builder->CreateIntCast(arg, llvm::Type::getInt64Ty(*context), !unsign, "cast_i64");
         }
         llvm::Value* strVal = generateToStringCall(arg, arg->getType(), nullptr, node->loc);
         if (identCallee->name == "println_int") {

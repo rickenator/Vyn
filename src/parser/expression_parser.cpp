@@ -17,9 +17,11 @@ extern bool g_debug_codegen;
 namespace vyb {
 
     // Parse an integer literal token's value, honoring `0x`/`0X` (base 16) and
-    // `0b`/`0B` (base 2) prefixes; plain and leading-zero literals are decimal.
+    // `0b`/`0B` (base 2) prefixes and a trailing `u`/`U` unsigned suffix; plain
+    // and leading-zero literals are decimal.
     static int64_t parseIntegerLiteralValue(const std::string& lit) {
         std::string s = lit;
+        if (!s.empty() && (s.back() == 'u' || s.back() == 'U')) s.pop_back();
         long base = 10;
         if (s.size() > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
             base = 16;
@@ -1152,8 +1154,10 @@ regular_array_literal:
         switch (current_token.type) {
             case TokenType::INT_LITERAL: {
                 consume();
+                const std::string& lex = current_token.lexeme;
+                bool unsign = !lex.empty() && (lex.back() == 'u' || lex.back() == 'U');
                 return std::make_unique<ast::IntegerLiteral>(
-                    current_token.location, parseIntegerLiteralValue(current_token.lexeme));
+                    current_token.location, parseIntegerLiteralValue(lex), unsign);
             }
             case TokenType::FLOAT_LITERAL: {
                 consume();

@@ -148,6 +148,15 @@ char* __vyb_int_to_string(int64_t value) {
     return r;
 }
 
+// Unsigned integer to string (formats as unsigned, e.g. UInt8 = 250 -> "250").
+char* __vyb_uint_to_string(uint64_t value) {
+    char buffer[32];
+    snprintf(buffer, sizeof(buffer), "%lu", (unsigned long)value);
+    char* r = strdup(buffer);
+    __vyb_string_register(r);
+    return r;
+}
+
 // Float to String conversion
 char* __vyb_float_to_string(double value) {
     char buffer[64];

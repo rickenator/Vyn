@@ -7,6 +7,14 @@
 
 namespace vyb {
 
+// Is this a sized unsigned integer type name (UInt8..UInt64, u8..u64, Byte)?
+static bool isUnsignIntTypeName(const std::string& n) {
+    return n == "UInt8" || n == "UInt16" || n == "UInt32" || n == "UInt64" ||
+           n == "u8" || n == "u16" || n == "u32" || n == "u64" ||
+           n == "Byte" || n == "CUChar" || n == "CUShort" || n == "CUInt" ||
+           n == "CULong" || n == "CSize";
+}
+
 // Implementation for string concatenation
 llvm::Value* LLVMCodegen::generateStringConcatenation(llvm::Value* leftStr, llvm::Value* rightStr, SourceLocation loc) {
     if (!leftStr || !rightStr) {
@@ -363,7 +371,15 @@ llvm::Value* LLVMCodegen::generateToStringCall(llvm::Value* value, llvm::Type* v
     std::string toStringFuncName;
     llvm::FunctionType* toStringFuncType = nullptr;
 
-    if (valueType == int64Type || typeName == "Int") {
+    // Unsigned sized integer types are zero-extended and formatted as unsigned so
+    // e.g. `UInt8 = 250` prints as "250", not sign-extended "-6".
+    if (!typeName.empty() && isUnsignIntTypeName(typeName)) {
+        toStringFuncName = "__vyb_uint_to_string";
+        toStringFuncType = llvm::FunctionType::get(int8PtrType, {int64Type}, false);
+        if (value->getType()->isIntegerTy() && value->getType()->getIntegerBitWidth() < 64) {
+            value = builder->CreateZExt(value, int64Type, "uint_to_i64");
+        }
+    } else if (valueType == int64Type || typeName == "Int") {
         toStringFuncName = "__vyb_int_to_string";
         toStringFuncType = llvm::FunctionType::get(int8PtrType, {int64Type}, false);
     } else if (valueType == int8Type || typeName == "Int8") {

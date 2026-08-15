@@ -1,0 +1,13 @@
+// @test: println/format print unsigned values correctly
+// @description: generic println and {} .format zero-extend unsigned integers.
+// @category: expressions, types, io
+// @expect: pass
+// @expect-return: 0
+// @expect-output: 250-65535
+
+main()<Int> -> {
+    u<UInt8> = 250
+    u16<UInt16> = 65535
+    println("{}-{}".format(u, u16))
+    return 0
+}

@@ -1,0 +1,13 @@
+// @test: println_int prints unsigned values correctly
+// @description: a UInt8 holding 250 (high bit set) must print 250, not a
+//   sign-extended -6.
+// @category: expressions, types, io
+// @expect: pass
+// @expect-return: 0
+// @expect-output: 250
+
+main()<Int> -> {
+    u<UInt8> = 250
+    println_int(u)      // was -6 before the zero-extend fix
+    return 0
+}

@@ -73,6 +73,7 @@ extern "C" {
 
     // New type conversion functions (primitive to_string/from_string)
     char* __vyb_int_to_string(int64_t value);
+    char* __vyb_uint_to_string(uint64_t value);
     char* __vyb_float_to_string(double value);
     char* __vyb_bool_to_string(bool value);
     char* __vyb_string_to_string(const char* str);
@@ -861,6 +862,8 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
         // Register new type conversion functions (to_string/from_string)
         runtimeSymbols[mangle("__vyb_int_to_string")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_int_to_string), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_uint_to_string")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_uint_to_string), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_float_to_string")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_float_to_string), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_bool_to_string")] = llvm::orc::ExecutorSymbolDef(
