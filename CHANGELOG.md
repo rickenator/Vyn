@@ -10,6 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+- **`for`-loop desugar over `Iterator`** — `for (item in <iter-expr>)` now
+  desugars onto the `core::iter::Iterator` protocol whenever the iterable is a
+  non-identifier expression (e.g. `ints.iter()`); the parser expands it to a
+  temp-isolated `while (true) { match (it.next()) { Some(item) -> { body }
+  None -> { break } } }` loop. Because the transform is parse-time and
+  type-blind it keys off the non-identifier form: plain identifiers keep the
+  existing index-based `Vec<T>` path and `0..n` ranges keep the inclusive range
+  path, so those loops are untouched. `break`/`continue` re-enter `next()`, and
+  re-evaluating the producer each loop starts a fresh iterator. Covered by
+  `test/modules/test_for_iter.vyb`.
 - **Closure capture via a uniform environment struct** — every lambda now
   lowers to a closure value `struct { ptr env, ptr fn }` instead of a bare
   function pointer. The semantic analyzer detects free-variable references in a

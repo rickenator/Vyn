@@ -1,0 +1,65 @@
+// @test: for-loop over the Iterator protocol
+// @description: `for (x in <iter-expr>)` desugars onto core::iter::Iterator when the
+//   iterable is a non-identifier expression (e.g. `v.iter()`). Confirms break/continue
+//   and that re-evaluating the producer each loop starts with a fresh iterator.
+// @category: iterator, stdlib, vec, for, desugar
+// @expect: pass
+// @expect-output: for-iter-ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import collections
+
+main()<Int> -> {
+    ints<Vec<Int>> = Vec()
+    ints.push(1); ints.push(2); ints.push(3); ints.push(4); ints.push(5)
+
+    sum<Int> = 0
+    for (x in ints.iter()) {
+        sum = sum + x
+    }
+    if (sum != 15) {
+        println("for-iter-sum-fail:" + sum)
+        return 1
+    }
+
+    odd<Int> = 0
+    for (x in ints.iter()) {
+        if (x % 2 == 0) {
+            continue
+        }
+        odd = odd + x
+    }
+    if (odd != 9) {
+        println("for-iter-continue-fail:" + odd)
+        return 2
+    }
+
+    head<Int> = 0
+    for (x in ints.iter()) {
+        if (x >= 3) {
+            break
+        }
+        head = head + x
+    }
+    if (head != 3) {
+        println("for-iter-break-fail:" + head)
+        return 3
+    }
+
+    a<Int> = 0
+    b<Int> = 0
+    for (x in ints.iter()) {
+        a = a + x
+    }
+    for (y in ints.iter()) {
+        b = b + y
+    }
+    if (a != 15 || b != 15) {
+        println("for-iter-double-fail:" + a + "," + b)
+        return 4
+    }
+
+    println("for-iter-ok")
+    return 0
+}

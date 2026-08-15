@@ -1250,6 +1250,14 @@ sum_vector(numbers<Vec<Int>>)<Int> -> {
     return total
 }
 
+# For loops over the Iterator protocol: any non-identifier iterable
+# expression desugars onto `.next()` (e.g. `v.iter()`, or a custom
+# `bind Iterator` type). `break`/`continue` work and re-enter `next()`.
+# The range (`0..n`) and plain-Vec (`for (x in vec)`) forms above are unchanged.
+for (x in numbers.iter()) {
+    total = total + x
+}
+
 # Range-based for loops (inclusive)
 count_to_ten()<Int> -> {
     sum<Int> = 0

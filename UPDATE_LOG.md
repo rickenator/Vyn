@@ -3,6 +3,19 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-15: **`for (item in col)` desugar over `Iterator`**. A `for` loop whose
+  iterable is a **non-identifier expression** (e.g. `ints.iter()`) now lowers to the
+  `core::iter::Iterator` protocol: the parser emits `{ var __it_<item> = <expr>;
+  while (true) { match (__it_<item>.next()) { Some(item) -> { body } None -> { break }
+  } } }`. The transform is parse-time and type-blind, so it keys off the expression
+  shape rather than the type: plain identifiers keep the existing index-based `Vec<T>`
+  path and `0..n` ranges keep the inclusive-range path (no regressions — full suite
+  859/863, with only the 4 pre-existing trap/vec-edge failures). `break`/`continue`
+  naturally re-enter `next()`, and re-evaluating the producer each loop starts a fresh
+  iterator. The optional `skip` parameter is rejected on the iterator path (no clean
+  mapping) until Vec/`HashMap`/`HashSet` binds are woken up behind it. Covered by
+  `test/modules/test_for_iter.vyb`.
+
 - 2026-08-15: **Generic-bind `Option<T>` construction & matching + `VecIter<T>`**. A
   generic bind method returning `Option<T>` (or `Option<Self::Item>`) now works for
   the type-parameter payload. Two root causes fixed: (1) semantic — a `match`/`select`
