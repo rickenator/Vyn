@@ -174,6 +174,7 @@ private:
         bool needsCleanup;
         llvm::Type* type;
         bool isVecWithMallocData; // Tracks if this is a Vec that owns malloc'd data
+        bool isOwnedStruct;       // Tracks if this is a struct binding owning Vec/String fields
     };
     std::vector<std::vector<ScopeVariable>> scopeStack;
     std::map<std::string, uint32_t> refCounts; // For our<T> reference counting
@@ -445,6 +446,18 @@ private:
     // Deep-copy a Vec struct value (clones malloc'd data so caller and callee are independent).
     // Returns an updated Vec struct value with a freshly malloc'd data buffer.
     llvm::Value* generateVecDeepCopy(llvm::Value* vecStructValue, llvm::Type* elemType, llvm::Type* vecStructType);
+
+    // Owned-field introspection + reclaim for struct-typed storage. Resolves a
+    // struct's concrete field type nodes (substituting generic args) in layout
+    // order; reclaims each owned field's heap buffer/String reference on scope exit.
+    bool collectStructConcreteFieldTypes(const vyb::ast::TypeNode* astType,
+                                         std::vector<vyb::ast::TypeNodePtr>& out) const;
+    bool isVecOfStringTypeNode(const vyb::ast::TypeNode* tn) const;
+    bool isKnownStructTypeNode(const vyb::ast::TypeNode* tn) const;
+    bool structTypeHasOwnedFields(const vyb::ast::TypeNode* astType) const;
+    bool scopeVarIsOwnedStruct(const ScopeVariable& var) const;
+    void reclaimOwnedStructAt(llvm::Value* structPtr, const vyb::ast::TypeNode* astType,
+                              llvm::StructType* llvmTy);
 
     // Async/await support
     struct AsyncState {

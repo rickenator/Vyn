@@ -544,11 +544,13 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                                 bool transfersOwnership =
                                     transferNames.count(var.name) &&
                                     (var.isVecWithMallocData ||
+                                     scopeVarIsOwnedStruct(var) ||
                                      var.ownership == ast::OwnershipKind::OUR ||
                                      var.ownership == ast::OwnershipKind::MILD);
                                 if (transfersOwnership) {
                                     var.needsCleanup = false;
                                     var.isVecWithMallocData = false;
+                                    var.isOwnedStruct = false;
                                 }
                             }
                         }

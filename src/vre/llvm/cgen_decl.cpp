@@ -232,6 +232,28 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
              m_currentLLVMValue = nullptr;
              return;
         }
+        // A Vec whose initializer is a borrow (a field/member extract such as
+        // `self.keys`) shares the source's data buffer. Give the new binding its
+        // own deep copy so both the source and this binding own independent data
+        // and each can be reclaimed on scope exit without a double-free. Fresh
+        // `Vec(...)` constructions (transfers) are left as-is.
+        if (initialVal && isVecStructType(varType) && isVecStructType(initialVal->getType()) &&
+            node->init &&
+            (dynamic_cast<ast::MemberExpression*>(node->init.get()) != nullptr ||
+             dynamic_cast<ast::Identifier*>(node->init.get()) != nullptr)) {
+            const vyb::ast::TypeNode* elemNode = nullptr;
+            if (auto* vt = dynamic_cast<ast::VecType*>(node->typeNode.get())) {
+                elemNode = vt->elementType.get();
+            } else if (auto* nn = dynamic_cast<ast::TypeName*>(node->typeNode.get())) {
+                if (!nn->genericArgs.empty()) elemNode = nn->genericArgs[0].get();
+            }
+            if (elemNode) {
+                if (llvm::Type* elemT = codegenType(const_cast<vyb::ast::TypeNode*>(elemNode))) {
+                    initialVal = generateVecDeepCopy(initialVal, elemT,
+                        llvm::cast<llvm::StructType>(varType));
+                }
+            }
+        }
         builder->CreateStore(initialVal, alloca);
         // Register the variable in namedValues
         namedValues[node->id->name] = alloca;
@@ -341,6 +363,16 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
         if (stringVar) {
             needsCleanup = true;
             VYB_CDBG << "DEBUG: Variable '" << node->id->name << "' is a String - needs cleanup" << std::endl;
+        }
+
+        // An owning (`my`) struct may hold owned fields (Vec data buffers,
+        // String references, or a nested owning struct). Mark it for scope-exit
+        // reclaim so those fields are freed / released when the binding drops.
+        if (!needsCleanup && ownership == ast::OwnershipKind::MY && node->typeNode &&
+            structTypeHasOwnedFields(node->typeNode.get())) {
+            needsCleanup = true;
+            VYB_CDBG << "DEBUG: Variable '" << node->id->name
+                      << "' is a struct with owned fields - needs cleanup" << std::endl;
         }
 
         // Register variable for scope-based cleanup
@@ -897,6 +929,10 @@ void LLVMCodegen::visit(vyb::ast::StructDeclaration* node) {
 
     // Add struct to monomorphizedStructs for metadata generation
     monomorphizedStructs[nameStr] = structType;
+
+    // Cache the AST template (no generic params) so owned-field cleanup can
+    // resolve concrete field types for scope-exit reclaim / deep-copy.
+    genericStructTemplates[nameStr] = node;
 
     // Generate type metadata for JSON serialization
     generateTypeMetadata(nameStr, node);

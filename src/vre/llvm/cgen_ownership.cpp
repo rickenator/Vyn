@@ -135,6 +135,7 @@ void LLVMCodegen::registerVariable(const std::string& name, llvm::Value* allocaI
     var.needsCleanup = needsCleanup;
     var.type = type;
     var.isVecWithMallocData = needsCleanup && isVecStructType(type);
+    var.isOwnedStruct = false; // resolved lazily at cleanup / return-transfer time
 
     if (var.isVecWithMallocData) {
         VYB_CDBG << "DEBUG: Variable '" << name << "' identified as Vec with malloc'd data" << std::endl;
@@ -174,6 +175,23 @@ void LLVMCodegen::cleanupVariable(const ScopeVariable& var) {
 
     switch (var.ownership) {
         case ast::OwnershipKind::MY: {
+            // A struct-typed binding owns its Vec / String fields (and those of
+            // any nested owning structs). Reclaim each owned field on scope exit.
+            // String, Vec, and closure bindings fall through to their own branches.
+            {
+                auto astIt = valueTypeMap.find(var.allocaInst);
+                if (var.allocaInst && astIt != valueTypeMap.end() && astIt->second) {
+                    if (auto* structLLVM = llvm::dyn_cast<llvm::StructType>(var.type)) {
+                        if (scopeVarIsOwnedStruct(var)) {
+                            VYB_CDBG << "DEBUG: Performing owned-field cleanup for struct variable: "
+                                      << var.name << std::endl;
+                            reclaimOwnedStructAt(var.allocaInst, astIt->second.get(), structLLVM);
+                            return;
+                        }
+                    }
+                }
+            }
+            // Fall through to String / Vec / other MY cleanup.
             // Unique ownership - immediate cleanup
             // A String binding holds one reference to a heap buffer (only when
             // needsCleanup was set for a String-typed binding); release it here.
@@ -657,6 +675,169 @@ llvm::Function* LLVMCodegen::getOrCreateMemcpyFunction() {
         memcpyFunc = llvm::Function::Create(memcpyFuncType, llvm::Function::ExternalLinkage, "memcpy", module.get());
     }
     return memcpyFunc;
+}
+
+namespace {
+const vyb::ast::TypeName* asTypeNameNode(const vyb::ast::TypeNode* tn) {
+    return dynamic_cast<const vyb::ast::TypeName*>(tn);
+}
+vyb::ast::TypeNodePtr substituteOwnedFieldType(const vyb::ast::TypeNode* tn,
+                                               const std::map<std::string, vyb::ast::TypeNode*>& pm) {
+    if (!tn) return nullptr;
+    if (auto* nn = dynamic_cast<const vyb::ast::TypeName*>(tn)) {
+        if (nn->identifier) {
+            auto it = pm.find(nn->identifier->name);
+            if (it != pm.end()) return it->second->clone();
+            if (!nn->genericArgs.empty()) {
+                std::vector<vyb::ast::TypeNodePtr> args;
+                for (const auto& a : nn->genericArgs) {
+                    args.push_back(substituteOwnedFieldType(a.get(), pm));
+                }
+                return std::make_unique<vyb::ast::TypeName>(
+                    nn->loc,
+                    std::make_unique<vyb::ast::Identifier>(nn->identifier->loc, nn->identifier->name),
+                    std::move(args));
+            }
+        }
+    }
+    return tn->clone();
+}
+std::string ownedFieldTypeBase(const vyb::ast::TypeNode* tn) {
+    if (!tn) return "";
+    if (auto* nn = dynamic_cast<const vyb::ast::TypeName*>(tn)) {
+        return nn->identifier ? nn->identifier->name : "";
+    }
+    return "";
+}
+bool isOwnedFieldString(const vyb::ast::TypeNode* tn) {
+    std::string b = ownedFieldTypeBase(tn);
+    return b == "String" || b == "string";
+}
+bool isVecTypeNode(const vyb::ast::TypeNode* tn) {
+    if (dynamic_cast<const vyb::ast::VecType*>(tn)) return true;
+    return ownedFieldTypeBase(tn) == "Vec";
+}
+}
+
+bool LLVMCodegen::collectStructConcreteFieldTypes(
+        const vyb::ast::TypeNode* astType, std::vector<vyb::ast::TypeNodePtr>& out) const {
+    out.clear();
+    if (!astType) return false;
+    if (auto* st = dynamic_cast<const vyb::ast::StructType*>(astType)) {
+        for (const auto& f : st->fields) {
+            out.push_back(f.type ? f.type->clone() : nullptr);
+        }
+        return true;
+    }
+    if (auto* nn = dynamic_cast<const vyb::ast::TypeName*>(astType)) {
+        if (!nn->identifier) return false;
+        auto it = genericStructTemplates.find(nn->identifier->name);
+        if (it == genericStructTemplates.end()) return false;
+        vyb::ast::StructDeclaration* decl = it->second;
+        std::map<std::string, vyb::ast::TypeNode*> pm;
+        for (size_t i = 0; i < decl->genericParams.size() && i < nn->genericArgs.size(); ++i) {
+            if (decl->genericParams[i] && decl->genericParams[i]->name) {
+                pm[decl->genericParams[i]->name->name] = nn->genericArgs[i].get();
+            }
+        }
+        for (const auto& f : decl->fields) {
+            out.push_back(substituteOwnedFieldType(f && f->typeNode ? f->typeNode.get() : nullptr, pm));
+        }
+        return true;
+    }
+    return false;
+}
+
+bool LLVMCodegen::isVecOfStringTypeNode(const vyb::ast::TypeNode* tn) const {
+    if (!isVecTypeNode(tn)) return false;
+    const vyb::ast::TypeNode* elem = nullptr;
+    if (auto* vt = dynamic_cast<const vyb::ast::VecType*>(tn)) {
+        elem = vt->elementType.get();
+    } else if (auto* nn = dynamic_cast<const vyb::ast::TypeName*>(tn)) {
+        if (!nn->genericArgs.empty()) elem = nn->genericArgs[0].get();
+    }
+    return elem && isOwnedFieldString(elem);
+}
+
+bool LLVMCodegen::isKnownStructTypeNode(const vyb::ast::TypeNode* tn) const {
+    std::string base = ownedFieldTypeBase(tn);
+    if (base.empty() || base == "Vec" || isOwnedFieldString(tn)) return false;
+    return genericStructTemplates.count(base) != 0;
+}
+
+bool LLVMCodegen::structTypeHasOwnedFields(const vyb::ast::TypeNode* astType) const {
+    std::vector<vyb::ast::TypeNodePtr> fields;
+    if (!collectStructConcreteFieldTypes(astType, fields)) return false;
+    for (const auto& f : fields) {
+        if (!f) continue;
+        if (isVecTypeNode(f.get()) || isOwnedFieldString(f.get())) return true;
+        if (isKnownStructTypeNode(f.get()) && structTypeHasOwnedFields(f.get())) return true;
+    }
+    return false;
+}
+
+bool LLVMCodegen::scopeVarIsOwnedStruct(const ScopeVariable& var) const {
+    if (var.ownership != ast::OwnershipKind::MY || !llvm::isa<llvm::StructType>(var.type)) {
+        return false;
+    }
+    auto astIt = valueTypeMap.find(var.allocaInst);
+    if (astIt == valueTypeMap.end() || !astIt->second) return false;
+    return structTypeHasOwnedFields(astIt->second.get());
+}
+
+void LLVMCodegen::reclaimOwnedStructAt(llvm::Value* structPtr,
+                                       const vyb::ast::TypeNode* astType,
+                                       llvm::StructType* llvmTy) {
+    if (!structPtr || !astType || !llvmTy || !builder || !currentFunction) return;
+    std::vector<vyb::ast::TypeNodePtr> fields;
+    if (!collectStructConcreteFieldTypes(astType, fields)) return;
+    size_t n = std::min(fields.size(), (size_t)llvmTy->getNumElements());
+    llvm::PointerType* rawPtr = llvm::PointerType::get(*context, 0);
+    llvm::Constant* zero = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 0);
+    llvm::Constant* nullPtr = llvm::ConstantPointerNull::get(rawPtr);
+    for (size_t i = 0; i < n; ++i) {
+        const vyb::ast::TypeNode* f = fields[i].get();
+        llvm::Type* fLLVM = llvmTy->getElementType(i);
+        if (!f || !fLLVM) continue;
+        llvm::Value* fptr = builder->CreateStructGEP(llvmTy, structPtr, i, "reclaim.field");
+        if (isVecTypeNode(f)) {
+            auto* vt = llvm::dyn_cast<llvm::StructType>(fLLVM);
+            if (!vt || !isVecStructType(vt)) continue;
+            llvm::Value* sl = builder->CreateLoad(vt, fptr, "reclaim.vec");
+            llvm::Value* data = builder->CreateExtractValue(sl, 0, "reclaim.data");
+            if (isVecOfStringTypeNode(f)) {
+                llvm::Value* sz = builder->CreateExtractValue(sl, 1, "reclaim.size");
+                releaseStringElements(data, sz);
+            }
+            llvm::Value* isNull = builder->CreateICmpEQ(
+                data, llvm::ConstantPointerNull::get(rawPtr), "reclaim.isnull");
+            llvm::BasicBlock* freeBB = llvm::BasicBlock::Create(*context, "reclaim.vec.free", currentFunction);
+            llvm::BasicBlock* contBB = llvm::BasicBlock::Create(*context, "reclaim.vec.cont", currentFunction);
+            builder->CreateCondBr(isNull, contBB, freeBB);
+            builder->SetInsertPoint(freeBB);
+            builder->CreateCall(getOrCreateFreeFunction(), {data});
+            builder->CreateBr(contBB);
+            builder->SetInsertPoint(contBB);
+            llvm::Value* clr = llvm::UndefValue::get(vt);
+            clr = builder->CreateInsertValue(clr, nullPtr, 0);
+            clr = builder->CreateInsertValue(clr, zero, 1);
+            clr = builder->CreateInsertValue(clr, zero, 2);
+            builder->CreateStore(clr, fptr);
+        } else if (isOwnedFieldString(f)) {
+            auto* st2 = llvm::dyn_cast<llvm::StructType>(fLLVM);
+            if (!st2 || !isVybStringStructType(st2)) continue;
+            llvm::Value* strv = builder->CreateLoad(st2, fptr, "reclaim.str");
+            releaseStringValue(strv);
+            llvm::Value* clr = llvm::UndefValue::get(st2);
+            clr = builder->CreateInsertValue(clr, nullPtr, 0);
+            clr = builder->CreateInsertValue(clr, zero, 1);
+            builder->CreateStore(clr, fptr);
+        } else if (isKnownStructTypeNode(f)) {
+            if (auto* st3 = llvm::dyn_cast<llvm::StructType>(fLLVM)) {
+                reclaimOwnedStructAt(fptr, f, st3);
+            }
+        }
+    }
 }
 
 // Generate a deep copy of a Vec struct value.
