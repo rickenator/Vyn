@@ -1,0 +1,28 @@
+// @test: select as a statement (side effects only)
+// @description: `select (expr) -> { ... }` may be used as a bare statement whose
+//   arms run for side effects and are not assigned to a value; block arms without
+//   `pass` fall through to the following statements. Also valid as a discarded
+//   expression statement. Each arm records into a visible value to assert the
+//   expected branch fired.
+// @category: control_flow, select
+// @expect: pass
+// @expect-output: ge3 end
+// @expect-return: 0
+
+main()<Int> -> {
+    n<Int> = 5
+    memo<String> = ""
+    select (n) -> {
+        >= 3 -> { memo = memo + "ge3 " }
+        ? -> { memo = memo + "lt3 " }
+    }
+    println("after-stmt")
+
+    # A side-effect select may also appear as a discarded expression statement.
+    select (n) -> {
+        100 -> { memo = memo + "no " }
+        ? -> { memo = memo + "end " }
+    }
+    println(memo)
+    return 0
+}

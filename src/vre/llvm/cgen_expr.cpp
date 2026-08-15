@@ -6316,6 +6316,25 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
         return payloadTy;
     };
 
+    // Nested select used as an arm body during an enclosing select's
+    // type-inference preview: report the type of the first arm body WITHOUT
+    // creating any real basic blocks. Running the normal matching machinery
+    // here would insert the inner select's blocks (including an unterminated
+    // `select.end`) into the function just before the preview's throwaway
+    // block is erased, leaving dangling blocks that fail LLVM verification.
+    if (infer_types_only) {
+        llvm::Value* preview = nullptr;
+        if (!node->cases.empty() && node->cases[0].second) {
+            std::map<std::string, llvm::Value*> savedArmNamedValues = namedValues;
+            bindVariantPattern(node->cases[0].first);
+            node->cases[0].second->accept(*this);
+            preview = m_currentLLVMValue;
+            namedValues = std::move(savedArmNamedValues);
+        }
+        m_currentLLVMValue = preview;
+        return;
+    }
+
     // Create basic blocks for pattern matching
     llvm::Function* func = builder->GetInsertBlock()->getParent();
     llvm::BasicBlock* endSelectBB = llvm::BasicBlock::Create(*context, "select.end");
@@ -6386,6 +6405,11 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
                 if (dynamic_cast<ast::BlockExpression*>(result.get())) {
                     // Block expression - pass statement will handle storing result
                     result->accept(*this);
+                    // Side-effect-only block (no `pass`) still needs to reach the
+                    // end block, e.g. `select` used as a bare statement.
+                    if (!builder->GetInsertBlock()->getTerminator()) {
+                        builder->CreateBr(endSelectBB);
+                    }
                 } else {
                     // Naked expression - auto-store result
                     result->accept(*this);
@@ -6549,6 +6573,12 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
                 if (dynamic_cast<ast::BlockExpression*>(result.get())) {
                     // Block expression - pass statement will handle storing and branching
                     result->accept(*this);
+                    // Side-effect-only block (no `pass`) still needs to reach the
+                    // end block (e.g. `select` used as a bare statement, or a
+                    // block arm with no yielding value).
+                    if (!builder->GetInsertBlock()->getTerminator()) {
+                        builder->CreateBr(endSelectBB);
+                    }
                 } else {
                     // Naked expression - auto-store and branch
                     result->accept(*this);

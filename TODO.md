@@ -360,9 +360,16 @@ The `select` expression is a uniquely Vyb concept: pattern matching that produce
 with `pass` for multi-statement case bodies. Needs polishing:
 
 - [x] **`select` exhaustiveness** — A `select` on a tagged-union enum must cover every variant or have a wildcard, or it is rejected with the missing variant(s) named
-- [ ] **Nested `select`** — `select` inside a `select` arm
+- [x] **Nested `select`** — `select` inside a `select` arm — a `select` used as
+  an arm body (naked or block-with-`pass`) now compiles and runs; previously the
+  enclosing select's type-inference preview ran the inner select's full block
+  machinery, leaving dangling unterminated `select.end`/`select.case` blocks
+  that failed LLVM verification (fixed in `cgen_expr.cpp`)
 - [x] **`select` with enum variants** — Full destructuring in arms (`Circle(r) ->`, `Unit ->`) with payload fields bound as arm-scoped locals
-- [ ] **`select` as statement** — Allow `select` without a binding target (side-effects only)
+- [x] **`select` as statement** — `select` may be used without a binding target
+  (side-effects only): recognized as an expression/statement start in the parser,
+  and block arms without `pass` now branch to the select end block instead of
+  leaving an unterminated case block
 
 ### 8. Wildcard / Multi-Type Trap Handler (MEDIUM PRIORITY)
 - [x] **`trap (e<?>)` syntax** — Catch any error type
@@ -371,7 +378,7 @@ with `pass` for multi-statement case bodies. Needs polishing:
 
 ### 9. Advanced Control Flow (LOWER PRIORITY)
 - [x] **`defer` statement** — `defer cleanup()` runs on scope exit (LIFO order, function-level)
-- [ ] **`ensure` statement** — `ensure condition else fail<Error>(...)` (post-condition)
+- [x] **`ensure` statement** — `ensure condition else fail<Error>(...)` (post-condition) — desugars to `if (cond) {} else { handling }`; handling may be a block, a single statement (`return -1`), or `fail<T>(...)`
 - [ ] **Labeled `break`/`continue`** — Break from outer loops by label
 
 ### 10. Async System — Completion (LOWER PRIORITY)

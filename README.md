@@ -1369,6 +1369,13 @@ process_request(code<Int>)<Int> -> {
 # - Wildcard '?' provides default case handling
 ```
 
+`select` may also be used as a **bare statement** for side effects only — arms
+need not yield a value, and a block arm without `pass` simply falls through to
+the following statements. And because a `select` arm body is itself an
+expression, a `select` may appear as an arm of an enclosing `select` for
+per-branch sub-selection (see `test/new_features/test_select_statement.vyb` and
+`test/new_features/test_select_nested.vyb`).
+
 ### Comparison Patterns (Range Matching)
 
 Vyb's pattern matching supports **comparison patterns** for elegant range-based matching with compile-time safety:

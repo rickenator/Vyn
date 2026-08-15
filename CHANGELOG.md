@@ -11,6 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`select` as a statement** — `select (expr) -> { ... }` may be used without a
+  binding target for side-effects only. Block arms without `pass` now branch to
+  the select end block instead of leaving an unterminated case block. Covered by
+  `test/new_features/test_select_statement.vyb`.
+- **Nested `select`** — a `select` may now appear as an arm body of an enclosing
+  `select` (naked or a block with `pass`), enabling per-branch sub-selection.
+  Previously the outer select's type-inference preview ran the inner select's
+  block machinery, leaving dangling unterminated `select.end`/`select.case`
+  blocks that failed LLVM verification. Covered by
+  `test/new_features/test_select_nested.vyb`.
+- **`ensure` post-condition** — `ensure condition else <handling>` desugars to
+  `if (cond) {} else { handling }`; handling may be a block, a single statement
+  (e.g. `return -1`), or `fail<T>(...)`.
+
 - **Unsigned integer literal suffix `u`** — `255u`, `0xffffu`, `0b101u`, and
   `4294967295u` parse as unsigned literals (default width `UInt64`) instead of a
   signed `Int`, and participate in the explicit-width assignment policy (a

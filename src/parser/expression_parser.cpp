@@ -1604,7 +1604,8 @@ bool ExpressionParser::is_expression_start(vyb::TokenType type) const {
         type == TokenType::LBRACE ||    // Object literal
         type == TokenType::KEYWORD_IF ||  // If expression
         type == TokenType::KEYWORD_TYPEOF ||  // typeof(expr) / typeof<T>()
-        type == TokenType::KEYWORD_TYPENAME)  // typename(expr)
+        type == TokenType::KEYWORD_TYPENAME ||  // typename(expr)
+        type == TokenType::KEYWORD_SELECT)  // select(expr) -> { ... }
     {
         return true;
     }

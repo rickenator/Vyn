@@ -1,0 +1,35 @@
+// @test: nested select
+// @description: a `select` may appear as an arm body of an enclosing `select`,
+//   either as a naked expression or a block with `pass`, so arbitrary per-branch
+//   sub-selection works (previously this emitted unterminated `select.end` and
+//   `select.case` blocks and failed LLVM verification).
+// @category: control_flow, select
+// @expect: pass
+// @expect-output: 300 40
+// @expect-return: 0
+
+main()<Int> -> {
+    n<Int> = 5
+
+    # Nested select in a non-first arm (naked-expression inner select).
+    r<Int> = select (n) -> {
+        0 -> 100
+        ? -> select (n) -> {
+            >= 3 -> 300
+            ? -> 301
+        }
+    }
+
+    # Nested select in the matched arm with `pass`-style block bodies.
+    x<Int> = 2
+    a<Int> = select (x) -> {
+        0 -> { y<Int> = 10; pass y + 1 }
+        ? -> select (x) -> {
+            2 -> { y<Int> = 20; pass y * 2 }
+            ? -> { y<Int> = 30; pass y }
+        }
+    }
+
+    println("{} {}".format(r, a))
+    return 0
+}
