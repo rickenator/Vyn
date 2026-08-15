@@ -174,6 +174,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   concrete `Iterator` bind drive `next()` over such a field. Covered by
   `test/modules/test_nested_their_vec_field.vyb`; leak-free under ASAN.
 
+- **Generic-bind `Option<T>` construction & matching** — a generic bind method that
+  returns `Option<T>` (or `Option<Self::Item>`) with a type-parameter payload now
+  constructs and is matchable as the concrete enum. Two fixes: (1) semantic
+  `match`/`select` on a generic-bind-returned `Option` materializes the concrete
+  enum from its template (`materializeConcreteEnum`), so `Some(x)`/`None` variant
+  patterns resolve — previously they failed with "Unknown type identifier: Some"
+  because only the bind's loose `Option<T>` was registered, never the substituted
+  `Option<Int>`; (2) codegen for bare `Some(x)`/`None` inside a monomorphized
+  generic bind substitutes the active type params into the enum instantiation
+  (mirroring the already-correct qualified `Option<T>::Some` path), instead of
+  emitting an unresolved `Option_T`. Together they unblock a generic `VecIter<T>`.
+- **`VecIter<T>` stdlib iterator (`import collections`)** — a cursor iterator over a
+  `Vec<T>`: holds the Vec by reference (`data<their<Vec<T>>>`) and implements
+  `core::iter`, with `next(self)<Option<Item>>` yielding `Some(v)` per element and
+  `None` when done, advancing its own index through the by-ref receiver. Producer
+  `v.iter()` is a `VecHigherOps` method on the built-in `Vec<T>` (generic over the
+  element type, no `Comparable`/`Equatable` requirement). `Iterator` is re-exported
+  from `collections` so `import collections` alone surfaces the bind. Consumed with
+  an explicit `.next()` / `match` loop (for both `Int` and `String`) in
+  `test/modules/test_vec_iter.vyb`; leak-free under ASAN.
+
 ### Changed
 - **`FunctionType` grammar doc no longer contradicts the parser** — `vyb.hpp`
   now documents the real function-pointer type syntax `fn(params) -> Return`

@@ -526,6 +526,13 @@ private:
     void registerGenericEnumConcrete(const std::string& enumName, const std::string& concreteTypeStr,
                                      const std::vector<ast::TypeNodePtr>& typeArgs);
 
+    // Materialize payload types for `type` (a generic enum instantiation such as
+    // `Option<Int>`) into `enumVariantPayloadTypes` if not already present. Used at
+    // `match`/`select` scrutinees whose concrete enum arose only from a generic bind
+    // return type (so the bind's own `Option<T>` was registered, but not the
+    // client-substituted `Option<Int>`).
+    void materializeConcreteEnum(ast::TypeNode* type);
+
     // Context for resolving 'Self' type in aspect implementations
     ast::TypeNode* currentImplType = nullptr;  // Set to Box<T> when processing bind Display -> Box<T>
     std::string currentImplTraitName;          // Set to Display when processing bind Display -> Type

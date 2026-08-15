@@ -804,8 +804,23 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 bool isOptionSome = (cn == "Some" && en == "Option");
                 bool isResultCtor = (en == "Result" && (cn == "Ok" || cn == "Err"));
                 if ((isOptionSome || isResultCtor) && !etn->genericArgs.empty()) {
-                    std::string mangled = mangleGenericTypeName(en, etn->genericArgs);
-                    if (!taggedEnumInfo.count(mangled)) monomorphizeEnum(en, etn->genericArgs);
+                    // Inside a monomorphized generic bind body the enclosing type
+                    // params (e.g. `T` in `Option<T>`) are active via
+                    // currentTypeSubstitutions; substitute them so a bare `Some(v)`
+                    // becomes `Option<Int>` rather than an unresolved `Option_T`.
+                    std::vector<ast::TypeNodePtr> concreteEnumArgs;
+                    concreteEnumArgs.reserve(etn->genericArgs.size());
+                    for (const auto& arg : etn->genericArgs) {
+                        std::string s = arg->toString();
+                        if (!currentTypeSubstitutions.empty()) {
+                            for (const auto& kv : currentTypeSubstitutions) {
+                                s = replaceTypeTokens(s, kv.first, kv.second);
+                            }
+                        }
+                        concreteEnumArgs.push_back(typePatternToTypeNode(TypePattern::parse(s), node->loc));
+                    }
+                    std::string mangled = mangleGenericTypeName(en, concreteEnumArgs);
+                    if (!taggedEnumInfo.count(mangled)) monomorphizeEnum(en, concreteEnumArgs);
                     std::vector<llvm::Value*> payloadVals;
                     for (auto& arg : node->arguments) {
                         arg->accept(*this);
@@ -3964,8 +3979,21 @@ void LLVMCodegen::visit(ast::Identifier* node) {
     if (node->name == "None" && node->type) {
         auto* optTn = dynamic_cast<ast::TypeName*>(node->type.get());
         if (optTn && optTn->identifier && optTn->identifier->name == "Option") {
-            std::string mangled = mangleGenericTypeName("Option", optTn->genericArgs);
-            if (!taggedEnumInfo.count(mangled)) monomorphizeEnum("Option", optTn->genericArgs);
+            // Substitute active generic-bind type params (bare `None` inside a
+            // monomorphized bind body resolves `Option<T>` -> `Option<Int>`).
+            std::vector<ast::TypeNodePtr> concreteEnumArgs;
+            concreteEnumArgs.reserve(optTn->genericArgs.size());
+            for (const auto& arg : optTn->genericArgs) {
+                std::string s = arg->toString();
+                if (!currentTypeSubstitutions.empty()) {
+                    for (const auto& kv : currentTypeSubstitutions) {
+                        s = replaceTypeTokens(s, kv.first, kv.second);
+                    }
+                }
+                concreteEnumArgs.push_back(typePatternToTypeNode(TypePattern::parse(s), node->loc));
+            }
+            std::string mangled = mangleGenericTypeName("Option", concreteEnumArgs);
+            if (!taggedEnumInfo.count(mangled)) monomorphizeEnum("Option", concreteEnumArgs);
             m_currentLLVMValue = buildTaggedEnumValue(mangled, "None", {});
             return;
         }

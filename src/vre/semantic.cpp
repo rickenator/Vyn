@@ -4398,6 +4398,7 @@ void SemanticAnalyzer::visit(ast::SelectExpression* node) {
             selectTypeStr = node->expr->type->toString();
         }
     }
+    if (node->expr) materializeConcreteEnum(node->expr->type.get());
 
     // Track comparison patterns for unreachable detection
     struct ComparisonInfo {
@@ -5018,6 +5019,11 @@ void SemanticAnalyzer::visit(ast::MatchStatement* node) {
             matchTypeStr = node->expr->type->toString();
         }
     }
+    // A generic bind method may return a concrete enum (e.g. `Option<T>` substituted
+    // to `Option<Int>`) whose payload types were never materialized (only the bind's
+    // loose `Option<T>` was). Register the concrete enum so variant patterns such as
+    // `Some(x)` / `None` resolve below.
+    if (node->expr) materializeConcreteEnum(node->expr->type.get());
 
     // Track comparison patterns for unreachable detection
     struct ComparisonInfo {
@@ -5593,6 +5599,20 @@ void SemanticAnalyzer::registerGenericEnumConcrete(
         concrete[kv.first] = std::move(concretePayload);
     }
 }
+
+void SemanticAnalyzer::materializeConcreteEnum(ast::TypeNode* type) {
+    if (!type) return;
+    auto tn = dynamic_cast<ast::TypeName*>(type);
+    if (!tn || !tn->identifier || tn->genericArgs.empty()) return;
+    const std::string& name = tn->identifier->name;
+    if (!enumGenericParamOrder.count(name)) return;   // not a generic enum template
+    if (enumVariantPayloadTypes.count(tn->toString())) return;  // already materialized
+    std::vector<ast::TypeNodePtr> args;
+    args.reserve(tn->genericArgs.size());
+    for (auto& a : tn->genericArgs) args.push_back(a->clone());
+    registerGenericEnumConcrete(name, tn->toString(), args);
+}
+
 // void SemanticAnalyzer::visit(ast::TraitDeclaration* node) {} // Handled above (commented out)
 // void SemanticAnalyzer::visit(ast::ImplDeclaration* node) {} // Handled above
 // void SemanticAnalyzer::visit(ast::NamespaceDeclaration* node) {} // Handled above (commented out)

@@ -3,6 +3,23 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-15: **Generic-bind `Option<T>` construction & matching + `VecIter<T>`**. A
+  generic bind method returning `Option<T>` (or `Option<Self::Item>`) now works for
+  the type-parameter payload. Two root causes fixed: (1) semantic — a `match`/`select`
+  scrutinee that is a concrete enum returned from a generic bind (e.g. `Option<Int>`)
+  wasn't in `enumVariantPayloadTypes` (only the bind's loose `Option<T>` was), so
+  `Some(x)`/`None` patterns fell through with "Unknown type identifier: Some";
+  added `materializeConcreteEnum` to lazily register the concrete enum's payload types
+  for both `match` and `select`. (2) codegen — bare `Some(x)`/`None` inside a
+  monomorphized generic bind emitted `Option_T` (not `Option_Int`) because the active
+  generic-bind type params weren't substituted (the qualified `Option<T>::Some` path
+  already did this); applied the same `currentTypeSubstitutions` substitution to the
+  bare constructors. Both generic and concrete. This unblocks the generic collection
+  iterator: `import collections` now ships `VecIter<T>` (cursor over `Vec<T>` by
+  reference, bound to `Iterator`) plus the `iter(self<their<Vec<T>>>)` producer, with
+  `Iterator` re-exported so a whole-module import surfaces the bind. Consumed via
+  `.next()` / `match` for `Int`/`String` in `test/modules/test_vec_iter.vyb`. Full
+  suite 858/862 (the 4 remaining failures are the pre-existing trap/vec edge tests).
 - 2026-08-15: **Nested `their<Vec<T>>` field method resolution**. A struct field
   typed `their<Vec<T>>` (a by-ref view of a Vec — e.g. an iterator holding the Vec by
   reference in `data<their<Vec<T>>>`) now resolves the built-in Vec methods. Root

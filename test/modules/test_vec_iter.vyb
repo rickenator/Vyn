@@ -1,0 +1,55 @@
+// @test: collections VecIter (generic iterator over Vec<T> via v.iter())
+// @description: `import collections` ships `VecIter<T>` bound to core::iter::Iterator:
+//   `v.iter()` returns a cursor iterator holding the Vec by reference, and `next`
+//   yields `Option<Item>` (bare Some/None) advancing its own index. Verified generic
+//   over Int and String by consuming with an explicit `match` / `.next()` loop.
+// @category: collections, iterator, stdlib, vec, generics
+// @expect: pass
+// @expect-output: vec-iter-ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import collections
+
+main()<Int> -> {
+    ints<Vec<Int>> = Vec()
+    ints.push(3)
+    ints.push(4)
+    ints.push(5)
+    it<VecIter<Int>> = ints.iter()
+    s<Int> = 0
+    while (true) {
+        match (it.next()) {
+            Some(v) -> { s = s + v }
+            None -> { break }
+        }
+    }
+    if (s != 12) {
+        println("vec-iter-fail-sum:" + s)
+        return 1
+    }
+
+    strs<Vec<String>> = Vec()
+    strs.push("x")
+    strs.push("y")
+    it2<VecIter<String>> = strs.iter()
+    out<String> = ""
+    while (true) {
+        match (it2.next()) {
+            Some(w) -> {
+                if (out.len() > 0) {
+                    out = out + "|"
+                }
+                out = out + w
+            }
+            None -> { break }
+        }
+    }
+    if (out != "x|y") {
+        println("vec-iter-fail-concat:" + out)
+        return 2
+    }
+
+    println("vec-iter-ok")
+    return 0
+}

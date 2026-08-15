@@ -48,6 +48,32 @@
 # (returns a default when the key is absent).
 
 import core::aspects
+share(all) import core::iter::{Iterator}
+
+# VecIter<T> - a cursor-based iterator over a `Vec<T>`. Holds the Vec by
+# reference (a `their<Vec<T>>` view) and a next index, implementing `core::iter`:
+# `next(self)<Option<Item>>` yields `Some(v)` per element and `None` when done,
+# advancing the cursor in place through the by-ref receiver. Build one with
+# `v.iter()` (from `VecHigherOps`) or construct it directly. Consume with an
+# explicit `.next()` / `match` loop until the `for`-loop desugar ships.
+share(all)
+struct VecIter<T> {
+    data<their<Vec<T>>>,
+    index<Int>
+}
+
+share(all)
+bind<T> Iterator -> VecIter<T> {
+    type Item = T
+    next(self<their<VecIter<T>>>)<Option<T>> -> {
+        if (self.index < self.data.len()) {
+            v<T> = self.data.get(self.index)
+            self.index = self.index + 1
+            return Some(v)
+        }
+        return None
+    }
+}
 
 # Equality probe for bounded key types. The `equals` method is resolved via the
 # `Equatable` bound on a declared type parameter, which is the reliable path for
@@ -471,6 +497,7 @@ aspect VecHigherOps {
     map_in_place(self<their<Vec<T>>>, f<fn(T) -> T>)<Void> -> { }
     retain(self<their<Vec<T>>>, f<fn(T) -> Bool>)<Int> -> { }
     reverse_in_place(self<their<Vec<T>>>)<Void> -> { }
+    iter(self<their<Vec<T>>>)<VecIter<T>> -> { }
 }
 
 share(all)
@@ -537,9 +564,12 @@ bind<T> VecHigherOps -> Vec<T> {
             j = j - 1
         }
     }
+    iter(self<their<Vec<T>>>)<VecIter<T>> -> {
+        return VecIter<T> { data = self, index = 0 }
+    }
 }
 
 share(all)
 collections_status_message()<String> -> {
-    return "collections: HashMap / HashSet with hash-bucket (chained) key lookup"
+    return "collections: HashMap / HashSet with hash-bucket (chained) key lookup + VecIter (v.iter())"
 }
