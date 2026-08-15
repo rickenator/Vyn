@@ -236,13 +236,19 @@ bool __vyb_bool_from_string(const char* str, bool* success) {
 
 // String to String (identity with validation)
 char* __vyb_string_from_string(const char* str, bool* success) {
+    char* r;
     if (!str) {
         *success = false;
-        return strdup("");
+        r = strdup("");
+    } else {
+        *success = true;
+        r = strdup(str);
     }
-
-    *success = true;
-    return strdup(str);
+    // A fresh copy is an owned heap buffer: register it so the generated code's
+    // reference-counted release reclaims it like the other __vyb_*_from_string /
+    // to_string producers.
+    __vyb_string_register(r);
+    return r;
 }
 
 // ============================================================================
