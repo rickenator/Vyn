@@ -179,6 +179,12 @@ void LLVMCodegen::handleVecPush(vyb::ast::CallExpression* node, llvm::Value* vec
     builder->SetInsertPoint(noCopyBlock);
     builder->CreateStore(newDataPtr, dataFieldPtr);
     builder->CreateStore(newCap, capFieldPtr);
+    // Free the OLD data buffer that this growth step replaced. For String
+    // elements the owned references were moved (memcpy'd, not released) into the
+    // new buffer, so only the now-orphaned raw buffer is freed here — the Vec
+    // keeps owning exactly the same set of elements in its new storage.
+    llvm::Function* freeFunc = getOrCreateFreeFunction();
+    builder->CreateCall(freeFunc, {dataPtr});
     builder->CreateBr(mergeBlock);
 
     // Merge block - both paths (alloc and no-alloc) meet here
