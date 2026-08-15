@@ -38,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   width. Previously the 8-byte stores into 4-byte fields corrupted the offsets
   and values of later fields (`T { a = 10, b = 99 }` read `b` as `0`). Covered
   by `test/ffi/repr_c_struct_fields.vyb`.
+- **C integer/float `toString`** — `println`/`toString` now formats any signed
+  C integer width (`CShort`/i16 and friends), not just `Int8`/`Int32`/`Int`, by
+  sign-extending to `i64`; unsigned sizes were already handled. Previously
+  `CShort` produced "Unsupported type for toString conversion: CShort". Covered
+  by `test/ffi/c_int_printing.vyb`.
 - **FFI callbacks through function pointers** — a Vyb function can be passed to a
   C callback parameter (`loc<fn(...)>`), C invokes it, and a function pointer
   returned/stored from C can be called from Vyb via an indirect call. Previously

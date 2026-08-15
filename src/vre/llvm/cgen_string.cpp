@@ -379,17 +379,15 @@ llvm::Value* LLVMCodegen::generateToStringCall(llvm::Value* value, llvm::Type* v
         if (value->getType()->isIntegerTy() && value->getType()->getIntegerBitWidth() < 64) {
             value = builder->CreateZExt(value, int64Type, "uint_to_i64");
         }
-    } else if (valueType == int64Type || typeName == "Int") {
+    } else if (value->getType()->isIntegerTy() && value->getType()->getIntegerBitWidth() > 1) {
+        // Any signed integer width - Int8/i8, CShort/i16, Int32/CInt/i32, Int/i64 -
+        // sign-extends to i64 and formats as a signed integer. (Bool (i1) and the
+        // unsigned sizes above are handled separately.)
         toStringFuncName = "__vyb_int_to_string";
         toStringFuncType = llvm::FunctionType::get(int8PtrType, {int64Type}, false);
-    } else if (valueType == int8Type || typeName == "Int8") {
-        toStringFuncName = "__vyb_int_to_string";  // Reuse same function, will cast
-        toStringFuncType = llvm::FunctionType::get(int8PtrType, {int64Type}, false);
-        value = builder->CreateSExt(value, int64Type, "int8_to_int64");
-    } else if (valueType == int32Type || typeName == "Int32") {
-        toStringFuncName = "__vyb_int_to_string";  // Reuse same function, will cast
-        toStringFuncType = llvm::FunctionType::get(int8PtrType, {int64Type}, false);
-        value = builder->CreateSExt(value, int64Type, "int32_to_int64");
+        if (value->getType()->getIntegerBitWidth() < 64) {
+            value = builder->CreateSExt(value, int64Type, "int_to_i64");
+        }
     } else if (valueType == int1Type || typeName == "Bool") {
         toStringFuncName = "__vyb_bool_to_string";
         toStringFuncType = llvm::FunctionType::get(int8PtrType, {int1Type}, false);

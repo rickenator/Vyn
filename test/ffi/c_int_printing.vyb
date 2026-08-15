@@ -1,0 +1,32 @@
+// @test: C integer/float types print via toString
+// @description: signed and unsigned C integer types of every width (CChar/CUChar, CShort/CUShort, CInt/CUInt) and CFloat/CDouble format correctly through println/toString instead of erroring on unsupported types like CShort
+// @category: ffi, interop
+// @expect: pass
+// @expect-output: u= 4000000000
+// @expect-return: 0
+// @tags: ffi, repr-c, toString, printing
+
+#[repr(C)]
+struct All {
+    s<CShort>,
+    us<CUShort>,
+    i<CInt>,
+    u<CUInt>,
+    ch<CChar>,
+    uch<CUChar>,
+    f<CFloat>,
+    d<CDouble>,
+}
+
+main()<Int> -> {
+    a<All> = All { s = -30000, us = 65000, i = -123, u = 4000000000, ch = -5, uch = 250, f = 1.5, d = 3.25 }
+    println("s=", a.s)
+    println("us=", a.us)
+    println("i=", a.i)
+    println("u=", a.u)
+    println("ch=", a.ch)
+    println("uch=", a.uch)
+    println("f=", a.f)
+    println("d=", a.d)
+    return 0
+}
