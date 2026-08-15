@@ -15,7 +15,8 @@ Welcome to the Vyb Programming Guide. This guide walks you through writing, buil
 This guide is intended for systems programmers, language designers, and developers who want:
 
 * A compact, expressive syntax for both low-level control and high-level abstractions.
-* Planned fine-grained memory management options, including GC, manual free, and scoped regions.
+* Scoped ownership types (`my`/`our`/`their`/`mild`) and reference counting for explicit, safe memory handling, with system-level C interoperability via the FFI.
+* Zero-cost monomorphized generics and aspect/bind polymorphism — native compiled performance or JIT, portable across 20+ target architectures.
 * Built-in concurrency primitives and customizable threading templates.
 * A foundation for a self-hosted compiler and hybrid VM/JIT architecture for rapid iteration and performance tuning.
 
@@ -32,7 +33,7 @@ Here's a comparison of Vyb against several modern systems languages, showing key
 | **Nim**  | Generics + macros                  | GC by default; optional manual `alloc`                             | Async (`async`/`await`), threads       | Python-like indentation           | Hygienic macros; optional GC or ARC                | Very concise syntax; strong metaprogramming support          |
 | **Go**   | Generics (1.18+)                   | GC only                                                            | Goroutines, channels                   | C-style, minimal                  | CSP-style concurrency                              | Simple, fast compile; built-in tooling                       |
 
-*Note:* Each language offers a different balance of safety, performance, and ergonomics. Vyb's strength lies in unifying template metaprogramming, planned flexible memory management, and a future hybrid VM/JIT in a terse, self-hosted package.
+*Note:* Each language offers a different balance of safety, performance, and ergonomics. Vyb's strength lies in unifying monomorphized generics, ownership types with low-level `freedom`, and a single toolchain that JITs, compiles AOT, and links native executables — in a terse, self-hostable package.
 
 ### 1.2 What is Vyb?
 
@@ -59,7 +60,7 @@ git clone https://github.com/rickenator/Vyb.git
 cd Vyb
 mkdir -p build && cd build && LLVM_DIR=/usr/lib/llvm-18/cmake cmake .. && make -j$(nproc) && cd ..
 
-# Run with modern test harness (740+ tests)
+# Run with modern test harness (900+ .vyb tests)
 python3 test_harness.py --vyb ./build/vyb --test-dirs test/new_features --workers 4
 
 # Run your first Vyb program
@@ -444,7 +445,10 @@ count<Int> = get_csv().split(",").len()                   // number of fields
 
 ### ✅ **Async Programming & Debugging**
 
-Vyb v0.4.1 features **complete async/await support** for writing concurrent programs:
+Vyb parses and compiles `async` functions returning `Future<T>` and the `await`
+expression. On the current runtime, `await` resolves its future synchronously;
+true concurrency (an event loop, `spawn`, channels) is a roadmap target. The
+syntax and type plumbing below are stable and tested:
 
 #### Async Function Syntax
 ```vyb
@@ -454,50 +458,40 @@ async compute_value()<Future<Int>> -> {
     return 42
 }
 
-// Async function with await
+// Async function that awaits another async function
 async process_data()<Future<String>> -> {
-    value<Int> = await compute_value()  // Suspend until future resolves
+    value<Int> = await compute_value()  // awaits the future's value (synchronously today)
     println("Got value")
     return "processed"
-}
-
-// Async void function
-async background_task()<Future<Void>> -> {
-    println("Task running...")
-    return
 }
 ```
 
 #### Key Features
 - **async keyword**: Declares asynchronous functions that return Future<T>
-- **await expressions**: Suspend execution until a Future resolves
+- **await expressions**: Resolve a Future's value where it is awaited
 - **Future<T> types**: Type-safe asynchronous return values
-- **State machines**: Async functions compiled to efficient state machines
-- **Debug support**: Full DWARF metadata for debugging async execution
-- **Suspension tracking**: Debug info for continuation points and state transitions
+- **Debug support**: DWARF metadata for debugging async code paths
 
 #### Usage Example
 ```vyb
 main()<Void> -> {
-    // Create async tasks
+    // Call async functions; each returns a Future<T>
     future1<Future<Int>> = compute_value()
     future2<Future<String>> = process_data()
-
-    // Futures execute concurrently
     println("Tasks initiated")
     return
 }
 ```
 
-**See:** `test/async/async_simple.vyb` and `test/async/async_comprehensive.vyb` for working examples
+**See:** `test/async/async_simple.vyb` for a working example. A real event loop,
+true concurrency, `spawn`, and typed channels remain on the roadmap.
 
 **Implementation Status:**
 - ✅ Async function parsing and validation
 - ✅ Future<T> type checking
 - ✅ await expression support
-- ✅ State machine code generation
 - ✅ LLVM codegen with debug metadata
-- ✅ Comprehensive test coverage
+- 🔜 Real event loop / concurrent scheduling (roadmap)
 
 ### ✅ **Introspection System (v0.4.2)**
 
@@ -633,6 +627,26 @@ main()<Int> -> {
 
 **See:** `doc/ASPECT_SYSTEM_DESIGN.md` for complete specification and `test/aspect/` for working examples
 
+#### **Core Contracts (`core::aspects`)**
+
+The standard library ships six canonical contract aspects — `Display`, `Debug`,
+`Clone`, `Equatable`, `Hashable`, and `Comparable` (with
+`Comparable : Equatable`) — bound to the primitive scalar types
+(`Int`/`Float`/`Bool`/`Char`/`String`). `core::aspects` is auto-imported into
+non-stdlib modules (opt out with `no_core()`), so contract methods are available
+on built-in scalars with no import. They bind to user structs the same way, and
+drive the generic call sites for the stdlib collections and `Iterator` protocol:
+```vyb
+// Hash/comparison-backed collections (import collections) resolve the
+// Hashable/Comparable bounds on generic keys automatically.
+nums<BTreeMap<Int, String>> = BTreeMap<Int, String>()
+
+// Unqualified bounded-type-parameter dispatch resolves through the bound.
+show_all<T<Display>>(item<T>)<Void> -> {
+    println(item.display())   // resolves via the bound Display aspect
+}
+```
+
 #### Primitive Types
 
 **Signed Integers:**
@@ -677,6 +691,9 @@ main()<Int> -> {
 |------|-------------|------------|---------|
 | `[T; N]` | Fixed-size array | Mutable elements | `nums<[Int; 5]> = [1, 2, 3, 4, 5]` |
 | `Vec<T>` | Dynamic array | Mutable elements | `items<Vec<String>> = Vec()` |
+| `HashMap<K,V>` | Hash-bucket map (`import collections`) | Mutable | `m<HashMap<String, Int>> = HashMap<String, Int>()` |
+| `HashSet<K>` | Distinct-key set (`import collections`) | Mutable | `s<HashSet<String>> = HashSet<String>()` |
+| `BTreeMap<K,V>` | Key-ordered map (`import collections`) | Mutable | `b<BTreeMap<Int, String>> = BTreeMap<Int, String>()` |
 | `Tuple<T,U,...>` | Heterogeneous tuple (variadic) | Immutable | `data<Tuple<Int,String,Bool>>` |
 
 #### Ownership Types
@@ -806,12 +823,12 @@ access_parent(node<our<TreeNode>>)<Int> -> {
 - **Git integration**: Regular commits track development progress
 - **Migration Tool**: `python3 migrate_syntax.py` for automated syntax upgrades
 
-### 🔜 **Native Bridge / FFI Status**
-Vyb's native bridge to C libraries is the highest-priority upcoming feature:
+### ✅ **Native Bridge / FFI**
+Vyb's native bridge to C libraries is shipped and production-usable:
 
 | Layer | Status | Description |
 |-------|--------|-------------|
-| **Vyb Runtime** | ✅ Complete | `runtime/vyb_runtime.c` — GC, Vec, String, Math, I/O all linked automatically |
+| **Vyb Runtime** | ✅ Complete | `runtime/vyb_runtime.c` — ownership-tracked Vec/String/Math/I/O (no GC; `our<T>` is reference-counted) all linked automatically |
 | **LLVM intrinsics** | ✅ Complete | `malloc`, `free`, `memset`, `printf`-style print all registered in JIT |
 | **C stdlib (math)** | ✅ Complete | `libm` linked; `sqrt`, `sin`, `cos`, `pow`, etc. all working |
 | **C stdlib (I/O)** | ✅ Complete | `libc` linked; I/O built on top of C runtime |
@@ -819,7 +836,12 @@ Vyb's native bridge to C libraries is the highest-priority upcoming feature:
 | **`#[repr(C)]` structs** | ✅ Complete | Force C-compatible struct layout for FFI |
 | **`vyb bindgen` (MVP + libclang)** | ✅ | `vyb bindgen <header.h>` emits importable extern/`repr(C)`/enum bindings from a C subset; `vyb bindgen <header.h> --full` adds the libclang full-preprocessor backend (`#include` expansion, conditional evaluation, expression + function-like macros) |
 
-**Design goal**: Once `extern "C"` lands, the entire POSIX API becomes available with a thin Vyb wrapper, enabling networking, file I/O, threading, and more without any language-level changes. See `doc/FFI_DESIGN.md` for the complete design.
+**With `extern "C"` and the typed C aliases, the POSIX API is reachable with a
+thin Vyb wrapper, enabling networking, file I/O, threading, and more without
+language-level changes.** FFI callbacks arrive as bare `loc<fn>` function
+pointer parameters (see `test/ffi/callback_fnptr.vyb`), and variadic C
+functions work directly (`printf("%s", s)` accepts a Vyb `String`). See
+`doc/FFI_DESIGN.md` for the complete design.
 
 ## Language Overview
 
@@ -936,7 +958,8 @@ main()<Int> -> {
 Vyb's design philosophy: **FREEDOM over restrictions**. The language provides compiler-managed ownership by default, but empowers programmers with low-level control when needed:
 
 ```vyb
-// Ownership type syntax (runtime enforcement planned for v0.5)
+// Ownership type syntax (runtime enforcement is in place for our/mild/their;
+// full my<T> move tracking is still in progress)
 restricted_memory_example()<Int> -> {
     owned<my<String>> = my("unique data")         // Unique ownership
     shared<our<String>> = our("shared data")      // Shared, ref-counted
@@ -1067,7 +1090,15 @@ open_and_process()<Int> -> {
 **Current Collection Types**:
 - **Fixed arrays**: `[T; N]` with compile-time size
 - **Dynamic arrays**: `Vec<T>` resizable collections
+- **Keyed maps**: `HashMap<K, V>` (hash buckets, auto-growing), `BTreeMap<K, V>` (ordered by key)
+- **Sets**: `HashSet<K>` distinct-key collections
 - **Tuples**: `Tuple<T,U,...>` variadic heterogeneous types
+
+`HashMap`, `HashSet`, and `BTreeMap` ship in `stdlib/collections` and are
+imported with `import collections`. `Vec<T>` itself layers Vyb-written
+higher-order helpers there — `map` / `filter` / `reduce`, `sorted` /
+`reversed` / `find`, `min` / `max`, and `sort_in_place` — taking non-capturing
+lambdas (`fn`) where a mapping function is needed.
 
 **Ownership Types**: `my<T>` (unique), `our<T>` (shared), `their<T>` (borrowed), `mild<T>` (mild reference), `loc<T>` (freedom raw pointer)
 
@@ -1245,6 +1276,52 @@ iterate_example()<Int> -> {
 array_example()<Int> -> {
     fixed<[Int; 3]> = [1, 2, 3]
     return fixed[0]  # Array indexing
+}
+```
+
+**Keyed & Set Collections** — imported with `import collections`:
+```vyb
+import collections
+
+main()<Int> -> {
+    # HashMap<K, V> — hash-bucket index, auto-grows, average O(1) lookup
+    scores<HashMap<String, Int>> = HashMap<String, Int>()
+    scores.put("alpha", 1)
+    scores.put("beta", 2)
+    scores.put("alpha", 99)               # overwrites the existing key
+    n_scores<Int> = scores.size()         # 2
+    score<Option<Int>> = scores.get("beta")          # Some(2)
+    has_alpha<Bool> = scores.contains_key("alpha")   # true
+
+    # HashSet<K> — distinct keys
+    tags<HashSet<String>> = HashSet<String>()
+    tags.insert("x")
+    tags.insert("y")
+    again<Bool> = tags.insert("x")        # false (already present)
+
+    # BTreeMap<K, V> — keys iterate in sorted (Comparable) order
+    ordered<BTreeMap<Int, String>> = BTreeMap<Int, String>()
+    ordered.put(3, "three")
+    ordered.put(1, "one")
+    ordered.put(2, "two")                 # iteration order 1, 2, 3
+    return 0
+}
+```
+
+**Higher-Order Vec Combinators** — non-capturing lambdas, also `import collections`:
+```vyb
+import collections
+
+main()<Int> -> {
+    v<Vec<Int>> = Vec()
+    v.push(3); v.push(9); v.push(5)
+
+    doubled<Vec<Int>> = v.map(|n<Int>| -> n * 2)          # fresh [6, 18, 10]
+    odds<Vec<Int>>    = v.filter(|n<Int>| -> n % 2 == 1)  # fresh [3, 9, 5]
+    total<Int>        = v.reduce(0, |a<Int>, b<Int>| -> a + b)  # 17
+    v.sort_in_place()                                     # in place: [3, 5, 9]
+    smallest<Int> = v.first()                             # 3
+    return 0
 }
 ```
 
@@ -1452,7 +1529,6 @@ invalid_patterns(x<Int>)<String> -> {
 - **`select`**: Expression that evaluates to a value - use naked expressions or `pass` keyword
 - **`match`**: Statement for side effects - pattern arms can `return` from enclosing function
 - Both support identical comparison pattern syntax and unreachable pattern detection
-```
 
 ### Variadic Tuples
 
@@ -1622,8 +1698,8 @@ full<String> = "Hello" + " " + "World"
 result<String> = "Code".to_upper() + " " + "Language".to_lower()
 # Result: "CODE language"
 
-# Mixed types (planned with toString())
-# message<String> = "Count: " + 42.to_string()
+# Mixed types auto-convert: "Count: " + 42
+# message<String> = "Count: " + 42
 ```
 
 ### Practical Examples
@@ -1710,8 +1786,8 @@ upper<String> = "hello".to_upper()          # malloc(6) for "HELLO\0"
 sub<String> = "Hello World".substring(0, 5) # malloc(6) for "Hello\0"
 concat<String> = "A" + "B"                  # malloc(3) for "AB\0"
 
-# Ownership handles cleanup automatically
-# (when ownership system is fully integrated)
+# Reference-counted our<T> handles cleanup automatically when the last strong
+# reference leaves scope with no strong references remaining
 ```
 
 **Bounds Safety**
@@ -1751,11 +1827,11 @@ empty<String> = text.substring(10, 20)  # Returns {null, 0}
 All String methods produce null-terminated strings for C compatibility:
 
 ```vyb
-# Use with C functions (planned FFI)
+# Use with C functions via the FFI (extern "C" + typed C aliases)
 name<String> = "Alice"
 c_str<*i8> = name.to_bytes()  # Get raw pointer
 
-# Compatible with:
+# Interoperable with:
 # printf("%s", c_str)
 # strlen(c_str)
 # strcmp(c_str1, c_str2)
@@ -2456,7 +2532,7 @@ cmake --build build --target run-milestone
 
 ## Test Harness
 
-Vyb includes a modern, comprehensive test harness for managing 391+ test files:
+Vyb includes a modern, comprehensive test harness for managing 900+ `.vyb` test files:
 
 ### Quick Testing
 ```bash
@@ -2486,7 +2562,7 @@ Vyb includes a modern, comprehensive test harness for managing 391+ test files:
 ```
 
 ### Test Features
-- **544 Test Files**: Comprehensive coverage across all language features
+- **900+ Test Files**: Comprehensive coverage across all language features
 - **Parallel Execution**: Multi-threaded test runner for fast feedback
 - **Rich Reporting**: HTML, JSON, and console output with detailed metrics
 - **Smart Categorization**: Automatic test categorization and filtering
@@ -2665,9 +2741,9 @@ Vyb (freedom-1.0 series) compiles through JIT, AOT object files, and native exec
 6. ✅ **`Option<T>` and `Result<T,E>`**: Built-in sum types built on enums (`Some(T)`/`None`, `Ok(T)`/`Err(E)`) with match/select dispatch and exhaustiveness; transitional `core::option::OptionInt` bridge retained for source-compat.
 
 ### 📋 **Long-Term Goals**
-- **Ownership Runtime Enforcement**: Borrow checking, move semantics, `mild<T>` control block
-- **Iterator Aspect**: `aspect Iterator { type Item; next(self)<Option<Item>> }` for `for` loop generalization
-- **Associated Types**: `aspect Iterator { type Item }` (requires aspect system extension)
+- **Ownership Runtime Enforcement**: `their`/`mild` borrow handles and `our` reference counting ship; full `my<T>` move/use-after-move tracking is the remaining gap
+- ~~**Iterator Aspect**~~ — landed: `core::iter::Iterator` with `type Item; next(self)<Option<Item>>`; `for (x in iterable)` desugars onto it (incl. a step param)
+- ~~**Associated Types**~~ — landed: aspects declare `type Item`, resolved through generic binds at the call site
 - **Enhanced Async/Await**: Real event loop, `spawn`, typed channels, async lambdas
 - **Self-Hosting**: Vyb compiler written in Vyb
 - **Package Manager**: `vyb.toml`, `vyb build`, dependency resolution
@@ -2795,7 +2871,7 @@ See `doc/` directory for detailed design documents and RFCs.
   - **Type inference**: First case determines result type for entire select
   - **Pattern matching**: Exact equality patterns with wildcard `?` support
 - ✅ **Canonical Syntax Unification**: Complete migration to unified `my()`/`our()` constructors and `view`/`borrow` operators
-- ✅ **Modern Test Harness**: Parallel test runner managing 391+ tests with HTML/JSON reporting and failure triage
+- ✅ **Modern Test Harness**: Parallel test runner managing 900+ tests with HTML/JSON reporting and failure triage
 - ✅ **Syntax Migration Tools**: Automated migration from legacy to canonical syntax with comprehensive reporting
 - ✅ **Match Statements**: Complete pattern matching with `->` arrow syntax and `?` wildcard; no-match results in NOP
 - ✅ **Break/Continue**: Loop control flow statements working in all loop types
@@ -2805,8 +2881,8 @@ See `doc/` directory for detailed design documents and RFCs.
 - ✅ **Dual Parameter Syntax**: Both `var<Type> name` and `Type name` forms working seamlessly
 - ✅ **Member Access**: Object field access (`obj.field`) and array indexing (`arr[index]`)
 - ✅ **Auto-serialization**: Complex return types with smart JSON-like output
-- ✅ **Async/Await**: Complete asynchronous programming support with Future<T> types
-- ✅ **Debug Infrastructure**: Full LLVM debug metadata with async state machine debugging
+- ✅ **Async/Await**: `async` functions with `Future<T>` types and `await` (synchronous resolution today; a real event loop is planned)
+- ✅ **Debug Infrastructure**: Full LLVM debug metadata for source-level debugging
 
 **Language Status**: Vyb (freedom-1.0 series, tracked as v0.5.x) is an actively developed systems programming language with unified canonical syntax, a sized type system (Int8–Int64, UInt8–UInt64, Float32/Float64, Char, Rune, Bytes), compile-time monomorphized generics, aspect/bind polymorphism, a `fail`/`trap` error system, JIT/AOT/native codegen, and a modern test harness. The core language is stable and well tested; development continues toward the 1.0 milestone — see `doc/FEATURE_STATUS.md` for the current feature matrix.
 
