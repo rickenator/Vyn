@@ -1,11 +1,11 @@
-// @test: stdlib collections VecOps expansion methods
+// @test: stdlib collections VecOps + VecHigherOps expansion methods
 // @description: pure-Vyb non-mutating Vec<T> extension operations shipped by
-//   `import collections` (bound to the built-in Vec<T> via an Equatable-gated
-//   aspect): first/last, reversed (fresh vector), find (first matching index,
-//   or -1), and the ordering helpers sorted (fresh ascending vector), min and
-//   max. Ordering contrasts via the Comparable-bound `cmp_lt` helper (compare
-//   must be invoked through a bounded-parameter helper rather than inlined on a
-//   generic element). map/filter/reduce await closure capture. Two compiler
+//   `import collections`: the Equatable-gated VecOps first/last, reversed
+//   (fresh vector), find (first matching index, or -1), and the Comparable
+//   ordering helpers sorted (fresh ascending vector), min and max (comparison
+//   dispatched through the bounded `cmp_lt` helper rather than inlined on a
+//   generic element), plus the unconstrained VecHigherOps combinators map /
+//   filter / reduce (non-capturing lambda `fn` args, any element type). Two
 //   gaps are avoided here: chaining a Vec method on a bind-method Vec return
 //   (e.g. `v.reversed().len()`) hits an ICmp codegen bug, and `Vec.get` on an
 //   empty vector returns garbage, so first/last are only exercised on
@@ -71,6 +71,32 @@ main()<Int> -> {
     e<Vec<Int>> = Vec()
     er<Vec<Int>> = e.reversed()
     if (check(er.len() == 0, 16)) { return 16 }
+
+    # ---- VecHigherOps: non-capturing lambda combinators (unconstrained bind) ----
+    # map: fresh transformed vector, original untouched
+    m<Vec<Int>> = v.map(|n<Int>| -> n * 10)
+    if (check(m.len() == 5 && m.get(0) == 30 && m.get(1) == 90 && m.get(4) == 10, 17)) { return 17 }
+    if (check(v.get(0) == 3 && v.last() == 1, 18)) { return 18 }
+
+    # filter: fresh vector with only `true` results
+    f<Vec<Int>> = v.filter(|n<Int>| -> n < 5)
+    if (check(f.len() == 2 && f.get(0) == 3 && f.get(1) == 1, 19)) { return 19 }
+
+    # reduce: left fold
+    red<Int> = v.reduce(0, |a<Int>, b<Int>| -> a + b)
+    if (check(red == 27, 20)) { return 20 }
+
+    # combinators work on any element type (no Comparable/Equatable bound)
+    words<Vec<String>> = Vec()
+    words.push("a")
+    words.push("bb")
+    words.push("ccc")
+    ex<Vec<String>> = words.map(|w<String>| -> w + "!")
+    if (check(ex.len() == 3 && ex.get(0) == "a!" && ex.get(2) == "ccc!", 21)) { return 21 }
+    longs<Vec<String>> = words.filter(|w<String>| -> w.len() > 1)
+    if (check(longs.len() == 2 && longs.get(0) == "bb" && longs.get(1) == "ccc", 22)) { return 22 }
+    cat<String> = words.reduce("", |acc<String>, w<String>| -> acc + w)
+    if (check(cat == "abbccc", 23)) { return 23 }
 
     println("ok")
     return 0

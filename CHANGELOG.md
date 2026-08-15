@@ -10,6 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Function-typed parameters and indirect calls** — a parameter declared with a
+  function type (`f<fn(Int) -> Int>`) is lowered to a function pointer stored in
+  its alloca, and calling `f(args)` inside a body performs an indirect call
+  through that pointer. Semantics now type a call whose callee is *any* symbol
+  with a `FunctionType` (function-typed parameters and lambda-typed locals, not
+  just declared `Function` symbols). Generic binds resolve `fn` parameter
+  signatures under monomorphization so `bind<T> ... Vec<T>` methods can take
+  element-typed `fn` arguments. Monomorphized generic bind bodies can now carry
+  concrete `fn` params to codegen, unlocking higher-order combinators in the
+  standard library.
+- **`stdlib/collections` ships `VecHigherOps` `map` / `filter` / `reduce`** — a
+  new unconstrained bind on the built-in `Vec<T>` (no `Comparable` /
+  `Equatable` requirement) exposing the higher-order combinators: `map(f)`
+  (elementwise transform to a fresh vector), `filter(f)` (keep only `true`
+  results in a fresh vector) and `reduce(init, f)` (left fold, `acc = f(acc,
+  elem)`). The `fn` arguments are *non-capturing* lambdas (bare function
+  pointers); closures with an environment are a future extension. Covered by the
+  expanded `test/modules/test_vec_expansion.vyb`.
 - **`Option<T>` / `Result<T,E>` expose a native `.value` payload accessor** — a
   value of the built-in generic enums now supports `.value`, reading the payload
   of the primary (success) data variant (`Some(T)` for Option, `Ok(T)` for

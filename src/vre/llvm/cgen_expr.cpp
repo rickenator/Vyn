@@ -2754,6 +2754,55 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                     return;
                 }
             }
+            // It may be a function-typed parameter (`f<fn(Int) -> Int>`), which is
+            // also lowered to a function pointer stored in the parameter's alloca.
+            // See main.cpp / cgen so that `f(args)` inside a function body performs
+            // an indirect call through the passed pointer.
+            if (identCallee) {
+                auto varIt = namedValues.find(identCallee->name);
+                if (varIt != namedValues.end()) {
+                    auto vtmIt = valueTypeMap.find(varIt->second);
+                    auto* fnTypeNode = vtmIt != valueTypeMap.end()
+                        ? dynamic_cast<ast::FunctionType*>(vtmIt->second.get()) : nullptr;
+                    if (fnTypeNode) {
+                        // Rebuild the LLVM function type from the declared signature
+                        // (opaque-pointer mode has no typed PointerType to inspect).
+                        std::vector<llvm::Type*> ptypes;
+                        for (const auto& pn : fnTypeNode->parameterTypes) {
+                            llvm::Type* t = pn ? codegenType(pn.get()) : nullptr;
+                            if (t) ptypes.push_back(t);
+                        }
+                        llvm::Type* rt = fnTypeNode->returnType
+                            ? codegenType(fnTypeNode->returnType.get())
+                            : llvm::Type::getVoidTy(*context);
+                        llvm::FunctionType* fnParamType = llvm::FunctionType::get(rt, ptypes, false);
+                        llvm::Value* funcPtr = builder->CreateLoad(
+                            llvm::PointerType::get(*context, 0), varIt->second, "fnparam.fptr");
+                        std::vector<llvm::Value*> fnArgValues;
+                        for (size_t i = 0; i < node->arguments.size(); ++i) {
+                            node->arguments[i]->accept(*this);
+                            llvm::Value* argVal = m_currentLLVMValue;
+                            if (!argVal) {
+                                logError(node->arguments[i]->loc, "Argument codegen failed for function-typed param call");
+                                m_currentLLVMValue = nullptr;
+                                return;
+                            }
+                            if (i < fnParamType->getNumParams() && argVal->getType() != fnParamType->getParamType(i)) {
+                                llvm::Type* expectedType = fnParamType->getParamType(i);
+                                if (expectedType->isIntegerTy() && argVal->getType()->isIntegerTy()) {
+                                    argVal = builder->CreateSExtOrTrunc(argVal, expectedType, "fnparam.argcast");
+                                } else if (expectedType->isFloatingPointTy() && argVal->getType()->isIntegerTy()) {
+                                    argVal = builder->CreateSIToFP(argVal, expectedType, "fnparam.argcast");
+                                }
+                            }
+                            fnArgValues.push_back(argVal);
+                        }
+                        m_currentLLVMValue = builder->CreateCall(
+                            fnParamType, funcPtr, fnArgValues, "fnparam.result");
+                        return;
+                    }
+                }
+            }
             // Try mangled name if it's a method or from a namespace
             // This part needs a robust name mangling and lookup scheme
             logError(node->callee->loc, "Function " + calleeName + " not found.");

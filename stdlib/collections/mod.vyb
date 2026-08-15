@@ -25,9 +25,13 @@
 #     Vyb over the Vec primitives — `first` / `last` (head/tail element),
 #     `reversed` (a fresh reversed copy) and `find` (first matching index, or
 #     `-1`), and the ordering helpers `sorted` (fresh ascending copy),
-#     `min` / `max`. Bound via `Comparable` (which refines `Equatable`); the
-#     higher-order `map` / `filter` / `reduce` are deferred on compiler gaps
-#     (see the detailed note next to the bind below).
+#     `min` / `max`. Bound via `Comparable` (which refines `Equatable`).
+#   - `VecHigherOps` (also on the built-in `Vec<T>`): the higher-order
+#     combinators `map(f)` (element-wise transform to a fresh vector),
+#     `filter(f)` (keep only `true` results in a fresh vector) and
+#     `reduce(init, f)` (left fold). They take a *non-capturing* lambda
+#     (`fn`) argument and are bound without any `Comparable` / `Equatable`
+#     requirement, so they work on any element type.
 #   - `HashMap<K,V>()` / `HashSet<K>()` (and their `(cap)` / `(cap, true)`
 #     capacity forms) are declared struct constructors: they return a fully initialized
 #     (bucket-indexed) instance, keeping the `Vec()` / `Vec(n)` construction
@@ -332,9 +336,8 @@ bind<K<Hashable, Equatable>> SetOps -> HashSet<K> {
 # a clean default). Comparison order is dispatched through the
 # `Comparable`-bounded `cmp_lt` helper (mirroring the `equals`-based `samekey`),
 # because a direct `compare` call does not resolve on a generic element. The
-# higher-order `map` / `filter` / `reduce` (and any in-place forms) are
-# intentionally not shipped yet: they need closure capture plus by-ref
-# `their<Vec<T>>` receivers, neither implemented yet.
+# higher-order combinators live in a separate unconstrained `VecHigherOps`
+# aspect so they work on any element type (see below).
 #
 # ---------------------------------------------------------------------------
 share(all)
@@ -415,6 +418,59 @@ bind<T<Comparable, Equatable>> VecOps -> Vec<T> {
             k = k + 1
         }
         return out
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Higher-order `Vec<T>` combinators (non-capturing lambdas).
+#
+# `map(f)` applies `f` to every element and returns a fresh transformed vector.
+# `filter(f)` keeps only the elements for which `f` is `true` in a fresh vector.
+# `reduce(init, f)` folds the vector left-to-right: the accumulator starts at
+# `init` and `f` is applied as `acc = f(acc, elem)` for each element in order.
+# These are bound without a `Comparable` / `Equatable` bound on `T`, so they
+# are available on any element type. The `fn` arguments must be non-capturing
+# (bare function pointers); closures with an environment are a future extension.
+# They are non-mutating: none of them modify the receiver.
+#
+# ---------------------------------------------------------------------------
+share(all)
+aspect VecHigherOps {
+    map(self<Vec<T>>, f<fn(T) -> T>)<Vec<T>> -> { }
+    filter(self<Vec<T>>, f<fn(T) -> Bool>)<Vec<T>> -> { }
+    reduce(self<Vec<T>>, init<T>, f<fn(T, T) -> T>)<T> -> { }
+}
+
+share(all)
+bind<T> VecHigherOps -> Vec<T> {
+    map(self<Vec<T>>, f<fn(T) -> T>)<Vec<T>> -> {
+        out<Vec<T>> = Vec()
+        i<Int> = 0
+        while (i < self.len()) {
+            out.push(f(self.get(i)))
+            i = i + 1
+        }
+        return out
+    }
+    filter(self<Vec<T>>, f<fn(T) -> Bool>)<Vec<T>> -> {
+        out<Vec<T>> = Vec()
+        i<Int> = 0
+        while (i < self.len()) {
+            if (f(self.get(i))) {
+                out.push(self.get(i))
+            }
+            i = i + 1
+        }
+        return out
+    }
+    reduce(self<Vec<T>>, init<T>, f<fn(T, T) -> T>)<T> -> {
+        acc<T> = init
+        i<Int> = 0
+        while (i < self.len()) {
+            acc = f(acc, self.get(i))
+            i = i + 1
+        }
+        return acc
     }
 }
 

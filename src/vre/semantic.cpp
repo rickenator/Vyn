@@ -2156,8 +2156,12 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             return substituteGenericArgsForValidation(returnTypeNode, substitutions);
         };
 
+        // Any callee symbol whose declared type is a FunctionType is callable:
+        // lambda-typed local variables AND function-typed parameters
+        // (`f<fn(Int) -> Int>`). Type the call's result from the signature's
+        // return type so `x = f(a, b)` infers correctly in generic bodies.
         SymbolInfo* functionSymbol = currentScope->lookup(name);
-        if (functionSymbol && functionSymbol->kind == SymbolInfo::Kind::Function && functionSymbol->type) {
+        if (functionSymbol && functionSymbol->type) {
             if (auto functionType = dynamic_cast<ast::FunctionType*>(functionSymbol->type)) {
                 if (functionType->returnType) {
                     bool isGenericCall = registryIt != functionRegistry.end() &&

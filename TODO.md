@@ -241,7 +241,7 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
   - [x] Foundation scaffold landed: `stdlib/core/`, `stdlib/io/`, `stdlib/collections/`, top-level/core preludes, transitional `core::option` bridge, and placeholder `core::result`
   - [ ] Expand with full module contents (`math`, collections, io, iterator/core aspects)
     - [x] `core::math` — composition helpers (`clamp`, `is_close`) layered over the global math intrinsics, explicitly imported via `import core::math` (`test/modules/stdlib_core_math.vyb`)
-    - [x] `collections` — `HashMap<K,V>` / `HashSet<K>` shipped (`import collections`, by-ref bind methods, auto-growing hash-bucket `Hashable` key lookup; `test/modules/test_collections_hashmap.vyb`, `test/modules/test_collections_growth.vyb`); higher-order `Vec<T>` expansion and File/network I/O still pending
+    - [x] `collections` — `HashMap<K,V>` / `HashSet<K>` shipped (`import collections`, by-ref bind methods, auto-growing hash-bucket `Hashable` key lookup; `test/modules/test_collections_hashmap.vyb`, `test/modules/test_collections_growth.vyb`), plus the `VecOps` view/ordering helpers and the unconstrained `VecHigherOps` `map`/`filter`/`reduce` combinators (`test/modules/test_vec_expansion.vyb`); File/network I/O still pending
     - [ ] `Iterator` aspect + `for`-loop desugaring — compiler work, tracked under Standard Library Expansion (see [DECIDED] note)
   - [x] Auto-import of `core::*` (opt-out with directive) — the core contracts module (`core::aspects`, with its pre-wired primitive binds) is auto-imported into every non-stdlib module unless it already imports the contracts, locally redefines them, or opts out with a `no_core()` directive. This makes `x.display()`, `a.equals(b)`, `a.compare(b)`, and `a.clone()` available on built-in scalars with no import. The transitional prelude helpers (`OptionInt`, `prelude_ok`) remain explicit-import-only.
 
@@ -278,14 +278,16 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
 - [x] **Math library** — `sqrt`, `sin`, `cos`, `tan`, `exp`, `log`, `log2`, `log10`, `pow`, `floor`, `ceil`, `round`, `abs`, `min`, `max`
 - [x] **I/O intrinsics** — `print()` (no newline), `println_int()`, `print_int()`, `println_bool()`, `print_bool()`
 - [ ] **Iterator aspect** — `next(self)<Option<Item>>` protocol for `for` loop integration
-- [~] **`Vec<T>` expansion** — shipped via the `VecOps` bind on the built-in
-  `Vec<T>` (Comparable-gated, pure Vyb; `test/modules/test_vec_expansion.vyb`):
+- [x] **`Vec<T>` expansion** — shipped via the `VecOps` bind on the built-in
+  `Vec<T>` (pure Vyb; `test/modules/test_vec_expansion.vyb`):
   `find` (first matching index, or `-1`), `first`/`last` (head/tail element),
   `reversed` (fresh copy), and `sorted` / `min` / `max` (ordering dispatched
   through the `Comparable`-bounded `cmp_lt` helper — a direct `compare` call
-  does not resolve on a generic element). Pending: `.map()`/`.filter()`/
-  `.reduce()` (need closure capture) plus by-ref `their<Vec<T>>` for in-place
-  forms. `.contains()` is now correct.
+  does not resolve on a generic element). The unconstrained `VecHigherOps`
+  bind adds the higher-order `map` / `filter` / `reduce` combinators over
+  non-capturing lambda `fn` arguments (any element type). Remaining: by-ref
+  `their<Vec<T>>` for in-place forms and full closure capture. `.contains()`
+  is now correct.
 - [x] **`Vec<T>` constructor idiom** — `Vec::new()` / `Vec::new(size)` replaced by a vybish constructor call: `Vec()` (empty growable) and `Vec(n)` (preallocate `n` elements/capacity), element type inferred from the annotation. `Vec::new()` stays as a back-compat alias.
 
 ### 5. Sum Types / Enums (MEDIUM PRIORITY)

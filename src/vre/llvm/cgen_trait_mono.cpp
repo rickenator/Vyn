@@ -586,6 +586,26 @@ llvm::Type* LLVMCodegen::resolveParameterTypeWithSubstitution(vyb::ast::TypeNode
         }
     }
 
+    // A function-typed parameter (`f<fn(T) -> T>`) references type parameters
+    // in its signature. Resolve each constituent type with substitution so the
+    // concrete monomorphized signature is built here, rather than falling
+    // through to codegenType (which would see the abstract `T` before the
+    // body's type-substitution scope is active).
+    if (auto funcTypeNode = dynamic_cast<ast::FunctionType*>(typeNode)) {
+        std::vector<llvm::Type*> paramLlvmTypes;
+        for (const auto& pn : funcTypeNode->parameterTypes) {
+            llvm::Type* pt = resolveParameterTypeWithSubstitution(pn.get(), substitutions);
+            if (!pt) return nullptr;
+            paramLlvmTypes.push_back(pt);
+        }
+        llvm::Type* returnLlvmType = llvm::Type::getVoidTy(*context);
+        if (funcTypeNode->returnType) {
+            returnLlvmType = resolveParameterTypeWithSubstitution(funcTypeNode->returnType.get(), substitutions);
+            if (!returnLlvmType) return nullptr;
+        }
+        return llvm::FunctionType::get(returnLlvmType, paramLlvmTypes, false)->getPointerTo();
+    }
+
     // Otherwise, use normal type resolution
     return codegenType(typeNode);
 }
