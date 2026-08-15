@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 #ifndef VYB_STATEMENT_PARSER_HPP
 #define VYB_STATEMENT_PARSER_HPP
 

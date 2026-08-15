@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 #include "vyb/runtime/error_handling.hpp"
 #include <cstdlib>
 #include <cstring>

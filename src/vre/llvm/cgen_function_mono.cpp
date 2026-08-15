@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // =============================================================================
 // DESIGN: Function monomorphization (compile-time specialization)
 // Vyb uses compile-time monomorphization for generic functions - NOT runtime polymorphism.

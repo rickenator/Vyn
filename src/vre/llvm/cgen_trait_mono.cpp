@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // =============================================================================
 // DESIGN: Trait monomorphization (compile-time specialization)
 // Vyb uses compile-time monomorphization for traits - NOT runtime polymorphism.

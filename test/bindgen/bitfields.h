@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 /* bitfields.h - fixture exercising C bitfields for `vyb bindgen`. A bitfield
    packs bits into shared storage and cannot be ABI-represented as a Vyb struct
    field, so a struct containing bitfields is skipped with a warning; plain

@@ -3149,7 +3149,9 @@ Resizable array collection with methods like `push()`, `pop()`, `len()`, `get()`
 
 ## License
 
-Apache License - see LICENSE file for details.
+Copyright 2026 Aniviza LLC. Licensed under the
+[Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0) — see the
+[LICENSE](LICENSE) file for the full text.
 
 ---
 

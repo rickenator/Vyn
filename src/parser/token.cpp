@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 #include "vyb/parser/token.hpp"
 #include "vyb/parser/ast.hpp" // Required for the definition of SourceLocation
 #include <unordered_map> // Added for std::unordered_map

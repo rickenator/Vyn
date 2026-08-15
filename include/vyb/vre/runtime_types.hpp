@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 #ifndef VYB_VRE_RUNTIME_TYPES_HPP
 #define VYB_VRE_RUNTIME_TYPES_HPP
 

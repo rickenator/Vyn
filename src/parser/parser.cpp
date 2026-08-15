@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Stub file for parser other implementations
 #include "vyb/parser/parser.hpp"
 #include "vyb/parser/ast.hpp"

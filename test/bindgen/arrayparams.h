@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 /* arrayparams.h - fixture exercising C array-parameter decay for `vyb bindgen`.
    In C, a function parameter written as `T a[N]` / `T a[]` decays to `T*`,
    so `char s[]` is a `char*` (CString), not a scalar byte. These declarations

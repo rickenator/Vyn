@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 #include "vyb/vre/llvm/codegen.hpp"
 #include "vyb/parser/ast.hpp"
 #include "vyb/parser/token.hpp" // For TokenType in BinaryExpression

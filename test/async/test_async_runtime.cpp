@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Test async runtime scheduler functionality
 
 #include "vyb/runtime/async_runtime.hpp"

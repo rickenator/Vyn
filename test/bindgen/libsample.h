@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 /* libsample.h - minimal C header fixture for `vyb bindgen`.
    The declarations here are a subset of what libc provides so the generated
    bindings resolve against the host process at JIT/link time. */

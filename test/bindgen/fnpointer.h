@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 /* fnpointer.h - fixture exercising C function-pointer parameters for `vyb bindgen`.
    Inline (`void (*cb)(...)`) and typedef'd (`op_fn`) C function pointers bind as
    Vyb `fn(...) -> ...` types. Declarations are self-contained; the symbols are

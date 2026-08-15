@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 #include "vyb/parser/parser.hpp" // Should provide full defs for StatementParser and DeclarationParser
 #include "vyb/parser/ast.hpp"
 #include <stdexcept>

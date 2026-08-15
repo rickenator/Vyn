@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 #include "vyb/parser/parser.hpp" // For BaseParser and other parser components
 #include "vyb/parser/ast.hpp"      // For AST node types like IntegerLiteral, etc.
 #include "vyb/parser/token.hpp"    // For TokenType and Token

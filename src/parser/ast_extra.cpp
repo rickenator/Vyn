@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 #include "vyb/parser/ast.hpp"
 #include <string> // For std::to_string
 

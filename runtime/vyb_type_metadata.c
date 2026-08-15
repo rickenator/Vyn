@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Vyb Type Metadata Runtime Implementation
 #include "vyb_type_metadata.h"
 #include <stdio.h>

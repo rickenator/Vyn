@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Vyb Type Metadata System
 // Runtime type information for JSON serialization/deserialization and aspect dispatch
 

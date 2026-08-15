@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Monomorphization: Generate specialized versions of generic types
 // This file implements the monomorphization system for generic structs, traits, and functions.
 // When generic types like Box<T> are instantiated with concrete types like Box<Int>,

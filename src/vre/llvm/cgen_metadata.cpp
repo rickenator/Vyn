@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Vyb Type Metadata Generation
 // Generates runtime type metadata for JSON serialization and reflection
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Vyb Runtime Library - Type Conversion Functions
 // Comprehensive runtime support for Vyb type conversions
 

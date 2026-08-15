@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 #include "vyb/parser/parser.hpp"
 #include "vyb/parser/ast.hpp"
 #include <stdexcept> // For std::runtime_error

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Include necessary headers
 #include "vyb/vre/llvm/codegen.hpp"
 #include <llvm/IR/Function.h>

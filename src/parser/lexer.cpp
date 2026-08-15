@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 #include "vyb/parser/lexer.hpp"
 #include "vyb/parser/token.hpp" // Ensure vyb::token_type_to_string is available
 #include "vyb/parser/source_location.hpp"   // Required for vyb::SourceLocation

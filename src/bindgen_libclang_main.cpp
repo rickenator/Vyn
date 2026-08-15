@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 #ifdef VYB_BINDGEN_LIBCLANG
 
 // Standalone `vyb-libclang` helper: runs the libclang full-preprocessor bindgen

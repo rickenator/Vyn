@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 #ifdef VYB_BINDGEN_LIBCLANG
 
 #include "vyb/bindgen.hpp"

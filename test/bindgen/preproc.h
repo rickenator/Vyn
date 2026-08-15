@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 /* preproc.h - fixture exercising `#define` object-like macros for `vyb bindgen`.
    Numeric/string `#define`s become shared constant functions; function-like and
    multi-line macros are skipped with a warning (a full preprocessor is libclang

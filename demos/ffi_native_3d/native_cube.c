@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 #include <GLFW/glfw3.h>
 #include <math.h>
 #include <stdio.h>

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 #include "vyb/parser/parser.hpp"
 #include "vyb/parser/token.hpp"
 #include "vyb/parser/ast.hpp"

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 /* full_preproc.h - fixture for the libclang full-preprocessor bindgen backend
    (`vyb bindgen --full`). Exercises `#include` expansion + canonical-type
    resolution (<stdint.h> typedefs), conditional evaluation (#ifdef/#if), and

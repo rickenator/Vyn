@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Example of how async/await will integrate with the Vyb language
 // This shows the conceptual integration, not working code yet
 

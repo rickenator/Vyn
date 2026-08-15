@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // All includes at the top
 #include <sstream>
 #include <string>
