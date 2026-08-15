@@ -300,6 +300,7 @@ struct TraitInfo {
 class SemanticAnalyzer : public ast::Visitor {
 public:
     explicit SemanticAnalyzer(Driver& driver);
+    ~SemanticAnalyzer();
     void analyze(ast::Module* root);
     const std::vector<std::string>& getErrors() const { return errors; }
 
@@ -473,6 +474,15 @@ private:
     SymbolTable* currentScope;
     std::vector<std::string> errors;
     std::unordered_map<ast::Node*, ast::TypeNode*> expressionTypes;
+    // Type nodes the analyzer synthesizes during analysis (owned by no AST node).
+    // Kept here so the destructor can release them without ever touching the
+    // borrowed pointers (which point into the module AST and are owned there).
+    std::vector<std::unique_ptr<ast::TypeNode>> _ownedTypes;
+    ast::TypeNode* retainType(ast::TypeNode* raw) {
+        if (raw) _ownedTypes.emplace_back(raw);
+        return raw;
+    }
+
     std::vector<SymbolTable*> scopes;
     std::unordered_set<std::string> reservedWords; // Added for isReservedWord
     std::unordered_map<std::string, std::unique_ptr<TemplateInfo>> templateRegistry;

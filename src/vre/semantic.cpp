@@ -273,6 +273,23 @@ Scope* Scope::getParent() {
 // --- SemanticAnalyzer Implementation ---
 
 // SemanticAnalyzer constructor
+
+SemanticAnalyzer::~SemanticAnalyzer() {
+    // Release synthesized type nodes created during analysis. These are
+    // exclusively owned by the analyzer (nothing in the module AST holds them);
+    // borrowed pointers into the module AST are not tracked here and are freed
+    // with the module.
+    _ownedTypes.clear();
+    // Free the scope chain. exitScope() pops nested scopes, but the global scope
+    // created in the constructor is never popped and would otherwise leak its
+    // SymbolTable + symbol entries. Walk the whole chain so an early global scope
+    // (or an imbalance on the error path) is still reclaimed.
+    while (currentScope) {
+        SymbolTable* parent = currentScope->getParent();
+        delete currentScope;
+        currentScope = parent;
+    }
+}
 SemanticAnalyzer::SemanticAnalyzer(Driver& driver) : driver_(driver), currentScope(nullptr) {
     enterScope(); // Create global scope
     // Initialize reservedWords set
@@ -714,8 +731,9 @@ ast::TypeNode* SemanticAnalyzer::substituteSelfType(ast::TypeNode* returnType, c
         }
     }
 
-    // If not Self, return the original type
-    return returnType;
+    // If not Self, return an owned copy so callers can always retain the result
+    // without risk of double-freeing a borrowed pointer into the module AST.
+    return returnType->clone().release();
 }
 
 
@@ -777,31 +795,31 @@ void SemanticAnalyzer::visit(ast::Identifier* node) {
 
 void SemanticAnalyzer::visit(ast::IntegerLiteral* node) {
     auto* type = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "Int"));
-    expressionTypes[node] = type;
+    expressionTypes[node] = retainType(type);
     node->type = std::shared_ptr<ast::TypeNode>(type->clone());
 }
 
 void SemanticAnalyzer::visit(ast::FloatLiteral* node) {
     auto* type = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "Float"));
-    expressionTypes[node] = type;
+    expressionTypes[node] = retainType(type);
     node->type = std::shared_ptr<ast::TypeNode>(type->clone());
 }
 
 void SemanticAnalyzer::visit(ast::StringLiteral* node) {
     auto* type = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "String"));
-    expressionTypes[node] = type;
+    expressionTypes[node] = retainType(type);
     node->type = std::shared_ptr<ast::TypeNode>(type->clone());
 }
 
 void SemanticAnalyzer::visit(ast::BooleanLiteral* node) {
     auto* type = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "Bool"));
-    expressionTypes[node] = type;
+    expressionTypes[node] = retainType(type);
     node->type = std::shared_ptr<ast::TypeNode>(type->clone());
 }
 
 void SemanticAnalyzer::visit(ast::NilLiteral* node) {
     auto* type = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "nil"));
-    expressionTypes[node] = type;
+    expressionTypes[node] = retainType(type);
     node->type = std::shared_ptr<ast::TypeNode>(type->clone());
 }
 
@@ -1124,7 +1142,7 @@ void SemanticAnalyzer::visit(ast::FunctionDeclaration* node) {
                 resolvedType->accept(*this);
                 ast::TypeNode* effectiveType = resolvedType->type ? resolvedType->type.get() : resolvedType;
                 paramTypesVec.push_back(effectiveType->clone());
-                currentScope->add(SymbolInfo{SymbolInfo::Kind::Variable, param.name->name, false, ast::OwnershipKind::MY, effectiveType->clone().release()});
+                currentScope->add(SymbolInfo{SymbolInfo::Kind::Variable, param.name->name, false, ast::OwnershipKind::MY, retainType(effectiveType->clone().release())});
             } else {
                 addError("Parameter \\\"" + param.name->name + "\\\" missing type.", param.name.get());
                 paramTypesVec.push_back(nullptr);
@@ -1148,7 +1166,7 @@ void SemanticAnalyzer::visit(ast::FunctionDeclaration* node) {
     if (!processingTraitOrBindMethod) {
         SymbolInfo* funcSymFromTable = currentScope->getParent()->lookup(node->id->name);
         if (funcSymFromTable) {
-            funcSymFromTable->type = new ast::FunctionType(node->loc, std::move(paramTypesVec), std::unique_ptr<ast::TypeNode>(returnTypeAstNode));
+            funcSymFromTable->type = retainType(new ast::FunctionType(node->loc, std::move(paramTypesVec), std::unique_ptr<ast::TypeNode>(returnTypeAstNode)));
             if (funcSymFromTable->type) {
                  node->type = std::shared_ptr<ast::TypeNode>(funcSymFromTable->type->clone().release());
             }
@@ -1372,7 +1390,7 @@ void SemanticAnalyzer::visit(ast::VariableDeclaration* node) {
     }
 
     SymbolInfo::Kind kind = SymbolInfo::Kind::Variable;
-    currentScope->add(SymbolInfo{kind, node->id->name, node->isConst, ast::OwnershipKind::MY, symbolType ? symbolType->clone().release() : nullptr}); // Explicit SymbolInfo
+    currentScope->add(SymbolInfo{kind, node->id->name, node->isConst, ast::OwnershipKind::MY, symbolType ? retainType(symbolType->clone().release()) : nullptr}); // Explicit SymbolInfo
 }
 
 void SemanticAnalyzer::visit(ast::ClassDeclaration* node) {
@@ -1382,7 +1400,7 @@ void SemanticAnalyzer::visit(ast::ClassDeclaration* node) {
     if (currentScope->lookupDirect(node->name->name)) {
         addError("Redefinition of class \\\"" + node->name->name + "\\\" in the same scope.", node->name.get());
     }
-    currentScope->add(SymbolInfo{SymbolInfo::Kind::Type, node->name->name, false, ast::OwnershipKind::MY, new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->name->loc, node->name->name))});
+    currentScope->add(SymbolInfo{SymbolInfo::Kind::Type, node->name->name, false, ast::OwnershipKind::MY, retainType(new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->name->loc, node->name->name)))});
 
 
     enterScope();
@@ -1440,7 +1458,7 @@ void SemanticAnalyzer::visit(ast::TypeAliasDeclaration* node) {
     }
 
     if (node->name && node->typeNode && node->typeNode->type) {
-        currentScope->add(SymbolInfo{SymbolInfo::Kind::Type, node->name->name, false, ast::OwnershipKind::MY, node->typeNode->type->clone().release()}); // Explicit SymbolInfo
+        currentScope->add(SymbolInfo{SymbolInfo::Kind::Type, node->name->name, false, ast::OwnershipKind::MY, retainType(node->typeNode->type->clone().release())}); // Explicit SymbolInfo
     } else if (node->name) {
         addError("Type alias \\\"" + node->name->name + "\\\" has an unresolved target type.", node);
         currentScope->add(SymbolInfo{SymbolInfo::Kind::Type, node->name->name, false, ast::OwnershipKind::MY, nullptr}); // Explicit SymbolInfo
@@ -1519,15 +1537,15 @@ void SemanticAnalyzer::visit(ast::BinaryExpression* node) {
         case TokenType::EQEQ:
         case TokenType::NOTEQ:
             // Comparison operations: result is Bool
-            resultType = new ast::TypeName(node->loc,
-                std::make_unique<ast::Identifier>(node->loc, "Bool"));
+            resultType = retainType(new ast::TypeName(node->loc,
+                std::make_unique<ast::Identifier>(node->loc, "Bool")));
             break;
 
         case TokenType::AND:
         case TokenType::OR:
             // Logical operations: result is Bool
-            resultType = new ast::TypeName(node->loc,
-                std::make_unique<ast::Identifier>(node->loc, "Bool"));
+            resultType = retainType(new ast::TypeName(node->loc,
+                std::make_unique<ast::Identifier>(node->loc, "Bool")));
             break;
 
         default:
@@ -1814,7 +1832,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             std::vector<ast::TypeNodePtr> theirArgs;
             theirArgs.push_back(std::move(innerType));
             ast::TypeNode* resultType = new ast::TypeName(node->loc, std::move(theirId), std::move(theirArgs));
-            expressionTypes[node] = resultType;
+            expressionTypes[node] = retainType(resultType);
             node->type = std::shared_ptr<ast::TypeNode>(resultType->clone().release());
             return;
         }
@@ -1854,7 +1872,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             ownershipArgs.push_back(argType->clone());
 
             ast::TypeNode* resultType = new ast::TypeName(node->loc, std::move(ownershipId), std::move(ownershipArgs));
-            expressionTypes[node] = resultType;
+            expressionTypes[node] = retainType(resultType);
             node->type = std::shared_ptr<ast::TypeNode>(resultType->clone().release());
             return;
         }
@@ -1909,7 +1927,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             mildArgs.push_back(innerType->clone());
 
             ast::TypeNode* resultType = new ast::TypeName(node->loc, std::move(mildId), std::move(mildArgs));
-            expressionTypes[node] = resultType;
+            expressionTypes[node] = retainType(resultType);
             node->type = std::shared_ptr<ast::TypeNode>(resultType->clone().release());
             return;
         }
@@ -1925,7 +1943,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             // Create Void return type
             auto voidId = std::make_unique<ast::Identifier>(node->loc, "Void");
             ast::TypeNode* voidType = new ast::TypeName(node->loc, std::move(voidId), std::vector<ast::TypeNodePtr>{});
-            expressionTypes[node] = voidType;
+            expressionTypes[node] = retainType(voidType);
             node->type = std::shared_ptr<ast::TypeNode>(voidType->clone().release());
             return;
         }
@@ -1938,7 +1956,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             }
             auto voidId = std::make_unique<ast::Identifier>(node->loc, "Void");
             ast::TypeNode* voidType = new ast::TypeName(node->loc, std::move(voidId), std::vector<ast::TypeNodePtr>{});
-            expressionTypes[node] = voidType;
+            expressionTypes[node] = retainType(voidType);
             node->type = std::shared_ptr<ast::TypeNode>(voidType->clone().release());
             return;
         }
@@ -1951,7 +1969,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             }
             auto voidId = std::make_unique<ast::Identifier>(node->loc, "Void");
             ast::TypeNode* voidType = new ast::TypeName(node->loc, std::move(voidId), std::vector<ast::TypeNodePtr>{});
-            expressionTypes[node] = voidType;
+            expressionTypes[node] = retainType(voidType);
             node->type = std::shared_ptr<ast::TypeNode>(voidType->clone().release());
             return;
         }
@@ -1973,7 +1991,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 }
                 for (auto& arg : node->arguments) if (arg) arg->accept(*this);
                 auto floatType = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "Float"));
-                expressionTypes[node] = floatType;
+                expressionTypes[node] = retainType(floatType);
                 node->type = std::shared_ptr<ast::TypeNode>(floatType->clone());
                 return;
             }
@@ -1990,7 +2008,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                     node->type = std::shared_ptr<ast::TypeNode>(firstArgTypeIt->second->clone());
                 } else {
                     auto intType = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "Int"));
-                    expressionTypes[node] = intType;
+                    expressionTypes[node] = retainType(intType);
                     node->type = std::shared_ptr<ast::TypeNode>(intType->clone());
                 }
                 return;
@@ -2296,7 +2314,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                     if (typeName == "Int" || typeName == "Float" || typeName == "Bool" || typeName == "String") {
                         auto resultType = new ast::TypeName(node->loc,
                             std::make_unique<ast::Identifier>(node->loc, typeName));
-                        expressionTypes[node] = resultType;
+                        expressionTypes[node] = retainType(resultType);
                         node->type = std::shared_ptr<ast::TypeNode>(resultType->clone());
                         VYB_CDBG << "DEBUG: " << typeName << "::from_string() returns " << typeName << std::endl;
                         return;
@@ -2307,7 +2325,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                     if (structIt != structFieldTypes.end()) {
                         auto resultType = new ast::TypeName(node->loc,
                             std::make_unique<ast::Identifier>(node->loc, typeName));
-                        expressionTypes[node] = resultType;
+                        expressionTypes[node] = retainType(resultType);
                         node->type = std::shared_ptr<ast::TypeNode>(resultType->clone());
                         VYB_CDBG << "DEBUG: " << typeName << "::from_string() returns " << typeName << " (custom struct)" << std::endl;
                         return;
@@ -2325,7 +2343,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                     }
                     for (auto& arg : node->arguments) arg->accept(*this);
                     auto strType = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "String"));
-                    expressionTypes[node] = strType;
+                    expressionTypes[node] = retainType(strType);
                     node->type = std::shared_ptr<ast::TypeNode>(strType->clone());
                     return;
                 }
@@ -2585,18 +2603,18 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                         }
 
                         if (candidates[0].returnType) {
-                            ast::TypeNode* actualReturnType = substituteSelfType(candidates[0].returnType, typeNameStr);
+                            ast::TypeNode* actualReturnType = retainType(substituteSelfType(candidates[0].returnType, typeNameStr));
                             // Synthesized nodes are owned by the temp buffer inside this
                             // lambda; keep a stable heap copy so later type checks don't
                             // dangle after the buffer goes out of scope.
                             if (candidates[0].synthesized) {
                                 ast::TypeNode* stableCopy = actualReturnType->clone().release();
-                                expressionTypes[node] = stableCopy;
+                                expressionTypes[node] = retainType(stableCopy);
                                 node->type = std::shared_ptr<ast::TypeNode>(stableCopy->clone());
-                            } else {
+                           } else {
                                 expressionTypes[node] = actualReturnType;
-                                node->type = std::shared_ptr<ast::TypeNode>(actualReturnType->clone());
-                            }
+                               node->type = std::shared_ptr<ast::TypeNode>(actualReturnType->clone());
+                           }
                         }
                         return true;
                     };
@@ -2625,7 +2643,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                         std::vector<ast::TypeNodePtr> ourArgs;
                                         ourArgs.push_back(innerType->clone());
                                         auto resultType = new ast::TypeName(node->loc, std::move(ourId), std::move(ourArgs));
-                                        expressionTypes[node] = resultType;
+                                        expressionTypes[node] = retainType(resultType);
                                         node->type = std::shared_ptr<ast::TypeNode>(resultType->clone());
                                         VYB_CDBG << "DEBUG: mild<T>.grab() returns " << resultType->toString() << std::endl;
                                         return;
@@ -2635,7 +2653,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                     VYB_CDBG << "DEBUG: Setting return type for mild<T>.released() to Bool" << std::endl;
                                     auto boolType = new ast::TypeName(node->loc,
                                         std::make_unique<ast::Identifier>(node->loc, "Bool"));
-                                    expressionTypes[node] = boolType;
+                                    expressionTypes[node] = retainType(boolType);
                                     node->type = std::shared_ptr<ast::TypeNode>(boolType->clone());
                                     return;
                                 }
@@ -2657,7 +2675,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                             if (method->returnTypeNode) {
                                                 // Substitute Self with concrete type
                                                 ast::TypeNode* actualReturnType = substituteSelfType(method->returnTypeNode.get(), typeNameStr);
-                                                expressionTypes[node] = actualReturnType;
+                                                expressionTypes[node] = retainType(actualReturnType);
                                                 node->type = std::shared_ptr<ast::TypeNode>(actualReturnType->clone());
                                             }
 
@@ -2683,7 +2701,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                                     if (method->returnTypeNode) {
                                                         // Substitute Self with concrete type
                                                         ast::TypeNode* actualReturnType = substituteSelfType(method->returnTypeNode.get(), typeNameStr);
-                                                        expressionTypes[node] = actualReturnType;
+                                                        expressionTypes[node] = retainType(actualReturnType);
                                                         node->type = std::shared_ptr<ast::TypeNode>(actualReturnType->clone());
                                                     }
                                                     return;
@@ -2761,7 +2779,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                         if (method->returnType) {
                                             // Return type might be Self - substitute with type parameter
                                             ast::TypeNode* actualReturnType = substituteSelfType(method->returnType, typeStr);
-                                            expressionTypes[node] = actualReturnType;
+                                            expressionTypes[node] = retainType(actualReturnType);
                                             node->type = std::shared_ptr<ast::TypeNode>(actualReturnType->clone());
                                         }
                                         return;
@@ -2817,7 +2835,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                 // Return String type for .to_string() on primitives
                                 auto stringType = new ast::TypeName(node->loc,
                                     std::make_unique<ast::Identifier>(node->loc, "String"));
-                                expressionTypes[node] = stringType;
+                                expressionTypes[node] = retainType(stringType);
                                 node->type = std::shared_ptr<ast::TypeNode>(stringType->clone());
                                 VYB_CDBG << "DEBUG: Primitive method " << typeStr << ".to_string() returns String (early path)" << std::endl;
                                 return;
@@ -2830,7 +2848,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                     // Complex type .to_string() → JSON serialization
                                     auto stringType = new ast::TypeName(node->loc,
                                         std::make_unique<ast::Identifier>(node->loc, "String"));
-                                    expressionTypes[node] = stringType;
+                                    expressionTypes[node] = retainType(stringType);
                                     node->type = std::shared_ptr<ast::TypeNode>(stringType->clone());
                                     VYB_CDBG << "DEBUG: Complex type " << typeStr << ".to_string() returns JSON String (early path)" << std::endl;
                                     return;
@@ -2848,12 +2866,12 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                             // substring/to_upper/to_lower/concat -> String, char_at -> Int
                             if (methodName == "len" || methodName == "length") {
                                 auto intType = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "Int"));
-                                expressionTypes[node] = intType;
+                                expressionTypes[node] = retainType(intType);
                                 node->type = std::shared_ptr<ast::TypeNode>(intType->clone());
                                 return;
                             } else if (methodName == "contains" || methodName == "starts_with" || methodName == "ends_with") {
                                 auto boolType = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "Bool"));
-                                expressionTypes[node] = boolType;
+                                expressionTypes[node] = retainType(boolType);
                                 node->type = std::shared_ptr<ast::TypeNode>(boolType->clone());
                                 return;
                             } else if (methodName == "substring" || methodName == "substr" ||
@@ -2861,17 +2879,17 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                        methodName == "concat" || methodName == "trim" ||
                                        methodName == "strip" || methodName == "replace") {
                                 auto strType = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "String"));
-                                expressionTypes[node] = strType;
+                                expressionTypes[node] = retainType(strType);
                                 node->type = std::shared_ptr<ast::TypeNode>(strType->clone());
                                 return;
                             } else if (methodName == "char_at") {
                                 auto intType = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "Int"));
-                                expressionTypes[node] = intType;
+                                expressionTypes[node] = retainType(intType);
                                 node->type = std::shared_ptr<ast::TypeNode>(intType->clone());
                                 return;
                             } else if (methodName == "to_bytes") {
                                 auto intPtrType = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "Int"));
-                                expressionTypes[node] = intPtrType;
+                                expressionTypes[node] = retainType(intPtrType);
                                 node->type = std::shared_ptr<ast::TypeNode>(intPtrType->clone());
                                 return;
                             }
@@ -2914,7 +2932,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                 std::vector<ast::TypeNodePtr> ourArgs;
                                 ourArgs.push_back(innerType->clone());
                                 auto resultType = new ast::TypeName(node->loc, std::move(ourId), std::move(ourArgs));
-                                expressionTypes[node] = resultType;
+                                expressionTypes[node] = retainType(resultType);
                                 node->type = std::shared_ptr<ast::TypeNode>(resultType->clone());
                                 VYB_CDBG << "DEBUG: mild<T>.grab() returns " << resultType->toString() << std::endl;
                                 return;
@@ -2925,7 +2943,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                         VYB_CDBG << "DEBUG: Setting return type for mild<T>.released() to Bool" << std::endl;
                         auto boolType = new ast::TypeName(node->loc,
                             std::make_unique<ast::Identifier>(node->loc, "Bool"));
-                        expressionTypes[node] = boolType;
+                        expressionTypes[node] = retainType(boolType);
                         node->type = std::shared_ptr<ast::TypeNode>(boolType->clone());
                         return;
                     }
@@ -3001,7 +3019,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                                               << " return type before substitution: " << method->returnTypeNode->toString() << std::endl;
                                                     ast::TypeNode* actualReturnType = substituteSelfType(method->returnTypeNode.get(), typeNameStr);
                                                     VYB_CDBG << "DEBUG: After Self substitution: " << actualReturnType->toString() << std::endl;
-                                                    expressionTypes[node] = actualReturnType;
+                                                    expressionTypes[node] = retainType(actualReturnType);
                                                     node->type = std::shared_ptr<ast::TypeNode>(actualReturnType->clone());
                                                 }
                                                 return;
@@ -3096,7 +3114,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                 // Return String type for .to_string() on primitives
                                 auto stringType = new ast::TypeName(node->loc,
                                     std::make_unique<ast::Identifier>(node->loc, "String"));
-                                expressionTypes[node] = stringType;
+                                expressionTypes[node] = retainType(stringType);
                                 node->type = std::shared_ptr<ast::TypeNode>(stringType->clone());
                                 VYB_CDBG << "DEBUG: Primitive method " << typeNameStr << ".to_string() returns String" << std::endl;
                                 return;
@@ -3108,7 +3126,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                 // Complex type .to_string() → JSON serialization
                                 auto stringType = new ast::TypeName(node->loc,
                                     std::make_unique<ast::Identifier>(node->loc, "String"));
-                                expressionTypes[node] = stringType;
+                                expressionTypes[node] = retainType(stringType);
                                 node->type = std::shared_ptr<ast::TypeNode>(stringType->clone());
                                 VYB_CDBG << "DEBUG: Complex type " << typeNameStr << ".to_string() returns JSON String" << std::endl;
                                 return;
@@ -3153,7 +3171,7 @@ void SemanticAnalyzer::visit(ast::ArrayElementExpression* node) {
         if (auto arrayType = dynamic_cast<ast::ArrayType*>(arrayTypeIt->second)) {
             // The element type is the array's element type
             if (arrayType->elementType) {
-                expressionTypes[node] = arrayType->elementType->clone().release();
+                expressionTypes[node] = retainType(arrayType->elementType->clone().release());
                 node->type = std::shared_ptr<ast::TypeNode>(arrayType->elementType->clone());
             }
         }
@@ -3208,7 +3226,7 @@ void SemanticAnalyzer::visit(ast::MemberExpression* node) {
                     std::make_unique<ast::Identifier>(node->loc, baseId->name));
                 for (auto& a : gi->genericArguments) enumType->genericArgs.push_back(a->clone());
                 node->type = std::shared_ptr<ast::TypeNode>(enumType->clone());
-                expressionTypes[node] = enumType.release();
+                expressionTypes[node] = retainType(enumType.release());
                 return;
             }
         }
@@ -3238,14 +3256,14 @@ void SemanticAnalyzer::visit(ast::MemberExpression* node) {
                 auto* enumVariantTy = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, typeName));
                 node->type = std::shared_ptr<ast::TypeNode>(enumVariantTy->clone());
-                expressionTypes[node] = enumVariantTy;
+                expressionTypes[node] = retainType(enumVariantTy);
                 return;
             }
             // C-like enums not otherwise registered: the variant carries the enum type.
             auto* enumVariantTy = new ast::TypeName(node->loc,
                 std::make_unique<ast::Identifier>(node->loc, typeName));
             node->type = std::shared_ptr<ast::TypeNode>(enumVariantTy->clone());
-            expressionTypes[node] = enumVariantTy;
+            expressionTypes[node] = retainType(enumVariantTy);
             return;
         }
 
@@ -3509,7 +3527,7 @@ void SemanticAnalyzer::visit(ast::MemberExpression* node) {
     if (fieldName == "tag" && enumTypeNames.count(baseStructName)) {
         auto* tagTy = new ast::TypeName(node->loc,
             std::make_unique<ast::Identifier>(node->loc, "Int"));
-        expressionTypes[node] = tagTy;
+        expressionTypes[node] = retainType(tagTy);
         node->type = std::shared_ptr<ast::TypeNode>(tagTy->clone());
         return;
     }
@@ -3596,7 +3614,7 @@ void SemanticAnalyzer::visit(ast::MemberExpression* node) {
                 }
                 ast::TypeNodePtr substituted = substituteGenericArgsForValidation(fieldType, typeArgs);
                 if (substituted) {
-                    fieldType = substituted.release();
+                    fieldType = retainType(substituted.release());
                 }
             }
         }
@@ -3896,7 +3914,7 @@ void SemanticAnalyzer::visit(ast::ObjectLiteral* node) {
     auto typeName = dynamic_cast<ast::TypeName*>(node->typePath.get());
     if (!typeName || !typeName->identifier) {
         addError("Object literal has invalid type path.", node);
-        expressionTypes[node] = node->typePath->clone().release();
+        expressionTypes[node] = retainType(node->typePath->clone().release());
         return;
     }
 
@@ -3926,7 +3944,7 @@ void SemanticAnalyzer::visit(ast::ObjectLiteral* node) {
         if (!implicitFields.empty()) {
             structFieldTypes[structName] = implicitFields;
         }
-        expressionTypes[node] = node->typePath->clone().release();
+        expressionTypes[node] = retainType(node->typePath->clone().release());
         return;
     }
 
@@ -3960,7 +3978,7 @@ void SemanticAnalyzer::visit(ast::ObjectLiteral* node) {
             }
         }
 
-        expressionTypes[node] = node->typePath->clone().release();
+        expressionTypes[node] = retainType(node->typePath->clone().release());
         node->type = std::shared_ptr<ast::TypeNode>(node->typePath->clone());
         return;
     }
@@ -4047,11 +4065,11 @@ void SemanticAnalyzer::visit(ast::ObjectLiteral* node) {
             std::move(genericArgs)
         );
 
-        expressionTypes[node] = resultType;
+        expressionTypes[node] = retainType(resultType);
         node->type = std::shared_ptr<ast::TypeNode>(resultType->clone());
     } else {
         // No generic parameters or couldn't infer - use type as-is
-        expressionTypes[node] = node->typePath->clone().release();
+        expressionTypes[node] = retainType(node->typePath->clone().release());
         node->type = std::shared_ptr<ast::TypeNode>(node->typePath->clone());
     }
 }
@@ -4093,7 +4111,7 @@ void SemanticAnalyzer::visit(ast::ArrayLiteral* node) {
             std::move(sizeExpr)
         );
 
-        expressionTypes[node] = arrayType.release();
+        expressionTypes[node] = retainType(arrayType.release());
         node->type = std::shared_ptr<ast::TypeNode>(expressionTypes[node]->clone());
     }
 }
@@ -4130,7 +4148,7 @@ void SemanticAnalyzer::visit(ast::FunctionExpression* node) {
                 param.name->name,
                 /*isConst=*/false,
                 ast::OwnershipKind::MY,
-                paramTypeRaw ? paramTypeRaw->clone().release() : nullptr
+                paramTypeRaw ? retainType(paramTypeRaw->clone().release()) : nullptr
             });
         }
     }
@@ -4231,7 +4249,7 @@ void SemanticAnalyzer::visit(ast::FunctionExpression* node) {
         }
     }
     auto* funcType = new ast::FunctionType(node->loc, std::move(paramTypes), std::move(inferredReturn));
-    expressionTypes[node] = funcType;
+    expressionTypes[node] = retainType(funcType);
     node->type = std::shared_ptr<ast::TypeNode>(funcType->clone());
 }
 void SemanticAnalyzer::visit(ast::ThisExpression* node) {}
@@ -4465,7 +4483,7 @@ void SemanticAnalyzer::visit(ast::SelectExpression* node) {
                             }
                             ast::TypeNode* pt = (bi < payload.size()) ? payload[bi].get() : nullptr;
                             currentScope->add(SymbolInfo{SymbolInfo::Kind::Variable, bname, false,
-                                ast::OwnershipKind::MY, pt ? pt->clone().release() : nullptr});
+                                ast::OwnershipKind::MY, pt ? retainType(pt->clone().release()) : nullptr});
                         }
                     }
                 }
@@ -4611,7 +4629,7 @@ void SemanticAnalyzer::visit(ast::GenericInstantiationExpression* node) {
             auto* tn = new ast::TypeName(node->loc,
                 std::make_unique<ast::Identifier>(node->loc, identifier->name));
             for (auto& a : node->genericArguments) tn->genericArgs.push_back(a->clone());
-            expressionTypes[node] = tn;
+            expressionTypes[node] = retainType(tn);
             node->type = std::shared_ptr<ast::TypeNode>(tn->clone());
             return;
         }
@@ -4674,7 +4692,7 @@ void SemanticAnalyzer::visit(ast::PointerDerefExpression* node) {
         return;
     }
 
-    expressionTypes[node] = pointeeType; // raw pointer, ownership handled by clone().release()
+    expressionTypes[node] = retainType(pointeeType); // raw pointer, ownership handled by clone().release()
     node->type = std::shared_ptr<ast::TypeNode>(pointeeType->clone()); // node->type takes ownership of a new clone
 }
 void SemanticAnalyzer::visit(ast::AddrOfExpression* node) {
@@ -4709,7 +4727,7 @@ void SemanticAnalyzer::visit(ast::AddrOfExpression* node) {
     // Vyb should have a dedicated address type (e.g., uintptr).
     auto addr_type_ident = std::make_unique<ast::Identifier>(node->loc, "i64");
     ast::TypeNode* addrAstType = new ast::TypeName(node->loc, std::move(addr_type_ident));
-    expressionTypes[node] = addrAstType;
+    expressionTypes[node] = retainType(addrAstType);
     node->type = std::shared_ptr<ast::TypeNode>(addrAstType->clone());
 }
 void SemanticAnalyzer::visit(ast::FromIntToLocExpression* node) {
@@ -4764,7 +4782,7 @@ void SemanticAnalyzer::visit(ast::FromIntToLocExpression* node) {
         return;
     }
 
-    expressionTypes[node] = targetType->clone().release();
+    expressionTypes[node] = retainType(targetType->clone().release());
     node->type = std::shared_ptr<ast::TypeNode>(targetType->clone());
 }
 void SemanticAnalyzer::visit(ast::LocationExpression* node) {
@@ -4800,7 +4818,7 @@ void SemanticAnalyzer::visit(ast::LocationExpression* node) {
     auto typeName = new ast::TypeName(node->loc, std::move(locIdent));
     typeName->genericArgs.push_back(std::unique_ptr<ast::TypeNode>(pointeeType->clone()));
 
-    expressionTypes[node] = typeName;
+    expressionTypes[node] = retainType(typeName);
     node->type = std::shared_ptr<ast::TypeNode>(typeName->clone());
 }
 void SemanticAnalyzer::visit(ast::IfStatement* node) {
@@ -5118,7 +5136,7 @@ void SemanticAnalyzer::visit(ast::MatchStatement* node) {
                         ast::TypeNode* fieldType = ftIt->second;
                         currentScope->add(SymbolInfo{
                             SymbolInfo::Kind::Variable, fname, false, ast::OwnershipKind::MY,
-                            fieldType ? fieldType->clone().release() : nullptr});
+                            fieldType ? retainType(fieldType->clone().release()) : nullptr});
                         // Record the field type on the binding itself so codegen can
                         // populate valueTypeMap for the destructured variable.
                         binding->type = fieldType ? std::shared_ptr<ast::TypeNode>(fieldType->clone()) : nullptr;
@@ -5166,7 +5184,7 @@ void SemanticAnalyzer::visit(ast::MatchStatement* node) {
                             }
                             ast::TypeNode* pt = (bi < payload.size()) ? payload[bi].get() : nullptr;
                             currentScope->add(SymbolInfo{SymbolInfo::Kind::Variable, bname, false,
-                                ast::OwnershipKind::MY, pt ? pt->clone().release() : nullptr});
+                                ast::OwnershipKind::MY, pt ? retainType(pt->clone().release()) : nullptr});
                         }
                     }
                 }
@@ -5364,7 +5382,7 @@ void SemanticAnalyzer::visit(ast::StructDeclaration* node) {
     }
 
     // Create and register the struct type in the symbol table
-    auto structType = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->name->loc, structName));
+    auto structType = retainType(new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->name->loc, structName)));
 
     // Register in parent scope (not the type parameter scope)
     if (hasGenericParams) {
@@ -5446,7 +5464,7 @@ void SemanticAnalyzer::visit(ast::EnumDeclaration* node) {
             }
             currentScope->add(SymbolInfo{SymbolInfo::Kind::Type, enumName, false,
                 ast::OwnershipKind::MY,
-                new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, enumName))});
+                retainType(new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, enumName)))});
         }
         return;
     }
@@ -5471,7 +5489,7 @@ void SemanticAnalyzer::visit(ast::EnumDeclaration* node) {
         }
         currentScope->add(SymbolInfo{SymbolInfo::Kind::Type, enumName, false,
             ast::OwnershipKind::MY,
-            new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, enumName))});
+                retainType(new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, enumName)))});
         return;
     }
 
@@ -5489,7 +5507,7 @@ void SemanticAnalyzer::visit(ast::EnumDeclaration* node) {
     // and so `s = Shape::Circle(...)` infers the enum type.
     currentScope->add(SymbolInfo{SymbolInfo::Kind::Type, enumName, false,
         ast::OwnershipKind::MY,
-        new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, enumName))});
+                retainType(new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, enumName)))});
 }
 
 void SemanticAnalyzer::registerGenericEnumConcrete(
@@ -6393,7 +6411,7 @@ void SemanticAnalyzer::visit(ast::ConstructionExpression* node) {
     auto typeNameNode = dynamic_cast<ast::TypeName*>(node->constructedType.get());
     if (!typeNameNode || !typeNameNode->identifier) {
          node->constructedType->accept(*this);
-         expressionTypes[node] = node->constructedType->clone().release();
+         expressionTypes[node] = retainType(node->constructedType->clone().release());
          if (expressionTypes[node]) {
             node->type = std::shared_ptr<ast::TypeNode>(expressionTypes[node]->clone());
          }
@@ -6445,7 +6463,7 @@ void SemanticAnalyzer::visit(ast::ConstructionExpression* node) {
         }
         auto res_type_ident = std::make_unique<ast::Identifier>(node->loc, "i64");
         ast::TypeNode* resType = new ast::TypeName(node->loc, std::move(res_type_ident));
-        expressionTypes[node] = resType;
+        expressionTypes[node] = retainType(resType);
         node->type = std::shared_ptr<ast::TypeNode>(resType->clone());
 
     } else if (constructedName == "from") {
@@ -6482,7 +6500,7 @@ void SemanticAnalyzer::visit(ast::ConstructionExpression* node) {
             addError("Address argument to from<T>() must be an integer type. Got: " + (addrValType ? addrValType->toString() : "unknown"), node);
             expressionTypes[node] = nullptr; return;
         }
-        expressionTypes[node] = targetTypeAst->clone().release();
+        expressionTypes[node] = retainType(targetTypeAst->clone().release());
         node->type = std::shared_ptr<ast::TypeNode>(targetTypeAst->clone());
 
     } else if (constructedName == "at") {
@@ -6513,11 +6531,11 @@ void SemanticAnalyzer::visit(ast::ConstructionExpression* node) {
         if (!pointeeType) {
              addError("Failed to determine pointee type for at() operation.", node); expressionTypes[node] = nullptr; return;
         }
-        expressionTypes[node] = pointeeType;
+        expressionTypes[node] = retainType(pointeeType);
         node->type = std::shared_ptr<ast::TypeNode>(pointeeType->clone());
     } else {
         node->constructedType->accept(*this);
-        expressionTypes[node] = node->constructedType->clone().release();
+        expressionTypes[node] = retainType(node->constructedType->clone().release());
         if (expressionTypes[node]) {
            node->type = std::shared_ptr<ast::TypeNode>(expressionTypes[node]->clone());
         } else {
@@ -6989,7 +7007,7 @@ void SemanticAnalyzer::visit(ast::BorrowExpression* node) {
     std::vector<ast::TypeNodePtr> args;
     args.push_back(std::move(innerType));
     ast::TypeNode* resultType = new ast::TypeName(node->loc, std::move(theirId), std::move(args));
-    expressionTypes[node] = resultType;
+    expressionTypes[node] = retainType(resultType);
     node->type = std::shared_ptr<ast::TypeNode>(resultType->clone().release());
 }
 
@@ -7395,7 +7413,7 @@ void SemanticAnalyzer::handleQualifiedAspectCall(ast::CallExpression* node,
     }
 
     ast::TypeNode* actualReturnType = substituteSelfType(returnTypeNode, typeStr);
-    expressionTypes[node] = actualReturnType;
+    expressionTypes[node] = retainType(actualReturnType);
     node->type = std::shared_ptr<ast::TypeNode>(actualReturnType->clone());
     VYB_CDBG << "DEBUG: Qualified aspect call " << aspectName << "::" << methodName
               << " on " << typeStr << " returns " << actualReturnType->toString()
@@ -8293,7 +8311,7 @@ bool SemanticAnalyzer::setResolvedTraitReturnType(ast::CallExpression* callNode,
     std::string resolvedAssocType = resolveAssociatedTypeReference(concreteTypeName, traitName, traitReturnType->toString());
     if (!resolvedAssocType.empty()) {
         auto resolvedType = new ast::TypeName(callNode->loc, std::make_unique<ast::Identifier>(callNode->loc, resolvedAssocType));
-        expressionTypes[callNode] = resolvedType;
+        expressionTypes[callNode] = retainType(resolvedType);
         callNode->type = std::shared_ptr<ast::TypeNode>(resolvedType->clone());
         return true;
     }
@@ -8345,7 +8363,7 @@ void SemanticAnalyzer::visit(ast::TypeofExpression* node) {
     // Result type is always "Type" (primitive introspection type)
     auto typeIdent = std::make_unique<ast::Identifier>(node->loc, "Type");
     ast::TypeNode* resultType = new ast::TypeName(node->loc, std::move(typeIdent));
-    expressionTypes[node] = resultType;
+    expressionTypes[node] = retainType(resultType);
     node->type = std::shared_ptr<ast::TypeNode>(resultType->clone());
 
     // Compile-time form: typeof<T>() just resolves the target type.
@@ -8382,7 +8400,7 @@ void SemanticAnalyzer::visit(ast::TypenameExpression* node) {
     // Result type is always "String" — Vyb's string type uses PascalCase
     auto stringIdent = std::make_unique<ast::Identifier>(node->loc, "String");
     ast::TypeNode* resultType = new ast::TypeName(node->loc, std::move(stringIdent));
-    expressionTypes[node] = resultType;
+    expressionTypes[node] = retainType(resultType);
     node->type = std::shared_ptr<ast::TypeNode>(resultType->clone());
 
     // A wildcard trap error (e<?>): load its runtime type name at codegen.
@@ -8535,7 +8553,7 @@ void SemanticAnalyzer::visit(ast::TupleDestructureAssignment* node) {
         ast::TypeNode* elemType = elementTypes[i];
         currentScope->add(SymbolInfo{SymbolInfo::Kind::Variable, varName, false, 
                                       ast::OwnershipKind::MY, 
-                                      elemType ? elemType->clone().release() : nullptr});
+                                      elemType ? retainType(elemType->clone().release()) : nullptr});
     }
 }
 
