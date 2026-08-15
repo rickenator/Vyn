@@ -13,6 +13,7 @@
 #include <climits>
 #include <cstdlib>
 #include <map>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <string>
@@ -414,12 +415,12 @@ public:
             return;
         }
 
-        // function-like: bind as an integer-const Vyb function
+        // function-like: bind as a Vyb function (Int/Float/Bool/String result)
         std::set<std::string> params(m.params.begin(), m.params.end());
-        std::string expr;
-        if (!translateBody(m.body, params, expr)) {
+        std::string expr, exprType;
+        if (!translateBody(m.body, params, expr, exprType)) {
             warn("skipping function-like macro '" + m.name +
-                 "': body is not an integer-arithmetic expression over its params");
+                 "': body is not a comparison/ternary/string expression over its params");
             return;
         }
         emitted_.insert(m.name);
@@ -429,7 +430,7 @@ public:
             if (i) os << ", ";
             os << m.params[i] << "<Int>";
         }
-        os << ")<Int> -> {\n    return " << expr << "\n}\n\n";
+        os << ")<" << exprType << "> -> {\n    return " << expr << "\n}\n\n";
         chunks_.push_back(os.str());
     }
 
@@ -462,25 +463,164 @@ public:
         return m;
     }
 
-    // Passes through integer-arithmetic tokens/operators/params, inlining
-    // previously-bound integer constant macros. Anything else fails.
-    bool translateBody(const std::vector<std::string>& toks,
-                       const std::set<std::string>& params, std::string& expr) {
-        static const std::set<std::string> ok = {
-            "(", ")", "+", "-", "*", "/", "%", "<<", ">>", "&", "|", "^", "~"};
-        std::string out;
-        for (const auto& t : toks) {
-            if (isIntLiteral(t) || isFloatLiteral(t)) { out += t; continue; }
-            if (ok.count(t)) { out += t; continue; }
-            if (isIdentText(t)) {
-                if (params.count(t)) { out += t; continue; }
-                auto cv = constVal_.find(t);
-                if (cv != constVal_.end()) { out += std::to_string(cv->second); continue; }
-                return false;
-            }
-            return false;
+    // Translates a function-like macro body (comparison / logical / ternary /
+    // string macros) into a Vyb expression, computing its result type.
+    struct MacroExpr { std::string text; std::string type; };
+
+    class MacroExprParser {
+    public:
+        MacroExprParser(const std::vector<std::string>& toks,
+                        const std::set<std::string>& params,
+                        const std::map<std::string, long long>& constVal)
+            : toks_(toks), params_(params), constVal_(constVal) {}
+
+        // Returns nullopt on any untranslatable construct.
+        std::optional<MacroExpr> parse() {
+            p_ = 0;
+            auto e = ternary();
+            if (!e || p_ != toks_.size()) return std::nullopt;
+            return e;
         }
-        expr = out;
+
+    private:
+        const std::vector<std::string>& toks_;
+        const std::set<std::string>& params_;
+        const std::map<std::string, long long>& constVal_;
+        size_t p_ = 0;
+
+        bool peek(const std::string& t) const {
+            return p_ < toks_.size() && toks_[p_] == t;
+        }
+        void bump() { if (p_ < toks_.size()) ++p_; }
+
+        std::optional<MacroExpr> binary(const std::set<std::string>& ops,
+                                        std::optional<MacroExpr> (MacroExprParser::*sub)(),
+                                        std::string binTypeOf(const std::string&,
+                                                              const std::string&)) {
+            auto left = (this->*sub)();
+            while (left && p_ < toks_.size() && ops.count(toks_[p_])) {
+                std::string op = toks_[p_];
+                bump();
+                auto right = (this->*sub)();
+                if (!right) return std::nullopt;
+                std::string type = left->type;
+                if (op == "==" || op == "!=" || op == "<" || op == "<=" ||
+                    op == ">" || op == ">=" || op == "&&" || op == "||") {
+                    type = "Bool";
+                } else {
+                    type = binTypeOf(left->type, right->type);
+                }
+                left = MacroExpr{"(" + left->text + " " + op + " " + right->text + ")",
+                                 type};
+            }
+            return left;
+        }
+
+        std::optional<MacroExpr> ternary() {
+            auto cond = logical();
+            if (!cond) return std::nullopt;
+            if (!peek("?")) return cond;
+            bump();
+            auto thenE = ternary();
+            if (!thenE || !peek(":")) return std::nullopt;
+            bump();
+            auto elseE = ternary();
+            if (!elseE) return std::nullopt;
+            return MacroExpr{"select((" + cond->text + ")) -> { true -> (" +
+                                 thenE->text + "), false -> (" + elseE->text + ") }",
+                             thenE->type};
+        }
+
+        std::optional<MacroExpr> logical() {
+            return binary({"||"}, &MacroExprParser::logAnd, arithType);
+        }
+        std::optional<MacroExpr> logAnd() {
+            return binary({"&&"}, &MacroExprParser::bitOr, arithType);
+        }
+        std::optional<MacroExpr> bitOr() {
+            return binary({"|"}, &MacroExprParser::bitXor, arithType);
+        }
+        std::optional<MacroExpr> bitXor() {
+            return binary({"^"}, &MacroExprParser::bitAnd, arithType);
+        }
+        std::optional<MacroExpr> bitAnd() {
+            return binary({"&"}, &MacroExprParser::equality, arithType);
+        }
+        std::optional<MacroExpr> equality() {
+            return binary({"==", "!="}, &MacroExprParser::relational, arithType);
+        }
+        std::optional<MacroExpr> relational() {
+            return binary({"<", "<=", ">", ">="}, &MacroExprParser::shift, arithType);
+        }
+        std::optional<MacroExpr> shift() {
+            return binary({"<<", ">>"}, &MacroExprParser::additive, arithType);
+        }
+        std::optional<MacroExpr> additive() {
+            return binary({"+", "-"}, &MacroExprParser::multiplicative, arithType);
+        }
+        std::optional<MacroExpr> multiplicative() {
+            return binary({"*", "/", "%"}, &MacroExprParser::unary, arithType);
+        }
+
+        std::optional<MacroExpr> unary() {
+            if (peek("-") || peek("+") || peek("~") || peek("!")) {
+                std::string op = toks_[p_];
+                bump();
+                auto operand = unary();
+                if (!operand) return std::nullopt;
+                std::string type = operand->type;
+                if (op == "~") type = "Int";
+                else if (op == "!") type = "Bool";
+                return MacroExpr{"(" + op + "(" + operand->text + "))", type};
+            }
+            return primary();
+        }
+
+        std::optional<MacroExpr> primary() {
+            if (peek("(")) {
+                bump();
+                auto inner = ternary();
+                if (!inner || !peek(")")) return std::nullopt;
+                bump();
+                return inner;
+            }
+            if (p_ >= toks_.size()) return std::nullopt;
+            const std::string& t = toks_[p_];
+            if (isIntLiteral(t) || isFloatLiteral(t)) {
+                bump();
+                return MacroExpr{t, isFloatLiteral(t) ? "Float" : "Int"};
+            }
+            if (isStringLiteral(t)) {
+                bump();
+                return MacroExpr{t, "String"};
+            }
+            if (isIdentText(t)) {
+                bump();
+                if (params_.count(t)) return MacroExpr{t, "Int"};
+                auto cv = constVal_.find(t);
+                if (cv != constVal_.end())
+                    return MacroExpr{std::to_string(cv->second), "Int"};
+                return std::nullopt;
+            }
+            return std::nullopt;
+        }
+
+        static std::string arithType(const std::string& l, const std::string& r) {
+            if (l == "Float" || r == "Float") return "Float";
+            return "Int";
+        }
+    };
+
+    // Translates a function-like macro body. On success sets `expr` and
+    // `exprType`; returns false (caller warns) for anything untranslatable.
+    bool translateBody(const std::vector<std::string>& toks,
+                       const std::set<std::string>& params,
+                       std::string& expr, std::string& exprType) {
+        MacroExprParser parser(toks, params, constVal_);
+        auto e = parser.parse();
+        if (!e) return false;
+        expr = e->text;
+        exprType = e->type;
         return !expr.empty();
     }
 

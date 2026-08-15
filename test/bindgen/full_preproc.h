@@ -20,6 +20,13 @@ typedef int32_t word_t;
 #define LIMIT_HI 0xFF00
 #define SQUARE(x) ((x) * (x))
 #define ADD2(a, b) ((a) + (b))
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define CLAMP(v, lo, hi) ((v) < (lo) ? (lo) : ((v) > (hi) ? (hi) : (v)))
+#define IS_EVEN(x) (((x) % 2) == 0)
+#define IS_POS(x) ((x) > 0)
+#define MASK8(x) ((x) & 0xFF)
+#define LSL2(x) ((x) << 2)
+#define STATUS() "ok"
 
 #if COUNT > 2
 #define BIG_ENOUGH 1

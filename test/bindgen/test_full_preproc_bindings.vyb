@@ -1,5 +1,5 @@
 // @test: vyb bindgen --full (libclang) bindings are usable
-// @description: libclang full-preprocessor glue: includes resolved (word_t -> CInt), conditionals evaluated (#if COUNT>2 -> BIG_ENOUGH=1), object-like/expression/function-like macros bind as shared functions (COUNT, WIDE, BIG_ENOUGH, SQUARE, ADD2, LIMIT_HI)
+// @description: libclang full-preprocessor glue: includes resolved, conditionals evaluated (#if COUNT>2 -> BIG_ENOUGH=1), object-like/expression/function-like comparison/ternary/string/bitwise macros bind as typed shared functions (COUNT, WIDE, BIG_ENOUGH, SQUARE, ADD2, MAX, CLAMP, IS_EVEN, IS_POS, MASK8, LSL2, STATUS, LIMIT_HI)
 // @category: ffi, bindgen
 // @expect: pass
 // @expect-output: count= 4
@@ -7,6 +7,13 @@
 // @expect-output: big= 1
 // @expect-output: sq= 25
 // @expect-output: add= 7
+// @expect-output: max= 9
+// @expect-output: clamp= 10
+// @expect-output: even= true
+// @expect-output: pos= false
+// @expect-output: mask= 47
+// @expect-output: lsl= 12
+// @expect-output: status= ok
 // @expect-output: hi= 65280
 // @expect-return: 0
 // @tags: ffi, bindgen, libclang, preprocessor, macro
@@ -19,6 +26,13 @@ main()<Int> -> {
     println("big=", BIG_ENOUGH())
     println("sq=", SQUARE(5))
     println("add=", ADD2(3, 4))
+    println("max=", MAX(3, 9))
+    println("clamp=", CLAMP(50, 1, 10))
+    println("even=", IS_EVEN(4))
+    println("pos=", IS_POS(-3))
+    println("mask=", MASK8(0x12F))
+    println("lsl=", LSL2(3))
+    println("status=", STATUS())
     println("hi=", LIMIT_HI())
     return 0
 }

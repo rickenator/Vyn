@@ -33,11 +33,13 @@ std::string generateBindings(const std::string& headerSource,
 // (`int32_t` -> CInt on this platform, `uint64_t` -> CULong on LP64, and
 // similarly for the other <stdint.h> widths). Object-like `#define` constants
 // (numeric, string, or integer constant expressions) bind as shared constant
-// functions; function-like macros bind as `Int`-typed Vyb functions over
-// integer arithmetic. Fixed-size C array struct fields (direct, nested, or via
-// a typedef such as `typedef char name_t[8]`) bind as contiguous Vyb
-// value-array fields (`[CChar; 8]`, `[[CDouble; 3]; 2]`); flexible/variable
-// array members skip their struct with a warning. C unions bind as
+// functions; function-like macros bind as type-aware Vyb functions, mapping
+// comparison/logical operators directly and C `? :` ternaries to `select`, so
+// they resolve to `Int`, `Float`, `Bool`, or `String` as appropriate. Fixed-size
+// C array struct fields (direct, nested, or via a typedef such as
+// `typedef char name_t[8]`) bind as contiguous Vyb value-array fields
+// (`[CChar; 8]`, `[[CDouble; 3]; 2]`); flexible/variable array members skip
+// their struct with a warning. C unions bind as
 // `#[repr(C)]` structs -- the highest-aligned member is the accessible anchor
 // and a `[UInt8; N]` pad carries the union's remaining bytes, so the struct's
 // size and alignment match the C union. `cmdArgs` holds extra

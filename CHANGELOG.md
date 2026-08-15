@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`vyb bindgen --full` non-integer function-like macros** — the libclang
+  backend now binds comparison/logical, ternary, and string macro bodies as
+  type-aware Vyb functions instead of skipping them. Comparisons and logical
+  operators map directly (`IS_EVEN(x) (((x)%2)==0)` → `IS_EVEN(x<Int>)<Bool>`),
+  C `? :` ternaries lower to Vyb `select` (`MAX(a,b) ((a)>(b)?(a):(b))` →
+  `<Int>`, with nested ternaries like `CLAMP` supported), and string bodies
+  become `<String>` functions (`STATUS()` → `"ok"`). Covered by
+  `MAX`/`CLAMP`/`IS_EVEN`/`IS_POS`/`STATUS` in `test/bindgen/full_preproc.h`.
+- **`vyb bindgen --full` C unions** — a C `union` now binds as a
 - **`vyb bindgen --full` C unions** — a C `union` now binds as a
   `#[repr(C)]` struct whose highest-aligned member is the accessible anchor
   plus a `[UInt8; N]` pad to the union's total size, so the struct's size and
