@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Hex and binary integer literals** — `0x`/`0X` (base 16) and `0b`/`0B`
+  (base 2) integer literals now parse to their true value. Previously the lexer
+  emitted the raw `0x11`/`0b1100` lexeme and `std::stoll` truncated it at the
+  `x`/`b`, yielding `0`. Works with all sized integer types (e.g. `UInt8 = 0x80`)
+  and flows into byte-composition expressions. Covered by
+  `test/expressions/test_literals.vyb`.
 - **Integer `as` casts** — `value as TargetType` now converts between the sized
   integer types (`Int8`–`Int64`, `UInt8`–`UInt64`): widening sign- or
   zero-extends based on the *source* type (`Int8 as Int64` sign-extends,

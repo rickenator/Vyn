@@ -973,6 +973,11 @@ Vyb uses indentation-sensitive syntax with optional braces and semicolons. White
 // Integer literals
 x<Int> = 42                       // 64-bit signed integer (default)
 large<Int> = -9223372036854775808  // Full 64-bit range
+red<Int> = 0xFF                   // Hexadecimal (base 16)
+mask<Int> = 0b11001110            // Binary (base 2)
+
+// Sized integers use the same literal forms (0x80 means 128 as a byte).
+b<UInt8> = 0x80
 
 // Floating point literals
 pi<Float> = 3.14159               // 64-bit IEEE 754 double precision

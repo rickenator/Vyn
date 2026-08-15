@@ -1,0 +1,19 @@
+// @test: Hex and binary integer literals
+// @description: 0x/0X and 0b/0B literals parse to their true value and flow
+//   into sized types and byte composition.
+// @category: expressions, literals
+// @expect: pass
+// @expect-output: hex=255 bin=206 c0=128 c1=1 comb=131456
+
+main()<Int> -> {
+    h<Int> = 0xFF
+    b<Int> = 0b11001110
+    b0<UInt8> = 0x80
+    b1<UInt8> = 0x01
+    b2<UInt8> = 0x02
+    b3<UInt8> = 0x00
+    c<UInt32> = (b0 as UInt32) | ((b1 as UInt32) << 8) |
+                ((b2 as UInt32) << 16) | ((b3 as UInt32) << 24)
+    println("hex={} bin={} c0={} c1={} comb={}".format(h, b, b0 as Int, b1 as Int, c))
+    return 0
+}
