@@ -1,0 +1,28 @@
+// @test: Integer 'as' casts and Int64 byte composition
+// @description: Sized-integer casts (sign/zero-extend, truncate), the Int64
+//   alias, and composing a wider int from bytes via unsigned widening.
+// @category: expressions, types
+// @expect: pass
+// @expect-output: as-i64=100 sx=-6 zx=200 tr=44 comp=131456
+
+main()<Int64> -> {
+    big<Int64> = 100
+    s<Int8> = -6
+    n<Int64> = s as Int64                 // signed: sign-extends -> -6
+    u<UInt8> = 200
+    p<Int> = u as Int                     // unsigned: zero-extends -> 200
+    w<Int> = 300
+    q<Int8> = w as Int8                   // narrowing: 300 & 0xFF = 44
+
+    // Compose a 32-bit value from four bytes (UInt8); the 0x80 byte proves
+    // zero-extension: a signed widen would sign-extend to 0xFF...80 instead.
+    b0<UInt8> = 128                       // 0x80
+    b1<UInt8> = 1
+    b2<UInt8> = 2
+    b3<UInt8> = 0
+    c<UInt32> = (b0 as UInt32) | ((b1 as UInt32) << 8) |
+                ((b2 as UInt32) << 16) | ((b3 as UInt32) << 24)
+
+    println("as-i64={} sx={} zx={} tr={} comp={}".format(big, n, p, q, c))
+    return 0
+}

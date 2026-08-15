@@ -12,6 +12,22 @@
 using namespace vyb;
 // using namespace llvm; // Uncomment if desired for brevity
 
+// Classify a sized integer type name into signedness and bit width. Returns
+// false for non-integer (or unknown) type names.
+static bool vybIntClass(const std::string& name, bool& isUnsigned, unsigned& bits) {
+    if (name == "Int" || name == "Int64" || name == "i64")    { isUnsigned = false; bits = 64; return true; }
+    if (name == "Int32" || name == "i32")                     { isUnsigned = false; bits = 32; return true; }
+    if (name == "Int16" || name == "i16")                     { isUnsigned = false; bits = 16; return true; }
+    if (name == "Int8"  || name == "i8")                      { isUnsigned = false; bits = 8;  return true; }
+    if (name == "UInt64" || name == "u64")                    { isUnsigned = true;  bits = 64; return true; }
+    if (name == "UInt32" || name == "u32")                    { isUnsigned = true;  bits = 32; return true; }
+    if (name == "UInt16" || name == "u16")                    { isUnsigned = true;  bits = 16; return true; }
+    if (name == "UInt8"  || name == "u8" || name == "Byte")   { isUnsigned = true;  bits = 8;  return true; }
+    if (name == "Char")                                       { isUnsigned = false; bits = 8;  return true; }
+    if (name == "Rune")                                       { isUnsigned = false; bits = 32; return true; }
+    return false;
+}
+
 // --- Literal Codegen ---
 void LLVMCodegen::visit(vyb::ast::IntegerLiteral *node) {
     m_currentLLVMValue = llvm::ConstantInt::get(*context, llvm::APInt(64, node->value, true));
@@ -7111,5 +7127,45 @@ void LLVMCodegen::visit(vyb::ast::AsExpression* node) {
     }
 
     // Identity / same-type cast: the value already has the target type.
+    // First, integer-to-integer conversions between the sized Int/UInt types:
+    // the source's signedness drives the widening so `UInt8 as Int64` zero-
+    // extends while `Int8 as Int64` sign-extends; narrowing truncates; equal
+    // width is a bit-preserving move (signedness is only tracked at the type).
+    std::string srcName;
+    if (node->operand->type) {
+        if (auto tn = dynamic_cast<ast::TypeName*>(node->operand->type.get())) {
+            if (tn->identifier) srcName = tn->identifier->name;
+        }
+    }
+    std::string dstName;
+    ast::TypeNode* dstTypeNode = node->targetType->type
+        ? node->targetType->type.get() : node->targetType.get();
+    if (dstTypeNode) {
+        if (auto tn = dynamic_cast<ast::TypeName*>(dstTypeNode)) {
+            if (tn->identifier) dstName = tn->identifier->name;
+        }
+    }
+
+    bool srcUnsigned = false;
+    unsigned srcBits = 0;
+    bool dstUnsigned = false;
+    unsigned dstBits = 0;
+    if (vybIntClass(srcName, srcUnsigned, srcBits) &&
+        vybIntClass(dstName, dstUnsigned, dstBits) &&
+        operand->getType()->isIntegerTy() && targetTy->isIntegerTy()) {
+        unsigned srcW = operand->getType()->getIntegerBitWidth();
+        unsigned dstW = targetTy->getIntegerBitWidth();
+        if (dstW > srcW) {
+            m_currentLLVMValue = srcUnsigned
+                ? builder->CreateZExt(operand, targetTy, "as.zext")
+                : builder->CreateSExt(operand, targetTy, "as.sext");
+        } else if (dstW < srcW) {
+            m_currentLLVMValue = builder->CreateTrunc(operand, targetTy, "as.trunc");
+        } else {
+            m_currentLLVMValue = operand;
+        }
+        return;
+    }
+
     m_currentLLVMValue = operand;
 }

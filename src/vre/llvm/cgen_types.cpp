@@ -552,7 +552,7 @@ llvm::Type* LLVMCodegen::codegenType(vyb::ast::TypeNode* typeNode) {
             }
 
             // Signed integer types (64-bit default)
-            if (typeNameStr == "Int" || typeNameStr == "i64" ||
+            if (typeNameStr == "Int" || typeNameStr == "Int64" || typeNameStr == "i64" ||
                 typeNameStr == "CLong" || typeNameStr == "CSSize") {
                 llvmType = int64Type;
             } else if (typeNameStr == "Int32" || typeNameStr == "i32" || typeNameStr == "CInt") {

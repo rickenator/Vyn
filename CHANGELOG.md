@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Integer `as` casts** — `value as TargetType` now converts between the sized
+  integer types (`Int8`–`Int64`, `UInt8`–`UInt64`): widening sign- or
+  zero-extends based on the *source* type (`Int8 as Int64` sign-extends,
+  `UInt8 as Int64` zero-extends), narrowing truncates, and equal-width signedness
+  changes are bit-preserving. This supports the idiomatic systems pattern of
+  packing bytes into a wider integer, e.g. composing an `Int64` from eight
+  `UInt8` via `(b0 as Int64) | ((b1 as Int64) << 8) | ...`. Also registers the
+  `Int64` type alias at codegen (it previously errored as an unknown type).
+  Covered by `test/expressions/test_int_casts.vyb`.
 - **Bitwise operators** — `|` (or), `&` (and), `^` (xor), `~` (not), `<<` (left
   shift), `>>` (right shift) on `Int`, plus `&=`, `|=`, `^=`, `<<=`, `>>=`
   compound-assigns. Shifts are lexed as adjacent `<`/`>` pairs (keeping nested

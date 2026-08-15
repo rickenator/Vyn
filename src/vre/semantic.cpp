@@ -8597,6 +8597,14 @@ void SemanticAnalyzer::visit(ast::AsExpression* node) {
         return;
     }
 
+    // Integer-to-integer casts between the sized Int/UInt types: this covers
+    // widening (sign/zero-extend), narrowing (truncate), and signedness
+    // reinterpretation at equal width. Examples: `b as Int64`, `b as UInt32`.
+    // Codegen applies the sign-preserving extension based on the source type.
+    if (isIntegerType(operandType) && isIntegerType(targetType)) {
+        return;
+    }
+
     addError("Unsupported 'as' cast from '" + operandType->toString() + "' to '" +
              targetType->toString() + "'.", node);
 }

@@ -1049,6 +1049,9 @@ open_and_process()<Int> -> {
 - **Characters**: `Char` (UTF-8 code unit), `Rune` (Unicode code point)
 - **Binary data**: `Bytes` (fat pointer for raw bytes)
 - **Other**: `Bool`, `String`, `Void`
+- **Integer casts**: `value as Type` between the sized integer types — widening
+  sign/zero-extends from the source type, narrowing truncates. E.g. packing eight
+  `UInt8` into an `Int64`: `(b0 as Int64) | ((b1 as Int64) << 8) | ...`.
 
 **Current Collection Types**:
 - **Fixed arrays**: `[T; N]` with compile-time size
