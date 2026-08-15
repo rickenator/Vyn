@@ -1,0 +1,15 @@
+// @test: vyb bindgen --full fixed-size array struct fields
+// @description: fixed array members bind as contiguous value-array fields ([Elem; N]); a Buffer wrapping long long data[4] + int len constructible in Vyb
+// @category: ffi, bindgen
+// @expect: pass
+// @expect-output: len= 4
+// @expect-return: 0
+// @tags: ffi, bindgen, libclang, arrays, repr-c
+
+import arrstruct
+
+main()<Int> -> {
+    b<Buffer> = Buffer { data = [1, 2, 3, 4], len = 4 }
+    println("len=", b.len)
+    return 0
+}

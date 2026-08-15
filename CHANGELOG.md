@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`vyb bindgen --full` fixed-size array struct fields** — C struct members
+  declared as fixed-size arrays (direct, nested e.g. `double m[2][3]`, or via an
+  array typedef like `typedef char name_t[8]`) bind as contiguous Vyb
+  value-array fields (`name<[CChar; 8]>`, `values<[CInt; 4]>`,
+  `matrix<[[CDouble; 3]; 2]>`) instead of a pointer to the first element.
+  Flexible array members (`int data[]`) still skip their struct with a warning.
+  Covered by `test/bindgen/arrstruct.h` / `arrstruct.vyb` /
+  `test_arrstruct_bindings.vyb`.
 - **`vyb bindgen --full` (libclang full preprocessor)** — a new
   `vyb bindgen <header.h> --full` backend expands `#include` and evaluates
   conditionals (`#if`/`#ifdef`), resolves typedefs through their canonical

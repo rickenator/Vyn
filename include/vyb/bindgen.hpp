@@ -34,11 +34,14 @@ std::string generateBindings(const std::string& headerSource,
 // similarly for the other <stdint.h> widths). Object-like `#define` constants
 // (numeric, string, or integer constant expressions) bind as shared constant
 // functions; function-like macros bind as `Int`-typed Vyb functions over
-// integer arithmetic. `cmdArgs` holds extra compiler flags passed to libclang
-// (e.g. `-DUSE_64`); only declarations whose source is the input header are
-// emitted (system/libc types are resolved but not rebound). Returns the
-// generated Vyb source; parse failures return "" with a diagnostic in
-// `warnings`.
+// integer arithmetic. Fixed-size C array struct fields (direct, nested, or via
+// a typedef such as `typedef char name_t[8]`) bind as contiguous Vyb
+// value-array fields (`[CChar; 8]`, `[[CDouble; 3]; 2]`); flexible/variable
+// array members skip their struct with a warning. `cmdArgs` holds extra
+// compiler flags passed to libclang (e.g. `-DUSE_64`); only declarations whose
+// source is the input header are emitted (system/libc types are resolved but
+// not rebound). Returns the generated Vyb source; parse failures return ""
+// with a diagnostic in `warnings`.
 std::string generateBindingsFull(const std::string& headerPath,
                                  const std::vector<std::string>& cmdArgs,
                                  std::vector<std::string>* warnings = nullptr);

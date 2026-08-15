@@ -436,11 +436,21 @@ public:
 
     // --- type mapping ------------------------------------------------------
 
-    std::string mapType(CXType t) {
+    std::string mapType(CXType t, bool forField = false) {
         // CXType_Elaborated / CXType_Typedef keep the declared spelling (e.g.
         // `size_t`), which canonicalizes to `unsigned long`. Map the C size
         // aliases specially so the CSize ABI name is preserved.
         if (t.kind == CXType_Elaborated || t.kind == CXType_Typedef) {
+            // A struct field whose named type is an array (either directly or via
+            // a typedef such as `typedef char name_t[8]`) is a contiguous value
+            // array, regardless of the pointer-decay alias recorded for parameters.
+            if (forField) {
+                CXType canon = clang_getCanonicalType(t);
+                if (canon.kind == CXType_ConstantArray) return mapCanonical(canon, true);
+                if (canon.kind == CXType_IncompleteArray ||
+                    canon.kind == CXType_VariableArray ||
+                    canon.kind == CXType_DependentSizedArray) return "";
+            }
             std::string spell = stripTag(typeSpell(t));
             auto it = aliases_.find(spell);
             if (it != aliases_.end()) return it->second;
@@ -460,17 +470,16 @@ public:
                 CXType canon = clang_getCanonicalType(t);
                 if (canon.kind == CXType_Record || canon.kind == CXType_Enum)
                     return spell;
-                return mapCanonical(canon);
+                return mapCanonical(canon, forField);
             }
-            case CXType_Typedef: {
-                return mapCanonical(clang_getCanonicalType(t));
-            }
+            case CXType_Typedef:
+                return mapCanonical(clang_getCanonicalType(t), forField);
             default:
-                return mapCanonical(t);
+                return mapCanonical(t, forField);
         }
     }
 
-    std::string mapCanonical(CXType t) {
+    std::string mapCanonical(CXType t, bool forField = false) {
         switch (t.kind) {
             case CXType_Void: return "CVoid";
             case CXType_Char_U: case CXType_Char_S: case CXType_SChar: return "CChar";
@@ -499,13 +508,31 @@ public:
                 return "loc<" + mapType(pointee) + ">";
             }
             case CXType_ConstantArray:
+                // A fixed-size array inside a struct is a contiguous value field
+                // (`[Elem; N]`), not the pointer that a C array *parameter* decays
+                // to. CChar arrays keep their element size (no char* -> CString).
+                if (forField) {
+                    long long n = clang_getArraySize(t);
+                    if (n < 0) return "";
+                    std::string elem = mapCanonical(clang_getArrayElementType(t), true);
+                    return elem.empty() ? "" : ("[" + elem + "; " + std::to_string(n) + "]");
+                }
+                {
+                    CXType elt = clang_getArrayElementType(t);
+                    if (isChar(elt)) return "CString";
+                    return "loc<" + mapType(elt) + ">";
+                }
             case CXType_IncompleteArray:
             case CXType_VariableArray:
-            case CXType_DependentSizedArray: {
-                CXType elt = clang_getArrayElementType(t);
-                if (isChar(elt)) return "CString";
-                return "loc<" + mapType(elt) + ">";
-            }
+            case CXType_DependentSizedArray:
+                // Flexible/variable-array members are not a fixed ABI footprint;
+                // as a *parameter* the array decays to a pointer (as in C).
+                if (forField) return "";
+                {
+                    CXType elt = clang_getArrayElementType(t);
+                    if (isChar(elt)) return "CString";
+                    return "loc<" + mapType(elt) + ">";
+                }
             case CXType_FunctionProto:
             case CXType_FunctionNoProto:
                 return mapFnPointer(t);
@@ -589,7 +616,7 @@ public:
         (void)p;
         if (c.kind != CXCursor_FieldDecl) return CXChildVisit_Continue;
         if (clang_Cursor_isBitField(c)) { if (structBitfield_) *structBitfield_ = true; return CXChildVisit_Continue; }
-        std::string ftype = mapType(clang_getCursorType(c));
+        std::string ftype = mapType(clang_getCursorType(c), /*forField=*/true);
         if (ftype.empty()) { if (structUnsupported_) *structUnsupported_ = true; return CXChildVisit_Continue; }
         if (structCtx_) structCtx_->push_back({curSpell(c), ftype});
         return CXChildVisit_Continue;
