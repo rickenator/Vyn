@@ -1,0 +1,103 @@
+// @test: nested their<Vec<T>> field method resolution
+// @description: a struct field typed `their<Vec<T>>` (a by-ref view of a Vec) can
+//   call the built-in Vec methods directly on the field — reads (`len`/`get`) and
+//   mutations (`set`/`push`) — with both reaching the borrowed backing Vec. This is
+//   the by-ref-field gap that previously blocked iterator structs that hold a Vec by
+//   reference (e.g. `VecIter<T> { data<their<Vec<T>>>, index }`).
+// @category: ownership, their, vec, iterator, stdlib, modules
+// @expect: pass
+// @expect-output: nested-their-ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import core::iter
+
+struct VecView {
+    data<their<Vec<Int>>>
+}
+
+aspect VecViewOps {
+    read(self<their<Self>>, i<Int>)<Int>
+    write(self<their<Self>>, i<Int>, v<Int>)<Int>
+    append(self<their<Self>>, v<Int>)<Int>
+}
+
+bind VecViewOps -> VecView {
+    read(self<their<VecView>>, i<Int>)<Int> -> {
+        return self.data.get(i)
+    }
+    write(self<their<VecView>>, i<Int>, v<Int>)<Int> -> {
+        old<Int> = self.data.get(i)
+        self.data.set(i, v)
+        return old
+    }
+    append(self<their<VecView>>, v<Int>)<Int> -> {
+        self.data.push(v)
+        return self.data.len()
+    }
+}
+
+# A concrete iterator over a Vec held by reference in a `their<Vec<Int>>` field.
+struct IntVecIter {
+    data<their<Vec<Int>>>,
+    index<Int>
+}
+
+bind Iterator -> IntVecIter {
+    type Item = Int
+    next(self<their<IntVecIter>>)<Option<Int>> -> {
+        if (self.index < self.data.len()) {
+            v<Int> = self.data.get(self.index)
+            self.index = self.index + 1
+            return Some(v)
+        }
+        return None
+    }
+}
+
+main()<Int> -> {
+    nums<Vec<Int>> = Vec<Int>()
+    nums.push(5)
+    nums.push(6)
+    nums.push(7)
+
+    # Reads through a nested their<Vec<Int>> field resolve to the backing Vec.
+    v<VecView> = VecView { data = view(nums) }
+    if (v.read(1) != 6) {
+        println("nested-their-fail-read")
+        return 1
+    }
+
+    # set() through the field mutates the borrowed backing Vec.
+    m<Int> = v.write(1, 106)
+    if (m != 6 || nums.get(1) != 106) {
+        println("nested-their-fail-write")
+        return 2
+    }
+
+    # push() through the field grows the backing Vec.
+    n<Int> = v.append(9)
+    if (n != 4 || nums.len() != 4 || nums.get(3) != 9) {
+        println("nested-their-fail-push")
+        return 3
+    }
+
+    # The nested-their field can drive a real Iterator bind over a Vec: next()
+    # reads len/get through the borrowed field and advances its own cursor.
+    it<IntVecIter> = IntVecIter { data = view(nums), index = 0 }
+    total<Int> = 0
+    while (true) {
+        match (it.next()) {
+            Some(x) -> { total = total + x }
+            None -> { break }
+        }
+    }
+    # values now: 5, 106, 7, 9 -> 127
+    if (total != 127) {
+        println("nested-their-fail-sum:" + total)
+        return 4
+    }
+
+    println("nested-their-ok")
+    return 0
+}

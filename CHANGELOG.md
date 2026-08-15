@@ -161,6 +161,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the next compiler step. Protocol verified for `Int` and `Float` associated
   types in `test/modules/test_iterator_protocol.vyb`; leak-free under ASAN.
 
+- **Nested `their<Vec<T>>` field method resolution** — a struct field typed
+  `their<Vec<T>>` (a by-ref view of a `Vec`, e.g. an iterator holding the Vec by
+  reference in `data<their<Vec<T>>>`) now resolves the built-in Vec methods.
+  Previously method calls on such a field failed semantic analysis
+  (`Method 'len' not found for type 'their<Vec<Int>>'`); the semantic pass now
+  unwraps ownership-wrapped member-expression receivers (`their`/`my`/`our`/
+  `view`/`borrow` around a `Vec`), and codegen derefs the single-pointer field
+  slot (a `Vec**`) once to recover the `Vec*` before operating on it. Reads
+  (`len`/`get`) and mutations (`set`/`push`) both reach the borrowed backing
+  `Vec`. This unblocks iterator structs that hold a `Vec` by reference and lets a
+  concrete `Iterator` bind drive `next()` over such a field. Covered by
+  `test/modules/test_nested_their_vec_field.vyb`; leak-free under ASAN.
+
 ### Changed
 - **`FunctionType` grammar doc no longer contradicts the parser** — `vyb.hpp`
   now documents the real function-pointer type syntax `fn(params) -> Return`

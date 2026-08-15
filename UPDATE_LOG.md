@@ -3,6 +3,27 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-15: **Nested `their<Vec<T>>` field method resolution**. A struct field
+  typed `their<Vec<T>>` (a by-ref view of a Vec — e.g. an iterator holding the Vec by
+  reference in `data<their<Vec<T>>>`) now resolves the built-in Vec methods. Root
+  cause was two-fold: the semantic pass only unwrapped ownership-wrapped Vec receivers
+  when the receiver was a plain identifier (`self.len()`), so a member expression
+  (`self.data.len()`) fell through to "Method not found for type 'their<Vec<Int>>'"
+  (fixed by unwrapping `their`/`my`/`our`/`view`/`borrow`-wrapped member receivers to a
+  `VecType` and dispatching `handleVecMethodCallOnMember`); and codegen treated the
+  LHS-mode member address `&field` (a `Vec**`, since a `their<Vec<T>>` field is a
+  single-pointer slot holding the Vec address) as a `Vec*`, reading garbage for len and
+  the size field for get (fixed by loading the pointer slot once before operating).
+  Reads (`len`/`get`) and mutations (`set`/`push`) both reach the borrowed backing Vec,
+  verified concrete and generic. New regression
+  `test/modules/test_nested_their_vec_field.vyb` also drives a concrete `Iterator`
+  bind (`IntVecIter { data<their<Vec<Int>>>, index }`) whose `next` reads through the
+  borrowed field. Full suite 857/861 (the 4 remaining failures are the pre-existing
+  trap/vec edge tests). Note: a **generic** collection iterator (`VecIter<T>` with
+  `next` returning `Option<T>`) is still blocked on a separate, pre-existing gap —
+  constructing/`match`-ing `Option<T>` from a type-parameter payload (`Option<T>::Some`
+  / bare `Some`) inside a generic bind body does not type-resolve at the call site,
+  while the concrete case (`MapOps.get`, `Option<V>::Some(self.vals.get(i))`) works.
 - 2026-08-15: **`Iterator` protocol (`core::iter`)**. Shipped the standard iteration
   contract — `aspect Iterator { type Item; next(self<their<Self>>)<Option<Self::Item>> }`
   — as an explicitly imported `import core::iter` module (kept out of the auto-imported

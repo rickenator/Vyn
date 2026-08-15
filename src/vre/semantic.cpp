@@ -2991,6 +2991,40 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                         handleVecMethodCallOnMember(node, tempVecType.get(), methodIdent->name);
                         return;
                     }
+                    // Ownership-wrapped Vec field (their<Vec<T>> / my<Vec<T>> / view /
+                    // our / borrow). This is the nested-by-ref case: a struct field
+                    // whose type borrows a Vec (e.g. an iterator holding `data<their<
+                    // Vec<T>>>`). Unwrap to a VecType and dispatch the built-in method
+                    // so `self.data.len()` / `self.data.get(i)` resolve like a Vec.
+                    if (tn->identifier &&
+                        (tn->identifier->name == "their" || tn->identifier->name == "my" ||
+                         tn->identifier->name == "our" || tn->identifier->name == "view" ||
+                         tn->identifier->name == "borrow") &&
+                        tn->genericArgs.size() == 1 && isBuiltinVecMethodName(methodIdent->name)) {
+                        ast::TypeNode* inner = tn->genericArgs[0].get();
+                        bool innerIsVec = dynamic_cast<ast::VecType*>(inner) != nullptr;
+                        ast::TypeNodePtr elemType = nullptr;
+                        if (!innerIsVec) {
+                            if (auto innerTN = dynamic_cast<ast::TypeName*>(inner)) {
+                                innerIsVec = innerTN->identifier && innerTN->identifier->name == "Vec";
+                                if (innerIsVec && !innerTN->genericArgs.empty()) {
+                                    elemType = innerTN->genericArgs[0]->clone();
+                                }
+                            }
+                        } else {
+                            elemType = dynamic_cast<ast::VecType*>(inner)->elementType
+                                ? dynamic_cast<ast::VecType*>(inner)->elementType->clone() : nullptr;
+                        }
+                        if (innerIsVec) {
+                            if (!elemType) {
+                                elemType = std::make_unique<ast::TypeName>(node->loc,
+                                    std::make_unique<ast::Identifier>(node->loc, "Int"));
+                            }
+                            auto tempVecType = std::make_unique<ast::VecType>(node->loc, std::move(elemType));
+                            handleVecMethodCallOnMember(node, tempVecType.get(), methodIdent->name);
+                            return;
+                        }
+                    }
                 }
 
                 // Check if this is a trait method call

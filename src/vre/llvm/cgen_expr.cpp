@@ -2812,6 +2812,33 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                     return;
                 }
 
+                // A struct field typed as a by-ref Vec (`their<Vec<T>>` / `my<...>` /
+                // `view<...>` / `our<...>` / `borrow<...>`) is laid out as a single
+                // pointer slot holding the borrowed Vec's address. LHS-mode evaluation
+                // of `obj.field` above yields the *slot* address (a `Vec**`); load once
+                // to recover the `Vec*` before operating on it. A plain `Vec<T>` field
+                // is emitted directly as the Vec struct, so this only applies when the
+                // field's declared type is an ownership wrapper around a Vec.
+                if (auto objTn = dynamic_cast<ast::TypeName*>(memberExpr->object->type.get())) {
+                    if (objTn->identifier &&
+                        (objTn->identifier->name == "their" || objTn->identifier->name == "my" ||
+                         objTn->identifier->name == "our" || objTn->identifier->name == "view" ||
+                         objTn->identifier->name == "borrow") &&
+                        objTn->genericArgs.size() == 1) {
+                        ast::TypeNode* inner = objTn->genericArgs[0].get();
+                        bool innerIsVec = dynamic_cast<ast::VecType*>(inner) != nullptr;
+                        if (!innerIsVec) {
+                            if (auto innerTN = dynamic_cast<ast::TypeName*>(inner)) {
+                                innerIsVec = innerTN->identifier && innerTN->identifier->name == "Vec";
+                            }
+                        }
+                        if (innerIsVec) {
+                            llvm::Type* vecPtrTy = llvm::PointerType::get(*context, 0);
+                            vecValue = builder->CreateLoad(vecPtrTy, vecValue, "byref.vec.field.load");
+                        }
+                    }
+                }
+
                 // Handle the Vec method with the evaluated value directly
                 handleVecMethodOnValue(node, vecValue, methodName, memberExpr->object.get());
                 return;
