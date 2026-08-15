@@ -4174,14 +4174,60 @@ void SemanticAnalyzer::visit(ast::FunctionExpression* node) {
     // Build a FunctionType for this lambda so variable declarations can infer
     // and type-check its signature. Infers a return type for expression-body
     // lambdas (e.g. `|x<Int>| -> x * 2`) from the expression's resolved type.
+    // For block bodies the value is produced by explicit `return` statements (a
+    // trailing expression is not an implicit return, matching named functions),
+    // so infer from the last explicit return, or void when there is none.
     ast::TypeNodePtr inferredReturn;
     if (node->body) {
-        ast::TypeNode* bodyTy = nullptr;
-        auto it = expressionTypes.find(node->body.get());
-        if (it != expressionTypes.end()) bodyTy = it->second;
-        else if (node->body->type) bodyTy = node->body->type.get();
-        if (bodyTy && !bodyTy->toString().empty() && bodyTy->toString() != "void") {
-            inferredReturn = bodyTy->clone();
+        if (auto* blockBody = dynamic_cast<ast::BlockExpression*>(node->body.get())) {
+            ast::TypeNode* retTy = nullptr;
+            std::function<void(const std::vector<vyb::ast::Statement*>&)> scan;
+            scan = [&](const std::vector<vyb::ast::Statement*>& stmts) {
+                for (vyb::ast::Statement* stmt : stmts) {
+                    if (!stmt) continue;
+                    if (auto* ret = dynamic_cast<ast::ReturnStatement*>(stmt)) {
+                        if (ret->argument) {
+                            auto ait = expressionTypes.find(ret->argument.get());
+                            if (ait != expressionTypes.end() && ait->second) {
+                                retTy = ait->second;
+                            } else if (ret->argument->type) {
+                                retTy = ret->argument->type.get();
+                            }
+                        } else {
+                            retTy = nullptr;  // bare `return` -> void
+                        }
+                        continue;
+                    }
+                    std::vector<vyb::ast::Statement*> children;
+                    if (auto* bs = dynamic_cast<ast::BlockStatement*>(stmt)) {
+                        for (auto& s : bs->body) children.push_back(s.get());
+                    } else if (auto* ifs = dynamic_cast<ast::IfStatement*>(stmt)) {
+                        if (ifs->consequent) children.push_back(ifs->consequent.get());
+                        if (ifs->alternate) children.push_back(ifs->alternate.get());
+                    } else if (auto* fs = dynamic_cast<ast::ForStatement*>(stmt)) {
+                        if (fs->body) children.push_back(fs->body.get());
+                    } else if (auto* ws = dynamic_cast<ast::WhileStatement*>(stmt)) {
+                        if (ws->body) children.push_back(ws->body.get());
+                    }
+                    scan(children);
+                }
+            };
+            if (blockBody->block) {
+                std::vector<vyb::ast::Statement*> top;
+                for (auto& s : blockBody->block->body) top.push_back(s.get());
+                scan(top);
+            }
+            if (retTy && !retTy->toString().empty() && retTy->toString() != "void") {
+                inferredReturn = retTy->clone();
+            }
+        } else {
+            ast::TypeNode* bodyTy = nullptr;
+            auto it = expressionTypes.find(node->body.get());
+            if (it != expressionTypes.end()) bodyTy = it->second;
+            else if (node->body->type) bodyTy = node->body->type.get();
+            if (bodyTy && !bodyTy->toString().empty() && bodyTy->toString() != "void") {
+                inferredReturn = bodyTy->clone();
+            }
         }
     }
     auto* funcType = new ast::FunctionType(node->loc, std::move(paramTypes), std::move(inferredReturn));
@@ -4821,6 +4867,18 @@ void SemanticAnalyzer::visit(ast::ReturnStatement* node) {
             if (retTy) injectBareEnumConstructorType(node->argument.get(), retTy);
         }
         node->argument->accept(*this);
+
+        // A closure with mutable captures holds pointers into the enclosing
+        // stack frame; returning it from a function would leave those pointers
+        // dangling once the frame is gone. Reject the direct-return case (a
+        // value-returning lambda whose body writes to captured stack locals).
+        if (auto* fe = dynamic_cast<ast::FunctionExpression*>(node->argument.get())) {
+            if (!fe->mutableCapturedVariables.empty()) {
+                addError("Cannot return a closure with mutable captures: it holds pointers into "
+                         "the enclosing stack frame that would dangle after this function returns.",
+                         node->argument.get());
+            }
+        }
     }
 }
 
@@ -6743,9 +6801,21 @@ bool SemanticAnalyzer::areTypesCompatible(ast::TypeNode* targetType, ast::TypeNo
             auto* ftTarget = static_cast<ast::FunctionType*>(targetType);
             auto* ftValue = static_cast<ast::FunctionType*>(valueType);
 
-            // Return types: both null (unspecified) counts as compatible
-            if (ftTarget->returnType || ftValue->returnType) {
-                if (!areTypesCompatible(ftTarget->returnType.get(), ftValue->returnType.get())) return false;
+            // Return types: a null return type means "no value returned" (void),
+            // which is compatible with an explicit `void` annotation. Two explicit
+            // return types are compared structurally.
+            auto isVoidReturn = [](ast::TypeNode* t) {
+                auto* tn = dynamic_cast<ast::TypeName*>(t);
+                return tn && tn->identifier && tn->identifier->name == "void";
+            };
+            ast::TypeNode* targetRet = ftTarget->returnType.get();
+            ast::TypeNode* valueRet = ftValue->returnType.get();
+            if (targetRet && valueRet) {
+                if (!areTypesCompatible(targetRet, valueRet)) return false;
+            } else if (targetRet) {
+                if (!isVoidReturn(targetRet)) return false;
+            } else if (valueRet) {
+                if (!isVoidReturn(valueRet)) return false;
             }
 
             // Parameter types: invariant comparison; unknown types ("?") are always compatible

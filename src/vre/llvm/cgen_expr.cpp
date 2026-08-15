@@ -2800,7 +2800,11 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                     }
 
                     // Create indirect call with the full (env-inclusive) signature.
-                    m_currentLLVMValue = builder->CreateCall(calleeType, funcPtr, lambdaArgValues, "lambda.result");
+                    // A void-returning callee must not name the call result (LLVM
+                    // refuses to give a name to a void value).
+                    m_currentLLVMValue = builder->CreateCall(
+                        calleeType, funcPtr, lambdaArgValues,
+                        lambdaFuncType->getReturnType()->isVoidTy() ? "" : "lambda.result");
                     return;
                 }
             }
@@ -2859,7 +2863,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                             fnArgValues.push_back(argVal);
                         }
                         m_currentLLVMValue = builder->CreateCall(
-                            calleeType, funcPtr, fnArgValues, "fnparam.result");
+                            calleeType, funcPtr, fnArgValues,
+                            rt->isVoidTy() ? "" : "fnparam.result");
                         return;
                     }
                 }

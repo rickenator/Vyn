@@ -588,7 +588,7 @@ llvm::Type* LLVMCodegen::codegenType(vyb::ast::TypeNode* typeNode) {
                 llvmType = int64Type;
 
             // Void type
-            } else if (typeNameStr == "Void" || typeNameStr == "CVoid") {
+            } else if (typeNameStr == "void" || typeNameStr == "Void" || typeNameStr == "CVoid") {
                 llvmType = voidType;
 
             // String type (fat pointer: { ptr, len })

@@ -219,12 +219,13 @@ Capture forms
   heap-allocated and currently never freed, so the count is intentionally not
   balanced by a closure-side release.
 
-**Limitations**: a mutable capture holds a pointer to the outer variable's
+**Notes & safety**: a mutable capture holds a pointer to the outer variable's
 stack location, so a closure with mutable captures must not outlive its defining
-function (returning one would leave a dangling pointer). Block lambdas whose
-body assigns but produces no trailing value currently run into the compiler's
-void-lambda/return-inference paths; prefer an expression body that returns the
-written value.
+function. Returning such a closure is rejected at compile time (a dangling
+pointer) instead of silently producing a use-after-free. Block lambdas follow
+named-function semantics: their value comes from explicit `return` statements;
+a block lambda with no `return` is `void` (and can be called as a `fn(...) ->
+void`). Zero-arg lambdas may be written `|| -> body`.
 
 ## Examples
 

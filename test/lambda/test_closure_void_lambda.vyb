@@ -1,0 +1,29 @@
+// @test: closure void-returning lambdas
+// @description: A block lambda with no explicit return is void; void `fn`
+//   values can be declared and called without LLVM naming a void result. The
+//   body can mutate captured state (mutable capture) even though it returns
+//   nothing, and void lambdas can be zero-arg.
+// @category: lambda, closure, capture, mutable, fn, void
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+
+main()<Int> -> {
+    counter<Int> = 0
+    bump<fn(Int) -> void> = |u<Int>| -> {
+        counter = counter + 1
+    }
+    bump(0)
+    if (counter != 1) { return 1 }
+    bump(0)
+    if (counter != 2) { return 2 }
+
+    step<fn() -> void> = || -> {
+        counter = counter + 2
+    }
+    step()
+    if (counter != 4) { return 3 }
+
+    println("ok")
+    return 0
+}

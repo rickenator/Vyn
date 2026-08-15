@@ -1,0 +1,15 @@
+// @test: returning a mutable-capture closure is rejected
+// @description: A closure with mutable captures holds pointers into the
+//   enclosing stack frame, so returning one (which would dangle) is a compile
+//   error rather than a latent use-after-free.
+// @category: lambda, closure, mutable, safety
+// @expect: fail
+// @expect-error: Cannot return a closure with mutable captures
+
+makeCounter()<fn() -> Int> -> {
+    counter<Int> = 0
+    return || -> {
+        counter = counter + 1
+        return counter
+    }
+}

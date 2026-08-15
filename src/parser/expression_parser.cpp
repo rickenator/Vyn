@@ -253,16 +253,28 @@ namespace vyb {
 
         // Handle lambda expressions: |param1, param2| -> expression
         // Syntax: |x, y| -> x + y  or  |x| -> { return x * 2 }
-        if (check(TokenType::PIPE)) {
+        // A zero-arg lambda may be written `|| -> body`. The lexer collapses the
+        // two `|` into a single OR token, so accept an OR token as an empty
+        // parameter list only when followed by `->` (otherwise OR is the binary
+        // logical-or operator handled further up the precedence chain).
+        bool zeroArgOrLambda = check(TokenType::OR) && peekNext().type == TokenType::ARROW;
+        if (check(TokenType::PIPE) || zeroArgOrLambda) {
             SourceLocation lambda_loc = peek().location;
             bool isAsync = false;  // TODO: Support async keyword before pipe
 
-            consume(); // consume opening |
+            bool isZeroArgOr = check(TokenType::OR);
+            if (isZeroArgOr) {
+                // The single `||` token is both opening and closing pipe with an
+                // empty parameter list; nothing more to consume for params.
+                consume();
+            } else {
+                consume(); // consume opening |
+            }
 
             // Parse parameters
             std::vector<ast::FunctionParameter> params;
 
-            if (!check(TokenType::PIPE)) {
+            if (!isZeroArgOr && !check(TokenType::PIPE)) {
                 // Parse parameter list: x, y, z
                 do {
                     if (check(TokenType::PIPE)) {
@@ -293,7 +305,9 @@ namespace vyb {
                 } while (match(TokenType::COMMA));
             }
 
-            expect(TokenType::PIPE, "Expected closing '|' after lambda parameters");
+            if (!isZeroArgOr) {
+                expect(TokenType::PIPE, "Expected closing '|' after lambda parameters");
+            }
 
             // Expect arrow: ->
             expect(TokenType::ARROW, "Expected '->' after lambda parameters");
