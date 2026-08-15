@@ -142,6 +142,7 @@ void LLVMCodegen::handleStringConcat(vyb::ast::CallExpression* node, llvm::Value
         mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", module.get());
     }
     llvm::Value* newData = builder->CreateCall(mallocFunc, {allocSize}, "str.new_data");
+    builder->CreateCall(getOrCreateVybStringRegisterFunction(), {newData});
 
     // Copy first string
     llvm::FunctionType* memcpyType = llvm::FunctionType::get(
@@ -250,6 +251,7 @@ void LLVMCodegen::handleStringSubstring(vyb::ast::CallExpression* node, llvm::Va
         mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", module.get());
     }
     llvm::Value* newData = builder->CreateCall(mallocFunc, {allocSize}, "substr.data");
+    builder->CreateCall(getOrCreateVybStringRegisterFunction(), {newData});
 
     // Copy substring
     llvm::Value* srcOffset = builder->CreateGEP(llvm::Type::getInt8Ty(*context), data, startIdx, "src.offset");
@@ -597,6 +599,7 @@ void LLVMCodegen::handleStringToUpper(vyb::ast::CallExpression* node, llvm::Valu
         mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", module.get());
     }
     llvm::Value* newData = builder->CreateCall(mallocFunc, {bufferSize}, "new.data");
+    builder->CreateCall(getOrCreateVybStringRegisterFunction(), {newData});
 
     // Create loop to convert each character
     llvm::BasicBlock* loopCondBlock = llvm::BasicBlock::Create(*context, "loop.cond", currentFunction);
@@ -675,6 +678,7 @@ void LLVMCodegen::handleStringToLower(vyb::ast::CallExpression* node, llvm::Valu
         mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", module.get());
     }
     llvm::Value* newData = builder->CreateCall(mallocFunc, {bufferSize}, "new.data");
+    builder->CreateCall(getOrCreateVybStringRegisterFunction(), {newData});
 
     // Create loop to convert each character
     llvm::BasicBlock* loopCondBlock = llvm::BasicBlock::Create(*context, "loop.cond", currentFunction);
@@ -836,6 +840,7 @@ void LLVMCodegen::handleStringTrim(vyb::ast::CallExpression* node, llvm::Value* 
     llvm::Value* newLen = builder->CreateSub(ev, sv, "trim.new.len");
     llvm::Value* allocSz = builder->CreateAdd(newLen, one64, "trim.alloc.sz");
     llvm::Value* newData = builder->CreateCall(mallocFunc, {allocSz}, "trim.new.data");
+    builder->CreateCall(getOrCreateVybStringRegisterFunction(), {newData});
     llvm::Value* srcStart = builder->CreateGEP(i8, data, sv, "trim.src.start");
     builder->CreateCall(memcpyFunc, {newData, srcStart, newLen});
     // Null terminator
@@ -919,6 +924,7 @@ void LLVMCodegen::handleStringReplace(vyb::ast::CallExpression* node, llvm::Valu
 
     llvm::Value* resultData = builder->CreateCall(
         replaceFunc, {srcData, srcLen, oldData, newData2, outLenPtr}, "replace.data");
+    builder->CreateCall(getOrCreateVybStringRegisterFunction(), {resultData});
     llvm::Value* resultLen = builder->CreateLoad(i64, outLenPtr, "replace.len");
 
     llvm::Value* resultStr = llvm::UndefValue::get(strStructType);
