@@ -705,7 +705,11 @@ Current status:
 - semantic capture detection exists
 - lambda body type inference exists
 - indirect local variable calls have support
-- full closure structs and capture extraction remain planned
+- closure structs and capture extraction are implemented: a `fn` is a uniform
+  `{ env, fn }` closure value, captures are copied by value into a heap
+  environment, and capturing closures work as higher-order-combinator arguments
+  (`test/lambda/test_closure_capture.vyb`). Move / mutable / `our` capture remain
+  planned.
 
 Study:
 

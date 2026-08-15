@@ -1350,6 +1350,10 @@ public:
     std::vector<FunctionParameter> params;
     ExprPtr body;
     bool isAsync;
+    // Names of variables the lambda captures from its enclosing scope (filled in
+    // during semantic analysis). Codegen copies each captured value by reference
+    // into the closure's environment at creation time.
+    std::vector<std::string> capturedVariables;
     FunctionExpression(SourceLocation loc, std::vector<FunctionParameter> params, ExprPtr body, bool isAsync = false);
     NodeType getType() const override;
     std::string toString() const override;

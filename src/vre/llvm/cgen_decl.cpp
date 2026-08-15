@@ -163,8 +163,10 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
 
         // Track lambda function types for later indirect calling
         if (dynamic_cast<vyb::ast::FunctionExpression*>(node->init.get())) {
-            if (auto* lambdaFunc = llvm::dyn_cast<llvm::Function>(initialVal)) {
-                localLambdaTypes[node->id->name] = lambdaFunc->getFunctionType();
+            // The lambda value is now a closure struct; lastLambdaFuncType holds
+            // its user-facing signature (without the hidden environment param).
+            if (lastLambdaFuncType) {
+                localLambdaTypes[node->id->name] = lastLambdaFuncType;
             }
         }
 

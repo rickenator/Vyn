@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Closure capture via a uniform environment struct** — every lambda now
+  lowers to a closure value `struct { ptr env, ptr fn }` instead of a bare
+  function pointer. The semantic analyzer detects free-variable references in a
+  lambda body and records them; codegen copies each captured value *by value*
+  into a heap-allocated environment created at closure instantiation and passes
+  it to the lambda through a hidden first parameter, reloading each capture into
+  the lambda's local scope. Captures work for locals, closures returned from
+  functions, and closures passed as `fn` arguments to the `Vec` higher-order
+  combinators (`map`/`filter`/`reduce`). Non-capturing lambdas use a null
+  environment, so existing `fn`-parameter code is behaviorally unchanged. Also
+  fixes `fn`-typed call dispatch so a function-typed parameter is never confused
+  with an unrelated local lambda of the same name. Expression-body lambdas now
+  wrap `char*` String results (e.g. `prefix + x.to_string()`) into a String
+  struct on return. Covered by `test/lambda/test_closure_capture.vyb`.
 - **Function-typed parameters and indirect calls** — a parameter declared with a
   function type (`f<fn(Int) -> Int>`) is lowered to a function pointer stored in
   its alloca, and calling `f(args)` inside a body performs an indirect call

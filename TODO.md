@@ -33,7 +33,7 @@ is the working audit for what needs to be implemented next.
 | Generic monomorphization | ~85% | **SEALED**: Compile-time only. See doc/MONOMORPHIZATION_DESIGN.md |
 | Async/await | ~80% | Real scheduler/executor |
 | Error propagation (`fail`/`trap`) | ~80% | Standard error aspects, `rethrow`, ensure contracts |
-| Lambda/closure codegen | ~50% | Full closure struct, captured-var codegen |
+| Lambda/closure codegen | ~70% | Capture-by-value closure env structs shipped; move/mutable/`our` capture planned |
 | Module system (`import`/`smuggle`/`bundle`) | ~70% | Local/module-path resolution, aliases, bundle/share visibility done; stdlib modules/package integration pending |
 | FFI (`extern "C"`) | ~35% | Extern blocks, C aliases, freedom-gated JIT calls done; repr(C), variadics, linker flow pending |
 | Standard library | ~45% | Vec, String, I/O, Math done; HashMap, File I/O needed |
@@ -213,7 +213,14 @@ is the working audit for what needs to be implemented next.
 - [x] Parsing — `|x, y| -> x + y` and `|x<Int>| -> { ... }`
 - [x] Semantic analysis — capture detection, type inference
 - [x] **Indirect call codegen** — Lambda stored in a local variable can be called; `localLambdaTypes` map tracks inferred function types; body return value coerced to declared return type
-- [ ] **Full LLVM closure struct codegen** — Generate closure structs with capture fields, function pointers
+- [x] **Full LLVM closure struct codegen** — A lambda is a uniform closure value
+  (`struct { ptr env, ptr fn }`); captured variables (detected by the semantic
+  analyzer from free-variable references) are copied by value into a
+  heap-allocated environment at creation and reloaded into the lambda's local
+  alloca through a hidden first parameter. Capturing closures work standalone,
+  from local/returned closures, and as `fn` arguments to the higher-order
+  combinators (`test/lambda/test_closure_capture.vyb`). Non-capturing lambdas
+  use a null environment, so existing `fn`-parameter code is unaffected.
 - [ ] **Move capture** — Transfer ownership of `my<T>` into closure
 - [ ] **Mutable capture** — Captured variables in mutable context
 - [ ] **`our<T>` capture** — Atomic ref-count increment for shared captures

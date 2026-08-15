@@ -235,10 +235,8 @@ void LLVMCodegen::visit(ast::FunctionType* node) {
     );
 
     // Function types are represented as pointers to the function type
-    llvm::Type* funcPtrType = llvm::PointerType::get(funcType, 0);
-
-    // Store the result type
-    m_currentLLVMType = funcPtrType;
+    // A Vyb `fn` value is a closure: `struct { ptr env, ptr fn }`.
+    m_currentLLVMType = getClosureStructType();
     m_currentLLVMValue = nullptr; // No value produced
 }
 
@@ -786,7 +784,10 @@ llvm::Type* LLVMCodegen::codegenType(vyb::ast::TypeNode* typeNode) {
                  logError(typeNode->loc, "Could not determine LLVM return type for function signature.");
                 return nullptr;
             }
-            llvmType = llvm::FunctionType::get(returnLlvmType, paramLlvmTypes, false)->getPointerTo();
+            // A `fn` type is a closure value: `struct { ptr env, ptr fn }`.
+            // The parameter/return types above are validated for signature
+            // consistency but the runtime value is the uniform closure struct.
+            llvmType = getClosureStructType();
             break;
         }
         case vyb::ast::TypeNode::Category::POINTER: {
@@ -864,4 +865,17 @@ void LLVMCodegen::visit(ast::TypeName* node) {
     // For now, we'll just return a null value
     m_currentLLVMValue = llvm::ConstantPointerNull::get(
         llvm::PointerType::get(*context, 0));
+}
+
+llvm::StructType* LLVMCodegen::getClosureStructType() {
+    // Uniform closure representation: `struct { ptr env, ptr fn }`.
+    // With opaque pointers both fields are `ptr`. The fn field holds the
+    // lambda's function pointer; the env field is the capture environment
+    // (null for non-capturing lambdas). Structurally-identical instances are
+    // unified by LLVM, so every `fn` value shares this layout.
+    std::vector<llvm::Type*> fields = {
+        llvm::PointerType::get(*context, 0),
+        llvm::PointerType::get(*context, 0)
+    };
+    return llvm::StructType::get(*context, fields, false);
 }

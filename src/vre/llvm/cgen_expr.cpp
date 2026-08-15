@@ -2741,21 +2741,42 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         if (identCallee && identCallee->name == "println") {
             calleeFunc = getPrintlnFunction();
         } else if (identCallee) {
-            // Check if it's a local lambda variable
-            auto lambdaTypeIt = localLambdaTypes.find(identCallee->name);
-            if (lambdaTypeIt != localLambdaTypes.end()) {
+            // Check if it's a local lambda variable or a function-typed value.
+            auto varIt = namedValues.find(identCallee->name);
+            if (varIt != namedValues.end()) {
+                // A function-typed parameter (`f<fn(T,T) -> T>`) or an explicitly
+                // fn-annotated lambda variable has a FunctionType in valueTypeMap;
+                // those are handled by the indirect-call path below (they share the
+                // same `{ env, fn }` closure layout). Only a bare local lambda
+                // (inferred closure-struct type) uses localLambdaTypes here.
+                bool isFnTyped = false;
+                auto vtmIt = valueTypeMap.find(varIt->second);
+                isFnTyped = vtmIt != valueTypeMap.end() && vtmIt->second &&
+                    dynamic_cast<ast::FunctionType*>(vtmIt->second.get()) != nullptr;
+                auto lambdaTypeIt = localLambdaTypes.find(identCallee->name);
+            if (!isFnTyped && lambdaTypeIt != localLambdaTypes.end()) {
                 // It's a lambda stored in a local variable - use indirect call
-                auto varIt = namedValues.find(identCallee->name);
-                if (varIt != namedValues.end()) {
-                    llvm::Value* funcPtrAlloca = varIt->second;
+                {
+                    llvm::Value* closureAlloca = varIt->second;
                     llvm::FunctionType* lambdaFuncType = lambdaTypeIt->second;
 
-                    // Load the function pointer from the alloca
-                    llvm::Value* funcPtr = builder->CreateLoad(
-                        llvm::PointerType::get(*context, 0), funcPtrAlloca, "lambda.fptr");
+                    // Load the closure struct { env, fn } and unpack it: call the
+                    // fn pointer with the captured environment first, then args.
+                    llvm::StructType* closureTy = getClosureStructType();
+                    llvm::Value* closureVal = builder->CreateLoad(closureTy, closureAlloca, "lambda.closure");
+                    llvm::Value* envPtr = builder->CreateExtractValue(closureVal, 0, "lambda.env");
+                    llvm::Value* fnPtr = builder->CreateExtractValue(closureVal, 1, "lambda.fn");
+                    // The callee's real signature also carries the environment.
+                    std::vector<llvm::Type*> calleeParamTypes;
+                    calleeParamTypes.push_back(llvm::PointerType::get(*context, 0));
+                    for (auto* pt : lambdaFuncType->params()) calleeParamTypes.push_back(pt);
+                    llvm::FunctionType* calleeType = llvm::FunctionType::get(
+                        lambdaFuncType->getReturnType(), calleeParamTypes, false);
+                    llvm::Value* funcPtr = builder->CreateBitCast(fnPtr, calleeType->getPointerTo(), "lambda.fptr");
 
                     // Build argument values
                     std::vector<llvm::Value*> lambdaArgValues;
+                    lambdaArgValues.push_back(envPtr);  // hidden environment parameter
                     for (size_t i = 0; i < node->arguments.size(); ++i) {
                         node->arguments[i]->accept(*this);
                         llvm::Value* argVal = m_currentLLVMValue;
@@ -2778,10 +2799,11 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                         lambdaArgValues.push_back(argVal);
                     }
 
-                    // Create indirect call
-                    m_currentLLVMValue = builder->CreateCall(lambdaFuncType, funcPtr, lambdaArgValues, "lambda.result");
+                    // Create indirect call with the full (env-inclusive) signature.
+                    m_currentLLVMValue = builder->CreateCall(calleeType, funcPtr, lambdaArgValues, "lambda.result");
                     return;
                 }
+            }
             }
             // It may be a function-typed parameter (`f<fn(Int) -> Int>`), which is
             // also lowered to a function pointer stored in the parameter's alloca.
@@ -2805,9 +2827,19 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                             ? codegenType(fnTypeNode->returnType.get())
                             : llvm::Type::getVoidTy(*context);
                         llvm::FunctionType* fnParamType = llvm::FunctionType::get(rt, ptypes, false);
-                        llvm::Value* funcPtr = builder->CreateLoad(
-                            llvm::PointerType::get(*context, 0), varIt->second, "fnparam.fptr");
+                        // The `fn` parameter is a closure struct { env, fn }.
+                        llvm::StructType* closureTy = getClosureStructType();
+                        llvm::Value* closureVal = builder->CreateLoad(closureTy, varIt->second, "fnparam.closure");
+                        llvm::Value* envPtr = builder->CreateExtractValue(closureVal, 0, "fnparam.env");
+                        llvm::Value* fnPtr = builder->CreateExtractValue(closureVal, 1, "fnparam.fn");
+                        // The callee's real signature carries the environment too.
+                        std::vector<llvm::Type*> calleeParamTypes;
+                        calleeParamTypes.push_back(llvm::PointerType::get(*context, 0));
+                        for (auto* pt : fnParamType->params()) calleeParamTypes.push_back(pt);
+                        llvm::FunctionType* calleeType = llvm::FunctionType::get(rt, calleeParamTypes, false);
+                        llvm::Value* funcPtr = builder->CreateBitCast(fnPtr, calleeType->getPointerTo(), "fnparam.fptr");
                         std::vector<llvm::Value*> fnArgValues;
+                        fnArgValues.push_back(envPtr);  // hidden environment parameter
                         for (size_t i = 0; i < node->arguments.size(); ++i) {
                             node->arguments[i]->accept(*this);
                             llvm::Value* argVal = m_currentLLVMValue;
@@ -2827,7 +2859,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                             fnArgValues.push_back(argVal);
                         }
                         m_currentLLVMValue = builder->CreateCall(
-                            fnParamType, funcPtr, fnArgValues, "fnparam.result");
+                            calleeType, funcPtr, fnArgValues, "fnparam.result");
                         return;
                     }
                 }
@@ -4622,41 +4654,28 @@ void LLVMCodegen::visit(ast::ConditionalExpression* node) {
 }
 
 void LLVMCodegen::visit(ast::FunctionExpression* node) {
-    // A function expression creates an anonymous function (lambda) and returns a reference to it
-
-    // Generate a unique name for the lambda function
+    // A function expression creates a lambda. Every lambda lowers to a closure
+    // value: `struct { ptr env, ptr fn }`. Captured variables (filled in by the
+    // semantic analyzer) are copied by value into a heap-allocated environment
+    // at creation time; the lambda function receives that environment as a
+    // hidden first parameter and reloads each capture into a local alloca.
     std::string funcName = "lambda_" + std::to_string(reinterpret_cast<uintptr_t>(node));
 
-    // Process parameters
+    // Process parameters.
     std::vector<llvm::Type*> paramTypes;
     std::vector<std::string> paramNames;
-
     for (const auto& param : node->params) {
-        // Process parameter type
-        llvm::Type* paramType = nullptr;
-        if (param.typeNode) {
-            paramType = codegenType(param.typeNode.get());
-        }
-
-        // If type is not specified, default to generic pointer (i8*)
+        llvm::Type* paramType = param.typeNode ? codegenType(param.typeNode.get()) : nullptr;
         if (!paramType) {
             paramType = llvm::PointerType::get(*context, 0);
             logWarning(node->loc, "Parameter type not specified in function expression, defaulting to pointer type");
         }
-
         paramTypes.push_back(paramType);
-
-        if (param.name) {
-            paramNames.push_back(param.name->name);
-        } else {
-            paramNames.push_back("param" + std::to_string(paramNames.size()));
-        }
+        paramNames.push_back(param.name ? param.name->name : "param" + std::to_string(paramNames.size()));
     }
 
-    // Process return type - try to infer from body expression type
+    // Infer return type.
     llvm::Type* returnType = llvm::Type::getVoidTy(*context);
-
-    // For expression-body lambdas, infer return type from body's AST type annotation
     if (node->body && node->body->type) {
         llvm::Type* inferredType = codegenType(node->body->type.get());
         if (inferredType && !inferredType->isVoidTy()) {
@@ -4664,139 +4683,184 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
         }
     }
 
-    // Create function type
-    llvm::FunctionType* funcType = llvm::FunctionType::get(
-        returnType,
-        paramTypes,
-        false // Not vararg
-    );
+    // User-facing signature (no environment parameter). Stored for call sites
+    // that invoke a lambda held in a local variable.
+    llvm::FunctionType* userFuncType = llvm::FunctionType::get(returnType, paramTypes, false);
+    lastLambdaFuncType = userFuncType;
 
-    // Create the function
-    llvm::Function* function = llvm::Function::Create(
-        funcType,
-        llvm::Function::InternalLinkage, // Not exposed outside module
-        funcName,
-        module.get()
-    );
-
-    // Set parameter names for better IR readability
-    unsigned idx = 0;
-    for (auto &arg : function->args()) {
-        if (idx < paramNames.size()) {
-            arg.setName(paramNames[idx]);
+    // Determine the captures to bake into the environment: variables the body
+    // references that are visible in the enclosing scope at creation time.
+    struct Capture { std::string name; llvm::Type* ty; llvm::Value* outer; };
+    std::vector<Capture> captures;
+    std::vector<llvm::Type*> envFieldTypes;
+    for (const auto& nm : node->capturedVariables) {
+        auto it = namedValues.find(nm);
+        if (it == namedValues.end()) continue;  // not a local variable in scope
+        llvm::Type* ty = nullptr;
+        if (auto* ai = llvm::dyn_cast<llvm::AllocaInst>(it->second)) {
+            ty = ai->getAllocatedType();
+        } else {
+            ty = it->second->getType();
         }
-        idx++;
+        captures.push_back({nm, ty, it->second});
+        envFieldTypes.push_back(ty);
     }
 
-    // Create entry block for the function
-    llvm::BasicBlock* entryBB = llvm::BasicBlock::Create(*context, "entry", function);
+    llvm::StructType* envStructType = nullptr;
+    if (!envFieldTypes.empty()) {
+        envStructType = llvm::StructType::create(*context, envFieldTypes, "closure.env." + funcName);
+    }
 
-    // Save current state to restore after function generation
+    // Lambda function type = env (ptr) + user params.
+    std::vector<llvm::Type*> fullParamTypes;
+    fullParamTypes.push_back(llvm::PointerType::get(*context, 0));
+    for (auto* t : paramTypes) fullParamTypes.push_back(t);
+    llvm::FunctionType* funcType = llvm::FunctionType::get(returnType, fullParamTypes, false);
+
+    llvm::Function* function = llvm::Function::Create(funcType, llvm::Function::InternalLinkage, funcName, module.get());
+
+    // Name args: 0 = env, 1.. = user params.
+    unsigned nameIdx = 0;
+    for (auto& arg : function->args()) {
+        if (nameIdx == 0) arg.setName("closure.env");
+        else arg.setName(paramNames[nameIdx - 1]);
+        ++nameIdx;
+    }
+
+    llvm::BasicBlock* entryBB = llvm::BasicBlock::Create(*context, "entry", function);
     llvm::Function* savedFunction = currentFunction;
     llvm::BasicBlock* savedBlock = builder->GetInsertBlock();
     std::map<std::string, llvm::Value*> savedNamedValues = namedValues;
 
-    // Set up the new function context
     currentFunction = function;
     builder->SetInsertPoint(entryBB);
     namedValues.clear();
 
-    // Create allocas for parameters and store incoming values
-    idx = 0;
-    for (auto &arg : function->args()) {
-        llvm::AllocaInst* alloca = builder->CreateAlloca(
-            arg.getType(),
-            nullptr,
-            arg.getName() + ".addr"
-        );
-        builder->CreateStore(&arg, alloca);
-        namedValues[std::string(arg.getName())] = alloca;
-        idx++;
+    // Prologue: reload each capture from the env into a local alloca so the
+    // generic identifier lookup resolves them.
+    if (envStructType) {
+        llvm::Value* envArg = function->getArg(0);
+        llvm::Value* envCast = builder->CreateBitCast(envArg, envStructType->getPointerTo(), "closure.env.cast");
+        for (size_t ci = 0; ci < captures.size(); ++ci) {
+            llvm::Value* fieldPtr = builder->CreateStructGEP(envStructType, envCast, ci, "closure.env.field");
+            llvm::Value* fieldVal = builder->CreateLoad(envFieldTypes[ci], fieldPtr, "closure.env.load");
+            llvm::AllocaInst* capAlloca = builder->CreateAlloca(envFieldTypes[ci], nullptr, "closure.cap." + captures[ci].name);
+            builder->CreateStore(fieldVal, capAlloca);
+            namedValues[captures[ci].name] = capAlloca;
+        }
     }
 
-    // Generate code for function body if provided
+    // Params allocas (args 1..N; arg 0 is the environment pointer).
+    size_t pi = 0;
+    for (auto& ai : function->args()) {
+        if (pi == 0) { pi = 1; continue; }
+        llvm::AllocaInst* alloca = builder->CreateAlloca(ai.getType(), nullptr, paramNames[pi - 1] + ".addr");
+        builder->CreateStore(&ai, alloca);
+        namedValues[paramNames[pi - 1]] = alloca;
+        ++pi;
+    }
+
+    // Generate the body (or default return).
     if (node->body) {
         node->body->accept(*this);
         llvm::Value* bodyValue = m_currentLLVMValue;
-
-        // If body doesn't end with a return statement, add one
         if (!builder->GetInsertBlock()->getTerminator()) {
             if (returnType->isVoidTy()) {
                 builder->CreateRetVoid();
             } else if (bodyValue && bodyValue->getType() == returnType) {
-                // Expression body: return the computed value directly
                 builder->CreateRet(bodyValue);
-            } else if (bodyValue && returnType->isIntegerTy() && bodyValue->getType()->isIntegerTy()) {
-                // Integer width mismatch: extend or truncate
-                llvm::Value* cast = builder->CreateSExtOrTrunc(bodyValue, returnType, "lambda.intcast");
-                builder->CreateRet(cast);
-            } else if (bodyValue && returnType->isFloatingPointTy() && bodyValue->getType()->isIntegerTy()) {
-                llvm::Value* cast = builder->CreateSIToFP(bodyValue, returnType, "lambda.fpcast");
-                builder->CreateRet(cast);
-            } else {
-                // For non-void return type, return a default value for the type
-                llvm::Value* defaultValue = nullptr;
-
-                if (returnType->isIntegerTy()) {
-                    defaultValue = llvm::ConstantInt::get(returnType, 0);
-                } else if (returnType->isFloatingPointTy()) {
-                    defaultValue = llvm::ConstantFP::get(returnType, 0.0);
-                } else if (returnType->isPointerTy()) {
-                    defaultValue = llvm::ConstantPointerNull::get(
-                        llvm::cast<llvm::PointerType>(returnType)
-                    );
+            } else if (bodyValue && returnType->isStructTy() &&
+                       bodyValue->getType()->isPointerTy()) {
+                // A raw char* (e.g. the result of a String concatenation or a
+                // primitive .to_string()) returned from an expression-body lambda:
+                // wrap it into the `{ ptr, i64 }` String struct.
+                llvm::StructType* st = llvm::dyn_cast<llvm::StructType>(returnType);
+                bool isStringStruct = st && st->getNumElements() == 2 &&
+                    st->getElementType(0)->isPointerTy() &&
+                    st->getElementType(1)->isIntegerTy(64);
+                if (isStringStruct) {
+                    llvm::Value* sw = llvm::UndefValue::get(returnType);
+                    sw = builder->CreateInsertValue(sw, bodyValue, 0, "lambda.str.ptr");
+                    llvm::Function* strlenFn = module->getFunction("strlen");
+                    if (!strlenFn) {
+                        llvm::FunctionType* strlenTy = llvm::FunctionType::get(
+                            llvm::Type::getInt64Ty(*context), {llvm::PointerType::get(*context, 0)}, false);
+                        strlenFn = llvm::Function::Create(strlenTy, llvm::Function::ExternalLinkage, "strlen", module.get());
+                    }
+                    llvm::Value* len = builder->CreateCall(strlenFn, {bodyValue}, "lambda.str.len");
+                    sw = builder->CreateInsertValue(sw, len, 1, "lambda.str");
+                    builder->CreateRet(sw);
                 } else {
-                    // For complex types, return an undef value
-                    defaultValue = llvm::UndefValue::get(returnType);
+                    builder->CreateRet(llvm::UndefValue::get(returnType));
                     logWarning(node->loc, "Function expression with non-trivial return type is missing return statement");
                 }
-
+            } else if (bodyValue && returnType->isIntegerTy() && bodyValue->getType()->isIntegerTy()) {
+                builder->CreateRet(builder->CreateSExtOrTrunc(bodyValue, returnType, "lambda.intcast"));
+            } else if (bodyValue && returnType->isFloatingPointTy() && bodyValue->getType()->isIntegerTy()) {
+                builder->CreateRet(builder->CreateSIToFP(bodyValue, returnType, "lambda.fpcast"));
+            } else {
+                llvm::Value* defaultValue = nullptr;
+                if (returnType->isIntegerTy()) defaultValue = llvm::ConstantInt::get(returnType, 0);
+                else if (returnType->isFloatingPointTy()) defaultValue = llvm::ConstantFP::get(returnType, 0.0);
+                else if (returnType->isPointerTy()) defaultValue = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(returnType));
+                else { defaultValue = llvm::UndefValue::get(returnType); logWarning(node->loc, "Function expression with non-trivial return type is missing return statement"); }
                 builder->CreateRet(defaultValue);
             }
         }
     } else {
-        // If no body provided, just return default value
-        if (returnType->isVoidTy()) {
-            builder->CreateRetVoid();
-        } else {
-            // Create a default return value
+        if (returnType->isVoidTy()) builder->CreateRetVoid();
+        else {
             llvm::Value* defaultValue = nullptr;
-
-            if (returnType->isIntegerTy()) {
-                defaultValue = llvm::ConstantInt::get(returnType, 0);
-            } else if (returnType->isFloatingPointTy()) {
-                defaultValue = llvm::ConstantFP::get(returnType, 0.0);
-            } else if (returnType->isPointerTy()) {
-                defaultValue = llvm::ConstantPointerNull::get(
-                    llvm::cast<llvm::PointerType>(returnType)
-                );
-            } else {
-                // For complex types, return an undef value
-                defaultValue = llvm::UndefValue::get(returnType);
-            }
-
+            if (returnType->isIntegerTy()) defaultValue = llvm::ConstantInt::get(returnType, 0);
+            else if (returnType->isFloatingPointTy()) defaultValue = llvm::ConstantFP::get(returnType, 0.0);
+            else if (returnType->isPointerTy()) defaultValue = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(returnType));
+            else defaultValue = llvm::UndefValue::get(returnType);
             builder->CreateRet(defaultValue);
         }
     }
 
-    // Verify the function
+    // Verify the generated lambda.
     std::string verifyErrors;
     llvm::raw_string_ostream errStream(verifyErrors);
     bool hasErrors = llvm::verifyFunction(*function, &errStream);
-
     if (hasErrors) {
         logError(node->loc, "Generated function expression has errors: " + verifyErrors);
         function->eraseFromParent();
         m_currentLLVMValue = nullptr;
-    } else {
-        // Return a pointer to the function
-        m_currentLLVMValue = function;
+        currentFunction = savedFunction;
+        builder->SetInsertPoint(savedBlock);
+        namedValues = savedNamedValues;
+        return;
     }
 
-    // Restore previous function context
+    // Back in the enclosing function: allocate the environment and capture the
+    // current value of each captured variable (copy by value), then build the
+    // closure struct value { env, fn }.
     currentFunction = savedFunction;
     builder->SetInsertPoint(savedBlock);
     namedValues = savedNamedValues;
+
+    llvm::Value* envPtr = llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0));
+    if (envStructType) {
+        llvm::DataLayout dataLayout(module.get());
+        uint64_t envBytes = dataLayout.getTypeAllocSize(envStructType);
+        llvm::Function* mallocFunc = getOrCreateMallocFunction();
+        llvm::Value* sizeVal = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), envBytes);
+        llvm::Value* raw = builder->CreateCall(mallocFunc, {sizeVal}, "closure.env.alloc");
+        llvm::Value* envCast = builder->CreateBitCast(raw, envStructType->getPointerTo(), "closure.env.ptr");
+        for (size_t ci = 0; ci < captures.size(); ++ci) {
+            llvm::Value* fieldPtr = builder->CreateStructGEP(envStructType, envCast, ci, "closure.env.setptr");
+            llvm::Value* val = builder->CreateLoad(envFieldTypes[ci], captures[ci].outer, "closure.cap.val");
+            builder->CreateStore(val, fieldPtr);
+        }
+        envPtr = raw;
+    }
+
+    llvm::StructType* closureTy = getClosureStructType();
+    llvm::Value* closureVal = llvm::UndefValue::get(closureTy);
+    closureVal = builder->CreateInsertValue(closureVal, envPtr, 0, "closure.env");
+    closureVal = builder->CreateInsertValue(closureVal, function, 1, "closure.fn");
+    m_currentLLVMValue = closureVal;
 }
 
 void LLVMCodegen::visit(ast::SequenceExpression* node) {

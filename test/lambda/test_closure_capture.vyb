@@ -1,0 +1,61 @@
+// @test: closure capture via uniform env struct
+// @description: lambdas capture outer variables by value into a closure
+//   environment; captured values feed higher-order combinators, closures can be
+//   returned from functions and held in locals, and multiple closures can
+//   capture the same variable independently. Covers Int and String captures.
+// @category: lambda, closure, capture, fn, higher-order, modules, collections
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import collections
+
+check(b<Bool>, out<Int>)<Int> -> {
+    if (!b) {
+        return out
+    }
+    return 0
+}
+
+makeAdder(base<Int>)<fn(Int) -> Int> -> {
+    return |x<Int>| -> x + base
+}
+
+main()<Int> -> {
+    # Local capture by value, called directly.
+    twice<Int> = 2
+    f<fn(Int) -> Int> = |x<Int>| -> x * twice
+    if (check(f(10) == 20, 1)) { return 1 }
+
+    # Closure returned from a function captures its own value.
+    add5<fn(Int) -> Int> = makeAdder(5)
+    if (check(add5(10) == 15, 2)) { return 2 }
+
+    # Capturing lambdas feed the higher-order combinators.
+    v<Vec<Int>> = Vec()
+    v.push(1); v.push(2); v.push(3); v.push(4)
+    scale<Int> = 3
+    m<Vec<Int>> = v.map(|n<Int>| -> n * scale)
+    if (check(m.get(0) == 3 && m.get(3) == 12, 3)) { return 3 }
+    base<Int> = 100
+    s<Int> = v.reduce(base, |acc<Int>, n<Int>| -> acc + n)
+    if (check(s == 110, 4)) { return 4 }
+    thresh<Int> = 2
+    fl<Vec<Int>> = v.filter(|n<Int>| -> n > thresh)
+    if (check(fl.len() == 2 && fl.get(0) == 3, 5)) { return 5 }
+
+    # String capture, including a String-returning expression body.
+    prefix<String> = "hi"
+    greet<fn(Int) -> String> = |x<Int>| -> prefix + x.to_string()
+    if (check(greet(42) == "hi42", 6)) { return 6 }
+
+    # Two closures capturing the same variable independently.
+    step<Int> = 3
+    h1<fn(Int) -> Int> = |x<Int>| -> x + step
+    h2<fn(Int) -> Int> = |x<Int>| -> x + step + 1
+    if (check(h1(5) == 8 && h2(5) == 9, 7)) { return 7 }
+
+    println("ok")
+    return 0
+}

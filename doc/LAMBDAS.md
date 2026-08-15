@@ -153,25 +153,38 @@ Lambdas are parsed in `parse_primary()` when a `|` (PIPE) token is encountered:
 
 The semantic analyzer:
 
-1. **Detects captured variables**: Identifies identifiers used in lambda body that are not parameters
+1. **Detects captured variables**: While visiting the lambda body it records the
+   identifiers referenced and the names declared locally (parameters + local
+   declarations), then stores the free variables that resolve to an enclosing
+   scope in the `FunctionExpression`'s `capturedVariables` list. Inner
+   declarations shadowing an outer name are excluded, so a capture is only made
+   for a reference that truly resolves outside the lambda.
 2. **Type inference**: Infers parameter types from usage if not explicitly annotated
 3. **Closure validation**: Ensures captured variables are in scope and have valid lifetimes
 
 ### Code Generation (LLVM)
 
-For each lambda:
+For each lambda a *closure value* is produced — the runtime type of a `fn` is the
+uniform struct `{ ptr env, ptr fn }`:
 
 1. **Generate unique function**: Create LLVM function with mangled name (`lambda_1`, `lambda_2`, etc.)
-2. **Closure struct**: If captures exist, create heap-allocated struct containing captured values
-3. **Hidden parameter**: Pass closure struct as `i8*` first parameter
-4. **Extract captures**: In function body, bitcast and GEP to access captured values
-5. **Return function pointer**: Lambda value is function pointer (can be stored, passed, called)
+2. **Capture environment**: If the lambda captures, malloc a per-capture struct
+   and copy each captured variable's *current value* into it at creation time
+   (by-value semantics). Non-capturing lambdas use a null environment.
+3. **Hidden parameter**: The lambda function takes the environment as a hidden
+   first parameter (`ptr %env`).
+4. **Extract captures**: In the lambda's prologue, GEP+load each capture from the
+   environment into a local alloca so the body reads it like any local.
+5. **Return closure**: Return the closure struct `{ env, fn }` (stored, passed,
+   and called; a call extracts `fn` and `env` and passes `env` first).
 
-**Example IR for closure:**
+**Example IR for a capturing closure `|x<Int>| -> x + base` (captures `base`):**
 
 ```llvm
 ; Closure struct for: |x| -> x + base
 %closure_t = type { i32 }  ; Contains 'base' (Int)
+; Uniform Vyb fn type
+%fn_t = type { ptr, ptr }  ; { env, fn }
 
 ; Lambda function with closure parameter
 define i32 @lambda_1(i8* %closure_ptr, i32 %x) {
@@ -186,6 +199,11 @@ entry:
   ret i32 %result
 }
 ```
+
+Capture is *by value*: the environment holds a copy from closure creation, so
+later writes to the outer variable do not affect an already-created closure, and
+each closure instantiation gets its own independent copy. Move (`my<T>`),
+mutable, and `our<T>` (ref-counted shared) captures are planned follow-ups.
 
 ## Examples
 

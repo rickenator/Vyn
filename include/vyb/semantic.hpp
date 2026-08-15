@@ -542,6 +542,17 @@ private:
     };
     std::vector<std::unordered_map<std::string, MoveState>> moveScopes;
 
+    // Closure capture detection: while visiting a FunctionExpression body, record
+    // the identifiers it references and the names it declares locally, so free
+    // variables (resolved from an enclosing scope) can be copied into the
+    // closure's environment by codegen. Stacked for nested lambdas.
+    struct LambdaCaptureCtx {
+        SymbolTable* enclosingScope = nullptr;
+        std::unordered_set<std::string> referenced;
+        std::unordered_set<std::string> locals;
+    };
+    std::vector<LambdaCaptureCtx> lambdaCaptureStack;
+
     // Helper methods for move tracking
     void recordMove(const std::string& varName);
     bool isMoved(const std::string& varName) const;

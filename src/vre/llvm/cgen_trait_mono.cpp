@@ -603,7 +603,10 @@ llvm::Type* LLVMCodegen::resolveParameterTypeWithSubstitution(vyb::ast::TypeNode
             returnLlvmType = resolveParameterTypeWithSubstitution(funcTypeNode->returnType.get(), substitutions);
             if (!returnLlvmType) return nullptr;
         }
-        return llvm::FunctionType::get(returnLlvmType, paramLlvmTypes, false)->getPointerTo();
+        // A `fn` type is a closure value, not a bare function pointer.
+        (void)returnLlvmType;
+        (void)paramLlvmTypes;
+        return getClosureStructType();
     }
 
     // Otherwise, use normal type resolution

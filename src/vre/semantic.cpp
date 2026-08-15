@@ -745,6 +745,11 @@ void SemanticAnalyzer::visit(ast::Identifier* node) {
         return;
     }
 
+    // Record identifier references for closure-capture detection.
+    if (!lambdaCaptureStack.empty()) {
+        lambdaCaptureStack.back().referenced.insert(node->name);
+    }
+
     SymbolInfo* symbol = currentScope->lookup(node->name);
     if (!symbol) {
         addError("Undefined identifier: " + node->name, node);
@@ -1228,6 +1233,11 @@ void SemanticAnalyzer::visit(ast::FunctionDeclaration* node) {
 }
 
 void SemanticAnalyzer::visit(ast::VariableDeclaration* node) {
+    // Declarations inside a lambda body shadow any outer variable of the same
+    // name, so exclude them from the lambda's capture set.
+    if (!lambdaCaptureStack.empty() && node->id) {
+        lambdaCaptureStack.back().locals.insert(node->id->name);
+    }
     if (isReservedWord(node->id->name)) {
         addError("Identifier \\\"" + node->id->name + "\\\" is a reserved word and cannot be used as a variable name.", node->id.get());
     }
@@ -4077,7 +4087,15 @@ void SemanticAnalyzer::visit(ast::ArrayLiteral* node) {
 void SemanticAnalyzer::visit(ast::FunctionExpression* node) {
     // Collect parameter types for the FunctionType
     std::vector<ast::TypeNodePtr> paramTypes;
+    // Start a capture-detection context. `enclosingScope` is the scope that
+    // contains the lambda itself, so free variables resolve from it (and its
+    // ancestors) but never from within the lambda's own body scope.
+    lambdaCaptureStack.push_back(LambdaCaptureCtx{currentScope, {}, {}});
+    LambdaCaptureCtx& ctx = lambdaCaptureStack.back();
     for (const auto& param : node->params) {
+        if (param.name) {
+            ctx.locals.insert(param.name->name);
+        }
         if (param.typeNode) {
             paramTypes.push_back(param.typeNode->clone());
         } else {
@@ -4111,9 +4129,34 @@ void SemanticAnalyzer::visit(ast::FunctionExpression* node) {
 
     exitScope();
 
-    // Build a FunctionType for this lambda so variable declarations can infer its type.
-    // Use the same raw-pointer ownership convention as the rest of expressionTypes.
-    auto* funcType = new ast::FunctionType(node->loc, std::move(paramTypes), /*returnType=*/nullptr);
+    // Free variables referenced by the body (not a lambda-local name nor a
+    // parameter) that resolve to a variable in an enclosing scope are captures:
+    // codegen copies their value into the closure environment at creation.
+    node->capturedVariables.clear();
+    for (const auto& name : ctx.referenced) {
+        if (ctx.locals.count(name)) continue;
+        if (!ctx.enclosingScope) continue;
+        SymbolInfo* sym = ctx.enclosingScope->lookup(name);
+        if (sym && sym->kind == SymbolInfo::Kind::Variable) {
+            node->capturedVariables.push_back(name);
+        }
+    }
+    lambdaCaptureStack.pop_back();
+
+    // Build a FunctionType for this lambda so variable declarations can infer
+    // and type-check its signature. Infers a return type for expression-body
+    // lambdas (e.g. `|x<Int>| -> x * 2`) from the expression's resolved type.
+    ast::TypeNodePtr inferredReturn;
+    if (node->body) {
+        ast::TypeNode* bodyTy = nullptr;
+        auto it = expressionTypes.find(node->body.get());
+        if (it != expressionTypes.end()) bodyTy = it->second;
+        else if (node->body->type) bodyTy = node->body->type.get();
+        if (bodyTy && !bodyTy->toString().empty() && bodyTy->toString() != "void") {
+            inferredReturn = bodyTy->clone();
+        }
+    }
+    auto* funcType = new ast::FunctionType(node->loc, std::move(paramTypes), std::move(inferredReturn));
     expressionTypes[node] = funcType;
     node->type = std::shared_ptr<ast::TypeNode>(funcType->clone());
 }

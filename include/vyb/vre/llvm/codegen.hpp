@@ -142,6 +142,12 @@ private:
     std::map<vyb::ast::TypeNode*, std::pair<llvm::Type*, std::string>> m_typeCache;
     std::map<llvm::Value*, std::shared_ptr<vyb::ast::TypeNode>> valueTypeMap; // Maps LLVM values to AST types
     std::map<std::string, llvm::FunctionType*> localLambdaTypes; // Maps lambda variable name to its function type
+    // Uniform closure representation: every lambda (capturing or not) is a
+    // `struct { ptr env; ptr fn }`. The env is null for non-capturing lambdas.
+    llvm::StructType* getClosureStructType();
+    // User-facing function signature of the most recently generated lambda
+    // (without the hidden environment parameter), for localLambdaTypes.
+    llvm::FunctionType* lastLambdaFuncType = nullptr;
     vyb::ast::TypeNode* m_currentImplTypeNode = nullptr; // Initialize
     std::string m_currentImplTraitName;
     vyb::ast::Module* m_currentVybModule = nullptr;
