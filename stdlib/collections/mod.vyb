@@ -150,12 +150,36 @@ struct HashMap<K, V> {
     }
 }
 
+# MapIter<K, V> - cursor iterator over a `HashMap<K, V>`, bound to
+# `core::iter::Iterator`. Holds the map by reference (a `their<HashMap<K, V>>`
+# view) and a next index; `next` yields `Some(key)` per slot (in insertion
+# order) / `None`. Values of a yielded key read back via `m.get(key)`.
+share(all)
+struct MapIter<K, V> {
+    map<their<HashMap<K, V>>>,
+    index<Int>
+}
+
+share(all)
+bind<K<Hashable, Equatable>, V> Iterator -> MapIter<K, V> {
+    type Item = K
+    next(self<their<MapIter<K, V>>>)<Option<K>> -> {
+        if (self.index < self.map.keys.len()) {
+            v<K> = self.map.keys.get(self.index)
+            self.index = self.index + 1
+            return Some(v)
+        }
+        return None
+    }
+}
+
 share(all)
 aspect MapOps {
     put(self<their<HashMap<K, V>>>, key<K>, val<V>)<Bool>
     get(self<their<HashMap<K, V>>>, key<K>)<Option<V>>
     contains_key(self<their<HashMap<K, V>>>, key<K>)<Bool>
     size(self<their<HashMap<K, V>>>)<Int>
+    iter(self<their<HashMap<K, V>>>)<MapIter<K, V>>
 }
 
 share(all)
@@ -237,6 +261,9 @@ bind<K<Hashable, Equatable>, V> MapOps -> HashMap<K, V> {
     size(self<their<HashMap<K, V>>>)<Int> -> {
         return self.keys.len()
     }
+    iter(self<their<HashMap<K, V>>>)<MapIter<K, V>> -> {
+        return MapIter<K, V> { map = self, index = 0 }
+    }
 }
 
 share(all)
@@ -278,11 +305,34 @@ struct HashSet<K> {
     }
 }
 
+# HashIter<K> - cursor iterator over a `HashSet<K>`, bound to
+# `core::iter::Iterator`. Holds the set by reference and a next index; `next`
+# yields `Some(value)` per element / `None`.
+share(all)
+struct HashIter<K> {
+    set<their<HashSet<K>>>,
+    index<Int>
+}
+
+share(all)
+bind<K<Hashable, Equatable>> Iterator -> HashIter<K> {
+    type Item = K
+    next(self<their<HashIter<K>>>)<Option<K>> -> {
+        if (self.index < self.set.values.len()) {
+            v<K> = self.set.values.get(self.index)
+            self.index = self.index + 1
+            return Some(v)
+        }
+        return None
+    }
+}
+
 share(all)
 aspect SetOps {
     insert(self<their<HashSet<K>>>, value<K>)<Bool>
     contains(self<their<HashSet<K>>>, value<K>)<Bool>
     size(self<their<HashSet<K>>>)<Int>
+    iter(self<their<HashSet<K>>>)<HashIter<K>>
 }
 
 share(all)
@@ -347,6 +397,9 @@ bind<K<Hashable, Equatable>> SetOps -> HashSet<K> {
     }
     size(self<their<HashSet<K>>>)<Int> -> {
         return self.values.len()
+    }
+    iter(self<their<HashSet<K>>>)<HashIter<K>> -> {
+        return HashIter<K> { set = self, index = 0 }
     }
 }
 
@@ -571,5 +624,5 @@ bind<T> VecHigherOps -> Vec<T> {
 
 share(all)
 collections_status_message()<String> -> {
-    return "collections: HashMap / HashSet with hash-bucket (chained) key lookup + VecIter (v.iter())"
+    return "collections: HashMap / HashSet (hash-bucket) + VecIter (v.iter()) + MapIter (m.iter()) / HashIter (s.iter())"
 }

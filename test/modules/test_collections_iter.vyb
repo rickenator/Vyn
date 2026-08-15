@@ -1,0 +1,67 @@
+// @test: HashMap/HashSet iteration via the Iterator protocol (for loops)
+// @description: `import collections` now ships `MapIter<K,V>` and `HashIter<K>`
+//   bound to core::iter::Iterator, produced by `m.iter()` (yields keys) and
+//   `s.iter()` (yields values). Drives `for (k in m.iter())` and
+//   `for (v in s.iter())`, reading values back via `m.get(k)`. Verifies the
+//   nested `their<HashMap<K,V>>` / `their<HashSet<K>>` view-field reads that
+//   were previously a compiler gap.
+// @category: collections, iterator, stdlib, map, set, for
+// @expect: pass
+// @expect-output: coll-iter-ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import collections
+
+main()<Int> -> {
+    m<HashMap<String, Int>> = HashMap<String, Int>()
+    m.put("a", 1)
+    m.put("b", 2)
+    m.put("c", 3)
+
+    ks<String> = ""
+    total<Int> = 0
+    count<Int> = 0
+    for (k in m.iter()) {
+        if (ks.len() > 0) {
+            ks = ks + ","
+        }
+        ks = ks + k
+        total = total + m.get(k).value
+        count = count + 1
+    }
+    if (total != 6 || count != 3) {
+        println("coll-iter-map-fail total=" + total + " count=" + count)
+        return 1
+    }
+
+    ss<HashSet<String>> = HashSet<String>()
+    ss.insert("x")
+    ss.insert("y")
+    ss.insert("z")
+    joined<String> = ""
+    for (v in ss.iter()) {
+        joined = joined + v
+    }
+    if (joined.len() != 3) {
+        println("coll-iter-set-fail len=" + joined.len())
+        return 2
+    }
+
+    // The iterators hold the collection by reference: re-evaluating the
+    // producer each loop starts a fresh iteration.
+    a<Int> = 0
+    for (k in m.iter()) {
+        a = a + 1
+    }
+    for (k in m.iter()) {
+        a = a + 1
+    }
+    if (a != 6) {
+        println("coll-iter-refresh-fail a=" + a)
+        return 3
+    }
+
+    println("coll-iter-ok")
+    return 0
+}

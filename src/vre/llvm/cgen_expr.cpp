@@ -4460,7 +4460,15 @@ void LLVMCodegen::visit(ast::MemberExpression* node) {
         } else {
             // For reading, always load the value
             // Even for struct types (like String), we want the value, not a pointer to temporary storage
-            m_currentLLVMValue = builder->CreateLoad(fieldType, fieldPtr, fieldName + "_val");
+            llvm::Value* loaded = builder->CreateLoad(fieldType, fieldPtr, fieldName + "_val");
+            // Remember the read value's AST type so a further member access on it
+            // (e.g. `self.set.values` / `self.map.keys`) can determine the struct
+            // type without an alloca. This is what lets iterators read fields
+            // through a nested `their<Struct>` view field.
+            if (node->type) {
+                valueTypeMap[loaded] = std::shared_ptr<vyb::ast::TypeNode>(node->type->clone());
+            }
+            m_currentLLVMValue = loaded;
         }
     }
 }

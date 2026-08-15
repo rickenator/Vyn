@@ -3,6 +3,24 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-15: **Nested `their<T>` view-field member access + `HashMap`/`HashSet`
+  iterators**. Root cause of the earlier "cannot read a collection through a
+  `their<T>` view field" gap: cgen_expr's property-member-access path only knew a
+  struct's layout when the object was an alloca or had a `valueTypeMap` entry; an
+  intermediate read (e.g. `self.set` from a `their<HashSet<K>>` field) was a bare
+  load with no AST type, so a further access (`self.set.values`) failed. Fix: on
+  every member-read, register the loaded value's AST type (`node->type`) in
+  `valueTypeMap`. That generalizes the nested-`their<Vec<T>>` support to any
+  generic struct (`their<HashSet<K>>` / `their<HashMap<K,V>>`), so `HashMap` and
+  `HashSet` iterator binds now compile: `MapIter<K,V>` (`m.iter()`, yields keys)
+  and `HashIter<K>` (`s.iter()`, yields values), both by-ref (`their<...>` view),
+  bound to `core::iter` and usable in `for (k in m.iter())` /
+  `for (v in s.iter())` (`test/modules/test_collections_iter.vyb`). Leak-free
+  under ASAN. Full suite 861/865 (only the 4 pre-existing trap/vec-edge failures).
+  Known limit: a two-generic-param struct as the `Iterator::Item` (e.g. a
+  `MapEntry<K,V>` pair) isn't monomorphized yet (mangles/hangs), so map iteration
+  yields keys; value access is `m.get(k).value`.
+
 - 2026-08-15: **`for`-loop `skip`/step over `Iterator`**. The iterator desugar
   increased: `for (item in <iter-expr>, step)` now advances the iterator `step`
   elements per iteration, yielding indices 0, step, 2*step, ... — the same
