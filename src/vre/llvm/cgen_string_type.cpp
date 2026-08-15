@@ -62,6 +62,8 @@ void LLVMCodegen::handleStringMethod(vyb::ast::CallExpression* node, const std::
         handleStringTrim(node, strPtr, strStructType);
     } else if (methodName == "replace") {
         handleStringReplace(node, strPtr, strStructType);
+    } else if (methodName == "format") {
+        handleStringFormat(node, strPtr, strStructType);
     } else {
         logError(node->loc, "Unknown String method: " + methodName);
         m_currentLLVMValue = nullptr;
@@ -932,6 +934,86 @@ void LLVMCodegen::handleStringReplace(vyb::ast::CallExpression* node, llvm::Valu
     resultStr = builder->CreateInsertValue(resultStr, resultLen, 1, "replace.result.len");
 
     VYB_CDBG << "DEBUG: String::replace() called" << std::endl;
+    m_currentLLVMValue = resultStr;
+}
+
+
+// String::format(arg0, arg1, ...) -> String
+// Replaces sequential `{}` placeholders in the receiver with the string form of
+// each argument (String/Int/Float/Bool/...). Delegates the substitution to the
+// runtime `__vyb_string_format` helper; any placeholder beyond the supplied args
+// is kept verbatim. Works for a variable number of arguments.
+void LLVMCodegen::handleStringFormat(vyb::ast::CallExpression* node, llvm::Value* strPtr, llvm::Type* strStructType) {
+    llvm::Type* i8ptr = llvm::PointerType::get(*context, 0);
+    llvm::Type* i8ptrpt = llvm::PointerType::get(i8ptr, 0);
+
+    // Extract receiver (format template) fields.
+    llvm::Value* fmtDataPtr = builder->CreateStructGEP(strStructType, strPtr, 0, "fmt.data_ptr");
+    llvm::Value* fmtLenPtr  = builder->CreateStructGEP(strStructType, strPtr, 1, "fmt.len_ptr");
+    llvm::Value* fmtData    = builder->CreateLoad(i8ptr, fmtDataPtr, "fmt.data");
+    llvm::Value* fmtLen     = builder->CreateLoad(llvm::Type::getInt64Ty(*context), fmtLenPtr, "fmt.len");
+
+    size_t argc = node->arguments.size();
+    llvm::Value* argsAlloca = builder->CreateAlloca(
+        i8ptr, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), (argc == 0 ? 1 : argc)), "fmt.args");
+    std::vector<llvm::Value*> ownedTemps;
+
+    for (size_t a = 0; a < argc; ++a) {
+        node->arguments[a]->accept(*this);
+        llvm::Value* arg = m_currentLLVMValue;
+        if (!arg) { logError(node->arguments[a]->loc, "format: failed to evaluate argument"); m_currentLLVMValue = nullptr; return; }
+
+        llvm::Value* serialized = nullptr;
+        bool owned = false;
+        bool isString = false;
+        if (node->arguments[a]->type) {
+            std::string typeStr = resolveTypeAliasToBaseName(node->arguments[a]->type.get());
+            if (typeStr.empty()) typeStr = node->arguments[a]->type->toString();
+            if (typeStr == "String" || typeStr == "string") isString = true;
+        }
+        if (isString) {
+            if (arg->getType() && arg->getType()->isStructTy()) {
+                serialized = builder->CreateExtractValue(arg, 0, "fmt.str.ptr");
+            } else if (arg->getType() && arg->getType()->isPointerTy()) {
+                serialized = arg;
+            }
+            if (serialized) owned = exprProducesOwnedStringTemp(node->arguments[a].get());
+            else { logError(node->arguments[a]->loc, "format: could not serialize String argument"); m_currentLLVMValue = nullptr; return; }
+        } else if (arg->getType() && arg->getType()->isPointerTy() && arg->getType() == i8ptr) {
+            serialized = arg;  // already a char* (CString)
+        } else {
+            serialized = generateToStringCall(arg, arg->getType(), node->arguments[a]->type.get(), node->loc);
+            if (!serialized) serialized = generateGenericSerialization(arg, node->arguments[a]->type.get());
+            owned = true;
+        }
+        if (!serialized) { logError(node->arguments[a]->loc, "format: could not serialize argument"); m_currentLLVMValue = nullptr; return; }
+        if (owned) ownedTemps.push_back(serialized);
+        llvm::Value* slot = builder->CreateGEP(
+            i8ptr, argsAlloca, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), (int64_t)a), "fmt.args.slot");
+        builder->CreateStore(serialized, slot);
+    }
+
+    llvm::Value* countVal = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), (int64_t)argc);
+    llvm::Value* outLenPtr = builder->CreateAlloca(llvm::Type::getInt64Ty(*context), nullptr, "fmt.out_len");
+    builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 0), outLenPtr);
+
+    llvm::FunctionType* fmtTy = llvm::FunctionType::get(
+        i8ptr, {i8ptr, llvm::Type::getInt64Ty(*context), llvm::Type::getInt64Ty(*context), i8ptrpt, i8ptr}, false);
+    llvm::FunctionCallee fmtFunc = module->getOrInsertFunction("__vyb_string_format", fmtTy);
+    llvm::Value* resultData = builder->CreateCall(fmtFunc, {fmtData, fmtLen, countVal, argsAlloca, outLenPtr}, "fmt.data");
+    builder->CreateCall(getOrCreateVybStringRegisterFunction(), {resultData});
+    llvm::Value* resultLen = builder->CreateLoad(llvm::Type::getInt64Ty(*context), outLenPtr, "fmt.len");
+
+    // Release any freshly-allocated serialization temporaries (scalars, to_string,
+    // struct/array serializations). String operands that yielded a fresh temp are
+    // also released; the receiver and borrowed/named-string buffers are not.
+    for (llvm::Value* t : ownedTemps) {
+        builder->CreateCall(getOrCreateVybStringFreeFunction(), {t});
+    }
+
+    llvm::Value* resultStr = llvm::UndefValue::get(strStructType);
+    resultStr = builder->CreateInsertValue(resultStr, resultData, 0, "fmt.result.data");
+    resultStr = builder->CreateInsertValue(resultStr, resultLen, 1, "fmt.result.len");
     m_currentLLVMValue = resultStr;
 }
 

@@ -298,8 +298,8 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
 - [x] **`Result<T, E>`** — `Ok(value)` / `Err(error)` for fallible operations; built-in generic enum (`core::result` placeholder module retained for source-compat)
 - [x] **Core aspects** — `Display`, `Debug`, `Clone`, `Equatable`, `Comparable`, `Hashable` — the `core::aspects` stdlib module declares all six contracts with `Comparable : Equatable`, re-exported via `core::prelude`/prelude, and they are bindable to both structs and primitive scalar targets with unqualified dispatch and generic bounds. Binds now carry across module imports (visibility via `share`, dedup by `(target, aspect)`), so `core::aspects` ships pre-wired `Display`/`Clone`/`Equatable`/`Comparable`/`Hashable` impls for `Int`, `Float`, `Bool`, and `String` that take effect on `import core::aspects` / `import core::prelude` (`test/aspect/test_core_aspects_bindings.vyb`, `test_bind_primitive_target.vyb`, `test_core_aspects_primitive_impls.vyb`). Auto-import of `core::*` remains under Module System Phase 1.6.
 - [x] **String methods** — `.len()`, `.contains()`, `.starts_with()`, `.ends_with()`, `.to_upper()`, `.to_lower()`, `.substring()`, `.char_at()`, `.trim()`, `.replace()`, `String::from_bytes()`
-- [ ] **String methods (remaining)** — `.split()`, `.format()`
-- [ ] **String formatting** — Format strings or `fmt()` intrinsic
+- [x] **String methods (remaining)** — `.split()`, `.format()` — `split(sep)` (a `StringOps` aspect bound to `String`) returns a fresh `Vec<String>` of the parts between each occurrence of `sep` (empty separator yields a single-element Vec; leading/trailing/consecutive separators produce empty parts), and `format(args...)` (a built-in String method) substitutes sequential `{}` placeholders with the string form of each argument of any serializable type, leaving extra placeholders verbatim (`test/string/test_str_split.vyb`, `test/string/test_str_format.vyb`)
+- [x] **String formatting** — `.format()` method (Format strings or `fmt()` intrinsic)
 - [x] **`HashMap<K, V>`** — Hash map with `Hashable + Equatable` bounds (parallel `keys`/`vals` vectors indexed by auto-growing hash-bucket chains; `import collections`)
 - [x] **`HashSet<T>`** — Hash set (`values` vector indexed by hash-bucket chains with duplicate suppression; `import collections`)
 - [x] **`BTreeMap<K, V>`** — Ordered map with `Comparable` bounds (keys in a
@@ -632,7 +632,7 @@ For Vyb to be considered production-ready at 1.0, **all of the following must be
 - [x] Core aspects (`Display`, `Debug`, `Clone`, `Equatable`, `Comparable`, `Hashable`)
 - [ ] Iterator aspect with `for` loop desugaring
 - [ ] Enum/sum types with pattern matching
-- [ ] String methods complete (`split` and formatting remain)
+- [x] String methods complete (`split` and formatting done; see `.split()`/`.format()`)
 - [ ] `HashMap<K, V>` and basic collections
 - [ ] FFI (`extern "C"`) working
 - [ ] `vyb.toml` and `vyb build` project system

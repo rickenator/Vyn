@@ -190,3 +190,48 @@ bind Hashable -> Float {
         return hash_chars(s)
     }
 }
+
+# StringOps - String manipulation helpers layered on the built-in String methods.
+# `.split(sep)` returns a `Vec<String>` of the parts between each occurrence of
+# `sep` in `self` (an empty `sep` yields a single-element Vec holding the whole
+# string; leading/trailing/consecutive separators produce empty parts, matching
+# the common split semantics). Bound to String and always available, since this
+# module is auto-imported into user programs.
+share(all)
+aspect StringOps {
+    split(self<String>, sep<String>)<Vec<String>> -> { }
+}
+
+share(all)
+bind StringOps -> String {
+    split(self<String>, sep<String>)<Vec<String>> -> {
+        out<Vec<String>> = Vec<String>()
+        n<Int> = self.len()
+        sl<Int> = sep.len()
+        if (sl == 0) {
+            out.push(self)
+            return out
+        }
+        start<Int> = 0
+        i<Int> = 0
+        while (i <= n - sl) {
+            j<Int> = 0
+            ok<Bool> = true
+            while (ok && j < sl) {
+                if (self.char_at(i + j) != sep.char_at(j)) {
+                    ok = false
+                }
+                j = j + 1
+            }
+            if (ok) {
+                out.push(self.substring(start, i))
+                i = i + sl
+                start = i
+            } else {
+                i = i + 1
+            }
+        }
+        out.push(self.substring(start, n))
+        return out
+    }
+}

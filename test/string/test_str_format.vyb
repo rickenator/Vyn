@@ -1,0 +1,20 @@
+// @test: String format
+// @description: Test String::format(args...) substitutes {} placeholders in order
+// @category: string
+// @expect: pass
+// @expect-output: hello world!
+
+main()<Int> -> {
+    tmpl<String> = "hello {}!"
+    s<String> = tmpl.format("world")
+    println(s)
+
+    multi<String> = "{} and {} and {}"
+    m<String> = multi.format(1, "two", 3.5)
+    println(m)
+
+    over<String> = "one {} two {}"
+    o<String> = over.format("x")
+    println(o)
+    return 0
+}

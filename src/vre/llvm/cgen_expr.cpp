@@ -2772,7 +2772,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                         methodName == "substr" || methodName == "char_at" || methodName == "to_bytes" ||
                         methodName == "from_bytes" || methodName == "starts_with" || methodName == "ends_with" ||
                         methodName == "contains" || methodName == "to_upper" || methodName == "to_lower" ||
-                        methodName == "trim" || methodName == "strip" || methodName == "replace") {
+                        methodName == "trim" || methodName == "strip" || methodName == "replace" ||
+                        methodName == "format") {
                         handleStringMethod(node, objectName, methodName);
                         return;
                     }

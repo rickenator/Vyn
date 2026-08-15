@@ -843,6 +843,67 @@ extern "C" char* __vyb_string_replace(const char* src, int64_t src_len,
     return result;
 }
 
+// String::format runtime helper — scans `fmt` for sequential `{}` placeholders and
+// substitutes them in order with each of the first `count` argument strings. Any
+// placeholder beyond the supplied args is emitted verbatim (as `{}`). Returns a
+// malloc'd result (caller frees). Sets *out_len to the byte length (excluding NUL).
+extern "C" char* __vyb_string_format(const char* fmt, int64_t fmt_len,
+                                     int64_t count, char** args,
+                                     int64_t* out_len) {
+    if (!fmt) {
+        *out_len = 0;
+        char* empty = (char*)malloc(1);
+        if (empty) empty[0] = '\0';
+        return empty;
+    }
+    // First pass: compute result length.
+    size_t total = 0;
+    int64_t i = 0;
+    int64_t k = 0;
+    while (i < fmt_len) {
+        if (fmt[i] == '{' && i + 1 < fmt_len && fmt[i + 1] == '}') {
+            if (k < count && args && args[k]) {
+                total += strlen(args[k]);
+                ++k;
+            } else {
+                total += 2;  // keep literal "{}"
+                ++k;
+            }
+            i += 2;
+        } else {
+            total += 1;
+            i += 1;
+        }
+    }
+    char* out = (char*)malloc(total + 1);
+    if (!out) { *out_len = 0; return nullptr; }
+
+    // Second pass: build the result.
+    size_t o = 0;
+    i = 0;
+    k = 0;
+    while (i < fmt_len) {
+        if (fmt[i] == '{' && i + 1 < fmt_len && fmt[i + 1] == '}') {
+            if (k < count && args && args[k]) {
+                size_t sl = strlen(args[k]);
+                memcpy(out + o, args[k], sl);
+                o += sl;
+            } else {
+                out[o++] = '{';
+                out[o++] = '}';
+            }
+            i += 2;
+            ++k;
+        } else {
+            out[o++] = fmt[i];
+            i += 1;
+        }
+    }
+    out[o] = '\0';
+    *out_len = (int64_t)o;
+    return out;
+}
+
 } // namespace intrinsics
 } // namespace vyb
 

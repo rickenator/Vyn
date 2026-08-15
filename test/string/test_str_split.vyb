@@ -1,0 +1,26 @@
+// @test: String split
+// @description: Test String::split(sep) returns a Vec<String> of its parts
+// @category: string
+// @expect: pass
+// @expect-output: parts=3
+
+main()<Int> -> {
+    csv<String> = "a,b,c"
+    parts<Vec<String>> = csv.split(",")
+    println("parts=" + parts.len().to_string())
+    println("0=" + parts.get(0))
+    println("1=" + parts.get(1))
+    println("2=" + parts.get(2))
+
+    single<String> = "hello"
+    one<Vec<String>> = single.split(",")
+    println("single=" + one.len().to_string())
+    println("only=" + one.get(0))
+
+    messy<String> = ",a,,b,"
+    m<Vec<String>> = messy.split(",")
+    println("messy=" + m.len().to_string())
+    println("edge='" + m.get(0) + "'")
+    println("edge2='" + m.get(4) + "'")
+    return 0
+}

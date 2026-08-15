@@ -289,7 +289,7 @@ These features were completed in the current release cycle and are fully tested:
       return 0
   }
   ```
-- **String methods** — `.len()`, `.contains()`, `.starts_with()`, `.ends_with()`, `.to_upper()`, `.to_lower()`, `.substring()`, `.char_at()`, `String::from_bytes()`
+- **String methods** — `.len()`, `.contains()`, `.starts_with()`, `.ends_with()`, `.to_upper()`, `.to_lower()`, `.substring()`, `.char_at()`, `.split()`, `.format()`, `String::from_bytes()`
   ```vyb
   main()<Int> -> {
       s<String> = "Hello, world!"
@@ -404,12 +404,31 @@ Comprehensive string manipulation built into the `String` type:
 | `.to_lower()` | Lowercase copy | `s.to_lower()` → `String` |
 | `.substring(start, len)` | Slice | `s.substring(0, 5)` → `String` |
 | `.char_at(i)` | ASCII code at index | `s.char_at(1)` → `Int` |
+| `.split(sep)` | Split into `Vec<String>` of its parts | `s.split(",")` → `Vec<String>` |
+| `.format(args...)` | Substitute `{}` placeholders in sequence | `s.format(42)` → `String` |
 | `String::from_bytes(ptr, len)` | Construct from bytes | `String::from_bytes(p, n)` |
 
 **String concatenation** with `+` auto-converts non-String operands:
 ```vyb
 id<Int> = 42
 msg<String> = "User ID: " + id    // "User ID: 42"
+```
+
+**Splitting** returns a fresh `Vec<String>` of the parts between each occurrence
+of the separator. An empty separator yields a single-element Vec holding the
+whole string; leading, trailing, and consecutive separators produce empty parts.
+```vyb
+csv<String> = "alpha,beta,gamma"
+parts<Vec<String>> = csv.split(",")   // parts.len() == 3; parts.get(1) == "beta"
+```
+
+**Formatting** substitutes each `{}` placeholder with the string form of the
+corresponding argument in order. Arguments of any serializable type (String,
+Int, Float, Bool, ...) are converted automatically; placeholders beyond the
+supplied arguments are emitted verbatim.
+```vyb
+tmpl<String> = "User {} has {} badge(s)."
+msg<String> = tmpl.format("Vyb", 3)   // "User Vyb has 3 badge(s)."
 ```
 
 ### ✅ **Async Programming & Debugging**
@@ -1691,6 +1710,8 @@ empty<String> = text.substring(10, 20)  # Returns {null, 0}
 | `substring(i,j)` | O(k) | O(k) | k = j-i, allocates new buffer |
 | `to_upper()` | O(n) | O(n) | Allocates new buffer, ASCII only |
 | `to_lower()` | O(n) | O(n) | Allocates new buffer, ASCII only |
+| `split(sep)` | O(n×k) | O(n) | k = separator length; allocates a new buffer per part |
+| `format(args...)` | O(n+a) | O(n+a) | n = fmt length, a = serialized argument bytes |
 | `a + b` | O(n+m) | O(n+m) | Allocates new buffer |
 
 ### C Interoperability
@@ -1712,12 +1733,8 @@ c_str<*i8> = name.to_bytes()  # Get raw pointer
 ### Future Enhancements
 
 **Planned Methods**
-- `split(delimiter: String) -> Vec<String>` - Split into vector of substrings
-- `trim() -> String` - Remove leading/trailing whitespace
-- `replace(old: String, new: String) -> String` - Replace all occurrences
 - `find(substring: String) -> Int` - Get index of first occurrence
 - `parse_int() -> Option<Int>` - Parse string to integer
-- `format(args...)` - String interpolation
 
 **Advanced Features**
 - **UTF-8 support**: Unicode-aware operations (length, indexing, case)

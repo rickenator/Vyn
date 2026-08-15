@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`String::split()` and `String::format()`** — `split(sep)` (a `StringOps`
+  aspect bound to `String`, auto-imported via `core`) returns a fresh
+  `Vec<String>` of the parts between each occurrence of `sep` (an empty
+  separator yields a single-element Vec holding the whole string; leading,
+  trailing, and consecutive separators produce empty parts). `format(args...)`
+  (a built-in String method) substitutes sequential `{}` placeholders with the
+  string form of each argument of any serializable type; placeholders beyond
+  the supplied arguments are emitted verbatim. Covered by
+  `test/string/test_str_split.vyb` and `test/string/test_str_format.vyb`.
 - **`BTreeMap<K, V>` (ordered map, `import collections`)** — keyed by
   `Comparable`; keys are held in a `keys` vector kept sorted ascending (with a
   parallel `vals` vector), so `get` / `contains_key` use binary search (O(log

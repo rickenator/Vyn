@@ -408,6 +408,7 @@ private:
     void handleStringToLower(vyb::ast::CallExpression* node, llvm::Value* strPtr, llvm::Type* strStructType);
     void handleStringTrim(vyb::ast::CallExpression* node, llvm::Value* strPtr, llvm::Type* strStructType);
     void handleStringReplace(vyb::ast::CallExpression* node, llvm::Value* strPtr, llvm::Type* strStructType);
+    void handleStringFormat(vyb::ast::CallExpression* node, llvm::Value* strPtr, llvm::Type* strStructType);
 
     // Scope and ownership management
     void enterScope();

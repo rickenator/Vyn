@@ -44,6 +44,11 @@ extern "C" {
                                const char* old_s, const char* new_s,
                                int64_t* out_len);
 
+    // String format runtime helper
+    char* __vyb_string_format(const char* fmt, int64_t fmt_len,
+                              int64_t count, char** args,
+                              int64_t* out_len);
+
     // Closure capture-environment reference counting helpers
     void* __vyb_closure_retain(void* env);
     void  __vyb_closure_release(void* env);
@@ -778,6 +783,8 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
         // Register string replace helper (always export — codegen may emit the symbol)
         runtimeSymbols[mangle("__vyb_string_replace")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_string_replace), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_string_format")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_string_format), llvm::JITSymbolFlags::Exported);
 
         // Register closure reference-count helpers (always export — codegen may emit the symbols)
         runtimeSymbols[mangle("__vyb_closure_retain")] = llvm::orc::ExecutorSymbolDef(

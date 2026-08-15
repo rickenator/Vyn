@@ -2901,7 +2901,8 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                             } else if (methodName == "substring" || methodName == "substr" ||
                                        methodName == "to_upper" || methodName == "to_lower" ||
                                        methodName == "concat" || methodName == "trim" ||
-                                       methodName == "strip" || methodName == "replace") {
+                                       methodName == "strip" || methodName == "replace" ||
+                                       methodName == "format") {
                                 auto strType = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "String"));
                                 expressionTypes[node] = retainType(strType);
                                 node->type = std::shared_ptr<ast::TypeNode>(strType->clone());
@@ -3033,6 +3034,42 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                     if (typeName->identifier) {
                         std::string typeNameStr = typeName->toString(); // Use full type string with generic args
                         std::string methodName = methodIdent->name;
+
+                        // Built-in String methods reached through a non-identifier receiver
+                        // (literal, computed expression, member access root). Mirrors the
+                        // identifier-receiver String handling above.
+                        if (typeNameStr == "String") {
+                            if (methodName == "len" || methodName == "length") {
+                                auto intType = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "Int"));
+                                expressionTypes[node] = retainType(intType);
+                                node->type = std::shared_ptr<ast::TypeNode>(intType->clone());
+                                return;
+                            } else if (methodName == "contains" || methodName == "starts_with" || methodName == "ends_with") {
+                                auto boolType = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "Bool"));
+                                expressionTypes[node] = retainType(boolType);
+                                node->type = std::shared_ptr<ast::TypeNode>(boolType->clone());
+                                return;
+                            } else if (methodName == "substring" || methodName == "substr" ||
+                                       methodName == "to_upper" || methodName == "to_lower" ||
+                                       methodName == "concat" || methodName == "trim" ||
+                                       methodName == "strip" || methodName == "replace" ||
+                                       methodName == "format") {
+                                auto strType = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "String"));
+                                expressionTypes[node] = retainType(strType);
+                                node->type = std::shared_ptr<ast::TypeNode>(strType->clone());
+                                return;
+                            } else if (methodName == "char_at") {
+                                auto intType = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "Int"));
+                                expressionTypes[node] = retainType(intType);
+                                node->type = std::shared_ptr<ast::TypeNode>(intType->clone());
+                                return;
+                            } else if (methodName == "to_bytes") {
+                                auto intPtrType = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "Int"));
+                                expressionTypes[node] = retainType(intPtrType);
+                                node->type = std::shared_ptr<ast::TypeNode>(intPtrType->clone());
+                                return;
+                            }
+                        }
 
                         // Look for concrete trait implementations for this type
                         auto typeImplsIt = traitImpls.find(typeNameStr);
