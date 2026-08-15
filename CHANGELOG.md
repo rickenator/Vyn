@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`vyb bindgen --full` C unions** — a C `union` now binds as a
+  `#[repr(C)]` struct whose highest-aligned member is the accessible anchor
+  plus a `[UInt8; N]` pad to the union's total size, so the struct's size and
+  alignment match the C ABI (named, pad-based, and anonymous-typedef unions;
+  union fields inside structs; union parameters). Covered by
+  `test/bindgen/unions.h` / `unions.vyb` / `test_unions_bindings.vyb`.
 - **`vyb bindgen --full` fixed-size array struct fields** — C struct members
   declared as fixed-size arrays (direct, nested e.g. `double m[2][3]`, or via an
   array typedef like `typedef char name_t[8]`) bind as contiguous Vyb

@@ -1,0 +1,22 @@
+// @test: vyb bindgen --full C unions
+// @description: a C union binds as a #[repr(C)] struct (highest-aligned member anchor + byte pad to the union's size); a union value flows into extern C memory and reads back through the anchor
+// @category: ffi, bindgen
+// @expect: pass
+// @expect-output: d= 0
+// @expect-return: 0
+// @tags: ffi, bindgen, libclang, unions, repr-c
+
+import unions
+
+extern "C" {
+    memset(dst<loc<Value>>, value<CInt>, n<CSize>)<loc<Value>>
+}
+
+main()<Int> -> {
+    freedom {
+        v<Value> = Value { d = 5.5 }
+        memset(loc(v), 0, 8)
+        println("d=", v.d)
+    }
+    return 0
+}

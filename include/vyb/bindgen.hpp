@@ -37,7 +37,10 @@ std::string generateBindings(const std::string& headerSource,
 // integer arithmetic. Fixed-size C array struct fields (direct, nested, or via
 // a typedef such as `typedef char name_t[8]`) bind as contiguous Vyb
 // value-array fields (`[CChar; 8]`, `[[CDouble; 3]; 2]`); flexible/variable
-// array members skip their struct with a warning. `cmdArgs` holds extra
+// array members skip their struct with a warning. C unions bind as
+// `#[repr(C)]` structs -- the highest-aligned member is the accessible anchor
+// and a `[UInt8; N]` pad carries the union's remaining bytes, so the struct's
+// size and alignment match the C union. `cmdArgs` holds extra
 // compiler flags passed to libclang (e.g. `-DUSE_64`); only declarations whose
 // source is the input header are emitted (system/libc types are resolved but
 // not rebound). Returns the generated Vyb source; parse failures return ""

@@ -206,6 +206,12 @@ private:
 
 struct Field { std::string name; std::string type; };
 struct Param { std::string name; std::string type; };
+struct UnionMember {
+    std::string name;   // may be empty for an anonymous union member
+    std::string type;   // mapped Vyb type (validated as mappable)
+    long long size;     // bytes
+    unsigned align;     // bytes
+};
 
 class Generator {
 public:
@@ -279,6 +285,59 @@ public:
         }
         os << " }\n\n";
         chunks_.push_back(os.str());
+    }
+
+    void emitUnionNamed(CXCursor unionCur, const std::string& name) {
+        if (!emitted_.insert(name).second) { warn("skipping duplicate union '" + name + "'"); return; }
+        std::vector<UnionMember> members;
+        bool unsupported = false;
+        unionCtx_ = &members;
+        unionUnsupported_ = &unsupported;
+        clang_visitChildren(unionCur, &unionUnionVisitor, this);
+        unionCtx_ = nullptr;
+        unionUnsupported_ = nullptr;
+        if (unsupported || members.empty()) {
+            warn("skipping union '" + name + "': bitfield or unsupported member type");
+            return;
+        }
+
+        long long unionSize = 0;
+        unsigned unionAlign = 0;
+        for (const auto& m : members) {
+            if (m.size > unionSize) unionSize = m.size;
+            if (m.align > unionAlign) unionAlign = m.align;
+        }
+        if (unionAlign == 0) { warn("skipping union '" + name + "': could not determine alignment"); return; }
+        unionSize = ((unionSize + unionAlign - 1) / unionAlign) * unionAlign;
+
+        // Anchor = the member with the union's alignment (largest size on a tie);
+        // it drives the struct's size and alignment, and is directly accessible.
+        const UnionMember* anchor = &members[0];
+        for (const auto& m : members) {
+            if (m.align > anchor->align ||
+                (m.align == anchor->align && m.size > anchor->size))
+                anchor = &m;
+        }
+        std::set<std::string> used;
+        for (const auto& m : members) used.insert(m.name);
+        std::string anchorName = anchor->name.empty() ? uniqueFieldName(used, "value")
+                                                      : anchor->name;
+
+        std::ostringstream os;
+        os << "share(all)\n#[repr(C)]\nstruct " << name << " {\n";
+        os << "    " << anchorName << "<" << anchor->type << ">,\n";
+        long long pad = unionSize - anchor->size;
+        if (pad > 0) os << "    " << uniqueFieldName(used, "pad") << "<[UInt8; " << pad << "]>,\n";
+        os << "}\n\n";
+        chunks_.push_back(os.str());
+    }
+
+    // Vyb field names cannot begin with '_', and must not collide with a member
+    // name; pick `base`, `base0`, `base1`, ... as needed.
+    static std::string uniqueFieldName(const std::set<std::string>& used, const std::string& base) {
+        std::string candidate = base;
+        for (int i = 0; used.count(candidate); ++i) candidate = base + std::to_string(i);
+        return candidate;
     }
 
     void emitFunction(CXCursor c) {
@@ -569,7 +628,8 @@ public:
             std::string tag = curSpell(decl);
             if (tag.empty()) {
                 if (!aliases_.insert({name, name}).second) { warn("skipping duplicate typedef '" + name + "'"); return; }
-                if (underlying.kind == CXType_Record) emitStructNamed(decl, name);
+                if (clang_getCursorKind(decl) == CXCursor_UnionDecl) emitUnionNamed(decl, name);
+                else if (underlying.kind == CXType_Record) emitStructNamed(decl, name);
                 else emitEnumNamed(decl, name);
             } else {
                 if (!aliases_.insert({name, tag}).second) warn("skipping duplicate typedef '" + name + "'");
@@ -590,6 +650,9 @@ public:
     static enum CXChildVisitResult enumVisitor(CXCursor c, CXCursor p, CXClientData d) {
         return static_cast<Generator*>(d)->enumConstant(c, p);
     }
+    static enum CXChildVisitResult unionUnionVisitor(CXCursor c, CXCursor p, CXClientData d) {
+        return static_cast<Generator*>(d)->unionMember(c, p);
+    }
 
     enum CXChildVisitResult topLevel(CXCursor c, CXCursor p) {
         (void)p;
@@ -600,7 +663,10 @@ public:
                 if (clang_isCursorDefinition(c)) emitStructNamed(c, curSpell(c));
                 return CXChildVisit_Continue;
             case CXCursor_UnionDecl:
-                warn("skipping union '" + curSpell(c) + "': unions are not yet ABI-represented");
+                // Named unions emit directly; anonymous ones are emitted under
+                // their typedef name in handleTypedef.
+                if (clang_isCursorDefinition(c) && !curSpell(c).empty())
+                    emitUnionNamed(c, curSpell(c));
                 return CXChildVisit_Continue;
             case CXCursor_EnumDecl:
                 if (clang_isCursorDefinition(c)) emitEnumNamed(c, curSpell(c));
@@ -630,6 +696,23 @@ public:
         return CXChildVisit_Continue;
     }
 
+    enum CXChildVisitResult unionMember(CXCursor c, CXCursor p) {
+        (void)p;
+        if (c.kind != CXCursor_FieldDecl) return CXChildVisit_Continue;
+        if (clang_Cursor_isBitField(c)) { if (unionUnsupported_) *unionUnsupported_ = true; return CXChildVisit_Continue; }
+        UnionMember m;
+        m.name = curSpell(c);
+        m.type = mapType(clang_getCursorType(c), /*forField=*/true);
+        m.size = clang_Type_getSizeOf(clang_getCursorType(c));
+        m.align = static_cast<unsigned>(clang_Type_getAlignOf(clang_getCursorType(c)));
+        if (m.type.empty() || m.size < 0 || m.align == 0) {
+            if (unionUnsupported_) *unionUnsupported_ = true;
+            return CXChildVisit_Continue;
+        }
+        if (unionCtx_) unionCtx_->push_back(std::move(m));
+        return CXChildVisit_Continue;
+    }
+
     bool hasExplicitValue(CXCursor c) {
         CXSourceRange r = clang_getCursorExtent(c);
         CXToken* toks = nullptr;
@@ -656,6 +739,8 @@ public:
     bool* structUnsupported_ = nullptr;
     std::vector<std::string>* enumCtx_ = nullptr;
     bool* enumExplicit_ = nullptr;
+    std::vector<UnionMember>* unionCtx_ = nullptr;
+    bool* unionUnsupported_ = nullptr;
 };
 
 } // namespace
