@@ -76,6 +76,67 @@ static int integerTypeWidth(ast::TypeNode* type) {
     return integerTypeWidthForName(tn->identifier->name);
 }
 
+// Canonical identity for a sized integer type name ("" if not one). Width and
+// signedness fully determine assignability; aliases (i64, Int64, CLong, ...)
+// collapse to the same canonical kind.
+static std::string intCanonicalNameForName(const std::string& name) {
+    if (name == "Int" || name == "Int64" || name == "i64" ||
+        name == "CLong" || name == "CSSize") return "s64";
+    if (name == "UInt64" || name == "u64" || name == "CULong" || name == "CSize") return "u64";
+    if (name == "Int32" || name == "i32" || name == "CInt" ||
+        name == "Rune") return "s32";
+    if (name == "UInt32" || name == "u32" || name == "CUInt") return "u32";
+    if (name == "Int16" || name == "i16" || name == "CShort") return "s16";
+    if (name == "UInt16" || name == "u16" || name == "CUShort") return "u16";
+    if (name == "Int8" || name == "i8" || name == "Char" || name == "CChar") return "s8";
+    if (name == "UInt8" || name == "u8" || name == "CUChar" || name == "Byte") return "u8";
+    return "";
+}
+
+// Canonical integer kind of a sized integer TypeNode ("" if not one).
+static std::string intCanonicalName(ast::TypeNode* type) {
+    if (!type) return "";
+    auto* tn = dynamic_cast<ast::TypeName*>(type);
+    if (!tn || !tn->identifier) return "";
+    return intCanonicalNameForName(tn->identifier->name);
+}
+
+// Numeric range (inclusive, as int64) of a canonical integer kind.
+static bool intCanonicalRange(const std::string& c, int64_t& lo, int64_t& hi) {
+    int bits = 0;
+    bool s = false;
+    if (c == "s64" || c == "u64") { bits = 64; s = (c == "s64"); }
+    else if (c == "s32" || c == "u32") { bits = 32; s = (c == "s32"); }
+    else if (c == "s16" || c == "u16") { bits = 16; s = (c == "s16"); }
+    else if (c == "s8" || c == "u8") { bits = 8; s = (c == "s8"); }
+    else return false;
+    if (s && bits == 64) {
+        lo = INT64_MIN; hi = INT64_MAX;
+    } else if (s) {
+        lo = -(1LL << (bits - 1));
+        hi = (1LL << (bits - 1)) - 1;
+    } else if (bits == 64) {
+        lo = 0; hi = INT64_MAX; // literal is int64; can't represent above LLONG_MAX anyway
+    } else {
+        lo = 0; hi = (1LL << bits) - 1;
+    }
+    return true;
+}
+
+// Does `e` evaluate to a compile-time integer constant (a bare literal or a
+// negated literal)? If so, yields its value.
+static bool intConstantValue(ast::Expression* e, int64_t& out) {
+    if (!e) return false;
+    if (auto lit = dynamic_cast<ast::IntegerLiteral*>(e)) { out = lit->value; return true; }
+    if (auto un = dynamic_cast<ast::UnaryExpression*>(e)) {
+        if (un->op.type == TokenType::MINUS) {
+            int64_t v;
+            if (intConstantValue(un->operand.get(), v)) { out = -v; return true; }
+        }
+    }
+    return false;
+}
+
 // If `type` is an ownership wrapper over a primitive value type, return the
 // underlying primitive type; otherwise return `type` unchanged.
 static ast::TypeNode* unwrapPrimitiveOwnershipType(ast::TypeNode* type) {
@@ -92,6 +153,41 @@ static ast::TypeNode* unwrapPrimitiveOwnershipType(ast::TypeNode* type) {
         return inner;
     }
     return type;
+}
+
+// Result of the explicit integer-assignment check at assignment/init sites.
+enum class IntAssignCode { NotInteger, Ok, NeedExplicitCast, ConstantOutOfRange };
+struct IntAssignCheck {
+    IntAssignCode code;
+    std::string message;
+};
+
+// Integer-assignment policy (variant A): assignment between two different sized
+// integer types is only implicit for a compile-time constant that fits the
+// target; anything else requires an explicit `as`.
+static IntAssignCheck checkIntegerAssignment(ast::TypeNode* targetRaw, ast::TypeNode* sourceRaw,
+                                             ast::Expression* initExpr) {
+    ast::TypeNode* target = unwrapPrimitiveOwnershipType(targetRaw);
+    ast::TypeNode* source = unwrapPrimitiveOwnershipType(sourceRaw);
+    std::string tc = intCanonicalName(target);
+    std::string sc = intCanonicalName(source);
+    if (tc.empty() || sc.empty()) return {IntAssignCode::NotInteger, ""};
+    if (tc == sc) return {IntAssignCode::Ok, ""};
+
+    int64_t cval = 0;
+    if (intConstantValue(initExpr, cval)) {
+        int64_t lo = 0, hi = 0;
+        if (intCanonicalRange(tc, lo, hi)) {
+            if (cval >= lo && cval <= hi) return {IntAssignCode::Ok, ""};
+            return {IntAssignCode::ConstantOutOfRange,
+                    "Integer constant " + std::to_string(cval) + " is out of range for type '" +
+                    (targetRaw ? targetRaw->toString() : tc) + "' in assignment."};
+        }
+    }
+    return {IntAssignCode::NeedExplicitCast,
+            "Cannot implicitly convert '" + (sourceRaw ? sourceRaw->toString() : sc) + "' to '" +
+            (targetRaw ? targetRaw->toString() : tc) + "' in assignment; cast explicitly (e.g. `(v as " +
+            (targetRaw ? targetRaw->toString() : tc) + ")`)."};
 }
 
 static std::string reprCUnsupportedReason(ast::TypeNode* typeNode) {
@@ -1357,7 +1453,13 @@ void SemanticAnalyzer::visit(ast::VariableDeclaration* node) {
             ast::TypeNode* varType = node->typeNode->type ? node->typeNode->type.get() : node->typeNode.get();
             ast::TypeNode* initType = expressionTypes[node->init.get()];
             if (initType) {
-                if (!areTypesCompatible(varType, initType)) {
+                IntAssignCheck chk = checkIntegerAssignment(varType, initType, node->init.get());
+                bool intRejected = chk.code == IntAssignCode::NeedExplicitCast ||
+                                   chk.code == IntAssignCode::ConstantOutOfRange;
+                if (intRejected) {
+                    addError(chk.message, node);
+                } else if (chk.code == IntAssignCode::NotInteger &&
+                           !areTypesCompatible(varType, initType)) {
                     addError("Initializer type does not match variable type for '" + node->id->name + "'. Expected " + varType->toString() + " but got " + initType->toString(), node);
                 }
             }
@@ -3878,8 +3980,18 @@ void SemanticAnalyzer::visit(ast::AssignmentExpression* node) {
         }
     }
 
-    // Check if the types are compatible for assignment
-    if (!areTypesCompatible(leftType, rightType)) {
+    // Integer-width policy: between two different sized integer types, only a
+    // compile-time constant that fits the target is implicit; otherwise require
+    // an explicit `as`. Non-integer assignments fall through to areTypesCompatible.
+    IntAssignCheck chk = checkIntegerAssignment(leftType, rightType, node->right.get());
+    if (chk.code == IntAssignCode::NeedExplicitCast ||
+        chk.code == IntAssignCode::ConstantOutOfRange) {
+        addError(chk.message, node);
+        expressionTypes[node] = nullptr;
+        return;
+    }
+    if (chk.code == IntAssignCode::NotInteger &&
+        !areTypesCompatible(leftType, rightType)) {
         addError("Type error in assignment: incompatible types - cannot assign '" + rightType->toString() +
                 "' to '" + leftType->toString() + "'.", node);
         // Continue processing to avoid cascading errors, but mark this node as erroneous

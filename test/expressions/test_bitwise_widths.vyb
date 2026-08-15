@@ -10,7 +10,7 @@
 main()<Int> -> {
     a<Int8> = 5
     b<Int8> = a | 2                 // literal adapts to Int8 -> 7
-    c<Int8> = 0xFF & 3              // literal on right -> 3
+    c<Int8> = (0xFF & 3) as Int8    // computed Int expr -> Int8 requires explicit as -> 3
     e<UInt8> = 0b100
     f<UInt8> = e | 3                // same-width UInt8<->literal -> 7
     b0<UInt8> = 0x80

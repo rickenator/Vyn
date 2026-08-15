@@ -820,6 +820,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Integer assignment is explicit about width** — a variable, field, or
+  reassignment no longer silently narrows between sized integer types. Assigning
+  a typed value across different widths or signedness (`x<Int8> = wide<Int>`,
+  `x<Int8> = smallU8`, `x<Int> = small<Int8>`) is now a compile error asking for
+  an explicit `as`. A compile-time constant (literal or negated literal) still
+  fits a sized type, but an out-of-range constant (`x<Int8> = 300`, previously a
+  silent truncation to `44`) is now an error too. `Int`/`Int64` and C aliases of
+  the same width/signedness remain interchangeable. Covered by
+  `test/expressions/test_int_assign_policy.vyb`, `test_int_assign_range.vyb`,
+  and `test_int_assign_implicit.vyb`.
 - **Bitwise operators reject mismatched typed integer widths** — combining two
   typed integers of different widths with `|`/`&`/`^`/`<<`/`>>` (or their
   compound-assign forms `&=`/`|=`/`^=`/`<<=`/`>>=`) is now a compile error that

@@ -1,0 +1,18 @@
+// @test: Integer assignment requires explicit widths (fits + as)
+// @description: A sized integer accepts only a compile-time constant that fits
+//   its range; any other width/signedness change needs an explicit `as`.
+// @category: expressions, types
+// @expect: pass
+// @expect-return: 0
+// @expect-output: d=3 e=250 f=3
+
+main()<Int> -> {
+    a<Int8> = 3            // in-range constant
+    b<Int8> = -5           // negative constant fits signed target
+    c<UInt8> = 250         // in-range for unsigned target
+    d<Int> = a as Int      // explicit widening (sign-extend)
+    e<UInt64> = c as UInt64 // explicit widening (zero-extend)
+    f<Int8> = (0xFF & 3) as Int8   // computed Int expr needs explicit cast -> 3
+    println("d={} e={} f={}".format(d, e as Int, f))
+    return 0
+}

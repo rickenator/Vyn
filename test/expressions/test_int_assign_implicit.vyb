@@ -1,0 +1,17 @@
+// @test: Integer width/signedness conversion needs explicit as
+// @description: assigning a typed value across widths or signedness is a compile
+//   error; cast explicitly.
+// @category: expressions, types
+// @expect: fail
+// @semantic-only: true
+// @expect-error: Cannot implicitly convert
+
+main()<Int> -> {
+    wide<Int> = 1000
+    x<Int8> = wide          // typed narrowing
+    s<Int8> = -5
+    u<UInt8> = s            // same-width signedness change
+    small<Int8> = 7
+    y<Int> = small          // typed widening
+    return 0
+}

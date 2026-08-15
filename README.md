@@ -1057,6 +1057,10 @@ open_and_process()<Int> -> {
 - **Integer casts**: `value as Type` between the sized integer types — widening
   sign/zero-extends from the source type, narrowing truncates. E.g. packing eight
   `UInt8` into an `Int64`: `(b0 as Int64) | ((b1 as Int64) << 8) | ...`.
+- **Explicit integer assignment**: a variable/field may only change integer
+  width or signedness through `as`; a bare in-range constant still fits
+  (`x<Int8> = 3`), but an out-of-range constant or any typed value crossing
+  width/signedness is a compile error (`x<Int8> = 300`, `x<Int8> = wide<Int>`).
 
 **Current Collection Types**:
 - **Fixed arrays**: `[T; N]` with compile-time size
