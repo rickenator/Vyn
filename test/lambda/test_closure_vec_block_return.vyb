@@ -1,0 +1,53 @@
+// @test: closure capturing Vec with a block return
+// @description: A block lambda that captures a Vec and returns from an explicit
+//   return statement (and from inside a trap handler) compiles and runs. This
+//   exercises lambda scope isolation so a lambda's return only cleans up its own
+//   scopes, not the enclosing function's variables.
+// @category: lambda, closure, capture, vec, trap, safety
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import collections
+
+failable(v<Vec<Int>>)<Int> -> {
+    fail<String>("unwrap")
+}
+
+main()<Int> -> {
+    v<Vec<Int>> = Vec()
+    v.push(1); v.push(2); v.push(3)
+
+    # Block lambda capturing a Vec, value returned via explicit return.
+    head<fn(Int) -> Int> = |x<Int>| -> {
+        return v.get(0)
+    }
+    if (head(0) != 1) { return 1 }
+
+    # Same, but the return happens inside a trap handler after a call that fails.
+    guarded<fn(Int) -> Int> = |x<Int>| -> {
+        {
+            failable(v)
+        } trap (e<String>) -> {
+            return -1
+        }
+        return v.get(2)
+    }
+    if (guarded(0) != -1) { return 2 }
+    if (v.len() != 3) { return 3 }
+
+    # Iterating a captured Vec inside a block lambda with a return.
+    sum<fn(Int) -> Int> = |x<Int>| -> {
+        total<Int> = 0
+        i<Int> = 0
+        for (i = 0; i < v.len(); i = i + 1) {
+            total = total + v.get(i)
+        }
+        return total
+    }
+    if (sum(0) != 6) { return 4 }
+
+    println("ok")
+    return 0
+}

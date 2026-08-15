@@ -4698,9 +4698,17 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
         paramNames.push_back(param.name ? param.name->name : "param" + std::to_string(paramNames.size()));
     }
 
-    // Infer return type.
+    // Infer return type from the semantic FunctionType the analyzer attached to
+    // this lambda (its returnType reflects explicit `return` statements for block
+    // bodies). Prefer that over node->body->type, which is null when a block ends
+    // in a `return` statement (rather than a tail expression).
     llvm::Type* returnType = llvm::Type::getVoidTy(*context);
-    if (node->body && node->body->type) {
+    if (auto* ft = dynamic_cast<ast::FunctionType*>(node->type.get())) {
+        if (ft->returnType) {
+            llvm::Type* t = codegenType(ft->returnType.get());
+            if (t) returnType = t;
+        }
+    } else if (node->body && node->body->type) {
         llvm::Type* inferredType = codegenType(node->body->type.get());
         if (inferredType && !inferredType->isVoidTy()) {
             returnType = inferredType;
@@ -4772,6 +4780,17 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
     generatePushFrameCall(funcName, node->loc);
     namedValues.clear();
     mutableCaptureOuterPointers.clear();
+    // Isolate scope management from the enclosing function. A lambda body lives
+    // in its own LLVM function, but the scope stack / function baseline are
+    // shared members; without isolating them, a `return` inside the lambda runs
+    // exitToFunctionBaseline() against the *enclosing* function's baseline and
+    // cleans up the enclosing variables, emitting loads of their allocas (which
+    // live in a different function) inside the lambda - an LLVM dominance error.
+    auto savedLambdaScopeStack = scopeStack;
+    size_t savedLambdaBaseline = m_functionScopeBaseline;
+    scopeStack.clear();
+    m_functionScopeBaseline = 0;
+    enterScope();
 
     // Prologue: reload each capture from the env into a local alloca so the
     // generic identifier lookup resolves them. Mutable captures remember the
@@ -4888,6 +4907,8 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
         builder->SetInsertPoint(savedBlock);
         namedValues = savedNamedValues;
         mutableCaptureOuterPointers = savedMutableCaptureOuterPointers;
+        scopeStack = savedLambdaScopeStack;
+        m_functionScopeBaseline = savedLambdaBaseline;
         return;
     }
 
@@ -4898,6 +4919,8 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
     builder->SetInsertPoint(savedBlock);
     namedValues = savedNamedValues;
     mutableCaptureOuterPointers = savedMutableCaptureOuterPointers;
+    scopeStack = savedLambdaScopeStack;
+    m_functionScopeBaseline = savedLambdaBaseline;
 
     llvm::Value* envPtr = llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0));
     if (envStructType) {
