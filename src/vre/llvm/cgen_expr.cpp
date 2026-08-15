@@ -1464,6 +1464,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                         }
 
                         size_t argStart = isQualifiedAspectCall ? 1u : 0u;
+                        std::vector<llvm::Value*> transientClosures;
                         for (size_t i = argStart; i < node->arguments.size(); ++i) {
                             auto& arg = node->arguments[i];
                             arg->accept(*this);
@@ -1473,6 +1474,18 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                                 return;
                             }
                             llvm::Value* argVal = m_currentLLVMValue;
+                            // A fresh closure literal passed as an argument starts
+                            // with a zero refcount; an aspect/trait method borrows it
+                            // but does not retain/release the env (it only calls the
+                            // fn). Retain each such argument before the call and
+                            // release it after so the transient environment is
+                            // reclaimed instead of leaking.
+                            if (dynamic_cast<ast::FunctionExpression*>(arg.get()) &&
+                                argVal->getType()->isStructTy() &&
+                                isClosureStructType(argVal->getType())) {
+                                retainClosureValue(argVal);
+                                transientClosures.push_back(argVal);
+                            }
                             // When the parameter is a Vyb String { ptr, len } and the
                             // evaluated argument is a raw char* (e.g. to_string(),
                             // substring, concat), wrap it into the String struct;
@@ -1497,6 +1510,9 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                             m_currentLLVMValue = nullptr;
                         } else {
                             m_currentLLVMValue = builder->CreateCall(implFunc, argValues, "aspect.method.result");
+                        }
+                        for (auto* tc : transientClosures) {
+                            releaseClosureValue(tc);
                         }
 
                         VYB_CDBG << "DEBUG: Successfully generated call to aspect method: "
@@ -3561,6 +3577,23 @@ void LLVMCodegen::visit(vyb::ast::AssignmentExpression *node) {
         }
     }
 
+    // A `my<Struct>` field (or binding) exclusively owns a heap allocation that
+    // is stored as a `T*`. Overwriting it must release the outgoing allocation
+    // (mirroring scope-exit reclaim) or the replaced struct leaks. Recursively
+    // reclaim owned fields inside the pointed-to struct before freeing the block.
+    bool myOverwrite = false;
+    llvm::Value* oldMyPtr = nullptr;
+    const vyb::ast::TypeNode* myPointeeAst = nullptr;
+    if (lhsTypeNode && destPointeeType && destPointeeType->isPointerTy() &&
+        isMyOwnedStructTypeNode(lhsTypeNode.get())) {
+        myPointeeAst = myPointeeOf(lhsTypeNode.get());
+        if (myPointeeAst) {
+            myOverwrite = true;
+            llvm::PointerType* rawPtrTy = llvm::PointerType::get(*context, 0);
+            oldMyPtr = builder->CreateLoad(rawPtrTy, LHS, "assign.old_myp");
+        }
+    }
+
     // Create the store instruction with proper alignment
     builder->CreateStore(RHS, LHS);
     writeThroughMutable(RHS);
@@ -3590,6 +3623,27 @@ void LLVMCodegen::visit(vyb::ast::AssignmentExpression *node) {
             releaseStringElements(oldData, oldSize);
         }
         builder->CreateCall(getOrCreateFreeFunction(), {oldData});
+        builder->CreateBr(contBB);
+        builder->SetInsertPoint(contBB);
+    }
+    if (myOverwrite && oldMyPtr && myPointeeAst) {
+        llvm::PointerType* rawPtrTy = llvm::PointerType::get(*context, 0);
+        llvm::Constant* nullPtr = llvm::ConstantPointerNull::get(rawPtrTy);
+        llvm::Value* isNotNull = builder->CreateICmpNE(oldMyPtr, nullPtr, "assign.myp_not_null");
+        llvm::Value* notSelf = llvm::ConstantInt::get(llvm::Type::getInt1Ty(*context), 1);
+        if (RHS->getType()->isPointerTy()) {
+            notSelf = builder->CreateICmpNE(oldMyPtr, RHS, "assign.myp_not_self");
+        }
+        llvm::Value* shouldFree = builder->CreateAnd(isNotNull, notSelf, "assign.myp_should_free");
+        llvm::BasicBlock* freeBB = llvm::BasicBlock::Create(*context, "assign.myp_free", currentFunction);
+        llvm::BasicBlock* contBB = llvm::BasicBlock::Create(*context, "assign.myp_cont", currentFunction);
+        builder->CreateCondBr(shouldFree, freeBB, contBB);
+        builder->SetInsertPoint(freeBB);
+        llvm::Type* pointeeTy = codegenType(const_cast<vyb::ast::TypeNode*>(myPointeeAst));
+        if (auto* pois = llvm::dyn_cast<llvm::StructType>(pointeeTy)) {
+            reclaimOwnedStructAt(oldMyPtr, myPointeeAst, pois);
+        }
+        builder->CreateCall(getOrCreateFreeFunction(), {oldMyPtr});
         builder->CreateBr(contBB);
         builder->SetInsertPoint(contBB);
     }

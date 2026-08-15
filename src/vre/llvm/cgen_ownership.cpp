@@ -519,6 +519,16 @@ bool isOwnedFieldString(const vyb::ast::TypeNode* tn) {
 bool isRefTypeNode(const vyb::ast::TypeNode* tn, const std::string& kind) {
     return ownedFieldTypeBase(tn) == kind;
 }
+// For a `my<T>` type node, return the pointee type node `T` (or nullptr if the
+// node is not a `my<T>` TypeName). A `my` field over a struct type is heap-backed
+// (the generated code stores a `T*` in the field), so it must be reclaimed.
+const vyb::ast::TypeNode* myTypeArg(const vyb::ast::TypeNode* tn) {
+    if (ownedFieldTypeBase(tn) != "my") return nullptr;
+    if (const auto* nn = dynamic_cast<const vyb::ast::TypeName*>(tn)) {
+        if (nn->genericArgs.size() == 1) return nn->genericArgs[0].get();
+    }
+    return nullptr;
+}
 bool isVecTypeNode(const vyb::ast::TypeNode* tn) {
     if (dynamic_cast<const vyb::ast::VecType*>(tn)) return true;
     return ownedFieldTypeBase(tn) == "Vec";
@@ -571,12 +581,25 @@ bool LLVMCodegen::isKnownStructTypeNode(const vyb::ast::TypeNode* tn) const {
     return genericStructTemplates.count(base) != 0;
 }
 
+bool LLVMCodegen::isMyOwnedStructTypeNode(const vyb::ast::TypeNode* tn) const {
+    const vyb::ast::TypeNode* arg = myTypeArg(tn);
+    return arg != nullptr && isKnownStructTypeNode(arg);
+}
+
+const vyb::ast::TypeNode* LLVMCodegen::myPointeeOf(const vyb::ast::TypeNode* tn) const {
+    return myTypeArg(tn);
+}
+
 bool LLVMCodegen::structTypeHasOwnedFields(const vyb::ast::TypeNode* astType) const {
     std::vector<vyb::ast::TypeNodePtr> fields;
     if (!collectStructConcreteFieldTypes(astType, fields)) return false;
     for (const auto& f : fields) {
         if (!f) continue;
         if (isVecTypeNode(f.get()) || isOwnedFieldString(f.get())) return true;
+        // A `my<Struct>` field owns a heap allocation; reclaim it on scope exit so
+        // the pointed-to struct (and any of its owned fields) is freed once the
+        // owning binding drops.
+        if (isMyOwnedStructTypeNode(f.get())) return true;
         // our/mild ref fields claim a refcount on a shared control block; releasing
         // it on scope exit requires cleanup (so the control block is freed once the
         // last owner is dropped).
@@ -598,9 +621,25 @@ bool LLVMCodegen::scopeVarIsOwnedStruct(const ScopeVariable& var) const {
 void LLVMCodegen::reclaimOwnedStructAt(llvm::Value* structPtr,
                                        const vyb::ast::TypeNode* astType,
                                        llvm::StructType* llvmTy) {
+    std::set<std::string> visited;
+    reclaimStructOwnedFieldsAt(structPtr, astType, llvmTy, visited);
+}
+
+void LLVMCodegen::reclaimStructOwnedFieldsAt(llvm::Value* structPtr,
+                                             const vyb::ast::TypeNode* astType,
+                                             llvm::StructType* llvmTy,
+                                             std::set<std::string>& visited) {
     if (!structPtr || !astType || !llvmTy || !builder || !currentFunction) return;
+    // Guard against structurally self-referential `my<Struct>` graphs (e.g. a
+    // linked TreeNode holding a `my<TreeNode>`). Inlining the reclaim of an
+    // arbitrarily deep linked structure would recurse forever at codegen time,
+    // so only descend through a given struct type once per reclaim path; a
+    // repeated type is still freed, just without diving into its own owned fields.
+    std::string selfBase = ownedFieldTypeBase(astType);
+    if (!selfBase.empty() && visited.count(selfBase)) return;
+    if (!selfBase.empty()) visited.insert(selfBase);
     std::vector<vyb::ast::TypeNodePtr> fields;
-    if (!collectStructConcreteFieldTypes(astType, fields)) return;
+    if (collectStructConcreteFieldTypes(astType, fields)) {
     size_t n = std::min(fields.size(), (size_t)llvmTy->getNumElements());
     llvm::PointerType* rawPtr = llvm::PointerType::get(*context, 0);
     llvm::Constant* zero = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 0);
@@ -642,6 +681,29 @@ void LLVMCodegen::reclaimOwnedStructAt(llvm::Value* structPtr,
             clr = builder->CreateInsertValue(clr, nullPtr, 0);
             clr = builder->CreateInsertValue(clr, zero, 1);
             builder->CreateStore(clr, fptr);
+        } else if (const vyb::ast::TypeNode* myArg = myTypeArg(f)) {
+            // A `my<Struct>` field owns a heap allocation. Release any owned fields
+            // inside the pointed-to struct, then free the heap block and null the
+            // slot so an overwrite/scope-exit double-reclaim is safe.
+            if (fLLVM->isPointerTy() && isMyOwnedStructTypeNode(f)) {
+                llvm::Type* pointeeTy = codegenType(const_cast<vyb::ast::TypeNode*>(myArg));
+                if (auto* pois = llvm::dyn_cast<llvm::StructType>(pointeeTy)) {
+                    llvm::Value* heapPtr = builder->CreateLoad(rawPtr, fptr, "reclaim.myptr");
+                    llvm::Value* isNull =
+                        builder->CreateICmpEQ(heapPtr, nullPtr, "reclaim.mynull");
+                    llvm::BasicBlock* freeBB =
+                        llvm::BasicBlock::Create(*context, "reclaim.my.free", currentFunction);
+                    llvm::BasicBlock* contBB =
+                        llvm::BasicBlock::Create(*context, "reclaim.my.cont", currentFunction);
+                    builder->CreateCondBr(isNull, contBB, freeBB);
+                    builder->SetInsertPoint(freeBB);
+                    reclaimStructOwnedFieldsAt(heapPtr, myArg, pois, visited);
+                    builder->CreateCall(getOrCreateFreeFunction(), {heapPtr});
+                    builder->CreateBr(contBB);
+                    builder->SetInsertPoint(contBB);
+                    builder->CreateStore(nullPtr, fptr);
+                }
+            }
         } else if (isRefTypeNode(f, "mild") || isRefTypeNode(f, "our")) {
             // A ref field claims a count on a shared control block. Release it on
             // scope exit so the control block is freed once the last owner drops.
@@ -655,10 +717,12 @@ void LLVMCodegen::reclaimOwnedStructAt(llvm::Value* structPtr,
             builder->CreateStore(nullPtr, fptr);
         } else if (isKnownStructTypeNode(f)) {
             if (auto* st3 = llvm::dyn_cast<llvm::StructType>(fLLVM)) {
-                reclaimOwnedStructAt(fptr, f, st3);
+                reclaimStructOwnedFieldsAt(fptr, f, st3, visited);
             }
         }
     }
+    }
+    if (!selfBase.empty()) visited.erase(selfBase);
 }
 
 

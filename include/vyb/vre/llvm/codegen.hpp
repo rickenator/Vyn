@@ -454,10 +454,14 @@ private:
                                          std::vector<vyb::ast::TypeNodePtr>& out) const;
     bool isVecOfStringTypeNode(const vyb::ast::TypeNode* tn) const;
     bool isKnownStructTypeNode(const vyb::ast::TypeNode* tn) const;
+    bool isMyOwnedStructTypeNode(const vyb::ast::TypeNode* tn) const;
+    const vyb::ast::TypeNode* myPointeeOf(const vyb::ast::TypeNode* tn) const;
     bool structTypeHasOwnedFields(const vyb::ast::TypeNode* astType) const;
     bool scopeVarIsOwnedStruct(const ScopeVariable& var) const;
     void reclaimOwnedStructAt(llvm::Value* structPtr, const vyb::ast::TypeNode* astType,
                               llvm::StructType* llvmTy);
+    void reclaimStructOwnedFieldsAt(llvm::Value* structPtr, const vyb::ast::TypeNode* astType,
+                                    llvm::StructType* llvmTy, std::set<std::string>& visited);
 
     // Release an `our`/`mild` refcount control block (shared by top-level
     // bindings and struct fields). `controlBlockPtr` may be null.

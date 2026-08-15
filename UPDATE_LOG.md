@@ -3,6 +3,22 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-14: **Memory-leak hardening pass** over the runtime/ownership/closure paths.
+  `__vyb_string_from_string` now registers its `strdup` copy so `String::from_string`
+  is reclaimed like the other producers; `my<Struct>` struct fields are now reclaimed on
+  scope exit and on overwrite (with a visited-type guard so self-referential linked
+  structs such as a `TreeNode { left<my<TreeNode>> }` terminate instead of recursing at
+  codegen time); and fresh closure-literal arguments passed to aspect/trait methods
+  (`map`/`filter`/`reduce`) are retained before the call and released after so their
+  transient capture environments no longer leak. Verified leak-free under ASAN on
+  `conversion_test`, `test_simple_tree`, `test_closure_capture`, and the nested-`my`
+  case; full suite steady at 854/858 (remaining failures pre-existing trap/vec tests).
+  **Tooling note — valgrind:** ASAN/LSan reports leaks only for unreachable blocks, so
+  a reachable-but-orphaned closure env or `my<T>` binding can go underreported. Once
+  valgrind is installed, run `valgrind --leak-check=full --error-exitcode=1 <build>/vyb
+  <file>` from the repo root (VYB_STDLIB=stdlib) as a complementary whole-process leak
+  check over JIT-compiled code; add it to the memory-hygiene test loop alongside ASAN.
+  Not installed on this host (`valgrind` absent), so not adopted in CI yet.
 - 2026-08-13: **Aspect inheritance (super-aspects)**. `aspect Comparable : Equatable` now
   parses and registers super-aspects; super-aspect names are validated against defined
   aspects, cyclic super-aspect dependencies are rejected, and binding a sub-aspect requires
