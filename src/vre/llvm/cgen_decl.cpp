@@ -333,6 +333,16 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
             VYB_CDBG << "DEBUG: Variable '" << node->id->name << "' is a closure - needs cleanup" << std::endl;
         }
 
+        // An owning (`my`) String binding holds one reference to a heap buffer.
+        // Borrowed (`their`) strings must not be reference counted. Globals are
+        // not in a scope so they never run cleanup; declaring one is fine here
+        // but irrelevant (no scope-based release is ever emitted for them).
+        bool stringVar = isVybStringStructType(varType) && ownership == ast::OwnershipKind::MY;
+        if (stringVar) {
+            needsCleanup = true;
+            VYB_CDBG << "DEBUG: Variable '" << node->id->name << "' is a String - needs cleanup" << std::endl;
+        }
+
         // Register variable for scope-based cleanup
         registerVariable(node->id->name, alloca, initialVal, ownership, varType, needsCleanup);
 
@@ -349,6 +359,18 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
                 VYB_CDBG << "DEBUG: Closure variable '" << node->id->name << "' retained a shared env" << std::endl;
             } else {
                 VYB_CDBG << "DEBUG: Closure variable '" << node->id->name << "' took over a returned env" << std::endl;
+            }
+        }
+
+        // A String binding takes over the producing expression's single owned
+        // reference when the initial value is a freshly-created transfer (concat,
+        // to_string, or a String-returning call); any other borrowing source is
+        // shared, so the binding retains (+1) its own reference here. Scope exit
+        // (cleanupVariable) releases it.
+        if (stringVar) {
+            if (!exprIsStringTransfer(node->init.get())) {
+                retainStringValue(initialVal);
+                VYB_CDBG << "DEBUG: String variable '" << node->id->name << "' retained a shared buffer" << std::endl;
             }
         }
 
@@ -605,6 +627,16 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
         // Record the scope-stack depth before this function adds its own scopes,
         // so a `return` can clean up to exactly this baseline (never the caller's).
         m_functionScopeBaseline = scopeStack.size();
+        // Snapshot the scope stack so the function's own scopes (parameters and
+        // locals) can be discarded verbatim after its body is generated. A
+        // lazily-generated function (e.g. a monomorphized aspect/bind method
+        // emitted in the middle of its caller's body) otherwise leaves its
+        // parameter scopes on the shared stack, and the surrounding caller's
+        // return-path cleanup then releases allocas belonging to other functions
+        // - an LLVM dominance violation. The mono/trait and lambda paths already
+        // discard their scopes this way; the plain FunctionDeclaration path must
+        // match so String/closure/Vec parameter refcounts never cross functions.
+        auto savedFunctionScopeStack = scopeStack;
         // Initialize scope management for function body
         enterScope();
 
@@ -673,10 +705,19 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
                 VYB_CDBG << "DEBUG: Parameter '" << paramNames[i] << "' is a closure - retained env" << std::endl;
             }
 
+            // A String parameter takes a reference to the (possibly shared) buffer
+            // passed by the caller, balanced by the callee releasing it on scope
+            // exit, so the callee's use is independent of the argument's lifetime.
+            bool stringParam = isVybStringStructType(paramTypes[i]);
+            if (stringParam) {
+                retainStringValue(argVal);
+                VYB_CDBG << "DEBUG: Parameter '" << paramNames[i] << "' is a String - retained buffer" << std::endl;
+            }
+
             // Register parameter for scope-based cleanup.
             // Vec parameters now own their data (deep-copied above) so they need cleanup.
             // Non-Vec parameters do not own heap data and are cleaned up by the caller.
-            registerVariable(paramNames[i], alloca, argVal, ast::OwnershipKind::MY, paramTypes[i], vecParam || closureParam);
+            registerVariable(paramNames[i], alloca, argVal, ast::OwnershipKind::MY, paramTypes[i], vecParam || closureParam || stringParam);
 
             // Create debug information for the parameter
             if (debugBuilder && !debugScopeStack.empty()) {
@@ -785,6 +826,14 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
         // Restore the caller's trap contexts now that this function's body is done.
         trapStack.swap(savedTrapStack);
         currentTrapHandlerIndex = savedTrapHandlerIndex;
+
+        // Discard any scopes this function's body left behind (parameters and
+        // locals that an explicit-`return` path already emitted cleanup for but
+        // whose bookkeeping was restored by exitToFunctionBaseline). Restoring
+        // the enclosing caller's scope stack wholesale - exactly like the mono
+        // and trait paths - prevents one function's parameter scopes from being
+        // re-cleaned inside a surrounding function's body.
+        scopeStack = std::move(savedFunctionScopeStack);
     } // else it's a forward declaration or extern, no body to generate now.
 
     // Restore outer scope and async state

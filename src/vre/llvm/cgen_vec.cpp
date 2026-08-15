@@ -93,6 +93,15 @@ void LLVMCodegen::handleVecPush(vyb::ast::CallExpression* node, llvm::Value* vec
     // Get element type from the value being pushed
     llvm::Type* elementType = valueToAdd->getType();
 
+    // The Vec slot will hold its own reference to a pushed String binding. A
+    // freshly-created String (concat / to_string / a String-returning call)
+    // hands its single owned reference to the Vec as-is; any other (borrowed)
+    // source must be retained (+1) so the element outlives the producing scope.
+    if (elementType && isVybStringStructType(elementType) &&
+        !exprIsStringTransfer(node->arguments[0].get())) {
+        retainStringValue(valueToAdd);
+    }
+
     // Calculate the actual element size using DataLayout
     llvm::DataLayout dataLayout(module.get());
     uint64_t elementSizeBytes = dataLayout.getTypeAllocSize(elementType);
@@ -417,6 +426,18 @@ void LLVMCodegen::handleVecSet(vyb::ast::CallExpression* node, llvm::Value* vecP
     llvm::Value* elementSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), elementSizeBytes);
     llvm::Value* offset = builder->CreateMul(index, elementSize, "vec.set.offset");
     llvm::Value* elementPtr = builder->CreateGEP(llvm::Type::getInt8Ty(*context), dataPtr, offset, "vec.set.element_ptr");
+
+    // String elements: the overwritten slot's reference is dropped and the new
+    // value is stored with its own reference (a fresh transfer already owns one;
+    // a borrowed source must be retained).
+    if (elementLLVMType && isVybStringStructType(elementLLVMType)) {
+        llvm::Value* oldElem = builder->CreateLoad(elementLLVMType, elementPtr, "vec.set.old_elem");
+        releaseStringValue(oldElem);
+        if (!exprIsStringTransfer(node->arguments[1].get())) {
+            retainStringValue(value);
+        }
+    }
+
     builder->CreateStore(value, elementPtr);
 
     m_currentLLVMValue = nullptr;
@@ -471,6 +492,20 @@ void LLVMCodegen::handleVecClear(vyb::ast::CallExpression* node, llvm::Value* ve
         logError(node->loc, "Vec::clear expects no arguments");
         m_currentLLVMValue = nullptr;
         return;
+    }
+
+    // If the Vec holds String elements, each element's reference must be dropped
+    // before the storage is logically emptied, or the buffers would leak.
+    llvm::Type* elemType = nullptr;
+    if (node->type) {
+        elemType = codegenType(node->type.get());
+    }
+    if (elemType && isVybStringStructType(elemType)) {
+        llvm::Value* dataFieldPtr = builder->CreateStructGEP(vecStructType, vecPtr, 0, "vec.clear.data_ptr");
+        llvm::Value* sizeFieldPtrC = builder->CreateStructGEP(vecStructType, vecPtr, 1, "vec.clear.size_ptr");
+        llvm::Value* dataPtr = builder->CreateLoad(llvm::PointerType::get(*context, 0), dataFieldPtr, "vec.clear.data");
+        llvm::Value* curSize = builder->CreateLoad(llvm::Type::getInt64Ty(*context), sizeFieldPtrC, "vec.clear.size");
+        releaseStringElements(dataPtr, curSize);
     }
 
     // Get pointer to size field and set to 0

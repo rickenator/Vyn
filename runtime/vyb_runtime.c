@@ -17,37 +17,85 @@
 // ============================================================================
 // CORE RUNTIME SHIMS USED BY NATIVE BUILDS
 // ============================================================================
-// HEAP-STRING REGISTRY
+// HEAP-STRING REFERENCE COUNTING
 // ============================================================================
-// The runtime string producers (to_string / concat / serialization) hand back
-// freshly allocated char* buffers that Vyb's generated code may or may not free.
-// We keep a registry of those live buffers so codegen can call
-// __vyb_string_free() unconditionally on a serialization/string value: freeing
-// is a safe no-op for pointers we did not allocate (e.g. literals in .rodata),
-// and a second free of an already-freed buffer is also a no-op (no double free).
+// The runtime string producers (to_string / concat) hand back freshly allocated
+// char* buffers that generated code shares across variables, parameters, Vec
+// elements, and temporaries. Because a String value is a shallow { ptr, len }
+// that many holders may point at, every heap buffer is reference counted in a
+// registry: each hold calls __vyb_string_retain() when it takes a reference and
+// __vyb_string_release() when it drops one (freeing only when the last
+// reference goes away). Pointers we never allocated (string literals in
+// .rodata) are not in the registry, so retain/release are safe no-ops for them.
+// The table has a large fixed capacity — fine for desktop/lifetime-of-program
+// use; swap in a dynamic table when scaling memory-heavy workloads later.
 #define VYB_STR_REG_CAP 262144
-static void* vyb_str_reg[VYB_STR_REG_CAP] = {0};
-static void vyb_str_registry_insert(void* p) {
-    if (!p) return;
+typedef struct { void* p; int64_t refs; } vyb_str_ref;
+static vyb_str_ref vyb_str_reg[VYB_STR_REG_CAP] = {0};
+
+static vyb_str_ref* vyb_str_lookup_slot(void* p) {
+    if (!p) return NULL;
     size_t h = (size_t)((uintptr_t)p / 16) ^ ((size_t)(uintptr_t)p / 4096);
     h &= VYB_STR_REG_CAP - 1;
     for (size_t i = 0; i < VYB_STR_REG_CAP; ++i) {
         size_t idx = (h + i) & (VYB_STR_REG_CAP - 1);
-        if (vyb_str_reg[idx] == NULL) { vyb_str_reg[idx] = p; return; }
-        if (vyb_str_reg[idx] == p) return;
+        if (vyb_str_reg[idx].p == NULL || vyb_str_reg[idx].p == p) return &vyb_str_reg[idx];
+    }
+    return NULL; // table full — buffer becomes invisible to reference counting
+}
+
+// Register a just-created heap buffer with an initial reference count of 1.
+VYB_WEAK void __vyb_string_register(void* p) {
+    vyb_str_ref* s = vyb_str_lookup_slot(p);
+    if (!s) return;
+    if (s->p == NULL) { s->p = p; s->refs = 1; }
+}
+
+// Take one reference on a buffer (untracked = literal/foreign -> no-op).
+VYB_WEAK void* __vyb_string_retain(void* p) {
+    vyb_str_ref* s = vyb_str_lookup_slot(p);
+    if (!s || s->p == NULL) return p;
+    s->refs++;
+    return p;
+}
+
+// Drop one reference; free the buffer when the last reference is released.
+VYB_WEAK void __vyb_string_release(void* p) {
+    if (!p) return;
+    vyb_str_ref* s = vyb_str_lookup_slot(p);
+    if (!s || s->p == NULL) return;
+    if (--s->refs <= 0) {
+        s->p = NULL;
+        s->refs = 0;
+        free(p);
     }
 }
-VYB_WEAK void __vyb_string_register(void* p) { vyb_str_registry_insert(p); }
 
-VYB_WEAK void __vyb_string_free(void* p) {
-    if (!p) return;
-    size_t h = (size_t)((uintptr_t)p / 16) ^ ((size_t)(uintptr_t)p / 4096);
-    h &= VYB_STR_REG_CAP - 1;
-    for (size_t i = 0; i < VYB_STR_REG_CAP; ++i) {
-        size_t idx = (h + i) & (VYB_STR_REG_CAP - 1);
-        if (vyb_str_reg[idx] == p) { vyb_str_reg[idx] = NULL; free(p); return; }
-        if (vyb_str_reg[idx] == NULL) return;   // not allocated by us
-    }
+// Compatibility alias: existing "__vyb_string_free" calls drop one reference
+// (the current release semantic).
+VYB_WEAK void __vyb_string_free(void* p) { __vyb_string_release(p); }
+
+// A Vyb String stored as a Vec element is the shallow `{ char* data; i64 len }`
+// struct. The generated code retains each String it places into a Vec (push /
+// set) and, when a whole Vec is dropped (clear / scope exit / deep-copy teardown),
+// releases every element with these bulk helpers. Element strings that the code
+// generated into these buffers always start with field 0 = the char* data ptr.
+typedef struct { char* data; int64_t len; } vyb_str_elem;
+
+// Drop one reference on each of the first `n` String elements in `arr`.
+VYB_WEAK void __vyb_string_release_each(void* arr, int64_t n) {
+    if (!arr || n <= 0) return;
+    vyb_str_elem* e = (vyb_str_elem*)arr;
+    for (int64_t i = 0; i < n; ++i) __vyb_string_release(e[i].data);
+}
+
+// Take one reference on each of the first `n` String elements in `arr` (used when
+// the same elements are shallow-copied into an independent buffer that will own
+// its own references).
+VYB_WEAK void __vyb_string_retain_each(void* arr, int64_t n) {
+    if (!arr || n <= 0) return;
+    vyb_str_elem* e = (vyb_str_elem*)arr;
+    for (int64_t i = 0; i < n; ++i) __vyb_string_retain(e[i].data);
 }
 
 // ============================================================================

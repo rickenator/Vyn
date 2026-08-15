@@ -6,6 +6,27 @@
 
 using namespace vyb;
 
+// Detect whether an AST type node is `Vec<String>` (either the VecType form or a
+// TypeName "Vec" with a single `String` argument). The element identity cannot be
+// recovered from the Vec struct's LLVM type ({ ptr, i64, i64 } is element-erased),
+// so the AST type stored in valueTypeMap is the authoritative source.
+static bool typeNodeIsVecOfString(const vyb::ast::TypeNode* tn) {
+    if (!tn) return false;
+    const vyb::ast::TypeNode* elem = nullptr;
+    if (auto* vt = dynamic_cast<const vyb::ast::VecType*>(tn)) {
+        elem = vt->elementType.get();
+    } else if (auto* name = dynamic_cast<const vyb::ast::TypeName*>(tn)) {
+        if (name->identifier && name->identifier->name == "Vec" && !name->genericArgs.empty()) {
+            elem = name->genericArgs[0].get();
+        }
+    }
+    if (!elem) return false;
+    if (auto* en = dynamic_cast<const vyb::ast::TypeName*>(elem)) {
+        if (en->identifier && en->identifier->name == "String") return true;
+    }
+    return false;
+}
+
 // ============================================================================
 // CONTROL BLOCK STRUCTURE FOR our<T> AND mild<T>
 // ============================================================================
@@ -154,6 +175,18 @@ void LLVMCodegen::cleanupVariable(const ScopeVariable& var) {
     switch (var.ownership) {
         case ast::OwnershipKind::MY: {
             // Unique ownership - immediate cleanup
+            // A String binding holds one reference to a heap buffer (only when
+            // needsCleanup was set for a String-typed binding); release it here.
+            // Untracked pointers (literals) and shared buffers whose last holder
+            // is a sibling are handled by the registry's reference counting.
+            if (isVybStringStructType(var.type)) {
+                if (!var.allocaInst || !builder || !currentFunction) {
+                    return;
+                }
+                VYB_CDBG << "DEBUG: Performing String cleanup for variable: " << var.name << std::endl;
+                releaseStringAlloca(var.allocaInst);
+                return;
+            }
             if (var.isVecWithMallocData) {
                 VYB_CDBG << "DEBUG: Performing MY cleanup for Vec with malloc'd data: " << var.name << std::endl;
 
@@ -169,6 +202,13 @@ void LLVMCodegen::cleanupVariable(const ScopeVariable& var) {
                 // Extract the data pointer (field 0) from the Vec struct
                 llvm::Value* dataPtr = builder->CreateExtractValue(vecPtr, 0, var.name + "_data_ptr");
 
+                // A Vec<String> owns one reference per element (each push/set
+                // retained its String). Before the buffer is freed, drop those
+                // references so the buffers themselves are reclaimed too.
+                auto astIt = valueTypeMap.find(var.allocaInst);
+                bool vecHoldsStrings = astIt != valueTypeMap.end() &&
+                    typeNodeIsVecOfString(astIt->second.get());
+
                 // Create null check before freeing
                 llvm::Value* isNotNull = builder->CreateICmpNE(dataPtr,
                     llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)),
@@ -181,6 +221,10 @@ void LLVMCodegen::cleanupVariable(const ScopeVariable& var) {
 
                 // Free block
                 builder->SetInsertPoint(freeBlock);
+                if (vecHoldsStrings) {
+                    llvm::Value* elemCount = builder->CreateExtractValue(vecPtr, 1, var.name + "_elem_count");
+                    releaseStringElements(dataPtr, elemCount);
+                }
                 llvm::Function* freeFunc = getOrCreateFreeFunction();
                 builder->CreateCall(freeFunc, {dataPtr});
                 VYB_CDBG << "DEBUG: Generated free() call for " << var.name << std::endl;
@@ -558,6 +602,19 @@ llvm::Function* LLVMCodegen::getOrCreateVybStringRegisterFunction() {
     return regFunc;
 }
 
+llvm::Function* LLVMCodegen::getOrCreateVybStringRetainFunction() {
+    llvm::Function* retainFunc = module->getFunction("__vyb_string_retain");
+    if (!retainFunc) {
+        llvm::FunctionType* retainFuncType = llvm::FunctionType::get(
+            llvm::PointerType::get(*context, 0),
+            {llvm::PointerType::get(*context, 0)},
+            false
+        );
+        retainFunc = llvm::Function::Create(retainFuncType, llvm::Function::ExternalLinkage, "__vyb_string_retain", module.get());
+    }
+    return retainFunc;
+}
+
 llvm::Function* LLVMCodegen::getOrCreateMallocFunction() {
     llvm::Function* mallocFunc = module->getFunction("malloc");
     if (!mallocFunc) {
@@ -640,6 +697,12 @@ llvm::Value* LLVMCodegen::generateVecDeepCopy(llvm::Value* vecStructValue,
     builder->SetInsertPoint(copyBB);
     llvm::Function* memcpyFunc = getOrCreateMemcpyFunction();
     builder->CreateCall(memcpyFunc, {newDataPtr, srcDataPtr, totalBytes});
+    // String elements are shallow { ptr, len } values whose buffers are reference
+    // counted. The deep-copied Vec is an independent holder, so it must retain
+    // each element it now references (its own cleanup will release them).
+    if (elemType && isVybStringStructType(elemType)) {
+        retainStringElements(newDataPtr, vecSize);
+    }
     builder->CreateBr(doneBB);
 
     builder->SetInsertPoint(doneBB);
@@ -753,4 +816,74 @@ void LLVMCodegen::releaseClosureAlloca(llvm::Value* allocaInst) {
     if (!allocTy || !isClosureStructType(allocTy)) return;
     llvm::Value* closureVal = builder->CreateLoad(allocTy, allocaInst, "cl.release.alloca.load");
     releaseClosureValue(closureVal);
+}
+
+// ============================================================================
+// HEAP STRING REFERENCE COUNTING
+// ============================================================================
+// A Vyb String is a `{ ptr, len }` value that multiple holders (variables,
+// parameters, Vec elements) may reference simultaneously, so heap buffers are
+// reference counted in the runtime registry. Every storage location that takes
+// a String value calls __vyb_string_retain() on the incoming buffer (unless it
+// is receiving a freshly-created owned transfer), and every drop — scope exit,
+// overwrite, temporary consumed — calls __vyb_string_release(). Untracked
+// pointers (string literals in .rodata) are runtime no-ops.
+
+void LLVMCodegen::retainStringValue(llvm::Value* strVal) {
+    if (!strVal || !isVybStringStructType(strVal->getType())) return;
+    llvm::Value* data = builder->CreateExtractValue(strVal, 0, "str.retain.data");
+    builder->CreateCall(getOrCreateVybStringRetainFunction(), {data}, "str.retain");
+}
+
+void LLVMCodegen::releaseStringValue(llvm::Value* strVal) {
+    if (!strVal || !isVybStringStructType(strVal->getType())) return;
+    llvm::Value* data = builder->CreateExtractValue(strVal, 0, "str.release.data");
+    builder->CreateCall(getOrCreateVybStringFreeFunction(), {data});
+}
+
+void LLVMCodegen::releaseStringAlloca(llvm::Value* allocaInst) {
+    if (!allocaInst) return;
+    llvm::Type* allocTy = nullptr;
+    if (auto* ai = llvm::dyn_cast<llvm::AllocaInst>(allocaInst)) {
+        allocTy = ai->getAllocatedType();
+    }
+    if (!allocTy || !isVybStringStructType(allocTy)) return;
+    llvm::Value* strVal = builder->CreateLoad(allocTy, allocaInst, "str.release.alloca.load");
+    releaseStringValue(strVal);
+}
+
+// Bulk String-element helpers for Vec<String> buffers. A String element is the
+// uniform `{ ptr, i64 }` struct; release each buffer's held reference (when the
+// Vec's storage is dropped) or retain each (when the elements are shallow-copied
+// into an independent buffer that must own its own references).
+llvm::Function* LLVMCodegen::getOrCreateVybStringReleaseEachFunction() {
+    if (auto* f = module->getFunction("__vyb_string_release_each")) return f;
+    llvm::FunctionType* ty = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*context),
+        {llvm::PointerType::get(*context, 0), llvm::Type::getInt64Ty(*context)},
+        false);
+    return llvm::Function::Create(ty, llvm::Function::ExternalLinkage,
+                                  "__vyb_string_release_each", module.get());
+}
+
+llvm::Function* LLVMCodegen::getOrCreateVybStringRetainEachFunction() {
+    if (auto* f = module->getFunction("__vyb_string_retain_each")) return f;
+    llvm::FunctionType* ty = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*context),
+        {llvm::PointerType::get(*context, 0), llvm::Type::getInt64Ty(*context)},
+        false);
+    return llvm::Function::Create(ty, llvm::Function::ExternalLinkage,
+                                  "__vyb_string_retain_each", module.get());
+}
+
+void LLVMCodegen::releaseStringElements(llvm::Value* dataPtr, llvm::Value* count) {
+    if (!dataPtr || !count) return;
+    builder->CreateCall(getOrCreateVybStringReleaseEachFunction(),
+                        {dataPtr, count});
+}
+
+void LLVMCodegen::retainStringElements(llvm::Value* dataPtr, llvm::Value* count) {
+    if (!dataPtr || !count) return;
+    builder->CreateCall(getOrCreateVybStringRetainEachFunction(),
+                        {dataPtr, count});
 }

@@ -2052,8 +2052,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         // is reclaimed (through the registry, which makes it a safe no-op for
         // .rodata literals and named-var borrows).
         if (serializedTmpIsHeap) {
-            llvm::Function* freeFn = getOrCreateFreeFunction();
-            builder->CreateCall(freeFn, {serializedValue});
+            builder->CreateCall(getOrCreateVybStringFreeFunction(), {serializedValue});
         }
         if (stringArgOwnedTemp) {
             builder->CreateCall(getOrCreateVybStringFreeFunction(), {serializedValue});
@@ -2067,7 +2066,6 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             llvm::Function* printlnFunc = getVybPrintlnFunction();
             // Space constant
             llvm::Value* spaceStr = builder->CreateGlobalStringPtr(" ", "println.space");
-            llvm::Function* freeFn = getOrCreateFreeFunction();
             for (size_t i = 0; i < node->arguments.size(); ++i) {
                 bool serializedIsHeap = false;
                 bool serializedStringOwned = false;
@@ -2086,7 +2084,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                     builder->CreateCall(printlnFunc, {serialized});
                 }
                 if (serializedIsHeap) {
-                    builder->CreateCall(freeFn, {serialized});
+                    builder->CreateCall(getOrCreateVybStringFreeFunction(), {serialized});
                 }
                 if (serializedStringOwned) {
                     builder->CreateCall(getOrCreateVybStringFreeFunction(), {serialized});
@@ -2104,7 +2102,6 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         if (node->arguments.size() > 1) {
             spaceStr = builder->CreateGlobalStringPtr(" ", "print.space");
         }
-        llvm::Function* freeFnForPrint = getOrCreateFreeFunction();
         for (size_t argIdx = 0; argIdx < node->arguments.size(); ++argIdx) {
             node->arguments[argIdx]->accept(*this);
             llvm::Value* arg = m_currentLLVMValue;
@@ -2147,7 +2144,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             if (serializedValue) {
                 builder->CreateCall(printFunc, {serializedValue});
                 if (argSerializedHeap) {
-                    builder->CreateCall(freeFnForPrint, {serializedValue});
+                    builder->CreateCall(getOrCreateVybStringFreeFunction(), {serializedValue});
                 }
                 if (argStringOwned) {
                     builder->CreateCall(getOrCreateVybStringFreeFunction(), {serializedValue});
@@ -3513,11 +3510,28 @@ void LLVMCodegen::visit(vyb::ast::AssignmentExpression *node) {
         }
     }
 
+    // String-typed overwrites: the incoming value may be a freshly-created
+    // transfer (concat / to_string / a String-returning call) whose single owned
+    // reference is handed over as-is, or a shared borrow that this location must
+    // retain (+1). The outgoing buffer is released after the store so a
+    // self-assignment's retain/release on the same buffer net to zero.
+    bool stringOverwrite = isAssignToVar && destPointeeType && isVybStringStructType(destPointeeType);
+    llvm::Value* oldStringVal = nullptr;
+    if (stringOverwrite) {
+        oldStringVal = builder->CreateLoad(destPointeeType, LHS, "assign.old_string");
+        if (!exprIsStringTransfer(node->right.get())) {
+            retainStringValue(RHS);
+        }
+    }
+
     // Create the store instruction with proper alignment
     builder->CreateStore(RHS, LHS);
     writeThroughMutable(RHS);
     if (closureOverwrite && oldClosureVal) {
         releaseClosureValue(oldClosureVal);
+    }
+    if (stringOverwrite && oldStringVal) {
+        releaseStringValue(oldStringVal);
     }
 
     // If we're assigning to a member of a struct, we need to preserve type information
@@ -6264,9 +6278,27 @@ bool LLVMCodegen::exprProducesOwnedStringTemp(vyb::ast::Expression* expr) {
                 }
             }
         }
+        // Any other call whose result is a String (a String method like
+        // `.concat()`/`.replace()`, or a user function returning String) yields
+        // a fresh, owned buffer the caller takes over. Borrow-returning
+        // accessors resolve to a non-String type (e.g. `Option<T>`), so they are
+        // excluded here.
+        if (call->type) {
+            std::string t = resolveTypeAliasToBaseName(call->type.get());
+            if (t.empty()) t = call->type->toString();
+            return t == "String" || t == "string";
+        }
     }
 
     return false;
+}
+
+bool LLVMCodegen::exprIsStringTransfer(vyb::ast::Expression* expr) {
+    // A freshly-created String (concat, to_string, a String-returning call) owns
+    // a single reference that can be handed to a storage location without an
+    // extra retain. Everything else (variable reads, string literals, field or
+    // element borrows) is shared and must be retained on stow.
+    return exprProducesOwnedStringTemp(expr);
 }
 
 // Generic serialization helper (extracted from original code)

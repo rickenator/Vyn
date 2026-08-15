@@ -514,6 +514,20 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                     retainClosureValue(returnValue);
                 }
 
+                // A String flowing out: if it is a freshly-created transfer the
+                // single owned reference is handed to the caller as-is; if it is a
+                // borrow (e.g. returning a local binding), retain (+1) so the value
+                // survives this frame's scope cleanup, which still releases that
+                // binding normally — the net is one owned reference for the caller.
+                if (currentFunctionAST && returnValue && isVybStringStructType(returnValue->getType())) {
+                    bool ownedTransfer = node->argument != nullptr &&
+                                         exprIsStringTransfer(node->argument.get());
+                    if (!ownedTransfer) {
+                        retainStringValue(returnValue);
+                        VYB_CDBG << "DEBUG: String return retained a borrowed buffer" << std::endl;
+                    }
+                }
+
                 // IMPORTANT: Clean up the function's scopes before returning so the
                 // cleanup happens (and the last cleanup leaves the insert point in a
                 // terminator-free block) before the terminator is emitted. A return
