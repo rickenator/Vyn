@@ -1,5 +1,5 @@
-// @expect: fail
-// Simpler JSON test to debug field access
+// @expect: pass
+// Simpler JSON test to debug field access (serialization/deserialization now leak-free)
 
 struct Person {
     name<String>,

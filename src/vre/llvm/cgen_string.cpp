@@ -306,6 +306,14 @@ llvm::Value* LLVMCodegen::generateToStringCall(llvm::Value* value, llvm::Type* v
                 // Call JSON serialization with instance and type name
                 llvm::Value* jsonCStr = builder->CreateCall(jsonFunc, {voidPtr, typeNamePtr}, "json.cstr");
 
+                // The runtime JSON producer hands back a fresh heap buffer that is
+                // NOT in the string registry (unlike the __vyb_*_to_string helpers),
+                // so `__vyb_string_release` would otherwise be a no-op and the buffer
+                // would leak. Register it (refcount 1) so the String's normal
+                // scope-exit release reclaims it; the nested buffers the recursing C
+                // function frees internally are never seen here, so this is safe.
+                builder->CreateCall(getOrCreateVybStringRegisterFunction(), {jsonCStr});
+
                 // Convert char* to Vyb String struct {char* data, int64_t length}
                 llvm::StructType* stringStructType = llvm::StructType::get(*context, {
                     int8PtrType,  // data

@@ -1052,8 +1052,13 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                             llvm::PointerType::get(targetStructType, 0), "struct.ptr");
 
                         // Load the struct value - this copies the struct to the stack
-                        // but preserves internal pointers (e.g., String.data still points to heap)
+                        // but preserves internal pointers (e.g., String.data still points to heap).
                         llvm::Value* structValue = builder->CreateLoad(targetStructType, structPtr, "struct.value");
+                        // The deserializer allocated the instance on the heap; free it now
+                        // that its contents have been copied into the returned value. Its
+                        // String fields' data pointers live on independently (registered,
+                        // owned by the copied value's scope-exit cleanup).
+                        builder->CreateCall(getOrCreateFreeFunction(), {resultPtr});
                         m_currentLLVMValue = structValue;
                         return;
                     }

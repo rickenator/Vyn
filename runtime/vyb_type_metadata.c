@@ -4,6 +4,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Heap-string registry hooks (defined in vyb_runtime.c). Registering a JSON
+// String field lets the generated code's release path reclaim the buffer.
+extern void __vyb_string_register(void* p);
+
 // Global type registry (simple linear search for now)
 #define MAX_TYPES 256
 static VybTypeMetadata* g_type_registry[MAX_TYPES];
@@ -242,6 +246,7 @@ void* __vyb_complex_from_json_with_metadata(const char* json_str, VybTypeMetadat
                     VybString* vyb_str = (VybString*)field_ptr;
                     vyb_str->data = strdup(str_val);
                     vyb_str->length = strlen(str_val);
+                    __vyb_string_register(vyb_str->data);
                 }
             }
             // TODO: Handle nested structs and Vec
