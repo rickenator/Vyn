@@ -9,6 +9,7 @@
 #include <map>
 #include <set>
 #include <functional>
+#include <algorithm>
 
 namespace vyb {
 // Forward-declare g_debug_codegen so semantic.cpp can use VYB_CDBG without
@@ -101,8 +102,9 @@ static std::string intCanonicalName(ast::TypeNode* type) {
     return intCanonicalNameForName(tn->identifier->name);
 }
 
-// Numeric range (inclusive, as int64) of a canonical integer kind.
-static bool intCanonicalRange(const std::string& c, int64_t& lo, int64_t& hi) {
+// Numeric range (inclusive) of a canonical integer kind, in 128-bit so the
+// full UInt64 range (up to 2^64-1) is representable.
+static bool intCanonicalRange(const std::string& c, __int128& lo, __int128& hi) {
     int bits = 0;
     bool s = false;
     if (c == "s64" || c == "u64") { bits = 64; s = (c == "s64"); }
@@ -116,7 +118,7 @@ static bool intCanonicalRange(const std::string& c, int64_t& lo, int64_t& hi) {
         lo = -(1LL << (bits - 1));
         hi = (1LL << (bits - 1)) - 1;
     } else if (bits == 64) {
-        lo = 0; hi = INT64_MAX; // literal is int64; can't represent above LLONG_MAX anyway
+        lo = 0; hi = (__int128)UINT64_MAX;
     } else {
         lo = 0; hi = (1LL << bits) - 1;
     }
@@ -124,17 +126,43 @@ static bool intCanonicalRange(const std::string& c, int64_t& lo, int64_t& hi) {
 }
 
 // Does `e` evaluate to a compile-time integer constant (a bare literal or a
-// negated literal)? If so, yields its value.
-static bool intConstantValue(ast::Expression* e, int64_t& out) {
+// negated literal)? If so, yields its value (in 128-bit so full unsigned
+// literals are preserved) and whether it originated from a `u`-suffixed literal.
+static bool intConstantValueFull(ast::Expression* e, __int128& out, bool& isUnsigned) {
     if (!e) return false;
-    if (auto lit = dynamic_cast<ast::IntegerLiteral*>(e)) { out = lit->value; return true; }
+    if (auto lit = dynamic_cast<ast::IntegerLiteral*>(e)) {
+        if (lit->isUnsigned) {
+            out = (__int128)lit->uvalue;
+            isUnsigned = true;
+        } else {
+            out = (__int128)lit->value;
+            isUnsigned = false;
+        }
+        return true;
+    }
     if (auto un = dynamic_cast<ast::UnaryExpression*>(e)) {
         if (un->op.type == TokenType::MINUS) {
-            int64_t v;
-            if (intConstantValue(un->operand.get(), v)) { out = -v; return true; }
+            __int128 v;
+            bool u;
+            if (intConstantValueFull(un->operand.get(), v, u)) { out = -v; isUnsigned = u; return true; }
         }
     }
     return false;
+}
+
+// Render an __int128 as a decimal string (supports negative values).
+static std::string i128ToString(__int128 v) {
+    if (v == 0) return "0";
+    bool neg = v < 0;
+    unsigned __int128 u = neg ? (unsigned __int128)(-(v + 1)) + 1 : (unsigned __int128)v;
+    std::string s;
+    while (u) {
+        s.push_back(static_cast<char>('0' + (u % 10)));
+        u /= 10;
+    }
+    if (neg) s.push_back('-');
+    std::reverse(s.begin(), s.end());
+    return s;
 }
 
 // If `type` is an ownership wrapper over a primitive value type, return the
@@ -174,13 +202,14 @@ static IntAssignCheck checkIntegerAssignment(ast::TypeNode* targetRaw, ast::Type
     if (tc.empty() || sc.empty()) return {IntAssignCode::NotInteger, ""};
     if (tc == sc) return {IntAssignCode::Ok, ""};
 
-    int64_t cval = 0;
-    if (intConstantValue(initExpr, cval)) {
-        int64_t lo = 0, hi = 0;
+    __int128 cval = 0;
+    bool constUnsigned = false;
+    if (intConstantValueFull(initExpr, cval, constUnsigned)) {
+        __int128 lo = 0, hi = 0;
         if (intCanonicalRange(tc, lo, hi)) {
             if (cval >= lo && cval <= hi) return {IntAssignCode::Ok, ""};
             return {IntAssignCode::ConstantOutOfRange,
-                    "Integer constant " + std::to_string(cval) + " is out of range for type '" +
+                    "Integer constant " + i128ToString(cval) + " is out of range for type '" +
                     (targetRaw ? targetRaw->toString() : tc) + "' in assignment."};
         }
     }

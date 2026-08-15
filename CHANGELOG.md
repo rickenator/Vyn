@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fitting `u`-constant still assigns to narrower unsigned types; an overflow to a
   signed type is an error). Covered by `test/expressions/test_uint_literals.vyb`
   and `test_uint_literal_range.vyb`.
+- **Full-range `UInt64` literals** — `u`-suffixed literals may now span the
+  entire unsigned 64-bit range, e.g. `18446744073709551615u` (2^64 − 1), which
+  previously overflowed in the parser. Such constants parse, assign to `UInt64`
+  (or any fitting unsigned width), and print exactly; assigning them to a signed
+  type (or a narrower unsigned type) is still an out-of-range error. Covered by
+  `test/expressions/test_uint_literal_fullrange.vyb` and
+  `test_uint_literal_signed_overflow.vyb`.
 - **Hex and binary integer literals** — `0x`/`0X` (base 16) and `0b`/`0B`
   (base 2) integer literals now parse to their true value. Previously the lexer
   emitted the raw `0x11`/`0b1100` lexeme and `std::stoll` truncated it at the

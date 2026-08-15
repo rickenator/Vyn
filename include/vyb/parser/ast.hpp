@@ -7,6 +7,7 @@
 #include <variant>
 #include <optional>
 #include <iostream> // Added for std::cout
+#include <cstdint>
 #include "token.hpp"
 #include "source_location.hpp"
 
@@ -446,8 +447,9 @@ class IntegerLiteral : public Expression {
 public:
     int64_t value;
     bool isUnsigned; // true for a `u`-suffixed literal, e.g. `255u`
+    uint64_t uvalue; // full value for `u`-suffixed literals (valid when isUnsigned)
 
-    IntegerLiteral(SourceLocation loc, int64_t value, bool isUnsigned = false);
+    IntegerLiteral(SourceLocation loc, int64_t value, bool isUnsigned = false, uint64_t uvalue = 0);
     virtual ~IntegerLiteral(); // Added destructor declaration
     NodeType getType() const override;
     std::string toString() const override;

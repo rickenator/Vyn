@@ -106,15 +106,15 @@ void ListComprehension::accept(Visitor& visitor) {
 ListComprehension::~ListComprehension() = default;
 
 // --- IntegerLiteral ---
-IntegerLiteral::IntegerLiteral(SourceLocation loc, int64_t val, bool unsignedLit)
-    : Expression(loc), value(val), isUnsigned(unsignedLit) {}
+IntegerLiteral::IntegerLiteral(SourceLocation loc, int64_t val, bool unsignedLit, uint64_t uval)
+    : Expression(loc), value(val), isUnsigned(unsignedLit), uvalue(uval) {}
 
 NodeType IntegerLiteral::getType() const {
     return NodeType::INTEGER_LITERAL;
 }
 
 std::string IntegerLiteral::toString() const {
-    return std::to_string(value);
+    return isUnsigned ? std::to_string(uvalue) : std::to_string(value);
 }
 
 void IntegerLiteral::accept(Visitor& visitor) {

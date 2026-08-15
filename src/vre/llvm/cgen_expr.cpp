@@ -38,7 +38,11 @@ static bool isUnsignedIntName(const std::string& n) {
 
 // --- Literal Codegen ---
 void LLVMCodegen::visit(vyb::ast::IntegerLiteral *node) {
-    m_currentLLVMValue = llvm::ConstantInt::get(*context, llvm::APInt(64, node->value, true));
+    if (node->isUnsigned) {
+        m_currentLLVMValue = llvm::ConstantInt::get(*context, llvm::APInt(64, node->uvalue, false));
+    } else {
+        m_currentLLVMValue = llvm::ConstantInt::get(*context, llvm::APInt(64, node->value, true));
+    }
 }
 
 void LLVMCodegen::visit(vyb::ast::FloatLiteral *node) {

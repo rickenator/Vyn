@@ -1,0 +1,15 @@
+// @test: UInt64 literals spanning the full unsigned range
+// @description: `u`-suffixed literals beyond the int64 range parse, assign to
+//   UInt64, and print exactly (up to 2^64-1), not overflowing.
+// @category: expressions, types
+// @expect: pass
+// @expect-return: 0
+// @expect-output: 9223372036854775808 10000000000000000000 18446744073709551615
+
+main()<Int> -> {
+    a<UInt64> = 9223372036854775808u
+    b<UInt64> = 10000000000000000000u
+    c<UInt64> = 18446744073709551615u
+    println("{} {} {}".format(a, b, c))
+    return 0
+}

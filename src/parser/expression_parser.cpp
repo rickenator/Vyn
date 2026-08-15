@@ -16,12 +16,22 @@ extern bool g_debug_codegen;
 
 namespace vyb {
 
-    // Parse an integer literal token's value, honoring `0x`/`0X` (base 16) and
+    // Parsed form of an integer literal token, honoring `0x`/`0X` (base 16),
     // `0b`/`0B` (base 2) prefixes and a trailing `u`/`U` unsigned suffix; plain
     // and leading-zero literals are decimal.
-    static int64_t parseIntegerLiteralValue(const std::string& lit) {
+    struct ParsedIntegerLiteral {
+        int64_t sval = 0;   // signed view; valid for literals that fit int64
+        uint64_t uval = 0;  // full value for `u`-suffixed literals
+        bool isUnsigned = false;
+    };
+
+    static ParsedIntegerLiteral parseIntegerLiteralValue(const std::string& lit) {
+        ParsedIntegerLiteral r;
         std::string s = lit;
-        if (!s.empty() && (s.back() == 'u' || s.back() == 'U')) s.pop_back();
+        if (!s.empty() && (s.back() == 'u' || s.back() == 'U')) {
+            r.isUnsigned = true;
+            s.pop_back();
+        }
         long base = 10;
         if (s.size() > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
             base = 16;
@@ -30,7 +40,13 @@ namespace vyb {
             base = 2;
             s = s.substr(2);
         }
-        return std::stoll(s, nullptr, base);
+        if (r.isUnsigned) {
+            r.uval = std::stoull(s, nullptr, base);
+            r.sval = static_cast<int64_t>(r.uval);
+        } else {
+            r.sval = std::stoll(s, nullptr, base);
+        }
+        return r;
     }
 
     // Constructor
@@ -1155,9 +1171,9 @@ regular_array_literal:
             case TokenType::INT_LITERAL: {
                 consume();
                 const std::string& lex = current_token.lexeme;
-                bool unsign = !lex.empty() && (lex.back() == 'u' || lex.back() == 'U');
+                ParsedIntegerLiteral p = parseIntegerLiteralValue(lex);
                 return std::make_unique<ast::IntegerLiteral>(
-                    current_token.location, parseIntegerLiteralValue(lex), unsign);
+                    current_token.location, p.sval, p.isUnsigned, p.uval);
             }
             case TokenType::FLOAT_LITERAL: {
                 consume();

@@ -1,0 +1,12 @@
+// @test: u-literal beyond int64 range rejected for signed targets
+// @description: a `u`-suffixed literal above INT64_MAX must only fit unsigned
+//   targets; assigning it to a signed type is an out-of-range error.
+// @category: expressions, types
+// @expect: fail
+// @semantic-only: true
+// @expect-error: out of range for type
+
+main()<Int> -> {
+    x<Int64> = 18446744073709551615u
+    return 0
+}

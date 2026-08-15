@@ -646,7 +646,7 @@ main()<Int> -> {
 **Unsigned Integers:**
 | Type | Description | Size | Range/Notes | Example |
 |------|-------------|------|-------------|---------|
-| `UInt64` | 64-bit unsigned integer | 64-bit | 0 to 18,446,744,073,709,551,615 | `large<UInt64> = 1000000` |
+| `UInt64` | 64-bit unsigned integer | 64-bit | 0 to 18,446,744,073,709,551,615 | `max<UInt64> = 18446744073709551615u` |
 | `UInt32` | 32-bit unsigned integer | 32-bit | 0 to 4,294,967,295 | `count<UInt32> = 100` |
 | `UInt16` | 16-bit unsigned integer | 16-bit | 0 to 65,535 | `port<UInt16> = 8080` |
 | `UInt8` | 8-bit unsigned integer | 8-bit | 0 to 255 | `byte<UInt8> = 255` |
@@ -976,6 +976,7 @@ large<Int> = -9223372036854775808  // Full 64-bit range
 red<Int> = 0xFF                   // Hexadecimal (base 16)
 mask<Int> = 0b11001110            // Binary (base 2)
 ud<UInt32> = 255u                 // Unsigned literal suffix
+maxU<UInt64> = 18446744073709551615u  // Full UInt64 range (2^64 - 1)
 
 // Sized integers use the same literal forms (0x80 means 128 as a byte).
 b<UInt8> = 0x80
