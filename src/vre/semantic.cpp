@@ -1627,7 +1627,10 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "print_int" || name == "println_bool" || name == "print_bool" ||
             name == "abs" || name == "sqrt" || name == "pow" || name == "sin" || name == "cos" ||
             name == "tan" || name == "exp" || name == "log" || name == "log2" || name == "log10" ||
-            name == "floor" || name == "ceil" || name == "round" || name == "min" || name == "max") {
+            name == "floor" || name == "ceil" || name == "round" || name == "min" || name == "max" ||
+            name == "vyb_io_open" || name == "vyb_io_close" || name == "vyb_io_write" ||
+            name == "vyb_io_read_all" || name == "vyb_io_error_code" ||
+            name == "vyb_io_error_message") {
             isIntrinsic = true;
         }
     }
@@ -2011,6 +2014,27 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                     expressionTypes[node] = retainType(intType);
                     node->type = std::shared_ptr<ast::TypeNode>(intType->clone());
                 }
+                return;
+            }
+        }
+
+        // File I/O intrinsics (io stdlib module). Arity/diagnostic detail is left
+        // to codegen; here we just type the result so module code compiles: the
+        // fd/byte/bool helpers return Int, the content/message helpers return String.
+        {
+            static const std::set<std::string> fileIntFuncs = {
+                "vyb_io_open", "vyb_io_close", "vyb_io_write",
+                "vyb_io_error_code"
+            };
+            static const std::set<std::string> fileStrFuncs = {
+                "vyb_io_read_all", "vyb_io_error_message"
+            };
+            if (fileIntFuncs.count(name) || fileStrFuncs.count(name)) {
+                auto* resTy = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc,
+                        fileIntFuncs.count(name) ? "Int" : "String"));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
                 return;
             }
         }

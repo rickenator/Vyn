@@ -2311,6 +2311,124 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         }
     }
 
+    // Handle File I/O intrinsics (io stdlib module). Each maps a Vyb-level call
+    // (`vyb_io_*`) to an exported runtime symbol (`__vyb_file_*`) in
+    // `runtime/vyb_runtime.c`; Vyb identifiers cannot start with `_`, hence the
+    // separate callable name vs. resolved symbol name. `path`/`data` come in as
+    // Vyb String structs { ptr, len } and their data pointer (and for writes,
+    // length) is extracted at the boundary. `read_all` and the error message
+    // return an owned heap buffer registered by the runtime, so the Vyb String
+    // built over it is freed by normal reference-counted cleanup.
+    if (identCallee) {
+        const std::string& fname = identCallee->name;
+        std::string rtName;
+        if (fname == "vyb_io_open") rtName = "__vyb_file_open";
+        else if (fname == "vyb_io_close") rtName = "__vyb_file_close";
+        else if (fname == "vyb_io_write") rtName = "__vyb_file_write";
+        else if (fname == "vyb_io_read_all") rtName = "__vyb_file_read_all";
+        else if (fname == "vyb_io_error_code") rtName = "__vyb_file_error_code";
+        else if (fname == "vyb_io_error_message") rtName = "__vyb_file_error_message";
+        if (!rtName.empty()) {
+            auto getFileFn = [&](llvm::FunctionType* ft) -> llvm::Function* {
+                llvm::Function* f = module->getFunction(rtName);
+                if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, rtName, module.get());
+                return f;
+            };
+            auto toI64 = [&](llvm::Value* v) -> llvm::Value* {
+                if (!v) return v;
+                if (v->getType()->isIntegerTy(64)) return v;
+                if (v->getType()->isIntegerTy())
+                    return builder->CreateSExt(v, int64Type, "file.toi64");
+                return v;
+            };
+            auto toStrPtr = [&](llvm::Value* v) -> llvm::Value* {
+                // A Vyb String value { ptr, len } -> its char* data pointer.
+                if (v && v->getType()->isStructTy())
+                    return builder->CreateExtractValue(v, 0, "file.strptr");
+                return v;
+            };
+
+            if (fname == "vyb_io_open") {
+                if (node->arguments.size() != 2) {
+                    logError(node->loc, "__vyb_file_open expects 2 arguments (path, flags)");
+                    m_currentLLVMValue = nullptr; return;
+                }
+                node->arguments[0]->accept(*this); llvm::Value* path = m_currentLLVMValue;
+                node->arguments[1]->accept(*this); llvm::Value* flags = m_currentLLVMValue;
+                if (!path || !flags) { m_currentLLVMValue = nullptr; return; }
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(
+                    getFileFn(ft), {toStrPtr(path), toI64(flags)}, "file.fd");
+                return;
+            } else if (fname == "vyb_io_close") {
+                if (node->arguments.size() != 1) {
+                    logError(node->loc, "__vyb_file_close expects 1 argument (fd)");
+                    m_currentLLVMValue = nullptr; return;
+                }
+                node->arguments[0]->accept(*this); llvm::Value* fd = m_currentLLVMValue;
+                if (!fd) { m_currentLLVMValue = nullptr; return; }
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getFileFn(ft), {toI64(fd)}, "file.closed");
+                return;
+            } else if (fname == "vyb_io_write") {
+                if (node->arguments.size() != 2) {
+                    logError(node->loc, "__vyb_file_write expects 2 arguments (fd, data)");
+                    m_currentLLVMValue = nullptr; return;
+                }
+                node->arguments[0]->accept(*this); llvm::Value* fd = m_currentLLVMValue;
+                node->arguments[1]->accept(*this); llvm::Value* data = m_currentLLVMValue;
+                if (!fd || !data) { m_currentLLVMValue = nullptr; return; }
+                llvm::Value* dataPtr = toStrPtr(data);
+                llvm::Value* dataLen = llvm::ConstantInt::get(int64Type, 0);
+                if (data->getType()->isStructTy())
+                    dataLen = builder->CreateExtractValue(data, 1, "file.strlen");
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(
+                    getFileFn(ft), {toI64(fd), dataPtr, dataLen}, "file.written");
+                return;
+            } else if (fname == "vyb_io_read_all") {
+                if (node->arguments.size() != 1) {
+                    logError(node->loc, "__vyb_file_read_all expects 1 argument (fd)");
+                    m_currentLLVMValue = nullptr; return;
+                }
+                node->arguments[0]->accept(*this); llvm::Value* fd = m_currentLLVMValue;
+                if (!fd) { m_currentLLVMValue = nullptr; return; }
+                std::vector<llvm::Type*> strFields = {int8PtrType, int64Type};
+                llvm::StructType* strStructType = llvm::StructType::get(*context, strFields, false);
+                llvm::FunctionType* ft = llvm::FunctionType::get(strStructType, {int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getFileFn(ft), {toI64(fd)}, "file.content");
+                return;
+            } else if (fname == "vyb_io_error_code") {
+                if (!node->arguments.empty()) {
+                    logError(node->loc, "__vyb_file_error_code expects no arguments");
+                    m_currentLLVMValue = nullptr; return;
+                }
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {}, false);
+                m_currentLLVMValue = builder->CreateCall(getFileFn(ft), {}, "file.errcode");
+                return;
+            } else { // __vyb_file_error_message
+                if (!node->arguments.empty()) {
+                    logError(node->loc, "__vyb_file_error_message expects no arguments");
+                    m_currentLLVMValue = nullptr; return;
+                }
+                llvm::FunctionType* fmsg = llvm::FunctionType::get(int8PtrType, {}, false);
+                llvm::Value* msgPtr = builder->CreateCall(getFileFn(fmsg), {}, "file.errmsg");
+                std::vector<llvm::Type*> strFields = {int8PtrType, int64Type};
+                llvm::StructType* strStructType = llvm::StructType::get(*context, strFields, false);
+                llvm::FunctionType* strlenType = llvm::FunctionType::get(int64Type, {int8PtrType}, false);
+                llvm::Function* strlenFunc = module->getFunction("strlen");
+                if (!strlenFunc)
+                    strlenFunc = llvm::Function::Create(strlenType, llvm::Function::ExternalLinkage, "strlen", module.get());
+                llvm::Value* msgLen = builder->CreateCall(strlenFunc, {msgPtr}, "file.errlen");
+                llvm::Value* outStr = llvm::UndefValue::get(strStructType);
+                outStr = builder->CreateInsertValue(outStr, msgPtr, 0, "file.msg.data");
+                outStr = builder->CreateInsertValue(outStr, msgLen, 1, "file.msg.len");
+                m_currentLLVMValue = outStr;
+                return;
+            }
+        }
+    }
+
     // Handle serialization mode intrinsics: lit(), notype(), bare(), deserial()
     if (identCallee && identCallee->name == "lit" && node->arguments.size() >= 1) {
         // lit() intrinsic - convert value(s) to their raw string/JSON literal representation

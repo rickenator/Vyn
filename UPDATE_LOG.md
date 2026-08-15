@@ -3,6 +3,20 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-15: **Stdlib File I/O (`import io`)**. Replaced the `io` placeholder with a
+  real file module: `File { fd<Int>, path<String> }`, `open(path, flags)` plus
+  `open_read`/`open_write`/`open_append` conveniences, `close`, `write_str`,
+  `read_all` (whole file into a `String`, empty on error), and the
+  `error_code()`/`error_message()` diagnostic surface with portable `FILE_*`
+  open-mode helpers. Wired in the runtime (`__vyb_file_*`, all `VYB_WEAK`, last
+  error in `vyb_file_err`), registered as codegen intrinsics, and exposed to Vyb
+  under `vyb_io_*` names (Vyb identifiers cannot start with `_`). `read_all`
+  registers its buffer so the returned `String`'s release frees it. Note that
+  Vyb has no bitwise `|` operator, so `open_write`/`open_append` combine the
+  non-overlapping `FILE_*` mode bits by addition. Added
+  `test/modules/test_file_io.vyb` (write/reopen/read round-trip plus the
+  missing-path error surface). Full suite 855/859 (remaining 4 failures are the
+  pre-existing trap/vec edge tests); the new test is leak-free under ASAN.
 - 2026-08-14: **Memory-leak hardening pass** over the runtime/ownership/closure paths.
   `__vyb_string_from_string` now registers its `strdup` copy so `String::from_string`
   is reclaimed like the other producers; `my<Struct>` struct fields are now reclaimed on

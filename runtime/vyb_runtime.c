@@ -7,6 +7,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <errno.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #if defined(__GNUC__) || defined(__clang__)
 #define VYB_WEAK __attribute__((weak))
@@ -275,4 +277,107 @@ void* __vyb_complex_from_json(const char* json_str, const char* type_name) {
         return NULL;
     }
     return __vyb_complex_from_json_with_metadata(json_str, metadata);
+}
+
+// ============================================================================
+// FILE I/O
+// ============================================================================
+// The `io` stdlib module wraps these helpers in a Vyb `File` value. The flags
+// argument is a stable, portable bitmask (independent of the host <fcntl.h>
+// constants): bit 0 read, bit 1 write, bit 2 read+write, bit 7 create,
+// bit 9 truncate, bit 10 append. `read_all` returns a heap buffer registered
+// with the string registry so a Vyb String built over it is freed when its last
+// reference is dropped; the pair { ptr, len } is returned by value.
+
+#define VYB_FILE_O_READ     (1 << 0)
+#define VYB_FILE_O_WRITE    (1 << 1)
+#define VYB_FILE_O_RDWR     (1 << 2)
+#define VYB_FILE_O_CREAT    (1 << 7)
+#define VYB_FILE_O_TRUNC    (1 << 9)
+#define VYB_FILE_O_APPEND   (1 << 10)
+
+typedef struct { char* ptr; int64_t len; } vyb_file_str;
+
+static int vyb_file_err = 0;
+
+VYB_WEAK int64_t __vyb_file_open(const char* path, int64_t flags) {
+    int oflags = 0;
+    if (flags & VYB_FILE_O_READ) oflags |= O_RDONLY;
+    if (flags & VYB_FILE_O_WRITE) oflags |= O_WRONLY;
+    if (flags & VYB_FILE_O_RDWR) oflags |= O_RDWR;
+    if (flags & VYB_FILE_O_CREAT) oflags |= O_CREAT;
+    if (flags & VYB_FILE_O_TRUNC) oflags |= O_TRUNC;
+    if (flags & VYB_FILE_O_APPEND) oflags |= O_APPEND;
+    int fd = open(path ? path : "", oflags, 0644);
+    vyb_file_err = (fd < 0) ? errno : 0;
+    return (int64_t)fd;
+}
+
+VYB_WEAK int64_t __vyb_file_close(int64_t fd) {
+    int r = close((int)fd);
+    vyb_file_err = (r < 0) ? errno : 0;
+    return (int64_t)r;
+}
+
+// Write `len` bytes from `data` to `fd`, retrying partial writes. Returns the
+// total bytes written, or -1 on error (with errno captured).
+VYB_WEAK int64_t __vyb_file_write(int64_t fd, const char* data, int64_t len) {
+    const char* p = data;
+    int64_t left = len;
+    while (left > 0) {
+        ssize_t n = write((int)fd, p, (size_t)left);
+        if (n > 0) { p += n; left -= n; }
+        else if (n == 0) break;
+        else { vyb_file_err = errno; return -1; }
+    }
+    vyb_file_err = 0;
+    return len - left;
+}
+
+// Read the whole file from `fd` into a freshly malloc'd, registry-registered
+// buffer. Returns { ptr, len }; ptr is NULL when the read fails.
+VYB_WEAK vyb_file_str __vyb_file_read_all(int64_t fd) {
+    vyb_file_str r = { NULL, 0 };
+    size_t cap = 4096, len = 0;
+    char* buf = (char*)malloc(cap);
+    if (!buf) { vyb_file_err = errno; return r; }
+    for (;;) {
+        if (len == cap) {
+            cap *= 2;
+            char* nb = (char*)realloc(buf, cap);
+            if (!nb) { vyb_file_err = errno; free(buf); return r; }
+            buf = nb;
+        }
+        ssize_t n = read((int)fd, buf + len, cap - len);
+        if (n > 0) {
+            len += (size_t)n;
+        } else if (n == 0) {
+            break;
+        } else {
+            vyb_file_err = errno;
+            free(buf);
+            return r;
+        }
+    }
+    // Owned heap buffer: its first holder is the Vyb String built over it, so
+    // register it (refcount 1) and let the String's release free it.
+    __vyb_string_register(buf);
+    r.ptr = buf;
+    r.len = (int64_t)len;
+    vyb_file_err = 0;
+    return r;
+}
+
+VYB_WEAK int64_t __vyb_file_error_code(void) {
+    return (int64_t)vyb_file_err;
+}
+
+// Human-readable message for the last file-op error. Returns an owned heap
+// copy (registered with the string registry) so the Vyb String built over it is
+// freed when its last reference is dropped.
+VYB_WEAK char* __vyb_file_error_message(void) {
+    const char* m = (vyb_file_err == 0) ? "no error" : strerror(vyb_file_err);
+    char* copy = strdup(m);
+    if (copy) __vyb_string_register(copy);
+    return copy;
 }

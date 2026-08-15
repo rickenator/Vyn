@@ -36,7 +36,7 @@ is the working audit for what needs to be implemented next.
 | Lambda/closure codegen | ~70% | Capture-by-value closure env structs shipped; move/mutable/`our` capture planned |
 | Module system (`import`/`smuggle`/`bundle`) | ~70% | Local/module-path resolution, aliases, bundle/share visibility done; stdlib modules/package integration pending |
 | FFI (`extern "C"`) | ~35% | Extern blocks, C aliases, freedom-gated JIT calls done; repr(C), variadics, linker flow pending |
-| Standard library | ~45% | Vec, String, I/O, Math done; HashMap, File I/O needed |
+| Standard library | ~50% | Vec, String, HashMap/HashSet, File I/O, Math done; BTreeMap, network I/O needed |
 | Introspection (`typeof`/`typename`) | ~75% | Downcasting, type assertions |
 | Auto-serialization | ~80% | Edge cases remain |
 | Pattern matching | ~60% | Destructuring, guards, enum variants |
@@ -262,6 +262,7 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
   - [ ] Expand with full module contents (`math`, collections, io, iterator/core aspects)
     - [x] `core::math` — composition helpers (`clamp`, `is_close`) layered over the global math intrinsics, explicitly imported via `import core::math` (`test/modules/stdlib_core_math.vyb`)
     - [x] `collections` — `HashMap<K,V>` / `HashSet<K>` shipped (`import collections`, by-ref bind methods, auto-growing hash-bucket `Hashable` key lookup; `test/modules/test_collections_hashmap.vyb`, `test/modules/test_collections_growth.vyb`), plus the `VecOps` view/ordering helpers and the unconstrained `VecHigherOps` `map`/`filter`/`reduce` combinators (`test/modules/test_vec_expansion.vyb`); File/network I/O still pending
+    - [x] `io` — File I/O shipped (`import io`): `File { fd, path }`, `open` + `open_read`/`open_write`/`open_append`, `close`, `write_str`, `read_all`, `error_code`/`error_message`, and `FILE_*` mode helpers over the runtime `__vyb_file_*` intrinsics (`test/modules/test_file_io.vyb`); network I/O still pending
     - [ ] `Iterator` aspect + `for`-loop desugaring — compiler work, tracked under Standard Library Expansion (see [DECIDED] note)
   - [x] Auto-import of `core::*` (opt-out with directive) — the core contracts module (`core::aspects`, with its pre-wired primitive binds) is auto-imported into every non-stdlib module unless it already imports the contracts, locally redefines them, or opts out with a `no_core()` directive. This makes `x.display()`, `a.equals(b)`, `a.compare(b)`, and `a.clone()` available on built-in scalars with no import. The transitional prelude helpers (`OptionInt`, `prelude_ok`) remain explicit-import-only.
 
@@ -294,7 +295,7 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
 - [x] **`HashMap<K, V>`** — Hash map with `Hashable + Equatable` bounds (parallel `keys`/`vals` vectors indexed by auto-growing hash-bucket chains; `import collections`)
 - [x] **`HashSet<T>`** — Hash set (`values` vector indexed by hash-bucket chains with duplicate suppression; `import collections`)
 - [ ] **`BTreeMap<K, V>`** — Ordered map with `Comparable` bounds
-- [ ] **File I/O** — `File::open()`, `File::read()`, `File::write()`, `File::close()`
+- [x] **File I/O** — `import io`: `File { fd, path }`, `open(path, flags)` + `open_read`/`open_write`/`open_append`, `close`, `write_str`, `read_all` (whole file into a `String`, empty on error), and the `error_code()`/`error_message()` + `FILE_*` helpers, layered on runtime `__vyb_file_*` intrinsics (`test/modules/test_file_io.vyb`)
 - [x] **Math library** — `sqrt`, `sin`, `cos`, `tan`, `exp`, `log`, `log2`, `log10`, `pow`, `floor`, `ceil`, `round`, `abs`, `min`, `max`
 - [x] **I/O intrinsics** — `print()` (no newline), `println_int()`, `print_int()`, `println_bool()`, `print_bool()`
 - [ ] **Iterator aspect** — `next(self)<Option<Item>>` protocol for `for` loop integration
@@ -733,5 +734,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: August 2026*
 *Current Version: Vyb v0.5.4 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 836 tests passing (full --execute-jit directory sweep; 8 pre-existing failures remain, incl. the module auto-discovery gap and a handful of fixture files)*
+*Overall Status: ~60-65% complete toward 1.0 — 855 tests passing (full --execute-jit directory sweep; 4 pre-existing trap/vec failures remain)*
 *SUGGESTIONS.md merged into this document.*

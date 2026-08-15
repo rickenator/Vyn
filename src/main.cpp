@@ -82,6 +82,15 @@ extern "C" {
     bool __vyb_bool_from_string(const char* str, bool* success);
     char* __vyb_string_from_string(const char* str, bool* success);
 
+    // File I/O runtime helpers (io stdlib module)
+    struct vyb_file_str { char* ptr; int64_t len; };
+    int64_t __vyb_file_open(const char* path, int64_t flags);
+    int64_t __vyb_file_close(int64_t fd);
+    int64_t __vyb_file_write(int64_t fd, const char* data, int64_t len);
+    vyb_file_str __vyb_file_read_all(int64_t fd);
+    int64_t __vyb_file_error_code(void);
+    const char* __vyb_file_error_message(void);
+
     // JSON serialization for complex types
     char* __vyb_complex_to_json(void* instance, const char* type_name);
     void* __vyb_complex_from_json(const char* json_str, const char* type_name);
@@ -870,6 +879,20 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_bool_from_string), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_string_from_string")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_string_from_string), llvm::JITSymbolFlags::Exported);
+
+        // Register File I/O runtime helpers
+        runtimeSymbols[mangle("__vyb_file_open")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_file_open), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_file_close")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_file_close), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_file_write")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_file_write), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_file_read_all")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_file_read_all), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_file_error_code")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_file_error_code), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_file_error_message")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_file_error_message), llvm::JITSymbolFlags::Exported);
 
         // Register JSON serialization functions
         runtimeSymbols[mangle("__vyb_complex_to_json")] = llvm::orc::ExecutorSymbolDef(

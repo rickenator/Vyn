@@ -135,6 +135,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   surface and is what makes `sorted` / `min` / `max` work on `Vec<Float>` and
   `Vec<String>`.
 
+- **Stdlib File I/O** — `import io` now ships a real file module on top of the
+  runtime's `__vyb_file_*` helpers (thin `vyb_io_*` intrinsics), replacing the
+  placeholder: `File { fd<Int>, path<String> }`, `open(path, flags)`, the
+  `open_read` / `open_write` / `open_append` conveniences, `close`,
+  `write_str`, `read_all` (whole file into a `String`; empty on error), and the
+  `error_code()` / `error_message()` diagnostic surface, plus portable
+  `FILE_*` open-mode helpers. Because Vyb identifiers cannot start with `_`,
+  the Vyb-facing names are `vyb_io_*`, mapped inside codegen to the runtime
+  `__vyb_file_*` symbols; each runtime helper is `VYB_WEAK` and keeps the last
+  error in a static `vyb_file_err`. `read_all` registers its buffer so the
+  returned `String`'s release frees it. Covered by
+  `test/modules/test_file_io.vyb` (write/reopen/read round-trip plus the
+  missing-path error surface); leak-free under ASAN.
+
 ### Changed
 - **`FunctionType` grammar doc no longer contradicts the parser** — `vyb.hpp`
   now documents the real function-pointer type syntax `fn(params) -> Return`

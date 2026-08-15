@@ -1,13 +1,114 @@
-# io - standard input/output module surface.
+# io - File input/output module.
 #
-# Output is currently provided by the global `println()`, `print()` and the
-# typed `println_int()` / `print_int()` / `println_bool()` / `print_bool()`
-# intrinsics, all of which are available everywhere without an import. This
-# module is the surface where additional I/O (reading input, plus the File /
-# network APIs) will live once the dedicated compiler features land (see
-# TODO: Standard Library Expansion — File I/O).
+# Provides the `File` value plus the `open` / `close` / `read_all` / `write_str`
+# syscall-backed helpers and the portable `FILE_*` open-mode helpers. All I/O
+# crosses the runtime's `__vyb_file_*` functions in `runtime/vyb_runtime.c`; the
+# Vyb surface stays allocation/pointer-free — a `File` only carries a plain
+# `Int` descriptor and the path it was opened on.
+#
+# Usage:
+#   import io::{open_write, write_str, close, open_read, read_all}
+#   f<File> = open_write("data.txt")     # FILE_WRITE + FILE_CREATE + FILE_TRUNC
+#   write_str(f, "hello"); close(f)
+#   r<File> = open_read("data.txt")      # FILE_READ
+#   println(read_all(r)); close(r)
+#
+# Diagnostic surface: `error_code()` (0 = no error) and `error_message()` report
+# the result of the last file operation.
+
+# Open-mode helper flags (portable bitmask understood by the runtime helper).
+share(all)
+FILE_READ()<Int> -> { return 1 }
 
 share(all)
+FILE_WRITE()<Int> -> { return 2 }
+
+share(all)
+FILE_RDWR()<Int> -> { return 4 }
+
+share(all)
+FILE_CREATE()<Int> -> { return 128 }
+
+share(all)
+FILE_TRUNC()<Int> -> { return 512 }
+
+share(all)
+FILE_APPEND()<Int> -> { return 1024 }
+
+# An open file. `fd` is -1 when the last open failed; `path` records the target.
+share(all)
+struct File {
+    fd<Int>,
+    path<String>
+}
+
+# Open (or create) `path` with the given `FILE_*` flags. Returns the `File`; test
+# `fd >= 0` (or `error_code()`) to detect failure.
+share(all)
+open(path<String>, flags<Int>)<File> -> {
+    return File { fd = vyb_io_open(path, flags), path = path }
+}
+
+# Convenience: open an existing file for reading.
+share(all)
+open_read(path<String>)<File> -> {
+    return open(path, FILE_READ())
+}
+
+# Convenience: create/truncate a file for writing.
+share(all)
+open_write(path<String>)<File> -> {
+    return open(path, FILE_WRITE() + FILE_CREATE() + FILE_TRUNC())
+}
+
+# Convenience: open for appending, creating the file if absent.
+share(all)
+open_append(path<String>)<File> -> {
+    return open(path, FILE_APPEND() + FILE_CREATE())
+}
+
+# Close an open file. Returns 0 on success, -1 on failure.
+share(all)
+close(f<File>)<Int> -> {
+    if (f.fd < 0) {
+        return -1
+    }
+    return vyb_io_close(f.fd)
+}
+
+# Write `s` to the file. Returns the number of bytes written, or -1 on failure.
+share(all)
+write_str(f<File>, s<String>)<Int> -> {
+    if (f.fd < 0) {
+        return -1
+    }
+    return vyb_io_write(f.fd, s)
+}
+
+# Read the whole file into a `String`. Returns an empty String on failure (check
+# `error_code()` to distinguish an empty file from an error).
+share(all)
+read_all(f<File>)<String> -> {
+    if (f.fd < 0) {
+        return ""
+    }
+    return vyb_io_read_all(f.fd)
+}
+
+# Numeric error code of the last file operation (0 = no error).
+share(all)
+error_code()<Int> -> {
+    return vyb_io_error_code()
+}
+
+# Human-readable message for the last file operation error.
+share(all)
+error_message()<String> -> {
+    return vyb_io_error_message()
+}
+
+# Compatibility status probe (kept for the module-surface import test).
+share(all)
 io_status_message()<String> -> {
-    return "io: output via the global println/print intrinsics"
+    return "io: File open/close/read_all/write_str available via `import io`"
 }
