@@ -431,8 +431,15 @@ The compiler must be silent in normal use. DEBUG output makes the language feel 
 - [x] **Silence codegen DEBUG output** — All `std::cout << "DEBUG: ..."` and `std::cerr << "DEBUG: ..."` in `src/vre/` and `src/vre/llvm/` (~320 statements) are now gated behind `g_debug_codegen` (default `false`) via the `VYB_CDBG` macro. Enable with `--debug-codegen` CLI flag.
 - [x] **Silence parser trace output** — Parser `[PEEK]`/`[CONSUME]`/`[EXPECT]` traces gated behind `#ifdef VERBOSE` and `VERBOSE` no longer defined globally in `CMakeLists.txt`; off by default. Re-enable with `-DVERBOSE` in the build.
 - [x] **Silence optimization pass messages** — `"Skipping IR optimization"` / `"Applying IR optimization passes"` now gated behind `--debug-codegen` (same flag as all other debug output).
-- [ ] **Doc consolidation** — `doc/` has overlapping files (`ROADMAP.md`, `TODO_CURRENT.md`, multiple ownership docs). Keep `TODO.md`, `doc/FEATURE_STATUS.md`, `CHANGELOG.md` as living docs; archive or delete the rest into `doc/archive/`; update `doc/README.md` as index.
-- [ ] **Canonical syntax audit** — Audit all `*.md` files for outdated syntax (`unsafe` → `freedom`, old `:` field syntax → `<Type>`, `T: Aspect` → `<T<Aspect>>`).
+- [x] **Doc consolidation** — `doc/` has overlapping files (`ROADMAP.md`, `TODO_CURRENT.md`, multiple ownership docs). Keep `TODO.md`, `doc/FEATURE_STATUS.md`, `CHANGELOG.md` as living docs; archive or delete the rest into `doc/archive/`; update `doc/README.md` as index.
+- [ ] **Legacy example modernization** — Remaining design/roadmap docs
+  (`OWNERSHIP_MILD.md`, `MODULE_FFI_BINARY_ROADMAP.md`, `LAMBDAS.md`,
+  `Intrinsics.md`, ...) still show legacy example syntax that interleaves with
+  not-yet-shipped features: `fn name(...) -> Type { }` defs, `if let`, and
+  `name: Type` fields/params. Unlike the verifiable shorthand (`unsafe`, object
+  literal `:` which is valid, and `<T<Aspect>>` which is already canonical),
+  these need per-example porting against compiled Vyb (e.g. `grab()` is used
+  directly, not via `if let`). Suggested as a compiler-verified follow-up.
 
 ---
 
@@ -500,9 +507,9 @@ syntax. The README note about `fn` support is historical; it will not persist to
 
 **Decision:** Vyb uses `fail`/`trap`. There is no `try`, `catch`, `finally`, or `throw`.
 
-`TryStatement` and `ThrowStatement` have been removed from `doc/AST_Roadmap.md`. These
+`TryStatement` and `ThrowStatement` have been removed from `doc/archive/AST_Roadmap.md`. These
 are vestigial C++ vocabulary and have no place in Vyb. `fail`/`trap` provides zero-cost
-success path, typed errors, and explicit propagation — the Vyb way. `doc/AST_Roadmap.md`
+success path, typed errors, and explicit propagation — the Vyb way. `doc/archive/AST_Roadmap.md`
 has been updated to reflect this.
 
 ### [DECIDED] Generic Bound Syntax

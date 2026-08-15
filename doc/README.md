@@ -1,6 +1,7 @@
 # Vyb Documentation Index
 
-This directory contains the authoritative documentation for the Vyb programming language.
+This directory contains the active documentation for the Vyb programming language.
+Obsolete, superseded, and phase-complete documents live in [`archive/`](archive/).
 
 ---
 
@@ -9,10 +10,9 @@ This directory contains the authoritative documentation for the Vyb programming 
 | Document | Purpose |
 |----------|---------|
 | [`../README.md`](../README.md) | Project overview, quick start, examples |
-| [`FEATURE_STATUS.md`](FEATURE_STATUS.md) | Current implementation status per feature |
-| [`Vyb_Project_Study_Guide.md`](Vyb_Project_Study_Guide.md) | Living project study guide for practitioners |
 | [`../TODO.md`](../TODO.md) | Living road-to-1.0 checklist |
-| [`../SUGGESTIONS.md`](../SUGGESTIONS.md) | Sprint-organized improvement suggestions |
+| [`../CHANGELOG.md`](../CHANGELOG.md) | Changelog of shipped features and fixes |
+| [`FEATURE_STATUS.md`](FEATURE_STATUS.md) | Current implementation status per feature |
 
 ---
 
@@ -20,14 +20,14 @@ This directory contains the authoritative documentation for the Vyb programming 
 
 | Document | Purpose |
 |----------|---------|
-| [`Canonical_Reference_Syntax.md`](Canonical_Reference_Syntax.md) | **Authoritative ownership syntax** (`my`, `our`, `their`, `borrow`, `view`) |
-| [`Declaration_Syntax.md`](Declaration_Syntax.md) | Function and variable declaration syntax |
-| [`Vyb_Function_Declaration_Syntax.md`](Vyb_Function_Declaration_Syntax.md) | Name-first function syntax deep-dive |
+| [`Canonical_Reference_Syntax.md`](Canonical_Reference_Syntax.md) | **Authoritative syntax** (`my`/`our`/`their`, `freedom`, sized types, signatures) |
 | [`MATCH_SYNTAX.md`](MATCH_SYNTAX.md) | Pattern matching (`match`/`select`) |
 | [`LAMBDAS.md`](LAMBDAS.md) | Lambda expressions and closures |
 | [`VEC_ITERATION.md`](VEC_ITERATION.md) | `Vec<T>` and `for (item in vec)` |
-| [`OWNERSHIP_MILD.md`](OWNERSHIP_MILD.md) | `mild<T>` weak references |
 | [`Memory_Operations.md`](Memory_Operations.md) | `freedom` blocks and raw pointer operations |
+| [`OWNERSHIP_MILD.md`](OWNERSHIP_MILD.md) | `mild<T>` weak references |
+| [`STRING_IMPLEMENTATION.md`](STRING_IMPLEMENTATION.md) | `String` representation and methods |
+| [`Intrinsics.md`](Intrinsics.md) | Intrinsic functions and core syntax |
 
 ---
 
@@ -35,14 +35,21 @@ This directory contains the authoritative documentation for the Vyb programming 
 
 | Document | Purpose |
 |----------|---------|
-| [`ROADMAP.md`](ROADMAP.md) | High-level language roadmap |
-| [`VRE.md`](VRE.md) | Vyb Runtime Environment internals |
-| [`RUNTIME.md`](RUNTIME.md) | Runtime design |
-| [`WHY_TRAITS_NOT_CLASSES.md`](WHY_TRAITS_NOT_CLASSES.md) | Rationale for aspect/bind over classes (uses `aspect`/`bind` terminology) |
-| [`TRAIT_SYSTEM_DESIGN.md`](TRAIT_SYSTEM_DESIGN.md) | Aspect system design (`aspect`/`bind`) |
 | [`ERROR_TRAP.md`](ERROR_TRAP.md) | `fail`/`trap` error propagation design |
+| [`TRAIT_SYSTEM_DESIGN.md`](TRAIT_SYSTEM_DESIGN.md) | Aspect system design (`aspect`/`bind`) |
+| [`WHY_TRAITS_NOT_CLASSES.md`](WHY_TRAITS_NOT_CLASSES.md) | Rationale for aspect/bind over classes |
+| [`ASPECT_BOUNDS.md`](ASPECT_BOUNDS.md) | Aspect bounds and bounded generics |
+| [`MONOMORPHIZATION_DESIGN.md`](MONOMORPHIZATION_DESIGN.md) | Compile-time monomorphization design |
 | [`FFI_DESIGN.md`](FFI_DESIGN.md) | Foreign Function Interface design |
-| [`MODULE_FFI_BINARY_ROADMAP.md`](MODULE_FFI_BINARY_ROADMAP.md) | Module system roadmap |
+| [`MODULE_FFI_BINARY_ROADMAP.md`](MODULE_FFI_BINARY_ROADMAP.md) | Module system / FFI / binary roadmap |
+| [`INTROSPECTION_DESIGN.md`](INTROSPECTION_DESIGN.md) | `typeof` / `typename` introspection |
+| [`Async_Programming_Debug_System.md`](Async_Programming_Debug_System.md) | Async/await design and debugging |
+| [`Auto_Serialization_Main_Returns.md`](Auto_Serialization_Main_Returns.md) | Typeful JSON serialization of returns |
+| [`VRE.md`](VRE.md) | Vyb Runtime Environment internals |
+| [`RUNTIME.md`](RUNTIME.md) | Runtime design (mutability, ownership, references) |
+| [`bundles_and_sharing.md`](bundles_and_sharing.md) | Module `bundle` and `share` visibility |
+| [`module_visibility.md`](module_visibility.md) | Module resolution and visibility notes |
+| [`stdlib_layout.md`](stdlib_layout.md) | Standard library module layout |
 
 ---
 
@@ -58,6 +65,18 @@ This directory contains the authoritative documentation for the Vyb programming 
 | [`AST_Types.md`](AST_Types.md) | Type nodes |
 | [`AST_Literals.md`](AST_Literals.md) | Literal nodes |
 | [`AST_Patterns.md`](AST_Patterns.md) | Pattern nodes |
+| [`AST_Design_Considerations.md`](AST_Design_Considerations.md) | AST design considerations |
+
+---
+
+## Development
+
+| Document | Purpose |
+|----------|---------|
+| [`../UPDATE_LOG.md`](../UPDATE_LOG.md) | Working implementation audit / backlog |
+| [`Development_Guide.md`](Development_Guide.md) | Development guide |
+| [`Test_Harness_Guide.md`](Test_Harness_Guide.md) | Test harness and analysis system |
+| [`TEST_PLAN.md`](TEST_PLAN.md) | Test plan and quality assurance |
 
 ---
 

@@ -8,7 +8,7 @@ Vyb's memory model is designed for safety and explicitness, drawing inspiration 
 3.  **Data Mutability**: Whether the data itself can be changed, often indicated by `const` on the type (e.g., `my<T const>`).
 4.  **References (Borrows)**: How non-owning pointers (`their<T>`) are created and used via `borrow` and `view` keywords.
 
-This document details these aspects, aligning with the `mem_RFC.md` proposal.
+This document details these aspects, aligning with the `archive/mem_RFC.md` proposal.
 
 **Runtime Note**: As of v0.4.0, Vyb uses LLVM's modern ORC JIT infrastructure, providing robust memory management and excellent compatibility with the ownership and borrowing system described here.
 

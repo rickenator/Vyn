@@ -624,8 +624,8 @@ These operators enable powerful patterns like wildcard error handling:
 ```
 ```
 
-### ROADMAP.md
-Mark Phase 1 as complete, update status.
+### Status
+Mark Phase 1 as complete, update status (`../TODO.md` for the living roadmap).
 
 ---
 

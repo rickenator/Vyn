@@ -823,7 +823,7 @@ Vyb's native bridge to C libraries is the highest-priority upcoming feature:
 
 ## Language Overview
 
-Vyb (freedom-1.0 series) is a mature, actively developed systems programming language with name-first syntax, a sized type system (Int8–Int64, UInt8–UInt64, Float32/Float64, Char, Rune, Bytes), compile-time monomorphized generics, aspect/bind polymorphism, pattern matching, `Vec<T>`, and comprehensive collection support. The core language is stable and well tested; Vyb sits roughly midway to its 1.0 milestone (see `doc/FEATURE_STATUS.md` and `doc/ROADMAP.md`).
+Vyb (freedom-1.0 series) is a mature, actively developed systems programming language with name-first syntax, a sized type system (Int8–Int64, UInt8–UInt64, Float32/Float64, Char, Rune, Bytes), compile-time monomorphized generics, aspect/bind polymorphism, pattern matching, `Vec<T>`, and comprehensive collection support. The core language is stable and well tested; Vyb sits roughly midway to its 1.0 milestone (see `doc/FEATURE_STATUS.md` and `TODO.md`).
 
 ### Language Features Showcase
 

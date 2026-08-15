@@ -12,7 +12,7 @@ guarantees. This document uses Vyb-native vocabulary: `aspect` and `bind`.
 
 > **Terminology note:** Earlier drafts used `trait`/`impl` (Rust vocabulary). Vyb uses
 > `aspect`/`bind`. These are not the same language — the concepts are similar but the
-> keywords and philosophy differ. See `doc/WHY_ASPECTS_NOT_CLASSES.md`.
+> keywords and philosophy differ. See `doc/WHY_TRAITS_NOT_CLASSES.md`.
 
 ## Core Principles
 
@@ -404,7 +404,7 @@ Classes add:
 - ❌ Forced inheritance hierarchies
 - ❌ Runtime overhead (vtables)
 
-See [WHY_ASPECTS_NOT_CLASSES.md](WHY_ASPECTS_NOT_CLASSES.md) for detailed rationale.
+See [WHY_TRAITS_NOT_CLASSES.md](WHY_TRAITS_NOT_CLASSES.md) for detailed rationale.
 
 ### Q: What about encapsulation?
 

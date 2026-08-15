@@ -347,5 +347,5 @@ adder = |x| -> |y| -> x + y  // Closure
 ## See Also
 
 - [AST Overview](AST_Overview.md) - `FunctionExpression` node
-- [Ownership System](PROPOSAL_OWNERSHIP_KEYWORDS.md) - Ownership in closures
-- [Async/Await](ROADMAP.md) - Future async lambda support
+- [Memory Operations](Memory_Operations.md) - Ownership in closures
+- [Async/Await](Async_Programming_Debug_System.md) - Future async lambda support

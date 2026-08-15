@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Docs: consolidated `doc/`** — archived 19 obsolete/superseded documents
+  (`ROADMAP.md`, `TODO_CURRENT.md`, completion markers, phase summaries,
+  proposals/RFCs, duplicated syntax docs) into `doc/archive/`, rewrote
+  `doc/README.md` as an index of the active docs, and repointed cross-references
+  in the living docs so no markdown links to `doc/` are broken.
 - **`select` as a statement** — `select (expr) -> { ... }` may be used without a
   binding target for side-effects only. Block arms without `pass` now branch to
   the select end block instead of leaving an unterminated case block. Covered by

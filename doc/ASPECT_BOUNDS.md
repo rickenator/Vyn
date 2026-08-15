@@ -253,4 +253,4 @@ See [`test/aspect/test_aspect_bounds.vyb`](../test/aspect/test_aspect_bounds.vyb
 
 - [Aspect System Overview](AST_Design_Considerations.md)
 - [AST Overview](AST_Overview.md)
-- [Roadmap](ROADMAP.md)
+- [TODO](../TODO.md) - Road to 1.0 checklist
