@@ -431,6 +431,16 @@ tmpl<String> = "User {} has {} badge(s)."
 msg<String> = tmpl.format("Vyb", 3)   // "User Vyb has 3 badge(s)."
 ```
 
+**Method calls on value receivers** — every String method works not only on a
+named variable but on any String value: a literal, a function/expression result,
+or a struct/array field. Only the receiver itself still needs to be a String;
+no intermediate variable is required.
+```vyb
+upper<String> = "hello".to_upper()                        // "HELLO"
+head<String> = full_name().substring(0, 5)                // first 5 chars
+count<Int> = get_csv().split(",").len()                   // number of fields
+```
+
 ### ✅ **Async Programming & Debugging**
 
 Vyb v0.4.1 features **complete async/await support** for writing concurrent programs:

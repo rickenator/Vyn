@@ -1,0 +1,42 @@
+// @test: String methods on non-identifier receivers
+// @description: String methods (built-in and aspect) work on literal, call-result, and struct-field receivers
+// @category: string
+// @expect: pass
+// @expect-output: lit_format=hi x!
+
+struct Person {
+    name<String>
+}
+named()<String> -> {
+    return "hello world"
+}
+main()<Int> -> {
+    // Literal receivers
+    println("lit_format=" + "hi {}!".format("x"))
+    println("lit_upper=" + "ab".to_upper())
+    println("lit_sub=" + "abcdef".substring(1, 3))
+    println("lit_rep=" + "aa".replace("a", "z"))
+    println("lit_trim=|" + "  x  ".trim() + "|")
+    println_int("abc".len())
+    println_bool("hello".contains("ell"))
+    println("lit_lower=" + "AB".to_lower())
+    println("lit_concat=" + "a".concat("b"))
+    println_int("hi".char_at(0))
+
+    // Call-result receivers
+    println("call_sub=" + named().substring(0, 5))
+    println("call_upper=" + named().to_upper())
+    println("call_fmt=" + named().format())
+    cv<Vec<String>> = named().split(" ")
+    println_int(cv.len())
+    println("call_split0=" + cv.get(0))
+
+    // Struct-field receivers
+    p<Person> = Person { name = "alice" }
+    println("fld_upper=" + p.name.to_upper())
+    println("fld_sub=" + p.name.substring(0, 2))
+    fv<Vec<String>> = p.name.split("l")
+    println_int(fv.len())
+    println("fld_split=" + fv.get(0))
+    return 0
+}

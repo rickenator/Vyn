@@ -282,6 +282,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test/ffi/enum_by_value.vyb`.
 
 ### Fixed
+- **String methods work on non-identifier receivers** — previously only a
+  receiver bound to a named variable could call String methods (so
+  `"hello ".to_upper()`, `full_name().substring(0, 5)`, or `p.name.split(",")`
+  all failed with `Function ... not found` at codegen, and several, such as
+  `contains`/`concat`/`len` on a literal, were misrouted to the Vec path and
+  could crash). Every built-in String method now dispatches on a literal,
+  call-result, or struct/array-field receiver by materializing the receiver's
+  `{ ptr, len }` struct, and String-bound aspect methods (e.g. `.split()`)
+  dispatch too. Covered by `test/string/test_str_method_on_value.vyb`.
 - **`Vec(n)` no longer emits untrackable `malloc`/`memset` symbols** —
   `emitVecConstructor` previously called `llvm::Function::Create` for a fresh
   `ExternalLinkage` `malloc`/`memset` on *every* `Vec(n)` (pre-sized) call. With

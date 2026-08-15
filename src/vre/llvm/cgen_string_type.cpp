@@ -36,6 +36,27 @@ void LLVMCodegen::handleStringMethod(vyb::ast::CallExpression* node, const std::
     };
     llvm::Type* strStructType = llvm::StructType::get(*context, strFields, false);
 
+    dispatchStringMethod(node, strPtr, strStructType, methodName);
+}
+
+// String method call where the receiver is an already-materialized pointer to the
+// { ptr, len } String struct (not looked up by variable name). Used for literal
+// and computed/value receivers that have no namedValues entry.
+void LLVMCodegen::handleStringMethodOnValue(vyb::ast::CallExpression* node, llvm::Value* strPtr, const std::string& methodName) {
+    if (!strPtr || !strPtr->getType()->isPointerTy()) {
+        logError(node->loc, "String receiver is not a pointer type");
+        m_currentLLVMValue = nullptr;
+        return;
+    }
+    std::vector<llvm::Type*> strFields = {
+        llvm::PointerType::get(*context, 0),
+        llvm::Type::getInt64Ty(*context)
+    };
+    llvm::Type* strStructType = llvm::StructType::get(*context, strFields, false);
+    dispatchStringMethod(node, strPtr, strStructType, methodName);
+}
+
+void LLVMCodegen::dispatchStringMethod(vyb::ast::CallExpression* node, llvm::Value* strPtr, llvm::Type* strStructType, const std::string& methodName) {
     if (methodName == "len" || methodName == "length") {
         handleStringLen(node, strPtr, strStructType);
     } else if (methodName == "concat") {

@@ -2807,6 +2807,119 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 }
             }
 
+            // String method on a non-identifier receiver: a string literal, a
+            // function/expression result, or a struct/array field whose type is
+            // String (e.g. "hello {}!".format(...), get().substring(...),
+            // p.name.to_upper()). Runs before the Vec-member fallback below so a
+            // String method like `contains`/`concat`/`len` isn't misrouted to the
+            // Vec path. Evaluate the receiver once, materialize a pointer to its
+            // { ptr, len } struct, then dispatch to either the built-in String
+            // handlers or a String-bound aspect method (e.g. split).
+            bool objectAstIsString = false;
+            if (memberExpr->object->type) {
+                if (auto objTn = dynamic_cast<ast::TypeName*>(memberExpr->object->type.get())) {
+                    objectAstIsString = objTn->identifier && objTn->identifier->name == "String";
+                }
+            }
+            if (objectAstIsString) {
+                memberExpr->object->accept(*this);
+                llvm::Value* strVal = m_currentLLVMValue;
+                if (!strVal) {
+                    logError(memberExpr->object->loc, "Failed to evaluate String method receiver");
+                    m_currentLLVMValue = nullptr;
+                    return;
+                }
+                llvm::Value* strPtr = nullptr;
+                llvm::Type* strStructTy = nullptr;
+                if (strVal->getType()->isStructTy()) {
+                    strStructTy = strVal->getType();
+                }
+                if (strVal->getType()->isStructTy()) {
+                    llvm::AllocaInst* tmp = builder->CreateAlloca(strVal->getType(), nullptr, "str.rcv.tmp");
+                    builder->CreateStore(strVal, tmp);
+                    strPtr = tmp;
+                } else if (strVal->getType()->isPointerTy()) {
+                    strPtr = strVal;
+                }
+                if (!strPtr) {
+                    logError(memberExpr->object->loc, "String method receiver is not a String struct");
+                    m_currentLLVMValue = nullptr;
+                    return;
+                }
+
+                if (methodName == "len" || methodName == "length" || methodName == "concat" ||
+                    methodName == "substring" || methodName == "substr" || methodName == "char_at" ||
+                    methodName == "to_bytes" || methodName == "starts_with" || methodName == "ends_with" ||
+                    methodName == "contains" || methodName == "to_upper" || methodName == "to_lower" ||
+                    methodName == "trim" || methodName == "strip" || methodName == "replace" ||
+                    methodName == "format") {
+                    handleStringMethodOnValue(node, strPtr, methodName);
+                    return;
+                }
+
+                // Non-built-in: this may be a String-bound aspect method (e.g. split).
+                SemanticAnalyzer* semantic = driver_.hasSemanticAnalyzer()
+                    ? driver_.getSemanticAnalyzer() : nullptr;
+                if (semantic) {
+                    const std::string concreteType = "String";
+                    const auto& impls = semantic->getTraitImpls();
+                    auto limpl = impls.find(concreteType);
+                    if (limpl != impls.end()) {
+                        for (const auto& traitEntry : limpl->second) {
+                            bool hasMethod = false;
+                            for (const ast::FunctionDeclaration* m : traitEntry.second) {
+                                if (m && m->id && m->id->name == methodName) { hasMethod = true; break; }
+                            }
+                            if (!hasMethod) continue;
+                            const std::string& trait = traitEntry.first;
+                            llvm::Function* implFunc = module->getFunction(concreteType + "_" + trait + "_" + methodName);
+                            if (!implFunc) implFunc = monomorphizeTraitMethod(concreteType, trait, methodName);
+                            if (!implFunc) continue;
+
+                            bool selfIsByRef = implFunc->getArg(0)->getType()->isPointerTy();
+                            std::vector<llvm::Value*> argValues;
+                            if (selfIsByRef) {
+                                argValues.push_back(strPtr);
+                            } else if (strStructTy) {
+                                argValues.push_back(builder->CreateLoad(strStructTy, strPtr, "str.rcv.load"));
+                            } else {
+                                argValues.push_back(strPtr);
+                            }
+                            for (size_t a = 0; a < node->arguments.size(); ++a) {
+                                auto& arg = node->arguments[a];
+                                arg->accept(*this);
+                                if (!m_currentLLVMValue) {
+                                    logError(arg->loc, "Argument codegen failed for aspect method " + methodName);
+                                    m_currentLLVMValue = nullptr;
+                                    return;
+                                }
+                                llvm::Value* argVal = m_currentLLVMValue;
+                                if (argVal->getType()->isPointerTy()) {
+                                    llvm::Type* expected = implFunc->getFunctionType()->getParamType(argValues.size());
+                                    if (expected && expected->isStructTy()) {
+                                        llvm::StructType* st = llvm::dyn_cast<llvm::StructType>(expected);
+                                        if (st && st->getNumElements() == 2 &&
+                                            st->getElementType(0)->isPointerTy() &&
+                                            st->getElementType(1)->isIntegerTy(64)) {
+                                            llvm::Value* wrapped = tryCast(argVal, expected, arg->loc);
+                                            if (wrapped) argVal = wrapped;
+                                        }
+                                    }
+                                }
+                                argValues.push_back(argVal);
+                            }
+                            if (implFunc->getReturnType()->isVoidTy()) {
+                                builder->CreateCall(implFunc, argValues);
+                                m_currentLLVMValue = nullptr;
+                            } else {
+                                m_currentLLVMValue = builder->CreateCall(implFunc, argValues, "aspect.method.result");
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+
             // Handle Vec method calls on member expressions (e.g., tree.nodes.push())
             // The object is itself a member expression
             if (methodName == "push" || methodName == "pop" || methodName == "len" || methodName == "get" || methodName == "set" ||
