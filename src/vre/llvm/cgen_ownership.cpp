@@ -137,6 +137,20 @@ void LLVMCodegen::cleanupVariable(const ScopeVariable& var) {
         return;
     }
 
+    // Closure-typed variables own one reference to a capture environment.
+    // needsCleanup is only true for bindings recognized as `fn` at declaration,
+    // so a coincidentally {ptr, ptr}-shaped tuple is never ref-counted here.
+    if (isClosureStructType(var.type)) {
+        auto astIt = valueTypeMap.find(var.allocaInst);
+        bool unknownAst = (astIt == valueTypeMap.end());
+        bool astFn = !unknownAst && isFnTypeNode(astIt->second.get());
+        if (unknownAst || astFn) {
+            VYB_CDBG << "DEBUG: Performing cleanup for closure variable: " << var.name << std::endl;
+            releaseClosureAlloca(var.allocaInst);
+        }
+        return;
+    }
+
     switch (var.ownership) {
         case ast::OwnershipKind::MY: {
             // Unique ownership - immediate cleanup
@@ -516,6 +530,34 @@ llvm::Function* LLVMCodegen::getOrCreateFreeFunction() {
     return freeFunc;
 }
 
+llvm::Function* LLVMCodegen::getOrCreateVybStringFreeFunction() {
+    llvm::Function* freeFunc = module->getFunction("__vyb_string_free");
+    if (!freeFunc) {
+        VYB_CDBG << "DEBUG: Creating __vyb_string_free() function declaration" << std::endl;
+        llvm::FunctionType* freeFuncType = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*context),
+            {llvm::PointerType::get(*context, 0)},
+            false
+        );
+        freeFunc = llvm::Function::Create(freeFuncType, llvm::Function::ExternalLinkage, "__vyb_string_free", module.get());
+    }
+    return freeFunc;
+}
+
+llvm::Function* LLVMCodegen::getOrCreateVybStringRegisterFunction() {
+    llvm::Function* regFunc = module->getFunction("__vyb_string_register");
+    if (!regFunc) {
+        VYB_CDBG << "DEBUG: Creating __vyb_string_register() function declaration" << std::endl;
+        llvm::FunctionType* regFuncType = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*context),
+            {llvm::PointerType::get(*context, 0)},
+            false
+        );
+        regFunc = llvm::Function::Create(regFuncType, llvm::Function::ExternalLinkage, "__vyb_string_register", module.get());
+    }
+    return regFunc;
+}
+
 llvm::Function* LLVMCodegen::getOrCreateMallocFunction() {
     llvm::Function* mallocFunc = module->getFunction("malloc");
     if (!mallocFunc) {
@@ -611,6 +653,12 @@ llvm::Value* LLVMCodegen::generateVecDeepCopy(llvm::Value* vecStructValue,
 }
 
 // Vec struct layout: { ptr, i64 (size), i64 (capacity) }
+bool LLVMCodegen::isVybStringStructType(llvm::Type* type) {
+    auto* st = llvm::dyn_cast<llvm::StructType>(type);
+    if (!st || st->getNumElements() != 2) return false;
+    return st->getElementType(0)->isPointerTy() && st->getElementType(1)->isIntegerTy(64);
+}
+
 bool LLVMCodegen::isVecStructType(llvm::Type* type) {
     auto* st = llvm::dyn_cast<llvm::StructType>(type);
     if (!st || st->getNumElements() != 3) return false;
@@ -618,4 +666,91 @@ bool LLVMCodegen::isVecStructType(llvm::Type* type) {
     if (!st->getElementType(1)->isIntegerTy(64)) return false;
     if (!st->getElementType(2)->isIntegerTy(64)) return false;
     return true;
+}
+
+// ============================================================================
+// CLOSURE ENVIRONMENT REFERENCE COUNTING
+// ============================================================================
+// A closure value is the uniform `struct { ptr env, ptr fn }`. The env block is
+// a heap allocation whose header is `{ i64 refcount; ptr cap_dtor }` followed by
+// the captured fields. Reference counting lets multiple closure values share the
+// same env safely: copying a closure into a durable storage location retains the
+// env (+1), and destroying that location releases it (-1). When the last ref is
+// dropped the per-layout cap_dtor (if any) releases captured `our<T>` strong
+// counts, then the env is freed.
+
+llvm::Function* LLVMCodegen::getOrCreateClosureRetainFunction() {
+    if (auto* f = module->getFunction("__vyb_closure_retain")) return f;
+    llvm::FunctionType* ty = llvm::FunctionType::get(
+        llvm::PointerType::get(*context, 0),
+        {llvm::PointerType::get(*context, 0)}, false);
+    return llvm::Function::Create(ty, llvm::Function::ExternalLinkage,
+                                  "__vyb_closure_retain", module.get());
+}
+
+llvm::Function* LLVMCodegen::getOrCreateClosureReleaseFunction() {
+    if (auto* f = module->getFunction("__vyb_closure_release")) return f;
+    llvm::FunctionType* ty = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*context),
+        {llvm::PointerType::get(*context, 0)}, false);
+    return llvm::Function::Create(ty, llvm::Function::ExternalLinkage,
+                                  "__vyb_closure_release", module.get());
+}
+
+bool LLVMCodegen::isClosureStructType(llvm::Type* type) {
+    auto* st = llvm::dyn_cast<llvm::StructType>(type);
+    if (!st || st->getNumElements() != 2) return false;
+    return st->getElementType(0)->isPointerTy() && st->getElementType(1)->isPointerTy();
+}
+
+bool LLVMCodegen::isFnTypeNode(const vyb::ast::TypeNode* tn) const {
+    if (!tn) return false;
+    if (dynamic_cast<const vyb::ast::FunctionType*>(tn)) return true;
+    if (tn->type && dynamic_cast<const vyb::ast::FunctionType*>(tn->type.get())) return true;
+    return false;
+}
+
+void LLVMCodegen::retainClosureValue(llvm::Value* closureVal) {
+    if (!closureVal || !isClosureStructType(closureVal->getType())) return;
+    llvm::StructType* closureTy = llvm::cast<llvm::StructType>(closureVal->getType());
+    llvm::Value* env = builder->CreateExtractValue(closureVal, 0, "cl.retain.env");
+    llvm::Value* isNull = builder->CreateICmpEQ(
+        env, llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)),
+        "cl.retain.null");
+    llvm::BasicBlock* doRetain = llvm::BasicBlock::Create(*context, "cl.retain.yes", currentFunction);
+    llvm::BasicBlock* done = llvm::BasicBlock::Create(*context, "cl.retain.done", currentFunction);
+    builder->CreateCondBr(isNull, done, doRetain);
+    builder->SetInsertPoint(doRetain);
+    llvm::Function* retainFn = getOrCreateClosureRetainFunction();
+    builder->CreateCall(retainFn, {env});
+    builder->CreateBr(done);
+    builder->SetInsertPoint(done);
+}
+
+void LLVMCodegen::releaseClosureValue(llvm::Value* closureVal) {
+    if (!closureVal || !isClosureStructType(closureVal->getType())) return;
+    llvm::StructType* closureTy = llvm::cast<llvm::StructType>(closureVal->getType());
+    llvm::Value* env = builder->CreateExtractValue(closureVal, 0, "cl.release.env");
+    llvm::Value* isNull = builder->CreateICmpEQ(
+        env, llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)),
+        "cl.release.null");
+    llvm::BasicBlock* doRel = llvm::BasicBlock::Create(*context, "cl.release.yes", currentFunction);
+    llvm::BasicBlock* done = llvm::BasicBlock::Create(*context, "cl.release.done", currentFunction);
+    builder->CreateCondBr(isNull, done, doRel);
+    builder->SetInsertPoint(doRel);
+    llvm::Function* releaseFn = getOrCreateClosureReleaseFunction();
+    builder->CreateCall(releaseFn, {env});
+    builder->CreateBr(done);
+    builder->SetInsertPoint(done);
+}
+
+void LLVMCodegen::releaseClosureAlloca(llvm::Value* allocaInst) {
+    if (!allocaInst) return;
+    llvm::Type* allocTy = nullptr;
+    if (auto* ai = llvm::dyn_cast<llvm::AllocaInst>(allocaInst)) {
+        allocTy = ai->getAllocatedType();
+    }
+    if (!allocTy || !isClosureStructType(allocTy)) return;
+    llvm::Value* closureVal = builder->CreateLoad(allocTy, allocaInst, "cl.release.alloca.load");
+    releaseClosureValue(closureVal);
 }

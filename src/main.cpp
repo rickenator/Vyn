@@ -44,6 +44,10 @@ extern "C" {
                                const char* old_s, const char* new_s,
                                int64_t* out_len);
 
+    // Closure capture-environment reference counting helpers
+    void* __vyb_closure_retain(void* env);
+    void  __vyb_closure_release(void* env);
+
     // ToString intrinsic functions for automatic string conversion - all basic types
     char* __vyb_toString_int(int64_t value);
     char* __vyb_toString_int8(int8_t value);
@@ -67,6 +71,8 @@ extern "C" {
     char* __vyb_float_to_string(double value);
     char* __vyb_bool_to_string(bool value);
     char* __vyb_string_to_string(const char* str);
+    void __vyb_string_register(void* ptr);
+    void __vyb_string_free(void* ptr);
 
     int64_t __vyb_int_from_string(const char* str, bool* success);
     double __vyb_float_from_string(const char* str, bool* success);
@@ -761,6 +767,12 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
         runtimeSymbols[mangle("__vyb_string_replace")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_string_replace), llvm::JITSymbolFlags::Exported);
 
+        // Register closure reference-count helpers (always export — codegen may emit the symbols)
+        runtimeSymbols[mangle("__vyb_closure_retain")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_closure_retain), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_closure_release")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_closure_release), llvm::JITSymbolFlags::Exported);
+
         // Register toString functions
         if (toStringIntFunc) {
             runtimeSymbols[mangle("__vyb_toString_int")] = llvm::orc::ExecutorSymbolDef(
@@ -836,6 +848,10 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_bool_to_string), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_string_to_string")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_string_to_string), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_string_free")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_string_free), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_string_register")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_string_register), llvm::JITSymbolFlags::Exported);
 
         runtimeSymbols[mangle("__vyb_int_from_string")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_int_from_string), llvm::JITSymbolFlags::Exported);

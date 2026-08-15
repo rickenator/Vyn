@@ -548,7 +548,19 @@ llvm::Value* LLVMCodegen::generateMixedStringConcatenation(llvm::Value* leftValu
     }
 
     // Now concatenate the two strings
-    return generateStringConcatenation(leftString, rightString, loc);
+    llvm::Value* result = generateStringConcatenation(leftString, rightString, loc);
+
+    // The __vyb_*_to_string conversions produced above are fresh, registry-tracked
+    // heap buffers that the concat has now fully copied; reclaim them (only the
+    // char* scalar case — complex-struct conversions return an untracked buffer).
+    if (!leftIsString && leftString && leftString->getType()->isPointerTy()) {
+        builder->CreateCall(getOrCreateVybStringFreeFunction(), {leftString});
+    }
+    if (!rightIsString && rightString && rightString->getType()->isPointerTy()) {
+        builder->CreateCall(getOrCreateVybStringFreeFunction(), {rightString});
+    }
+
+    return result;
 }
 
 } // namespace vyb

@@ -14,16 +14,6 @@
 #include <vector>
 #include <map>
 
-// File-local helper: detect the Vyb String struct representation { ptr, i64 }.
-// Used by both function declaration and forward-declaration code paths.
-static bool isVybStringStructType(llvm::Type* t) {
-    if (!t->isStructTy()) return false;
-    auto* st = llvm::cast<llvm::StructType>(t);
-    return st->getNumElements() == 2 &&
-           st->getElementType(0)->isPointerTy() &&
-           st->getElementType(1)->isIntegerTy(64);
-}
-
 using namespace vyb;
 // using namespace llvm; // Uncomment if desired for brevity
 
@@ -331,8 +321,36 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
             }
         }
 
+        // Closure-typed variables own one reference to a capture environment.
+        // Only a confirmed `fn` type is treated as a closure: a bare `{ptr, ptr}`
+        // layout (e.g. a 2-pointer tuple) must not be reference-counted.
+        bool astIsFn = isFnTypeNode(node->typeNode.get())
+            || (node->init != nullptr && isFnTypeNode(node->init->type.get()))
+            || dynamic_cast<ast::FunctionExpression*>(node->init.get()) != nullptr;
+        bool closureVar = isClosureStructType(varType) && astIsFn;
+        if (closureVar) {
+            needsCleanup = true;
+            VYB_CDBG << "DEBUG: Variable '" << node->id->name << "' is a closure - needs cleanup" << std::endl;
+        }
+
         // Register variable for scope-based cleanup
         registerVariable(node->id->name, alloca, initialVal, ownership, varType, needsCleanup);
+
+        // Hand-off of a newly stowed closure value into a durable storage
+        // location. A direct call that returns a closure already retained the
+        // env at its return, so the caller takes that reference over as-is; any
+        // other source (a fresh inline lambda, or a copy of another variable)
+        // needs the new storage location to retain (+1) so environment teardown
+        // stays in lock-step with the locations that reference it.
+        if (closureVar) {
+            bool transferred = dynamic_cast<ast::CallExpression*>(node->init.get()) != nullptr;
+            if (!transferred) {
+                retainClosureValue(initialVal);
+                VYB_CDBG << "DEBUG: Closure variable '" << node->id->name << "' retained a shared env" << std::endl;
+            } else {
+                VYB_CDBG << "DEBUG: Closure variable '" << node->id->name << "' took over a returned env" << std::endl;
+            }
+        }
 
         // Create debug information for the variable
         if (debugBuilder && !debugScopeStack.empty()) {
@@ -645,10 +663,20 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
                 }
             }
 
+            // Closure-typed parameters take a reference to the shared capture env:
+            // retain it here (balanced by the callee releasing it on scope exit),
+            // so the callee's closure lifetime is independent of the argument.
+            bool closureParam = isClosureStructType(paramTypes[i]) &&
+                isFnTypeNode(node->params[i].typeNode.get());
+            if (closureParam) {
+                retainClosureValue(argVal);
+                VYB_CDBG << "DEBUG: Parameter '" << paramNames[i] << "' is a closure - retained env" << std::endl;
+            }
+
             // Register parameter for scope-based cleanup.
             // Vec parameters now own their data (deep-copied above) so they need cleanup.
             // Non-Vec parameters do not own heap data and are cleaned up by the caller.
-            registerVariable(paramNames[i], alloca, argVal, ast::OwnershipKind::MY, paramTypes[i], vecParam);
+            registerVariable(paramNames[i], alloca, argVal, ast::OwnershipKind::MY, paramTypes[i], vecParam || closureParam);
 
             // Create debug information for the parameter
             if (debugBuilder && !debugScopeStack.empty()) {

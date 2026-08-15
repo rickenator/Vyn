@@ -505,6 +505,15 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                     }
                 }
 
+                // A closure flowing out of this function takes an owned reference that
+                // the caller's storage will hand off to: retain the env so it survives
+                // this frame's scope cleanup (which still releases the source binding
+                // normally) and stays alive for the caller to take over.
+                bool fnReturn = currentFunctionAST && isFnTypeNode(currentFunctionAST->returnTypeNode.get());
+                if (fnReturn && returnValue && isClosureStructType(returnValue->getType())) {
+                    retainClosureValue(returnValue);
+                }
+
                 // IMPORTANT: Clean up the function's scopes before returning so the
                 // cleanup happens (and the last cleanup leaves the insert point in a
                 // terminator-free block) before the terminator is emitted. A return

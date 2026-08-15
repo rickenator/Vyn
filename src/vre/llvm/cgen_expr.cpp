@@ -442,6 +442,21 @@ void LLVMCodegen::visit(vyb::ast::BinaryExpression *node) {
                     llvm::Value* nullTermPos = builder->CreateGEP(llvm::Type::getInt8Ty(*context), newData, newLen, "str.null_pos");
                     builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt8Ty(*context), 0), nullTermPos);
 
+                    // Track this freshly-allocated buffer in the string registry so
+                    // __vyb_string_free can reclaim it safely (and binding-level
+                    // cleanup at scope end or overwrite can too).
+                    builder->CreateCall(getOrCreateVybStringRegisterFunction(), {newData});
+
+                    // If an operand was itself a freshly-allocated owned String temp
+                    // (e.g. a nested concat or `.to_string()`), it has now been fully
+                    // consumed by the copy above, so it can be reclaimed.
+                    if (exprProducesOwnedStringTemp(node->left.get())) {
+                        builder->CreateCall(getOrCreateVybStringFreeFunction(), {str1Data});
+                    }
+                    if (exprProducesOwnedStringTemp(node->right.get())) {
+                        builder->CreateCall(getOrCreateVybStringFreeFunction(), {str2Data});
+                    }
+
                     // Create new String struct
                     llvm::Value* resultStr = llvm::UndefValue::get(strStructType);
                     resultStr = builder->CreateInsertValue(resultStr, newData, 0, "str.result_data");
@@ -1872,7 +1887,9 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
     // Special handling for println with auto-serialization
     if (identCallee && identCallee->name == "println" && node->arguments.size() >= 1) {
         // Helper lambda to serialize one argument to char* for printing
-        auto serializeOneArg = [&](ast::ExprPtr& argExpr) -> llvm::Value* {
+        auto serializeOneArg = [&](ast::ExprPtr& argExpr, bool* outHeap, bool* outStringOwned) -> llvm::Value* {
+            if (outHeap) *outHeap = false;
+            if (outStringOwned) *outStringOwned = false;
             llvm::Value* arg = nullptr;
             // For array arguments, get pointer directly
             if (argExpr->type && dynamic_cast<ast::ArrayType*>(argExpr->type.get())) {
@@ -1898,6 +1915,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                     serialized = arg->getType()->isStructTy()
                         ? builder->CreateExtractValue(arg, 0, "str.ptr")
                         : arg;
+                    if (outStringOwned) *outStringOwned = exprProducesOwnedStringTemp(argExpr.get());
                 } else if (auto* arrayType = dynamic_cast<ast::ArrayType*>(argType)) {
                     serialized = generateArraySerialization(arg, arrayType);
                 } else if (arg->getType()->isPointerTy() && arg->getType() == int8PtrType) {
@@ -1905,6 +1923,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 } else {
                     serialized = generateToStringCall(arg, arg->getType(), argType, argExpr->loc);
                     if (!serialized) serialized = generateGenericSerialization(arg, argType);
+                    if (outHeap) *outHeap = true;
                 }
             } else {
                 if (arg->getType()->isPointerTy() && arg->getType() == int8PtrType) {
@@ -1915,6 +1934,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 } else {
                     serialized = generateToStringCall(arg, arg->getType(), nullptr, argExpr->loc);
                     if (!serialized) serialized = generateGenericSerialization(arg, nullptr);
+                    if (outHeap) *outHeap = true;
                 }
             }
             return serialized;
@@ -1954,6 +1974,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         }
 
         llvm::Value* serializedValue = nullptr;
+        bool serializedTmpIsHeap = false;
+        bool stringArgOwnedTemp = exprProducesOwnedStringTemp(node->arguments[0].get());
 
         // Check for string type first (Vyb string struct {ptr, len})
         if (node->arguments[0]->type) {
@@ -1994,6 +2016,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                     // Fall back to generic serialization for complex/unrecognized types
                     serializedValue = generateGenericSerialization(arg, argType);
                 }
+                serializedTmpIsHeap = true;
             }
         }
         else {
@@ -2014,6 +2037,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 if (!serializedValue) {
                     serializedValue = generateGenericSerialization(arg, nullptr);
                 }
+                serializedTmpIsHeap = true;
             }
         }
 
@@ -2021,6 +2045,19 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         llvm::Function* printlnFunc = getVybPrintlnFunction();
         std::vector<llvm::Value*> printlnArgs = {serializedValue};
         builder->CreateCall(printlnFunc, printlnArgs);
+
+        // Free a heap-backed serialization temporary (scalar/struct/array
+        // produced by to_string/serialize helpers). String paths yield the
+        // value's own buffer; only a freshly-allocated concat/.to_string() temp
+        // is reclaimed (through the registry, which makes it a safe no-op for
+        // .rodata literals and named-var borrows).
+        if (serializedTmpIsHeap) {
+            llvm::Function* freeFn = getOrCreateFreeFunction();
+            builder->CreateCall(freeFn, {serializedValue});
+        }
+        if (stringArgOwnedTemp) {
+            builder->CreateCall(getOrCreateVybStringFreeFunction(), {serializedValue});
+        }
 
         m_currentLLVMValue = nullptr; // println returns void
         return;
@@ -2030,8 +2067,11 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             llvm::Function* printlnFunc = getVybPrintlnFunction();
             // Space constant
             llvm::Value* spaceStr = builder->CreateGlobalStringPtr(" ", "println.space");
+            llvm::Function* freeFn = getOrCreateFreeFunction();
             for (size_t i = 0; i < node->arguments.size(); ++i) {
-                llvm::Value* serialized = serializeOneArg(node->arguments[i]);
+                bool serializedIsHeap = false;
+                bool serializedStringOwned = false;
+                llvm::Value* serialized = serializeOneArg(node->arguments[i], &serializedIsHeap, &serializedStringOwned);
                 if (!serialized) {
                     logError(node->arguments[i]->loc, "Argument to println() evaluated to null");
                     m_currentLLVMValue = nullptr;
@@ -2044,6 +2084,12 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 } else {
                     // Last arg: println (adds newline)
                     builder->CreateCall(printlnFunc, {serialized});
+                }
+                if (serializedIsHeap) {
+                    builder->CreateCall(freeFn, {serialized});
+                }
+                if (serializedStringOwned) {
+                    builder->CreateCall(getOrCreateVybStringFreeFunction(), {serialized});
                 }
             }
             m_currentLLVMValue = nullptr;
@@ -2058,6 +2104,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         if (node->arguments.size() > 1) {
             spaceStr = builder->CreateGlobalStringPtr(" ", "print.space");
         }
+        llvm::Function* freeFnForPrint = getOrCreateFreeFunction();
         for (size_t argIdx = 0; argIdx < node->arguments.size(); ++argIdx) {
             node->arguments[argIdx]->accept(*this);
             llvm::Value* arg = m_currentLLVMValue;
@@ -2065,6 +2112,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 logError(node->arguments[argIdx]->loc, "Argument to print() evaluated to null");
                 return;
             }
+            bool argSerializedHeap = false;
+            bool argStringOwned = exprProducesOwnedStringTemp(node->arguments[argIdx].get());
             // Serialize to string then print without newline
             llvm::Value* serializedValue = nullptr;
             if (node->arguments[argIdx]->type) {
@@ -2079,6 +2128,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                     if (!serializedValue) {
                         serializedValue = generateGenericSerialization(arg, argType);
                     }
+                    argSerializedHeap = true;
                 }
             } else {
                 if (arg->getType()->isPointerTy()) {
@@ -2091,10 +2141,17 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                     if (!serializedValue) {
                         serializedValue = generateGenericSerialization(arg, nullptr);
                     }
+                    argSerializedHeap = true;
                 }
             }
             if (serializedValue) {
                 builder->CreateCall(printFunc, {serializedValue});
+                if (argSerializedHeap) {
+                    builder->CreateCall(freeFnForPrint, {serializedValue});
+                }
+                if (argStringOwned) {
+                    builder->CreateCall(getOrCreateVybStringFreeFunction(), {serializedValue});
+                }
             }
             // Print space between args (not after last)
             if (spaceStr && argIdx < node->arguments.size() - 1) {
@@ -2122,6 +2179,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         } else {
             builder->CreateCall(getVybPrintFunction(), {strVal});
         }
+        builder->CreateCall(getOrCreateVybStringFreeFunction(), {strVal});
         m_currentLLVMValue = nullptr;
         return;
     }
@@ -2144,6 +2202,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         } else {
             builder->CreateCall(getVybPrintFunction(), {strVal});
         }
+        builder->CreateCall(getOrCreateVybStringFreeFunction(), {strVal});
         m_currentLLVMValue = nullptr;
         return;
     }
@@ -3431,9 +3490,35 @@ void LLVMCodegen::visit(vyb::ast::AssignmentExpression *node) {
         return;
     }
 
+    // Closure-typed variable overwrites release the target's previous hold on a
+    // capture environment. Load the outgoing value first, then store the incoming
+    // value (so a self-assignment keeps its env alive), then release the old one.
+    bool closureOverwrite = isAssignToVar && destPointeeType && isClosureStructType(destPointeeType);
+    if (closureOverwrite) {
+        // Only overwrite-handle assignments to a confirmed `fn` binding; a plain
+        // {ptr, ptr} target (2-pointer tuple) must keep plain store semantics.
+        bool lhsFn = isFnTypeNode(node->left->type.get()) || isFnTypeNode(node->right->type.get());
+        if (!lhsFn) {
+            auto vit = valueTypeMap.find(LHS);
+            if (vit != valueTypeMap.end() && isFnTypeNode(vit->second.get())) lhsFn = true;
+        }
+        if (!lhsFn) closureOverwrite = false;
+    }
+    llvm::Value* oldClosureVal = nullptr;
+    if (closureOverwrite) {
+        oldClosureVal = builder->CreateLoad(destPointeeType, LHS, "assign.old_closure");
+        bool closureTransfer = dynamic_cast<ast::CallExpression*>(node->right.get()) != nullptr;
+        if (!closureTransfer) {
+            retainClosureValue(RHS);
+        }
+    }
+
     // Create the store instruction with proper alignment
     builder->CreateStore(RHS, LHS);
     writeThroughMutable(RHS);
+    if (closureOverwrite && oldClosureVal) {
+        releaseClosureValue(oldClosureVal);
+    }
 
     // If we're assigning to a member of a struct, we need to preserve type information
     if (auto memberExpr = dynamic_cast<ast::MemberExpression*>(node->left.get())) {
@@ -4747,7 +4832,13 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
 
     llvm::StructType* envStructType = nullptr;
     if (!envFieldTypes.empty()) {
-        envStructType = llvm::StructType::create(*context, envFieldTypes, "closure.env." + funcName);
+        // The env heap block carries a reference-count header on top of the
+        // captured fields: `{ i64 refcount; ptr cap_dtor; <captures...> }`.
+        std::vector<llvm::Type*> envWithHeader;
+        envWithHeader.push_back(llvm::Type::getInt64Ty(*context));       // index 0: refcount
+        envWithHeader.push_back(llvm::PointerType::get(*context, 0));    // index 1: cap_dtor
+        envWithHeader.insert(envWithHeader.end(), envFieldTypes.begin(), envFieldTypes.end());
+        envStructType = llvm::StructType::create(*context, envWithHeader, "closure.env." + funcName);
     }
 
     // Lambda function type = env (ptr) + user params.
@@ -4799,7 +4890,7 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
         llvm::Value* envArg = function->getArg(0);
         llvm::Value* envCast = builder->CreateBitCast(envArg, envStructType->getPointerTo(), "closure.env.cast");
         for (size_t ci = 0; ci < captures.size(); ++ci) {
-            llvm::Value* fieldPtr = builder->CreateStructGEP(envStructType, envCast, ci, "closure.env.field");
+            llvm::Value* fieldPtr = builder->CreateStructGEP(envStructType, envCast, ci + 2, "closure.env.field");
             llvm::Value* fieldVal = builder->CreateLoad(envFieldTypes[ci], fieldPtr, "closure.env.load");
             llvm::AllocaInst* capAlloca = builder->CreateAlloca(captures[ci].ty, nullptr, "closure.cap." + captures[ci].name);
             if (captures[ci].mutable_) {
@@ -4930,8 +5021,18 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
         llvm::Value* sizeVal = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), envBytes);
         llvm::Value* raw = builder->CreateCall(mallocFunc, {sizeVal}, "closure.env.alloc");
         llvm::Value* envCast = builder->CreateBitCast(raw, envStructType->getPointerTo(), "closure.env.ptr");
+
+        // Reference-count header: refcount starts at 0 (each durable storage
+        // location that takes this closure value retains it). The cap_dtor slot
+        // stays null, so __vyb_closure_release frees the env directly when the
+        // last reference is dropped.
+        llvm::Value* refcountPtr = builder->CreateStructGEP(envStructType, envCast, 0, "closure.env.refcountptr");
+        builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 0), refcountPtr, "closure.env.refcount");
+        llvm::Value* dtorPtr = builder->CreateStructGEP(envStructType, envCast, 1, "closure.env.dtorptr");
+        builder->CreateStore(llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)), dtorPtr);
+
         for (size_t ci = 0; ci < captures.size(); ++ci) {
-            llvm::Value* fieldPtr = builder->CreateStructGEP(envStructType, envCast, ci, "closure.env.setptr");
+            llvm::Value* fieldPtr = builder->CreateStructGEP(envStructType, envCast, ci + 2, "closure.env.setptr");
             if (captures[ci].mutable_) {
                 builder->CreateStore(captures[ci].outer, fieldPtr);
             } else {
@@ -4939,17 +5040,8 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
                 builder->CreateStore(val, fieldPtr);
             }
         }
-        envPtr = raw;
-    }
 
-    // Shared (`our<T>`) captures hold a reference for the life of the closure:
-    // bump the strong count up front. The closure env is heap-allocated and
-    // currently never freed (matching the surrounding heap patterns), so the
-    // count is intentionally not balanced by a release on closure teardown.
-    for (const auto& nm : node->ourCapturedVariables) {
-        if (namedValues.count(nm)) {
-            incrementRefCount(nm);
-        }
+        envPtr = raw;
     }
 
     llvm::StructType* closureTy = getClosureStructType();
@@ -6132,6 +6224,49 @@ llvm::Value* LLVMCodegen::generateArraySerialization(llvm::Value* arrayPtr, vyb:
     result += "]";
 
     return builder->CreateGlobalStringPtr(result, "array_string");
+}
+
+// Returns true if evaluating `expr` yields a freshly-allocated, registry-tracked
+// heap String buffer that codegen owns (so it can be reclaimed with
+// __vyb_string_free after the value is consumed by a print/serialize operation).
+// This is deliberately conservative: borrows (named-var reads, struct fields,
+// string literals in .rodata) and values whose provenance is unknown return
+// false so they are never freed here.
+bool LLVMCodegen::exprProducesOwnedStringTemp(vyb::ast::Expression* expr) {
+    if (!expr) return false;
+
+    // String concatenation (`a + b` with at least one String operand) produces a
+    // fresh heap buffer and is the key owned-temp producer.
+    if (auto* bin = dynamic_cast<vyb::ast::BinaryExpression*>(expr)) {
+        if (bin->op.type != vyb::TokenType::PLUS) return false;
+        auto strOperand = [this](vyb::ast::Expression* e) -> bool {
+            if (!e) return false;
+            if (dynamic_cast<vyb::ast::StringLiteral*>(e)) return true;
+            if (!e->type) return false;
+            std::string t = resolveTypeAliasToBaseName(e->type.get());
+            if (t.empty()) t = e->type->toString();
+            return t == "String" || t == "string";
+        };
+        return strOperand(bin->left.get()) || strOperand(bin->right.get());
+    }
+
+    // `.to_string()` / `.toString()` on a non-String receiver returns a fresh
+    // heap copy (registered by the runtime __vyb_*_to_string helpers). A String
+    // receiver returns the same buffer (a borrow), so it is excluded.
+    if (auto* call = dynamic_cast<vyb::ast::CallExpression*>(expr)) {
+        if (auto* member = dynamic_cast<vyb::ast::MemberExpression*>(call->callee.get())) {
+            if (auto* mident = dynamic_cast<vyb::ast::Identifier*>(member->property.get())) {
+                if (mident->name == "to_string" || mident->name == "toString") {
+                    if (!member->object || !member->object->type) return false;
+                    std::string t = resolveTypeAliasToBaseName(member->object->type.get());
+                    if (t.empty()) t = member->object->type->toString();
+                    return t != "String" && t != "string";
+                }
+            }
+        }
+    }
+
+    return false;
 }
 
 // Generic serialization helper (extracted from original code)

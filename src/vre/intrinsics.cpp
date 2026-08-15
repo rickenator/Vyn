@@ -25,6 +25,10 @@ namespace intrinsics {
  * - Code Generation: src/vre/llvm/cgen_expr.cpp (LLVM IR generation)
  */
 
+// Heap-string registry (implemented in runtime/vyb_runtime.c).
+extern "C" void __vyb_string_register(void* ptr);
+extern "C" void __vyb_string_free(void* ptr);
+
 // Console output intrinsic - this is an actual runtime function
 void println(const std::string& output) {
     std::cout << output << std::endl;
@@ -556,6 +560,8 @@ extern "C" char* __vyb_string_concat(const char* left, const char* right) {
     strcpy(result, left);
     strcat(result, right);
 
+    // Register so codegen's __vyb_string_free can reclaim it safely.
+    __vyb_string_register(result);
     return result;
 }
 
@@ -839,3 +845,35 @@ extern "C" char* __vyb_string_replace(const char* src, int64_t src_len,
 
 } // namespace intrinsics
 } // namespace vyb
+
+// ===== Closure environment reference counting =====
+// A closure value is `{ struct { ptr env; ptr fn } }`. The env is a per-capture
+// heap block whose first two fields are `{ i64 refcount; ptr cap_destructor }`.
+// Every copy of a closure value into a storage location retains the env; every
+// storage location that is destroyed (variable scope exit, parameter, overwrite)
+// releases it. When the last reference is dropped the per-layout cap_destructor
+// runs (releasing captured `our<T>` strong counts), then the env block is freed.
+
+extern "C" void* __vyb_closure_retain(void* env) {
+    if (!env) return nullptr;
+    int64_t* refcount = static_cast<int64_t*>(env);
+    __atomic_add_fetch(refcount, 1, __ATOMIC_RELAXED);
+    return env;
+}
+
+extern "C" void __vyb_closure_release(void* env) {
+    if (!env) return;
+    int64_t* refcount = static_cast<int64_t*>(env);
+    int64_t remaining = __atomic_sub_fetch(refcount, 1, __ATOMIC_RELAXED);
+    if (remaining != 0) return;  // still referenced
+
+    // Last owner: run the layout destructor (decrements our<T> caps) then free
+    // the env block. The destructor pointer sits at offset 8.
+    void* dtor = *reinterpret_cast<void**>(reinterpret_cast<char*>(env) + 8);
+    if (dtor) {
+        void (*fn)(void*) = reinterpret_cast<void (*)(void*)>(dtor);
+        fn(env);
+    } else {
+        std::free(env);
+    }
+}

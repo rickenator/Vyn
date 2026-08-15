@@ -230,9 +230,13 @@ is the working audit for what needs to be implemented next.
   closure: the semantic analyzer records the outer variable as moved, so reading
   it afterward is a use-after-move diagnostic (`test/lambda/test_closure_move_capture.vyb`).
 - [x] **`our<T>` capture** — Capturing an `our<T>` bumps its strong count so the
-  shared value stays alive for the closure's lifetime (the heap-allocated env is
-  currently never freed, so the count is not balanced by a closure-side release)
+  shared value stays alive for the closure's lifetime
   (`test/lambda/test_closure_our_capture.vyb`).
+- [x] **Closure env lifetime** — Closure capture environments are reference
+  counted (`{ i64 refcount; ptr cap_dtor; <captures...> }`): copying a closure
+  into a storage location retains the env, and variable/parameter scope exit and
+  overwrite release it, freeing the env block when the last reference is dropped.
+  Returned closures hand an owned reference to the caller.
 
 ---
 

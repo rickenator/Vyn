@@ -17,6 +17,40 @@
 // ============================================================================
 // CORE RUNTIME SHIMS USED BY NATIVE BUILDS
 // ============================================================================
+// HEAP-STRING REGISTRY
+// ============================================================================
+// The runtime string producers (to_string / concat / serialization) hand back
+// freshly allocated char* buffers that Vyb's generated code may or may not free.
+// We keep a registry of those live buffers so codegen can call
+// __vyb_string_free() unconditionally on a serialization/string value: freeing
+// is a safe no-op for pointers we did not allocate (e.g. literals in .rodata),
+// and a second free of an already-freed buffer is also a no-op (no double free).
+#define VYB_STR_REG_CAP 262144
+static void* vyb_str_reg[VYB_STR_REG_CAP] = {0};
+static void vyb_str_registry_insert(void* p) {
+    if (!p) return;
+    size_t h = (size_t)((uintptr_t)p / 16) ^ ((size_t)(uintptr_t)p / 4096);
+    h &= VYB_STR_REG_CAP - 1;
+    for (size_t i = 0; i < VYB_STR_REG_CAP; ++i) {
+        size_t idx = (h + i) & (VYB_STR_REG_CAP - 1);
+        if (vyb_str_reg[idx] == NULL) { vyb_str_reg[idx] = p; return; }
+        if (vyb_str_reg[idx] == p) return;
+    }
+}
+VYB_WEAK void __vyb_string_register(void* p) { vyb_str_registry_insert(p); }
+
+VYB_WEAK void __vyb_string_free(void* p) {
+    if (!p) return;
+    size_t h = (size_t)((uintptr_t)p / 16) ^ ((size_t)(uintptr_t)p / 4096);
+    h &= VYB_STR_REG_CAP - 1;
+    for (size_t i = 0; i < VYB_STR_REG_CAP; ++i) {
+        size_t idx = (h + i) & (VYB_STR_REG_CAP - 1);
+        if (vyb_str_reg[idx] == p) { vyb_str_reg[idx] = NULL; free(p); return; }
+        if (vyb_str_reg[idx] == NULL) return;   // not allocated by us
+    }
+}
+
+// ============================================================================
 
 VYB_WEAK void __vyb_println(const char* str) {
     fputs(str ? str : "", stdout);
@@ -60,24 +94,32 @@ VYB_WEAK void __vyb_runtime_pop_call_frame(void) {}
 char* __vyb_int_to_string(int64_t value) {
     char buffer[32];
     snprintf(buffer, sizeof(buffer), "%ld", (long)value);
-    return strdup(buffer);
+    char* r = strdup(buffer);
+    __vyb_string_register(r);
+    return r;
 }
 
 // Float to String conversion
 char* __vyb_float_to_string(double value) {
     char buffer[64];
     snprintf(buffer, sizeof(buffer), "%g", value);
-    return strdup(buffer);
+    char* r = strdup(buffer);
+    __vyb_string_register(r);
+    return r;
 }
 
 // Bool to String conversion
 char* __vyb_bool_to_string(bool value) {
-    return strdup(value ? "true" : "false");
+    char* r = strdup(value ? "true" : "false");
+    __vyb_string_register(r);
+    return r;
 }
 
 // String to String (identity, but creates a copy)
 char* __vyb_string_to_string(const char* str) {
-    return strdup(str ? str : "");
+    char* r = strdup(str ? str : "");
+    __vyb_string_register(r);
+    return r;
 }
 
 // ============================================================================

@@ -417,11 +417,22 @@ private:
     void incrementRefCount(const std::string& name);
     void decrementRefCount(const std::string& name);
     llvm::Function* getOrCreateFreeFunction();
+    llvm::Function* getOrCreateVybStringFreeFunction();
+    llvm::Function* getOrCreateVybStringRegisterFunction();
     llvm::Function* getOrCreateMallocFunction();
+    llvm::Function* getOrCreateClosureRetainFunction();
+    llvm::Function* getOrCreateClosureReleaseFunction();
+    bool isClosureStructType(llvm::Type* type);       // `{ ptr env, ptr fn }`
+    bool isFnTypeNode(const vyb::ast::TypeNode* tn) const; // true for `fn` types
+    void retainClosureValue(llvm::Value* closureVal);  // +1 on a copied closure value
+    void releaseClosureValue(llvm::Value* closureVal); // -1 on a closure value
+    void releaseClosureAlloca(llvm::Value* allocaInst); // load closure from an alloca, then -1
     llvm::Function* getOrCreateMemsetFunction();
     llvm::Function* getOrCreateMemcpyFunction();
     llvm::StructType* getControlBlockType(llvm::Type* objectPtrType);
     bool isVecStructType(llvm::Type* type); // Check if LLVM type matches Vec{T, i64, i64} layout
+    bool isVybStringStructType(llvm::Type* type); // `{ ptr, i64 }` Vyb String layout
+    bool exprProducesOwnedStringTemp(vyb::ast::Expression* expr); // String expr yielding a fresh owned heap buffer
     // Deep-copy a Vec struct value (clones malloc'd data so caller and callee are independent).
     // Returns an updated Vec struct value with a freshly malloc'd data buffer.
     llvm::Value* generateVecDeepCopy(llvm::Value* vecStructValue, llvm::Type* elemType, llvm::Type* vecStructType);
