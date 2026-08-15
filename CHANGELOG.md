@@ -818,6 +818,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `our<T>` member access now unwraps through the control block payload pointer before loading fields.
 - Milestone minimum raised from 126 to 156 passing tests.
 
+### Fixed
+
+- **Bitwise operators reject mismatched typed integer widths** — combining two
+  typed integers of different widths with `|`/`&`/`^`/`<<`/`>>` (or their
+  compound-assign forms `&=`/`|=`/`^=`/`<<=`/`>>=`) is now a compile error that
+  asks for an explicit `as` cast. Previously a wide `Int` operand was silently
+  truncated to the other operand's width (`x<Int8> | big<Int>` returned `3` not
+  `259`). Bare integer literals still adapt to the typed operand's width, and
+  compound assigns on narrow types now coerce a literal RHS correctly
+  (`x<Int8> |= 8` no longer crashes with invalid IR). Covered by
+  `test/expressions/test_bitwise_widths.vyb` and `test_bitwise_mismatch.vyb`.
+
 ## [0.5.0] - 2026-02-24 (freedom-1.0 series)
 
 ### Added

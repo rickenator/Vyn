@@ -3792,8 +3792,17 @@ void LLVMCodegen::visit(vyb::ast::AssignmentExpression *node) {
         }
     }
 
+    // Bitwise compound assigns (&=/|=/^=/<<=/>>=) coerce the RHS to the LHS
+    // width themselves, so a narrowed/`narrow` literal is expected and the
+    // generic "type mismatch" warning below would be misleading.
+    bool bitwiseCompound = node->op.type == vyb::TokenType::BITWISEANDEQ ||
+                           node->op.type == vyb::TokenType::BITWISEOREQ ||
+                           node->op.type == vyb::TokenType::BITWISEXOREQ ||
+                           node->op.type == vyb::TokenType::LSHIFTEQ ||
+                           node->op.type == vyb::TokenType::RSHIFTEQ;
+
     // If types still don't match, warn but proceed (might still work in some cases)
-    if (RHS->getType() != destPointeeType) {
+    if (RHS->getType() != destPointeeType && !bitwiseCompound) {
         logWarning(node->loc, "Type mismatch in assignment. Storing " + getTypeName(RHS->getType()) +
                   " into location of type " + (destPointeeType ? getTypeName(destPointeeType) : "unknown"));
     }
@@ -3834,49 +3843,49 @@ void LLVMCodegen::visit(vyb::ast::AssignmentExpression *node) {
         writeThroughMutable(lhsVal);
         m_currentLLVMValue = lhsVal;
         return;
-    } else if (node->op.type == vyb::TokenType::BITWISEANDEQ) {
+    } else if (node->op.type == vyb::TokenType::BITWISEANDEQ ||
+               node->op.type == vyb::TokenType::BITWISEOREQ ||
+               node->op.type == vyb::TokenType::BITWISEXOREQ ||
+               node->op.type == vyb::TokenType::LSHIFTEQ ||
+               node->op.type == vyb::TokenType::RSHIFTEQ) {
+        // Compound bitwise assignment. Coerce the RHS to the destination (LHS)
+        // integer width so a bare literal (or defended mismatch) widens/truncates
+        // before the and/or/xor/shift; LLVM requires same-width operands. Genuine
+        // typed width mismatches are rejected earlier in semantic analysis.
+        auto coerceBitwiseRHS = [&](llvm::Value* rhs) -> llvm::Value* {
+            if (!rhs->getType()->isIntegerTy() || !destPointeeType->isIntegerTy()) return rhs;
+            if (rhs->getType() == destPointeeType) return rhs;
+            unsigned dw = destPointeeType->getIntegerBitWidth();
+            unsigned rw = rhs->getType()->getIntegerBitWidth();
+            if (rw > dw) return builder->CreateTrunc(rhs, destPointeeType, "compound.trunc");
+            return builder->CreateZExt(rhs, destPointeeType, "compound.zext");
+        };
         llvm::Value *lhsVal = builder->CreateLoad(destPointeeType, LHS, "lhs.load");
-        lhsVal = builder->CreateAnd(lhsVal, RHS, "compound.bwand");
-        builder->CreateStore(lhsVal, LHS);
-        writeThroughMutable(lhsVal);
-        m_currentLLVMValue = lhsVal;
-        return;
-    } else if (node->op.type == vyb::TokenType::BITWISEOREQ) {
-        llvm::Value *lhsVal = builder->CreateLoad(destPointeeType, LHS, "lhs.load");
-        lhsVal = builder->CreateOr(lhsVal, RHS, "compound.bwor");
-        builder->CreateStore(lhsVal, LHS);
-        writeThroughMutable(lhsVal);
-        m_currentLLVMValue = lhsVal;
-        return;
-    } else if (node->op.type == vyb::TokenType::BITWISEXOREQ) {
-        llvm::Value *lhsVal = builder->CreateLoad(destPointeeType, LHS, "lhs.load");
-        lhsVal = builder->CreateXor(lhsVal, RHS, "compound.bwxor");
-        builder->CreateStore(lhsVal, LHS);
-        writeThroughMutable(lhsVal);
-        m_currentLLVMValue = lhsVal;
-        return;
-    } else if (node->op.type == vyb::TokenType::LSHIFTEQ) {
-        llvm::Value *lhsVal = builder->CreateLoad(destPointeeType, LHS, "lhs.load");
-        lhsVal = builder->CreateShl(lhsVal, RHS, "compound.shl");
-        builder->CreateStore(lhsVal, LHS);
-        writeThroughMutable(lhsVal);
-        m_currentLLVMValue = lhsVal;
-        return;
-    } else if (node->op.type == vyb::TokenType::RSHIFTEQ) {
-        llvm::Value *lhsVal = builder->CreateLoad(destPointeeType, LHS, "lhs.load");
-        // Signed Int types use an arithmetic (sign-extending) shift; UInt* types
-        // use a logical shift (consistent with the `>>` binary operator).
-        bool isUnsigned = false;
-        if (lhsTypeNode) {
-            if (auto tn = dynamic_cast<ast::TypeName*>(lhsTypeNode.get())) {
-                if (tn->identifier) {
-                    const std::string& n = tn->identifier->name;
-                    isUnsigned = (n == "UInt8" || n == "UInt16" || n == "UInt32" || n == "UInt64");
+        llvm::Value* cRHS = coerceBitwiseRHS(RHS);
+        if (node->op.type == vyb::TokenType::LSHIFTEQ) {
+            lhsVal = builder->CreateShl(lhsVal, cRHS, "compound.shl");
+        } else if (node->op.type == vyb::TokenType::RSHIFTEQ) {
+            // Signed Int types use an arithmetic (sign-extending) shift; UInt*
+            // types use a logical shift (consistent with the `>>` binary op).
+            bool isUnsigned = false;
+            if (lhsTypeNode) {
+                if (auto tn = dynamic_cast<ast::TypeName*>(lhsTypeNode.get())) {
+                    if (tn->identifier) {
+                        const std::string& n = tn->identifier->name;
+                        isUnsigned = (n == "UInt8" || n == "UInt16" || n == "UInt32" || n == "UInt64");
+                    }
                 }
             }
+            lhsVal = isUnsigned
+                ? builder->CreateLShr(lhsVal, cRHS, "compound.lshr")
+                : builder->CreateAShr(lhsVal, cRHS, "compound.ashr");
+        } else if (node->op.type == vyb::TokenType::BITWISEANDEQ) {
+            lhsVal = builder->CreateAnd(lhsVal, cRHS, "compound.bwand");
+        } else if (node->op.type == vyb::TokenType::BITWISEXOREQ) {
+            lhsVal = builder->CreateXor(lhsVal, cRHS, "compound.bwxor");
+        } else {
+            lhsVal = builder->CreateOr(lhsVal, cRHS, "compound.bwor");
         }
-        if (isUnsigned) lhsVal = builder->CreateLShr(lhsVal, RHS, "compound.lshr");
-        else lhsVal = builder->CreateAShr(lhsVal, RHS, "compound.ashr");
         builder->CreateStore(lhsVal, LHS);
         writeThroughMutable(lhsVal);
         m_currentLLVMValue = lhsVal;

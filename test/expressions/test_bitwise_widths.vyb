@@ -1,0 +1,32 @@
+// @test: Bitwise literal adaptation and width matching
+// @description: bare integer literals adapt to the typed operand's width; typed
+//   same-width operands (mixed signed/unsigned) work; explicit as-casts resolve
+//   genuinely different widths when composing; compound assigns fit literals.
+// @category: expressions
+// @expect: pass
+// @expect-return: 0
+// @expect-output: lit=7 mask=3 duo=7 pack=384 shl=12 co=11 cm=3 cs=12
+
+main()<Int> -> {
+    a<Int8> = 5
+    b<Int8> = a | 2                 // literal adapts to Int8 -> 7
+    c<Int8> = 0xFF & 3              // literal on right -> 3
+    e<UInt8> = 0b100
+    f<UInt8> = e | 3                // same-width UInt8<->literal -> 7
+    b0<UInt8> = 0x80
+    b1<UInt8> = 1
+    pack<UInt32> = (b0 as UInt32) | ((b1 as UInt32) << 8)   // casts unify widths
+    k<Int8> = 3
+    m<Int8> = k << 2                // typed left + literal shift -> 12
+
+    x<Int8> = 3
+    x |= 8                          // compound |= with literal -> 11
+    y<UInt8> = 0xFF
+    y &= 3                          // compound &= with literal -> 3
+    z<Int8> = 3
+    z <<= 2                         // compound <<= with literal -> 12
+
+    println("lit={} mask={} duo={} pack={} shl={} co={} cm={} cs={}"
+        .format(b, c, f, pack, m, x, y, z))
+    return 0
+}

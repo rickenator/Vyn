@@ -1,0 +1,19 @@
+// @test: Bitwise mixed-width typed operands rejected
+// @description: Combining two typed integers of different widths with a bitwise
+//   operator (or compound bitwise assign) is a compile error; cast to a common
+//   width explicitly. Bare literals still adapt.
+// @category: expressions
+// @expect: fail
+// @semantic-only: true
+// @expect-error: mismatched integer widths
+
+main()<Int> -> {
+    x<Int8> = 3
+    big<Int> = 256                 // Int (i64) is a wider typed operand
+    println_int(x | big)           // binary: reject
+    x |= big                       // compound: reject
+    y<Int> = 3
+    other<Int8> = 8
+    y ^= other                     // compound narrow typed RHS: reject
+    return 0
+}

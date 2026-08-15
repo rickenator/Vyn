@@ -57,6 +57,25 @@ static const std::set<std::string> primitiveValueTypes = {
     "CSize", "CSSize", "CFloat", "CDouble", "CVoid", "CString"
 };
 
+// Bit width of a sized integer type name (0 for non-integer / unknown).
+static int integerTypeWidthForName(const std::string& name) {
+    if (name == "Int" || name == "Int64" || name == "i64" ||
+        name == "UInt64" || name == "u64" || name == "ULong") return 64;
+    if (name == "Int32" || name == "i32" || name == "UInt32" || name == "u32") return 32;
+    if (name == "Int16" || name == "i16" || name == "UInt16" || name == "u16") return 16;
+    if (name == "Int8" || name == "i8" || name == "UInt8" || name == "u8" ||
+        name == "Char" || name == "Byte") return 8;
+    return 0;
+}
+
+// Bit width of a sized integer TypeNode (0 if it is not a sized integer).
+static int integerTypeWidth(ast::TypeNode* type) {
+    if (!type) return 0;
+    auto* tn = dynamic_cast<ast::TypeName*>(type);
+    if (!tn || !tn->identifier) return 0;
+    return integerTypeWidthForName(tn->identifier->name);
+}
+
 // If `type` is an ownership wrapper over a primitive value type, return the
 // underlying primitive type; otherwise return `type` unchanged.
 static ast::TypeNode* unwrapPrimitiveOwnershipType(ast::TypeNode* type) {
@@ -1553,6 +1572,7 @@ void SemanticAnalyzer::visit(ast::BinaryExpression* node) {
         case TokenType::CARET:
         case TokenType::LSHIFT:
         case TokenType::RSHIFT:
+            {
             // Bitwise operations require integer operands; the result type is the
             // same integer type as the operands.
             if (leftType->toString().find("Float") != std::string::npos ||
@@ -1561,8 +1581,27 @@ void SemanticAnalyzer::visit(ast::BinaryExpression* node) {
                          "' requires integer operands, got float.", node);
                 return;
             }
-            resultType = leftType;
+            // Mixed-sized typed operands are rejected unless one side is a bare
+            // integer literal, which adapts to the other operand's width (matching
+            // the literal-fitting used by arithmetic). This prevents silently
+            // truncating a wide typed value, e.g. `x<Int8> | big<Int>`.
+            bool leftIsLiteral = dynamic_cast<ast::IntegerLiteral*>(node->left.get()) != nullptr;
+            bool rightIsLiteral = dynamic_cast<ast::IntegerLiteral*>(node->right.get()) != nullptr;
+            int leftW = integerTypeWidth(leftType);
+            int rightW = integerTypeWidth(rightType);
+            if (!leftIsLiteral && !rightIsLiteral && leftW > 0 && rightW > 0 && leftW != rightW) {
+                addError("Bitwise operator '" + node->op.lexeme +
+                         "' operands have mismatched integer widths (" +
+                         leftType->toString() + " vs " + rightType->toString() +
+                         "); cast one operand explicitly to a common width (e.g. `v as Int64`).",
+                         node);
+                return;
+            }
+            // Result type is usually the left operand's type; when the left
+            // operand is a bare literal, adopt the typed right operand's width.
+            resultType = (leftIsLiteral && !rightIsLiteral) ? rightType : leftType;
             break;
+            }
 
         default:
             // Unknown operator
@@ -3814,6 +3853,29 @@ void SemanticAnalyzer::visit(ast::AssignmentExpression* node) {
         addError("Type error in assignment: could not determine type of LHS or RHS.", node);
         expressionTypes[node] = nullptr; // Mark as error
         return;
+    }
+
+    // Compound bitwise assignment (`&=`, `|=`, `^=`, `<<=`, `>>=`): reject
+    // genuinely different typed integer widths (mirroring the binary bitwise
+    // rule). A bare integer literal RHS is allowed and adapts to the LHS width;
+    // without this check codegen would build and/or/xor/shift on mismatched
+    // LLVM types, silently truncating or crashing with invalid IR.
+    if (node->op.type == TokenType::BITWISEANDEQ ||
+        node->op.type == TokenType::BITWISEOREQ ||
+        node->op.type == TokenType::BITWISEXOREQ ||
+        node->op.type == TokenType::LSHIFTEQ ||
+        node->op.type == TokenType::RSHIFTEQ) {
+        bool rightIsLiteral = dynamic_cast<ast::IntegerLiteral*>(node->right.get()) != nullptr;
+        int lw = integerTypeWidth(leftType);
+        int rw = integerTypeWidth(rightType);
+        if (!rightIsLiteral && lw > 0 && rw > 0 && lw != rw) {
+            addError("Bitwise assignment '" + node->op.lexeme +
+                     "' operands have mismatched integer widths (" +
+                     leftType->toString() + " vs " + rightType->toString() +
+                     "); cast one operand explicitly to a common width.", node);
+            expressionTypes[node] = nullptr;
+            return;
+        }
     }
 
     // Check if the types are compatible for assignment

@@ -120,8 +120,12 @@ is the working audit for what needs to be implemented next.
   `<<=`/`>>=` remain single tokens. The stdlib File I/O module now combines its
   `FILE_*` open-mode bits with `|` (`FILE_WRITE() | FILE_CREATE() | FILE_TRUNC()`)
   instead of addition. Emits LLVM `and`/`or`/`xor`/`shl`/`ashr`/`lshr` codegen; the
-  `and`/`or` keywords stay distinct from the new symbol operators. Covered by
-  `test/expressions/test_bitwise.vyb`.
+  `and`/`or` keywords stay distinct from the new symbol operators. Combining two
+  typed integers of *different* widths is a compile error (cast explicitly via
+  `as`); a bare integer literal adapts to the typed operand's width, and compound
+  assigns coerce a literal RHS to the LHS width. Covered by
+  `test/expressions/test_bitwise.vyb`, `test_bitwise_widths.vyb`,
+  and `test_bitwise_mismatch.vyb`.
 - [x] **Unary operations** — `!`, `-`
 - [x] **Member access** — `obj.field`, `arr[index]`
 - [x] **String concatenation** — `str1 + str2` with mixed-type auto-`toString`
