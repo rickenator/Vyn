@@ -2484,6 +2484,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 bool isTupleVar = false;
                 bool isStringVar = false;
                 bool isVecVar = false;
+                bool isByRefVec = false;
                 unsigned tupleSize = 0;
 
                 if (varIt != namedValues.end()) {
@@ -2504,6 +2505,23 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                         else if (auto typeName = dynamic_cast<vyb::ast::TypeName*>(astType)) {
                             if (typeName->identifier && typeName->identifier->name == "String") {
                                 isStringVar = true;
+                            } else if (typeName->identifier &&
+                                       (typeName->identifier->name == "their" ||
+                                        typeName->identifier->name == "my" ||
+                                        typeName->identifier->name == "our" ||
+                                        typeName->identifier->name == "view" ||
+                                        typeName->identifier->name == "borrow") &&
+                                       typeName->genericArgs.size() == 1) {
+                                // Ownership-wrapped Vec receiver: the slot stores a
+                                // `Vec*` (mutable/by-ref borrow), deref'd at the call.
+                                ast::TypeNode* inner = typeName->genericArgs[0].get();
+                                isByRefVec = dynamic_cast<vyb::ast::VecType*>(inner) != nullptr;
+                                if (!isByRefVec) {
+                                    if (auto innerTN = dynamic_cast<ast::TypeName*>(inner)) {
+                                        isByRefVec = innerTN->identifier && innerTN->identifier->name == "Vec";
+                                    }
+                                }
+                                if (isByRefVec) isVecVar = true;
                             }
                         }
                     }
@@ -2561,6 +2579,17 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                         methodName == "clear" || methodName == "is_empty" || methodName == "capacity" ||
                         methodName == "concat" || methodName == "contains" || methodName == "remove_at" ||
                         methodName == "get_vec") {
+                        // By-ref receiver (their<Vec<T>> / my<Vec<T>> / ...): the
+                        // named slot holds a `Vec*` (a mutable borrow), so load that
+                        // pointer and operate on it directly, rather than treating the
+                        // slot itself as the Vec struct.
+                        if (isByRefVec && varIt != namedValues.end()) {
+                            llvm::Value* slot = varIt->second;
+                            llvm::Value* vecPtr = builder->CreateLoad(
+                                llvm::PointerType::get(*context, 0), slot, "byref.vec.load");
+                            handleVecMethodOnValue(node, vecPtr, methodName, memberExpr->object.get());
+                            return;
+                        }
                         handleVecMethod(node, objectName, methodName);
                         return;
                     }

@@ -1,15 +1,17 @@
 // @test: stdlib collections VecOps + VecHigherOps expansion methods
-// @description: pure-Vyb non-mutating Vec<T> extension operations shipped by
+// @description: pure-Vyb Vec<T> extension operations shipped by
 //   `import collections`: the Equatable-gated VecOps first/last, reversed
 //   (fresh vector), find (first matching index, or -1), and the Comparable
 //   ordering helpers sorted (fresh ascending vector), min and max (comparison
 //   dispatched through the bounded `cmp_lt` helper rather than inlined on a
 //   generic element), plus the unconstrained VecHigherOps combinators map /
-//   filter / reduce (non-capturing lambda `fn` args, any element type). Two
-//   gaps are avoided here: chaining a Vec method on a bind-method Vec return
-//   (e.g. `v.reversed().len()`) hits an ICmp codegen bug, and `Vec.get` on an
-//   empty vector returns garbage, so first/last are only exercised on
-//   non-empty vectors and results are bound to locals before indexing.
+//   filter / reduce (non-capturing lambda `fn` args, any element type) and the
+//   by-ref (`their<Vec<T>>`) in-place forms sort_in_place, retain,
+//   map_in_place and reverse_in_place. Two compiler gaps are avoided here:
+//   chaining a Vec method on a bind-method Vec return (e.g. `v.reversed().len()`)
+//   hits an ICmp codegen bug, and `Vec.get` on an empty vector returns garbage,
+//   so first/last are only exercised on non-empty vectors and results are bound
+//   to locals before indexing.
 // @category: modules, collections, vec, generics, aspects, bind
 // @expect: pass
 // @expect-output: ok
@@ -97,6 +99,25 @@ main()<Int> -> {
     if (check(longs.len() == 2 && longs.get(0) == "bb" && longs.get(1) == "ccc", 22)) { return 22 }
     cat<String> = words.reduce("", |acc<String>, w<String>| -> acc + w)
     if (check(cat == "abbccc", 23)) { return 23 }
+
+    # ---- VecHigherOps / VecOps: by-ref their<Vec<T>> in-place mutation ----
+    w<Vec<Int>> = Vec()
+    w.push(3); w.push(9); w.push(5); w.push(9); w.push(1)
+    w.sort_in_place()
+    if (check(w.get(0) == 1 && w.get(4) == 9, 24)) { return 24 }
+    k<Int> = w.retain(|n<Int>| -> n >= 5)
+    if (check(k == 3 && w.get(0) == 5 && w.get(2) == 9, 25)) { return 25 }
+    w.map_in_place(|n<Int>| -> n - 5)
+    if (check(w.get(0) == 0 && w.get(2) == 4, 26)) { return 26 }
+    w.reverse_in_place()
+    if (check(w.get(0) == 4 && w.get(2) == 0, 27)) { return 27 }
+    # String in-place transform + reverse
+    tw<Vec<String>> = Vec()
+    tw.push("a"); tw.push("bb"); tw.push("ccc")
+    tw.map_in_place(|s<String>| -> s + "!")
+    if (check(tw.get(0) == "a!" && tw.get(2) == "ccc!", 28)) { return 28 }
+    tw.reverse_in_place()
+    if (check(tw.get(0) == "ccc!" && tw.get(2) == "a!", 29)) { return 29 }
 
     println("ok")
     return 0

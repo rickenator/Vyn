@@ -28,6 +28,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   elem)`). The `fn` arguments are *non-capturing* lambdas (bare function
   pointers); closures with an environment are a future extension. Covered by the
   expanded `test/modules/test_vec_expansion.vyb`.
+- **By-ref `their<Vec<T>>` receivers power in-place Vec operations** — the
+  semantic analyzer and codegen now unwrap ownership-wrapped Vec receivers
+  (`their<Vec<T>>`, `my<Vec<T>>`, etc.), so a by-ref bind body can call the
+  built-in Vec primitives (`len` / `get` / `set` / `pop`) directly on `self` and
+  mutate through the borrowed pointer. On this foundation `stdlib/collections`
+  adds the in-place forms to the existing binds: `sort_in_place()` on `VecOps`
+  (Comparable-gated selection sort) and `map_in_place(f)` / `retain(f)` /
+  `reverse_in_place()` on the unconstrained `VecHigherOps`. `retain` compacts
+  in place and returns the surviving count. Covered by the expanded
+  `test/modules/test_vec_expansion.vyb`.
 - **`Option<T>` / `Result<T,E>` expose a native `.value` payload accessor** — a
   value of the built-in generic enums now supports `.value`, reading the payload
   of the primary (success) data variant (`Some(T)` for Option, `Ok(T)` for

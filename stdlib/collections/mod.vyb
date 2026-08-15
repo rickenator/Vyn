@@ -31,7 +31,10 @@
 #     `filter(f)` (keep only `true` results in a fresh vector) and
 #     `reduce(init, f)` (left fold). They take a *non-capturing* lambda
 #     (`fn`) argument and are bound without any `Comparable` / `Equatable`
-#     requirement, so they work on any element type.
+#     requirement, so they work on any element type. The in-place companions
+#     `map_in_place(f)`, `retain(f)` and `reverse_in_place()` rewrite / compact
+#     / reverse the receiver through a by-ref `their<Vec<T>>` borrow; VecOps
+#     also provides `sort_in_place()` (Comparable-gated).
 #   - `HashMap<K,V>()` / `HashSet<K>()` (and their `(cap)` / `(cap, true)`
 #     capacity forms) are declared struct constructors: they return a fully initialized
 #     (bucket-indexed) instance, keeping the `Vec()` / `Vec(n)` construction
@@ -349,6 +352,7 @@ aspect VecOps {
     min(self<Vec<T>>)<T> -> { }
     max(self<Vec<T>>)<T> -> { }
     sorted(self<Vec<T>>)<Vec<T>> -> { }
+    sort_in_place(self<their<Vec<T>>>)<Void> -> { }
 }
 
 share(all)
@@ -419,6 +423,27 @@ bind<T<Comparable, Equatable>> VecOps -> Vec<T> {
         }
         return out
     }
+    # In-place stable(ish) ascending selection sort via the Comparable-bound
+    # `cmp_lt` helper. Mutates the receiver's own backing store and borrows it
+    # by-ref, so no temporary copy is made.
+    sort_in_place(self<their<Vec<T>>>)<Void> -> {
+        n<Int> = self.len()
+        i<Int> = 0
+        while (i < n) {
+            mi<Int> = i
+            j<Int> = i + 1
+            while (j < n) {
+                if (cmp_lt(self.get(j), self.get(mi))) { mi = j }
+                j = j + 1
+            }
+            if (mi != i) {
+                tmp<T> = self.get(i)
+                self.set(i, self.get(mi))
+                self.set(mi, tmp)
+            }
+            i = i + 1
+        }
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -428,10 +453,14 @@ bind<T<Comparable, Equatable>> VecOps -> Vec<T> {
 # `filter(f)` keeps only the elements for which `f` is `true` in a fresh vector.
 # `reduce(init, f)` folds the vector left-to-right: the accumulator starts at
 # `init` and `f` is applied as `acc = f(acc, elem)` for each element in order.
-# These are bound without a `Comparable` / `Equatable` bound on `T`, so they
-# are available on any element type. The `fn` arguments must be non-capturing
-# (bare function pointers); closures with an environment are a future extension.
-# They are non-mutating: none of them modify the receiver.
+# The mutating companions share this aspect: `map_in_place(f)` rewrites each
+# element in place, `retain(f)` keeps only the elements for which `f` is `true`
+# (compacting in place, returning the surviving count), and `reverse_in_place()`
+# flips the order in place. All are bound without a `Comparable` / `Equatable`
+# bound on `T`, so they are available on any element type. The `fn` arguments
+# must be non-capturing (bare function pointers); closures with an environment
+# are a future extension. The non-mutating trio never modify the receiver; the
+# `_in_place` forms mutate the receiver's own backing store by-ref.
 #
 # ---------------------------------------------------------------------------
 share(all)
@@ -439,6 +468,9 @@ aspect VecHigherOps {
     map(self<Vec<T>>, f<fn(T) -> T>)<Vec<T>> -> { }
     filter(self<Vec<T>>, f<fn(T) -> Bool>)<Vec<T>> -> { }
     reduce(self<Vec<T>>, init<T>, f<fn(T, T) -> T>)<T> -> { }
+    map_in_place(self<their<Vec<T>>>, f<fn(T) -> T>)<Void> -> { }
+    retain(self<their<Vec<T>>>, f<fn(T) -> Bool>)<Int> -> { }
+    reverse_in_place(self<their<Vec<T>>>)<Void> -> { }
 }
 
 share(all)
@@ -471,6 +503,39 @@ bind<T> VecHigherOps -> Vec<T> {
             i = i + 1
         }
         return acc
+    }
+    map_in_place(self<their<Vec<T>>>, f<fn(T) -> T>)<Void> -> {
+        i<Int> = 0
+        while (i < self.len()) {
+            self.set(i, f(self.get(i)))
+            i = i + 1
+        }
+    }
+    retain(self<their<Vec<T>>>, f<fn(T) -> Bool>)<Int> -> {
+        j<Int> = 0
+        i<Int> = 0
+        while (i < self.len()) {
+            if (f(self.get(i))) {
+                self.set(j, self.get(i))
+                j = j + 1
+            }
+            i = i + 1
+        }
+        while (self.len() > j) {
+            self.pop()
+        }
+        return j
+    }
+    reverse_in_place(self<their<Vec<T>>>)<Void> -> {
+        i<Int> = 0
+        j<Int> = self.len() - 1
+        while (i < j) {
+            tmp<T> = self.get(i)
+            self.set(i, self.get(j))
+            self.set(j, tmp)
+            i = i + 1
+            j = j - 1
+        }
     }
 }
 

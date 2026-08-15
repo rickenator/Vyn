@@ -2776,6 +2776,30 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                             handleVecMethodCall(node, objIdent->name, methodName);
                             return;
                         }
+                        // Ownership-wrapped Vec receiver (their<Vec<T>>, my<Vec<T>>,
+                        // view<Vec<T>>, our<Vec<T>>, borrow): a by-ref bind body calls
+                        // Vec primitives directly on the receiver (e.g. self.len(),
+                        // self.get(i), self.set(i, v)). Unwrap and dispatch the
+                        // built-in method; codegen dereferences the wrapper.
+                        if (objTypeName->identifier &&
+                            (objTypeName->identifier->name == "their" ||
+                             objTypeName->identifier->name == "my" ||
+                             objTypeName->identifier->name == "our" ||
+                             objTypeName->identifier->name == "view" ||
+                             objTypeName->identifier->name == "borrow") &&
+                            objTypeName->genericArgs.size() == 1 && isBuiltinVecMethodName(methodName)) {
+                            ast::TypeNode* inner = objTypeName->genericArgs[0].get();
+                            bool innerIsVec = dynamic_cast<ast::VecType*>(inner) != nullptr;
+                            if (!innerIsVec) {
+                                if (auto innerTN = dynamic_cast<ast::TypeName*>(inner)) {
+                                    innerIsVec = innerTN->identifier && innerTN->identifier->name == "Vec";
+                                }
+                            }
+                            if (innerIsVec) {
+                                handleVecMethodCall(node, objIdent->name, methodName);
+                                return;
+                            }
+                        }
                         if (objTypeName->identifier) {
                             std::string typeStr = objTypeName->identifier->name;
                             if (methodName == "to_string" &&
@@ -7244,6 +7268,35 @@ void SemanticAnalyzer::handleVecMethodCall(ast::CallExpression* node, const std:
     bool isConstVec = false;
     bool isTheirVec = false;
 
+    // By-ref receivers are typed `their<Vec<T>>` (a TypeName whose single
+    // generic argument is a Vec). Record the ownership kind so mutating calls
+    // are permitted, then treat `objSymbol->type` as that inner Vec throughout
+    // the element-type / Vec-type return inference below.
+    ast::TypeNode* vecTypeNode = objSymbol ? objSymbol->type : nullptr;
+    if (objSymbol && objSymbol->type) {
+        if (auto wrap = dynamic_cast<ast::TypeName*>(objSymbol->type)) {
+            if (wrap->identifier &&
+                (wrap->identifier->name == "their" || wrap->identifier->name == "my" ||
+                 wrap->identifier->name == "our" || wrap->identifier->name == "view" ||
+                 wrap->identifier->name == "borrow") && wrap->genericArgs.size() == 1) {
+                ast::TypeNode* inner = wrap->genericArgs[0].get();
+                bool innerIsVec = dynamic_cast<ast::VecType*>(inner) != nullptr;
+                if (!innerIsVec) {
+                    if (auto innerTN = dynamic_cast<ast::TypeName*>(inner)) {
+                        innerIsVec = innerTN->identifier && innerTN->identifier->name == "Vec";
+                    }
+                }
+                if (innerIsVec) {
+                    vecTypeNode = inner;
+                    if (wrap->identifier->name == "their" || wrap->identifier->name == "my" ||
+                        wrap->identifier->name == "our" || wrap->identifier->name == "borrow") {
+                        objSymbol->ownershipKind = ast::OwnershipKind::THEIR;
+                    }
+                }
+            }
+        }
+    }
+
     if (objSymbol) {
         // Check if the variable is const or has ownership constraints
         if (objSymbol->isConst) {
@@ -7319,7 +7372,7 @@ void SemanticAnalyzer::handleVecMethodCall(ast::CallExpression* node, const std:
         SymbolInfo* objSymbol = currentScope->lookup(objectName);
         if (objSymbol && objSymbol->type) {
             // Check if the type is a VecType
-            if (auto* vecType = dynamic_cast<ast::VecType*>(objSymbol->type)) {
+            if (auto* vecType = dynamic_cast<ast::VecType*>(vecTypeNode)) {
                 // Clone the element type for the return type
                 if (vecType->elementType) {
                     // Deep clone the element type node
@@ -7330,7 +7383,7 @@ void SemanticAnalyzer::handleVecMethodCall(ast::CallExpression* node, const std:
                 }
             }
             // Also handle TypeName "Vec<T>" (e.g., function parameters)
-            if (auto* typeName = dynamic_cast<ast::TypeName*>(objSymbol->type)) {
+            if (auto* typeName = dynamic_cast<ast::TypeName*>(vecTypeNode)) {
                 if (typeName->identifier && typeName->identifier->name == "Vec" && !typeName->genericArgs.empty()) {
                     if (typeName->genericArgs[0]) {
                         std::shared_ptr<ast::TypeNode> clonedElementType = typeName->genericArgs[0]->clone();

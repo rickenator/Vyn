@@ -285,9 +285,12 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
   through the `Comparable`-bounded `cmp_lt` helper — a direct `compare` call
   does not resolve on a generic element). The unconstrained `VecHigherOps`
   bind adds the higher-order `map` / `filter` / `reduce` combinators over
-  non-capturing lambda `fn` arguments (any element type). Remaining: by-ref
-  `their<Vec<T>>` for in-place forms and full closure capture. `.contains()`
-  is now correct.
+  non-capturing lambda `fn` arguments (any element type). By-ref
+  `their<Vec<T>>` receivers now enable the in-place forms `sort_in_place`
+  (VecOps), `map_in_place` / `retain` / `reverse_in_place` (VecHigherOps),
+  so the built-in Vec mutating primitives (`len`/`get`/`set`/`pop`) resolve
+  through the ownership wrapper in both semantic and codegen. Remaining: full
+  closure capture (env struct). `.contains()` is now correct.
 - [x] **`Vec<T>` constructor idiom** — `Vec::new()` / `Vec::new(size)` replaced by a vybish constructor call: `Vec()` (empty growable) and `Vec(n)` (preallocate `n` elements/capacity), element type inferred from the annotation. `Vec::new()` stays as a back-compat alias.
 
 ### 5. Sum Types / Enums (MEDIUM PRIORITY)
