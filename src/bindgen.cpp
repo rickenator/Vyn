@@ -191,10 +191,23 @@ private:
 
     // --- type parsing ---
 
+    // Wraps a base C type in the pointer form an explicit `*` uses (mirrors the
+    // tail of parseCType): `char*` -> CString, `T*` -> loc<T>, deeper -> nested loc.
+    std::string pointerWrap(const std::string& base, int ptrDepth) {
+        if (ptrDepth <= 0) return base;
+        if (base == "CChar" && ptrDepth == 1) return "CString";
+        std::string inner = base;
+        for (int i = 1; i < ptrDepth; ++i) inner = "loc<" + inner + ">";
+        return "loc<" + inner + ">";
+    }
+
     // Parses one C type (base + optional pointer stars). Returns the mapped Vyb
-    // type text, or "" on failure. Optionally records whether a pointer was seen.
-    std::string parseCType(bool* isPointer = nullptr) {
+    // type text, or "" on failure. Optional out-params: records whether a pointer
+    // was seen, and (for function-pointer types) the declaration name so the
+    // caller can use it as a param name / typedef alias.
+    std::string parseCType(bool* isPointer = nullptr, std::string* nameOut = nullptr) {
         if (isPointer) *isPointer = false;
+        if (nameOut) nameOut->clear();
         while (isIdent(cur()) &&
                (cur().text == "const" || cur().text == "volatile" || cur().text == "restrict")) {
             advance();
@@ -236,14 +249,41 @@ private:
 
         if (!base.empty() && aliases_.count(base)) base = aliases_[base];
 
-        if (ptrDepth > 0) {
+        // C function-pointer type: `RET ( *  <name> ) ( PARAMS )`.
+        if (!base.empty() && atPunct("(") && atPunct(1, "*")) {
             if (isPointer) *isPointer = true;
-            if (base == "CChar" && ptrDepth == 1) return "CString";
-            std::string inner = base;
-            for (int i = 1; i < ptrDepth; ++i) inner = "loc<" + inner + ">";
-            return "loc<" + inner + ">";
+            advance(); // (
+            advance(); // *
+            if (isIdent(cur())) {            // the pointer's declared name
+                if (nameOut) *nameOut = cur().text;
+                advance();
+            }
+            while (!atPunct(")") && cur().kind != Kind::Eof) advance();
+            if (atPunct(")")) advance();
+
+            // The function-pointer's own parameter list.
+            std::string fn = "fn(";
+            bool anyParam = false;
+            if (atPunct("(")) {
+                advance();
+                if (!(isKw("void") && atPunct(1, ")"))) {  // `(void)` == no params
+                    while (!atPunct(")") && cur().kind != Kind::Eof) {
+                        std::string pt = parseCType();
+                        if (pt.empty()) break;
+                        if (anyParam) fn += ", ";
+                        fn += pt;
+                        anyParam = true;
+                        if (isIdent(cur())) advance(); // inner param name
+                        if (atPunct(",")) advance();
+                    }
+                }
+                if (atPunct(")")) advance();
+            }
+            fn += ") -> " + pointerWrap(base, ptrDepth);
+            return fn;
         }
-        return base;
+
+        return pointerWrap(base, ptrDepth);
     }
 
     // --- declarations ---
@@ -255,12 +295,21 @@ private:
         if (isKw("enum")) { parseEnumDecl(true); return; }
 
         size_t mark = p_;
-        std::string type = parseCType();
+        std::string fpname;
+        std::string type = parseCType(nullptr, &fpname);
         if (type.empty()) { p_ = mark; skipToSeparator(); return; }
         while (atPunct("*")) { type = "loc<" + type + ">"; advance(); }
-        if (!isIdent(cur())) { p_ = mark; skipToSeparator(); return; }
-        std::string alias = cur().text;
-        advance();
+        std::string alias;
+        if (!fpname.empty()) {                // function-pointer typedef: name is inside the type
+            alias = fpname;
+        } else if (isIdent(cur())) {
+            alias = cur().text;
+            advance();
+        } else {
+            p_ = mark;
+            skipToSeparator();
+            return;
+        }
         aliases_[alias] = type;
         skipSemicolon();
     }
@@ -423,10 +472,12 @@ private:
 
             size_t pmark = p_;
             bool pptr = false;
-            std::string ptype = parseCType(&pptr);
+            std::string fpname;
+            std::string ptype = parseCType(&pptr, &fpname);
             if (ptype.empty()) { keep = false; p_ = pmark; break; }
             std::string pname;
-            if (isIdent(cur())) { pname = cur().text; advance(); }
+            if (!fpname.empty()) pname = fpname;
+            else if (isIdent(cur())) { pname = cur().text; advance(); }
             // C array parameters decay to pointers (`T a[N]` / `T a[]` == `T*`),
             // so `char out[64]` is a `char*` buffer, not a scalar byte. Map the
             // decayed type to the same pointer form an explicit `*` would use.

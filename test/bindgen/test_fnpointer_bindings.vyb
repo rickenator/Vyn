@@ -1,0 +1,15 @@
+// @test: vyb bindgen function-pointer parameters
+// @description: inline and typedef'd C function-pointer params bind as Vyb `fn(...) -> ...` types; the generated module imports, compiles, and JITs (the callback-calling side is future work)
+// @category: ffi, bindgen
+// @expect: pass
+// @expect-return: 0
+// @tags: ffi, bindgen, function-pointer, callback
+
+import fnpointer
+
+main()<Int> -> {
+    // The externs above take fn(...) callbacks; passing a Vyb function as a C
+    // callback is not yet ABI-supported (fn lowers to {ptr,ptr}), so this test
+    // only verifies the generated bindings are valid Vyb that import and link.
+    return 0
+}

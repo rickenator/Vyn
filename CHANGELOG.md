@@ -26,6 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   element type becomes `loc<T>` (`double vals[]` → `loc<CDouble>`).
   Covered by `test/bindgen/arrayparams.h` /
   `test/bindgen/test_arrayparams_bindings.vyb`.
+- **`vyb bindgen` function-pointer parameters** — C function-pointer params,
+  both inline (`void (*cb)(int, void*)`) and typedef'd (`typedef int (*op_fn)(int,int)`),
+  bind as Vyb `fn(...) -> ...` types (`fn(CInt, loc<CVoid>) -> CVoid`), and the
+  pointer's declared name is carried into the binding. Covered by
+  `test/bindgen/fnpointer.h` / `test/bindgen/test_fnpointer_bindings.vyb`.
+  Note: passing a Vyb function as a C callback is not ABI-supported yet (`fn`
+  lowers to a `{ptr, ptr}` closure, whereas C expects a bare function pointer);
+  that remains future work.
 - **Nested `select`** — a `select` may now appear as an arm body of an enclosing
   `select` (naked or a block with `pass`), enabling per-branch sub-selection.
   Previously the outer select's type-inference preview ran the inner select's
