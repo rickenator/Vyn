@@ -200,10 +200,31 @@ entry:
 }
 ```
 
-Capture is *by value*: the environment holds a copy from closure creation, so
-later writes to the outer variable do not affect an already-created closure, and
-each closure instantiation gets its own independent copy. Move (`my<T>`),
-mutable, and `our<T>` (ref-counted shared) captures are planned follow-ups.
+Capture forms
+
+- **By value (default)** — The environment holds a copy from closure creation, so
+  later writes to the outer variable do not affect an already-created closure,
+  and each closure instantiation gets its own independent copy.
+- **Mutable** — When a lambda body assigns to a captured variable, the
+  environment stores the *address* of the outer variable. Each invocation
+  snapshots the current value into a local alloca, and assignments (plain and
+  compound, including `-=`/`*=`/etc.) write back through that address, so the
+  enclosing scope observes every mutation and later invocations start from the
+  latest value.
+- **Move** — Capturing a `my<T>` transfers ownership into the closure; the
+  semantic analyzer marks the outer variable as moved, and reading it afterward
+  is a use-after-move diagnostic.
+- **`our<T>` (shared)** — Capturing an `our<T>` bumps its strong count so the
+  shared value stays alive for the closure's lifetime. The closure environment is
+  heap-allocated and currently never freed, so the count is intentionally not
+  balanced by a closure-side release.
+
+**Limitations**: a mutable capture holds a pointer to the outer variable's
+stack location, so a closure with mutable captures must not outlive its defining
+function (returning one would leave a dangling pointer). Block lambdas whose
+body assigns but produces no trailing value currently run into the compiler's
+void-lambda/return-inference paths; prefer an expression body that returns the
+written value.
 
 ## Examples
 

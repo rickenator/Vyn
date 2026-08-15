@@ -3256,6 +3256,19 @@ void LLVMCodegen::visit(vyb::ast::AssignmentExpression *node) {
         }
     }
 
+    // Mutable closure captures: propagate writes to the outer variable's
+    // address so the enclosing scope (and subsequent invocations) observe the
+    // change. This map is only populated while generating a lambda body, so for
+    // ordinary assignments this is a no-op.
+    auto writeThroughMutable = [&](llvm::Value* v) {
+        if (identLeft) {
+            auto mIt = mutableCaptureOuterPointers.find(identLeft->name);
+            if (mIt != mutableCaptureOuterPointers.end()) {
+                builder->CreateStore(v, mIt->second);
+            }
+        }
+    };
+
     // Check if LHS is a valid target for assignment
     if (!LHS->getType()->isPointerTy()) {
         // Log detailed information about the LHS
@@ -3380,36 +3393,42 @@ void LLVMCodegen::visit(vyb::ast::AssignmentExpression *node) {
         llvm::Value *lhsVal = builder->CreateLoad(destPointeeType, LHS, "lhs.load");
         lhsVal = builder->CreateAdd(lhsVal, RHS, "compound.add");
         builder->CreateStore(lhsVal, LHS);
+        writeThroughMutable(lhsVal);
         m_currentLLVMValue = lhsVal;
         return;
     } else if (node->op.type == vyb::TokenType::MINUSEQ) {
         llvm::Value *lhsVal = builder->CreateLoad(destPointeeType, LHS, "lhs.load");
         lhsVal = builder->CreateSub(lhsVal, RHS, "compound.sub");
         builder->CreateStore(lhsVal, LHS);
+        writeThroughMutable(lhsVal);
         m_currentLLVMValue = lhsVal;
         return;
     } else if (node->op.type == vyb::TokenType::MULTIPLYEQ) {
         llvm::Value *lhsVal = builder->CreateLoad(destPointeeType, LHS, "lhs.load");
         lhsVal = builder->CreateMul(lhsVal, RHS, "compound.mul");
         builder->CreateStore(lhsVal, LHS);
+        writeThroughMutable(lhsVal);
         m_currentLLVMValue = lhsVal;
         return;
     } else if (node->op.type == vyb::TokenType::DIVEQ) {
         llvm::Value *lhsVal = builder->CreateLoad(destPointeeType, LHS, "lhs.load");
         lhsVal = builder->CreateSDiv(lhsVal, RHS, "compound.div");
         builder->CreateStore(lhsVal, LHS);
+        writeThroughMutable(lhsVal);
         m_currentLLVMValue = lhsVal;
         return;
     } else if (node->op.type == vyb::TokenType::MODEQ) {
         llvm::Value *lhsVal = builder->CreateLoad(destPointeeType, LHS, "lhs.load");
         lhsVal = builder->CreateSRem(lhsVal, RHS, "compound.rem");
         builder->CreateStore(lhsVal, LHS);
+        writeThroughMutable(lhsVal);
         m_currentLLVMValue = lhsVal;
         return;
     }
 
     // Create the store instruction with proper alignment
     builder->CreateStore(RHS, LHS);
+    writeThroughMutable(RHS);
 
     // If we're assigning to a member of a struct, we need to preserve type information
     if (auto memberExpr = dynamic_cast<ast::MemberExpression*>(node->left.get())) {
@@ -4690,7 +4709,11 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
 
     // Determine the captures to bake into the environment: variables the body
     // references that are visible in the enclosing scope at creation time.
-    struct Capture { std::string name; llvm::Type* ty; llvm::Value* outer; };
+    // Mutable captures store the *address* of the outer variable in the env and
+    // write back through it; immutable captures snapshot the value.
+    std::unordered_set<std::string> mutableSet(
+        node->mutableCapturedVariables.begin(), node->mutableCapturedVariables.end());
+    struct Capture { std::string name; llvm::Type* ty; llvm::Value* outer; bool mutable_ = false; };
     std::vector<Capture> captures;
     std::vector<llvm::Type*> envFieldTypes;
     for (const auto& nm : node->capturedVariables) {
@@ -4702,8 +4725,11 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
         } else {
             ty = it->second->getType();
         }
-        captures.push_back({nm, ty, it->second});
-        envFieldTypes.push_back(ty);
+        bool isMut = mutableSet.count(nm) != 0;
+        captures.push_back({nm, ty, it->second, isMut});
+        // Mutable captures store a pointer to the outer variable; immutable
+        // captures store the value itself.
+        envFieldTypes.push_back(isMut ? it->second->getType() : ty);
     }
 
     llvm::StructType* envStructType = nullptr;
@@ -4731,21 +4757,33 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
     llvm::Function* savedFunction = currentFunction;
     llvm::BasicBlock* savedBlock = builder->GetInsertBlock();
     std::map<std::string, llvm::Value*> savedNamedValues = namedValues;
+    std::map<std::string, llvm::Value*> savedMutableCaptureOuterPointers = mutableCaptureOuterPointers;
 
     currentFunction = function;
     builder->SetInsertPoint(entryBB);
     namedValues.clear();
+    mutableCaptureOuterPointers.clear();
 
     // Prologue: reload each capture from the env into a local alloca so the
-    // generic identifier lookup resolves them.
+    // generic identifier lookup resolves them. Mutable captures remember the
+    // outer variable's address so writes can propagate back to it.
     if (envStructType) {
         llvm::Value* envArg = function->getArg(0);
         llvm::Value* envCast = builder->CreateBitCast(envArg, envStructType->getPointerTo(), "closure.env.cast");
         for (size_t ci = 0; ci < captures.size(); ++ci) {
             llvm::Value* fieldPtr = builder->CreateStructGEP(envStructType, envCast, ci, "closure.env.field");
             llvm::Value* fieldVal = builder->CreateLoad(envFieldTypes[ci], fieldPtr, "closure.env.load");
-            llvm::AllocaInst* capAlloca = builder->CreateAlloca(envFieldTypes[ci], nullptr, "closure.cap." + captures[ci].name);
-            builder->CreateStore(fieldVal, capAlloca);
+            llvm::AllocaInst* capAlloca = builder->CreateAlloca(captures[ci].ty, nullptr, "closure.cap." + captures[ci].name);
+            if (captures[ci].mutable_) {
+                // fieldVal is the address of the outer variable's alloca:
+                // snapshot its current value, and remember the address.
+                llvm::Value* outerPtr = fieldVal;
+                llvm::Value* snapVal = builder->CreateLoad(captures[ci].ty, outerPtr, "closure.cap.snap");
+                builder->CreateStore(snapVal, capAlloca);
+                mutableCaptureOuterPointers[captures[ci].name] = outerPtr;
+            } else {
+                builder->CreateStore(fieldVal, capAlloca);
+            }
             namedValues[captures[ci].name] = capAlloca;
         }
     }
@@ -4830,6 +4868,7 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
         currentFunction = savedFunction;
         builder->SetInsertPoint(savedBlock);
         namedValues = savedNamedValues;
+        mutableCaptureOuterPointers = savedMutableCaptureOuterPointers;
         return;
     }
 
@@ -4839,6 +4878,7 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
     currentFunction = savedFunction;
     builder->SetInsertPoint(savedBlock);
     namedValues = savedNamedValues;
+    mutableCaptureOuterPointers = savedMutableCaptureOuterPointers;
 
     llvm::Value* envPtr = llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0));
     if (envStructType) {
@@ -4850,10 +4890,24 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
         llvm::Value* envCast = builder->CreateBitCast(raw, envStructType->getPointerTo(), "closure.env.ptr");
         for (size_t ci = 0; ci < captures.size(); ++ci) {
             llvm::Value* fieldPtr = builder->CreateStructGEP(envStructType, envCast, ci, "closure.env.setptr");
-            llvm::Value* val = builder->CreateLoad(envFieldTypes[ci], captures[ci].outer, "closure.cap.val");
-            builder->CreateStore(val, fieldPtr);
+            if (captures[ci].mutable_) {
+                builder->CreateStore(captures[ci].outer, fieldPtr);
+            } else {
+                llvm::Value* val = builder->CreateLoad(captures[ci].ty, captures[ci].outer, "closure.cap.val");
+                builder->CreateStore(val, fieldPtr);
+            }
         }
         envPtr = raw;
+    }
+
+    // Shared (`our<T>`) captures hold a reference for the life of the closure:
+    // bump the strong count up front. The closure env is heap-allocated and
+    // currently never freed (matching the surrounding heap patterns), so the
+    // count is intentionally not balanced by a release on closure teardown.
+    for (const auto& nm : node->ourCapturedVariables) {
+        if (namedValues.count(nm)) {
+            incrementRefCount(nm);
+        }
     }
 
     llvm::StructType* closureTy = getClosureStructType();

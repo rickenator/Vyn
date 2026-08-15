@@ -1,0 +1,15 @@
+// @test: closure move capture
+// @description: Capturing a `my<T>` transfers ownership into the closure; the
+//   outer variable is moved and reading it afterward is a use-after-move error.
+// @category: lambda, closure, capture, move, ownership
+// @expect: fail
+// @expect-error: Use after move
+
+main()<Int> -> {
+    x<my<Int>> = my(41)
+    f<fn(Int) -> Int> = |u<Int>| -> x + 1
+    # Reading `x` after it was moved into the closure is a use-after-move.
+    y<Int> = x
+    if (y == 0) { return 1 }
+    return 0
+}

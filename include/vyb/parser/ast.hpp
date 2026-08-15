@@ -1354,6 +1354,12 @@ public:
     // during semantic analysis). Codegen copies each captured value by reference
     // into the closure's environment at creation time.
     std::vector<std::string> capturedVariables;
+    // Captured vars that the lambda body writes to (mutable context). Codegen
+    // stores the outer variable's address in the env so writes propagate back.
+    std::vector<std::string> mutableCapturedVariables;
+    // Captured vars that are `our<T>` (shared). Codegen bumps their strong count
+    // at capture so the shared value stays alive for the life of the closure.
+    std::vector<std::string> ourCapturedVariables;
     FunctionExpression(SourceLocation loc, std::vector<FunctionParameter> params, ExprPtr body, bool isAsync = false);
     NodeType getType() const override;
     std::string toString() const override;

@@ -3636,6 +3636,19 @@ void SemanticAnalyzer::visit(ast::AssignmentExpression* node) {
     node->left->accept(*this);
     node->right->accept(*this);
 
+    // Mutable-capture detection: a lambda body that assigns to an identifier
+    // resolves it as an l-value against an enclosing scope (so it is not one of
+    // the lambda's own locals/params), mark that name as written in the current
+    // lambda so it can be classified as a mutable capture.
+    if (!lambdaCaptureStack.empty()) {
+        if (auto* lhsIdent = dynamic_cast<ast::Identifier*>(node->left.get())) {
+            LambdaCaptureCtx& lctx = lambdaCaptureStack.back();
+            if (!lctx.locals.count(lhsIdent->name)) {
+                lctx.written.insert(lhsIdent->name);
+            }
+        }
+    }
+
     // Restore the original type for derefLHS after assignment analysis
     if (derefLHS) {
         if (savedDerefType) {
@@ -4133,12 +4146,27 @@ void SemanticAnalyzer::visit(ast::FunctionExpression* node) {
     // parameter) that resolve to a variable in an enclosing scope are captures:
     // codegen copies their value into the closure environment at creation.
     node->capturedVariables.clear();
+    node->mutableCapturedVariables.clear();
+    node->ourCapturedVariables.clear();
     for (const auto& name : ctx.referenced) {
         if (ctx.locals.count(name)) continue;
         if (!ctx.enclosingScope) continue;
         SymbolInfo* sym = ctx.enclosingScope->lookup(name);
         if (sym && sym->kind == SymbolInfo::Kind::Variable) {
             node->capturedVariables.push_back(name);
+            if (ctx.written.count(name)) {
+                node->mutableCapturedVariables.push_back(name);
+            }
+            if (hasOwnershipKindMY(sym)) {
+                // Move capture: ownership of a `my<T>` transfers into the
+                // closure on capture, so the outer variable is moved and may
+                // not be read afterward (use-after-move diagnostic).
+                recordMove(name);
+            } else if (sym->ownershipKind == ast::OwnershipKind::OUR) {
+                // Shared capture: the closure holds a reference; codegen bumps
+                // the strong count so the value survives beyond the scope.
+                node->ourCapturedVariables.push_back(name);
+            }
         }
     }
     lambdaCaptureStack.pop_back();

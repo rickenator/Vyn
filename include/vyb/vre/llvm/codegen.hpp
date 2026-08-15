@@ -127,6 +127,10 @@ private:
 
     // Global and type information
     std::map<std::string, llvm::Value*> namedValues;
+    // For mutable captures, maps the captured variable name to the address of
+    // the *outer* variable's alloca, so writes inside a lambda can propagate
+    // back to the enclosing scope. Populated only while generating a lambda.
+    std::map<std::string, llvm::Value*> mutableCaptureOuterPointers;
     std::map<std::string, UserTypeInfo> userTypeMap;
     std::map<std::string, llvm::Type*> typeParameterMap;
     std::map<std::string, llvm::Type*> typeAliasMap; // Maps type alias names to their underlying LLVM types

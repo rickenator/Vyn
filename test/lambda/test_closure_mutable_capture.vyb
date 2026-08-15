@@ -1,0 +1,31 @@
+// @test: closure mutable capture
+// @description: A lambda that assigns to a captured variable writes through to
+//   the outer variable. Each invocation starts from the latest value, and the
+//   enclosing scope observes every mutation made inside the closure. Covers
+//   plain assignment and compound assignment (+=).
+// @category: lambda, closure, capture, mutable, fn
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+main()<Int> -> {
+    counter<Int> = 0
+    bump<fn(Int) -> Int> = |u<Int>| -> counter = counter + 1
+    # Each call starts from the latest value persisted in the outer variable.
+    if (bump(0) != 1) { return 1 }
+    if (counter != 1) { return 2 }
+    if (bump(0) != 2) { return 3 }
+    if (counter != 2) { return 4 }
+    if (bump(0) != 3) { return 5 }
+    if (counter != 3) { return 6 }
+
+    sum<Int> = 10
+    addN<fn(Int) -> Int> = |u<Int>| -> sum += 3
+    if (addN(0) != 13) { return 7 }
+    if (addN(0) != 16) { return 8 }
+    if (sum != 16) { return 9 }
+
+    println("ok")
+    return 0
+}

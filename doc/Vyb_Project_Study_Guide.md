@@ -706,10 +706,12 @@ Current status:
 - lambda body type inference exists
 - indirect local variable calls have support
 - closure structs and capture extraction are implemented: a `fn` is a uniform
-  `{ env, fn }` closure value, captures are copied by value into a heap
-  environment, and capturing closures work as higher-order-combinator arguments
-  (`test/lambda/test_closure_capture.vyb`). Move / mutable / `our` capture remain
-  planned.
+  `{ env, fn }` closure value, captures are copied into a heap environment, and
+  capturing closures work as higher-order-combinator arguments
+  (`test/lambda/test_closure_capture.vyb`). All capture forms are implemented:
+  mutable captures write assignments back to the outer variable through its
+  address, my<T> move captures transfer ownership into the closure (with
+  use-after-move diagnostics), and our<T> captures bump the shared strong count.
 
 Study:
 

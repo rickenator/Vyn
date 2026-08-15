@@ -24,6 +24,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with an unrelated local lambda of the same name. Expression-body lambdas now
   wrap `char*` String results (e.g. `prefix + x.to_string()`) into a String
   struct on return. Covered by `test/lambda/test_closure_capture.vyb`.
+- **Remaining closure capture forms** — mutable, move, and shared (`our<T>`)
+  captures complete the closure capture story on top of the uniform env struct.
+  - *Mutable capture*: a lambda that assigns to a captured variable stores the
+    outer variable's address in the environment, snapshots its current value
+    into a local alloca per invocation, and writes every assignment (plain and
+    compound `+=`/`-=`/etc.) back through that address. The enclosing scope
+    observes each mutation and later invocations start from the latest value
+    (`test/lambda/test_closure_mutable_capture.vyb`).
+  - *Move capture*: capturing a `my<T>` transfers ownership into the closure;
+    the semantic analyzer records the outer variable as moved so reading it
+    afterward is a use-after-move diagnostic (`test/lambda/test_closure_move_capture.vyb`).
+  - *`our<T>` capture*: capturing a shared value bumps its strong count at
+    closure creation so the value stays alive for the closure's lifetime. The
+    heap-allocated environment is never freed (consistent with the surrounding
+    heap patterns), so the count is intentionally not balanced by a closure-side
+    release (`test/lambda/test_closure_our_capture.vyb`).
 - **Function-typed parameters and indirect calls** — a parameter declared with a
   function type (`f<fn(Int) -> Int>`) is lowered to a function pointer stored in
   its alloca, and calling `f(args)` inside a body performs an indirect call

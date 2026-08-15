@@ -550,6 +550,9 @@ private:
         SymbolTable* enclosingScope = nullptr;
         std::unordered_set<std::string> referenced;
         std::unordered_set<std::string> locals;
+        // Names the lambda body assigns to (LHS of an assignment). Used to
+        // distinguish mutable captures from by-value captures.
+        std::unordered_set<std::string> written;
     };
     std::vector<LambdaCaptureCtx> lambdaCaptureStack;
 

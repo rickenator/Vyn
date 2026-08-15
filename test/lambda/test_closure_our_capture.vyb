@@ -1,0 +1,17 @@
+// @test: closure `our<T>` capture
+// @description: Capturing an `our<T>` bumps its strong count so the shared value
+//   stays alive for the life of the closure; the closure reads the shared value.
+// @category: lambda, closure, capture, our, ownership
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+main()<Int> -> {
+    shared<our<Int>> = our(7)
+    read<fn(Int) -> Int> = |u<Int>| -> shared + 3
+    if (read(0) != 10) { return 1 }
+    if (shared + 1 != 8) { return 2 }
+    println("ok")
+    return 0
+}

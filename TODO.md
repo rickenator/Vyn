@@ -221,9 +221,18 @@ is the working audit for what needs to be implemented next.
   from local/returned closures, and as `fn` arguments to the higher-order
   combinators (`test/lambda/test_closure_capture.vyb`). Non-capturing lambdas
   use a null environment, so existing `fn`-parameter code is unaffected.
-- [ ] **Move capture** — Transfer ownership of `my<T>` into closure
-- [ ] **Mutable capture** — Captured variables in mutable context
-- [ ] **`our<T>` capture** — Atomic ref-count increment for shared captures
+- [x] **Mutable capture** — A lambda that assigns to a captured variable writes
+  through to the outer variable: the environment stores the outer variable's
+  address, each invocation snapshots the current value into a local alloca, and
+  assignments (plain and compound) propagate back. The enclosing scope observes
+  every mutation (`test/lambda/test_closure_mutable_capture.vyb`).
+- [x] **Move capture** — Capturing a `my<T>` transfers ownership into the
+  closure: the semantic analyzer records the outer variable as moved, so reading
+  it afterward is a use-after-move diagnostic (`test/lambda/test_closure_move_capture.vyb`).
+- [x] **`our<T>` capture** — Capturing an `our<T>` bumps its strong count so the
+  shared value stays alive for the closure's lifetime (the heap-allocated env is
+  currently never freed, so the count is not balanced by a closure-side release)
+  (`test/lambda/test_closure_our_capture.vyb`).
 
 ---
 
