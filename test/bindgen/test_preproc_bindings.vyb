@@ -1,0 +1,18 @@
+// @test: vyb bindgen #define constants
+// @description: object-like `#define` macros (numbers, hex, strings, floats) bind as shared constant functions and are usable from an importing module
+// @category: ffi, bindgen
+// @expect: pass
+// @expect-output: max= 4096
+// @expect-return: 0
+// @tags: ffi, bindgen, macro, preprocessor
+
+import preproc
+
+main()<Int> -> {
+    println("max=", MAX_BUFSIZE())
+    println("name=", DEFAULT_NAME())
+    println("scale=", SCALE_FACTOR())
+    println("mask=", MASK())
+    println("tweak=", TWEAK())
+    return 0
+}

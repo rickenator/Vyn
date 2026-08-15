@@ -38,6 +38,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a C callback bound as Vyb `fn(...)` (a `{ptr, ptr}` closure) and could not be
   invoked with a function argument; `loc<fn(...)>` maps to a single bare code
   pointer so the ABI lines up. Covered by `test/ffi/callback_fnptr.vyb`.
+- **`vyb bindgen` `#define` constants** — object-like C macros
+  (`#define NAME <number|string|float>`) bind as shared constant functions
+  (`MAX_BUFSIZE()<CInt> -> 4096`), so headers' numeric/string constants are
+  usable from a binder. Function-like, multi-line, and non-literal macros are
+  skipped with a warning. Covered by `test/bindgen/preproc.h` /
+  `test/bindgen/test_preproc_bindings.vyb`.
+- **`vyb bindgen` bitfield handling** — a C struct containing bitfields packs
+  bits into shared storage and cannot be ABI-represented as Vyb struct fields,
+  so it is skipped from emission with a warning, while plain structs beside it
+  still bind. Covered by `test/bindgen/bitfields.h` /
+  `test/bindgen/test_bitfields_bindings.vyb`.
 - **Nested `select`** — a `select` may now appear as an arm body of an enclosing
   `select` (naked or a block with `pass`), enabling per-branch sub-selection.
   Previously the outer select's type-inference preview ran the inner select's
