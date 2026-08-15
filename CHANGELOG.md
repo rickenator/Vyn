@@ -149,6 +149,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test/modules/test_file_io.vyb` (write/reopen/read round-trip plus the
   missing-path error surface); leak-free under ASAN.
 
+- **`Iterator` protocol (`core::iter`)** — the standard iteration contract:
+  `aspect Iterator { type Item; next(self<their<Self>>)<Option<Self::Item>> }`.
+  A type binds it (assigning the associated `type Item`) and implements `next`,
+  which returns `Some(value)` per element and `None` when exhausted; the by-ref
+  `their<Self>` receiver advances internal cursor state in place. Explicitly
+  imported via `import core::iter` (deliberately not part of the auto-imported
+  `core::aspects`, so the already-shipped associated-type tests that define a
+  local `Iterator` aspect don't clash). Consumable today with an explicit
+  `.next()` / `match` loop; the `for (item in it)` desugar over the protocol is
+  the next compiler step. Protocol verified for `Int` and `Float` associated
+  types in `test/modules/test_iterator_protocol.vyb`; leak-free under ASAN.
+
 ### Changed
 - **`FunctionType` grammar doc no longer contradicts the parser** — `vyb.hpp`
   now documents the real function-pointer type syntax `fn(params) -> Return`

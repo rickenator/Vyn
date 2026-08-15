@@ -1,0 +1,79 @@
+// @test: Iterator aspect protocol (core::iter)
+// @description: a type that binds core::iter::Iterator (setting associated type
+//   Item) is consumable by repeated .next() calls returning Option<Item>; a by-ref
+//   receiver advances internal cursor state in place. This is the protocol the
+//   `for`-loop desugar will target (pending).
+// @category: stdlib, iterator, aspect, modules
+// @expect: pass
+// @expect-output: iter-ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import core::iter
+
+struct RangeIter {
+    cur<Int>,
+    end<Int>
+}
+
+bind Iterator -> RangeIter {
+    type Item = Int
+    next(self<their<RangeIter>>)<Option<Int>> -> {
+        if (self.cur < self.end) {
+            v<Int> = self.cur
+            self.cur = self.cur + 1
+            return Some(v)
+        }
+        return None
+    }
+}
+
+struct FloatStepIter {
+    cur<Float>,
+    end<Float>,
+    step<Float>
+}
+
+bind Iterator -> FloatStepIter {
+    type Item = Float
+    next(self<their<FloatStepIter>>)<Option<Float>> -> {
+        if (self.cur < self.end) {
+            v<Float> = self.cur
+            self.cur = self.cur + self.step
+            return Some(v)
+        }
+        return None
+    }
+}
+
+main()<Int> -> {
+    r<RangeIter> = RangeIter { cur = 0, end = 5 }
+    total<Int> = 0
+    while (true) {
+        match (r.next()) {
+            Some(v) -> { total = total + v }
+            None -> { break }
+        }
+    }
+    s<Int> = total
+    if (s != 10) {
+        println("iter-fail-sum:" + s)
+        return 1
+    }
+
+    f<FloatStepIter> = FloatStepIter { cur = 0.0, end = 3.0, step = 1.0 }
+    fsum<Float> = 0.0
+    while (true) {
+        match (f.next()) {
+            Some(x) -> { fsum = fsum + x }
+            None -> { break }
+        }
+    }
+    if (fsum != 3.0) {
+        println(fsum)
+        return 2
+    }
+
+    println("iter-ok")
+    return 0
+}

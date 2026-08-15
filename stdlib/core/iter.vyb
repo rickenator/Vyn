@@ -1,0 +1,32 @@
+# core::iter - the standard iteration protocol.
+#
+# `Iterator` is Vyb's single iteration contract (see the [DECIDED] aspect-based
+# design in TODO.md). A type binds it, assigns the associated `type Item` (what
+# the iterator yields), and implements `next`, which returns `Some(value)` for
+# each element and `None` once the sequence is exhausted. The receiver is taken
+# by reference (`self<their<Self>>`) so `next` can advance internal cursor state
+# in place on the caller's object.
+#
+# A bound iterator is consumed by calling `.next()` in a loop:
+#
+#   import core::iter
+#
+#   while (true) {
+#       match (it.next()) {
+#           Some(v) -> { ... use v ... }
+#           None   -> { break }
+#       }
+#   }
+#
+# `for (item in it)` desugaring over this protocol is a compiler follow-up; until
+# it ships, use the explicit `.next()` / `match` loop above.
+#
+# This module is explicitly imported (`import core::iter`) — it is not part of the
+# auto-imported core contracts module (`core::aspects`), so bind authors keep full
+# control over when the `Iterator` name is in scope.
+
+share(all)
+aspect Iterator {
+    type Item
+    next(self<their<Self>>)<Option<Self::Item>> -> { }
+}

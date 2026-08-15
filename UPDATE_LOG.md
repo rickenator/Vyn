@@ -3,6 +3,22 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-15: **`Iterator` protocol (`core::iter`)**. Shipped the standard iteration
+  contract — `aspect Iterator { type Item; next(self<their<Self>>)<Option<Self::Item>> }`
+  — as an explicitly imported `import core::iter` module (kept out of the auto-imported
+  `core::aspects` because that contract set is auto-imported into every non-stdlib module,
+  and ~6 associated-type tests already define their own local `Iterator` aspect, which
+  would clash). The protocol is proven end-to-end: a type binds it (assigning `type Item`),
+  `next` advances cursor state through a by-ref `their<Self>` receiver, and consumers loop
+  `match (it.next()) { Some(v) -> ... None -> break }`. Verified for `Int` and `Float`
+  associated types, leak-free under ASAN (`test/modules/test_iterator_protocol.vyb`).
+  Two follow-ups are now explicit in `TODO.md` rather than assumed: (1) the `for (item in
+  col)` desugar over this protocol needs a type-aware transform — the parser desugar is
+  type-blind and currently assumes Vec/index-gets for non-range identifiers, so this is a
+  semantic/codegen-level change, plus `break`/`continue`/payload-extraction handling; (2)
+  binding `Vec`/`HashMap`/`HashSet` as iterators is blocked because calling `len`/`get` on
+  a nested `their<Vec<T>>` struct field does not yet resolve (concrete or generic). Full
+  suite 856/860 (the 4 remaining failures are the pre-existing trap/vec edge tests).
 - 2026-08-15: **Stdlib File I/O (`import io`)**. Replaced the `io` placeholder with a
   real file module: `File { fd<Int>, path<String> }`, `open(path, flags)` plus
   `open_read`/`open_write`/`open_append` conveniences, `close`, `write_str`,
