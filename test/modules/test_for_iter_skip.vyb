@@ -1,0 +1,71 @@
+// @test: for-loop over the Iterator protocol with skip (step) parameter
+// @description: `for (x in <iter-expr>, step)` advances the iterator `step`
+//   elements per iteration and yields indices 0, step, 2*step, ... (matching
+//   the Vec index-based path). Confirms step, step==1 (== no skip), break, and
+//   continue behave correctly.
+// @category: iterator, stdlib, vec, for, desugar
+// @expect: pass
+// @expect-output: for-iter-skip-ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import collections
+
+main()<Int> -> {
+    ints<Vec<Int>> = Vec()
+    ints.push(10); ints.push(20); ints.push(30); ints.push(40); ints.push(50)
+
+    sum<Int> = 0
+    for (x in ints.iter(), 2) {
+        sum = sum + x
+    }
+    if (sum != 90) {
+        println("for-iter-skip2-fail:" + sum)
+        return 1
+    }
+
+    sum2<Int> = 0
+    for (x in ints.iter(), 3) {
+        sum2 = sum2 + x
+    }
+    if (sum2 != 50) {
+        println("for-iter-skip3-fail:" + sum2)
+        return 2
+    }
+
+    sum3<Int> = 0
+    for (x in ints.iter(), 1) {
+        sum3 = sum3 + x
+    }
+    if (sum3 != 150) {
+        println("for-iter-skip1-fail:" + sum3)
+        return 3
+    }
+
+    sum4<Int> = 0
+    for (x in ints.iter(), 2) {
+        if (x >= 30) {
+            break
+        }
+        sum4 = sum4 + x
+    }
+    if (sum4 != 10) {
+        println("for-iter-skip-break-fail:" + sum4)
+        return 4
+    }
+
+    sum5<Int> = 0
+    for (x in ints.iter(), 2) {
+        if (x % 3 == 0) {
+            continue
+        }
+        sum5 = sum5 + x
+    }
+    if (sum5 != 60) {
+        println("for-iter-skip-continue-fail:" + sum5)
+        return 5
+    }
+
+    println("for-iter-skip-ok")
+    return 0
+}

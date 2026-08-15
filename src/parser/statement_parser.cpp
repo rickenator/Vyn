@@ -474,90 +474,11 @@ std::unique_ptr<vyb::ast::ForStatement> StatementParser::parse_for() {
                 auto* vec_ident = dynamic_cast<vyb::ast::Identifier*>(range_expr.get());
                 if (!vec_ident) {
                     // Non-identifier iterable expression: desugar over the Iterator
-                    // protocol. E.g. `for (x in v.iter()) { body }` becomes:
-                    //   { var __it_<x> = v.iter();
-                    //     while (true) {
-                    //       match (__it_<x>.next()) {
-                    //         Some(x) -> { body }
-                    //         None -> { break } } } }
-                    if (skip_expr) {
-                        throw std::runtime_error("The optional 'skip' parameter is not supported for "
-                                                 "iterator-based for loops at " +
-                                                 location_to_string(ident_token.location));
-                    }
-
-                    std::string it_name = "__it_" + ident_token.lexeme;
-
-                    // var __it_<x> = <range_expr>;
-                    auto it_var = std::make_unique<vyb::ast::Identifier>(ident_token.location, it_name);
-                    auto it_decl = std::make_unique<vyb::ast::VariableDeclaration>(
-                        ident_token.location, std::move(it_var), false, nullptr, std::move(range_expr));
-
-                    // __it_<x>.next()
-                    auto it_for_next = std::make_unique<vyb::ast::Identifier>(ident_token.location, it_name);
-                    auto next_method = std::make_unique<vyb::ast::Identifier>(ident_token.location, "next");
-                    auto next_member = std::make_unique<vyb::ast::MemberExpression>(
-                        ident_token.location, std::move(it_for_next), std::move(next_method), false);
-                    auto next_call = std::make_unique<vyb::ast::CallExpression>(
-                        ident_token.location, std::move(next_member), std::vector<vyb::ast::ExprPtr>());
-
-                    // Some(x) -> { body }
-                    auto some_type_id = std::make_unique<vyb::ast::Identifier>(ident_token.location, "Some");
-                    auto some_name = std::make_unique<vyb::ast::TypeName>(ident_token.location, std::move(some_type_id));
-                    std::vector<vyb::ast::ExprPtr> some_args;
-                    some_args.push_back(std::make_unique<vyb::ast::Identifier>(ident_token.location, ident_token.lexeme));
-                    auto some_pattern = std::make_unique<vyb::ast::ConstructionExpression>(
-                        ident_token.location, std::move(some_name), std::move(some_args));
-                    auto some_body = std::make_unique<vyb::ast::BlockExpression>(
-                        ident_token.location, std::move(body));
-
-                    // None -> { break }
-                    auto none_pattern = std::make_unique<vyb::ast::Identifier>(ident_token.location, "None");
-                    std::vector<vyb::ast::StmtPtr> break_body_stmts;
-                    break_body_stmts.push_back(std::make_unique<vyb::ast::BreakStatement>(ident_token.location));
-                    auto break_block = std::make_unique<vyb::ast::BlockStatement>(
-                        ident_token.location, std::move(break_body_stmts));
-                    auto none_body = std::make_unique<vyb::ast::BlockExpression>(
-                        ident_token.location, std::move(break_block));
-
-                    std::vector<std::pair<vyb::ast::ExprPtr, vyb::ast::ExprPtr>> iter_cases;
-                    iter_cases.emplace_back(std::move(some_pattern), std::move(some_body));
-                    iter_cases.emplace_back(std::move(none_pattern), std::move(none_body));
-                    auto iter_match = std::make_unique<vyb::ast::MatchStatement>(
-                        ident_token.location, std::move(next_call), std::move(iter_cases));
-
-                    // while (true) { match_stmt }
-                    auto true_lit = std::make_unique<vyb::ast::BooleanLiteral>(ident_token.location, true);
-                    std::vector<vyb::ast::StmtPtr> while_body_stmts;
-                    while_body_stmts.push_back(std::move(iter_match));
-                    auto while_block = std::make_unique<vyb::ast::BlockStatement>(
-                        ident_token.location, std::move(while_body_stmts));
-                    auto while_stmt = std::make_unique<vyb::ast::WhileStatement>(
-                        ident_token.location, std::move(true_lit), std::move(while_block));
-
-                    // { it_decl; while_stmt; }
-                    std::vector<vyb::ast::StmtPtr> iter_outer_stmts;
-                    iter_outer_stmts.push_back(std::move(it_decl));
-                    iter_outer_stmts.push_back(std::move(while_stmt));
-                    auto iter_final = std::make_unique<vyb::ast::BlockStatement>(
-                        ident_token.location, std::move(iter_outer_stmts));
-
-                    // Wrap in a __run_once for-loop to satisfy the ForStatement return type.
-                    std::string iter_run_name = "__run_once_" + ident_token.lexeme;
-                    auto iter_run_var = std::make_unique<vyb::ast::Identifier>(ident_token.location, iter_run_name);
-                    auto iter_run_init = std::make_unique<vyb::ast::BooleanLiteral>(ident_token.location, true);
-                    auto iter_run_decl = std::make_unique<vyb::ast::VariableDeclaration>(
-                        ident_token.location, std::move(iter_run_var), false, nullptr, std::move(iter_run_init));
-                    auto iter_run_cond = std::make_unique<vyb::ast::Identifier>(ident_token.location, iter_run_name);
-                    auto iter_run_upd_l = std::make_unique<vyb::ast::Identifier>(ident_token.location, iter_run_name);
-                    auto iter_run_upd_r = std::make_unique<vyb::ast::BooleanLiteral>(ident_token.location, false);
-                    token::Token iter_eq_token(vyb::TokenType::EQ, "=", ident_token.location);
-                    auto iter_run_update = std::make_unique<vyb::ast::AssignmentExpression>(
-                        ident_token.location, std::move(iter_run_upd_l), iter_eq_token, std::move(iter_run_upd_r));
-                    return std::make_unique<vyb::ast::ForStatement>(
-                        for_loc, std::move(iter_run_decl), std::move(iter_run_cond),
-                        std::move(iter_run_update), std::move(iter_final));
+                    // protocol. E.g. `for (x in v.iter()) { body }`.
+                    return buildForLoopIteratorDesugar(
+                        for_loc, ident_token, std::move(range_expr), std::move(body), std::move(skip_expr));
                 }
+
                 std::string vec_name = vec_ident->name;
 
                 // 0. If skip parameter provided, create: var __step = skip_expr;
@@ -748,6 +669,153 @@ std::unique_ptr<vyb::ast::ForStatement> StatementParser::parse_for() {
     SourceLocation end_loc = body->loc; // Use loc member
 
     return std::make_unique<vyb::ast::ForStatement>(for_loc, std::move(initializer), std::move(condition), std::move(increment), std::move(body));
+}
+
+
+
+std::unique_ptr<vyb::ast::ForStatement> StatementParser::buildForLoopIteratorDesugar(
+    const SourceLocation& loc, const token::Token& ident, vyb::ast::ExprPtr range_expr,
+    std::unique_ptr<vyb::ast::BlockStatement> body, vyb::ast::ExprPtr skip_expr) {
+
+    std::string it_name = "__it_" + ident.lexeme;
+
+    // var __it_<item> = <iterable>;
+    auto it_var = std::make_unique<vyb::ast::Identifier>(loc, it_name);
+    auto it_decl = std::make_unique<vyb::ast::VariableDeclaration>(
+        loc, std::move(it_var), false, nullptr, std::move(range_expr));
+
+    // Build `<it>.next()` as a call expression.
+    auto make_next = [&loc, &it_name]() -> vyb::ast::ExprPtr {
+        auto obj = std::make_unique<vyb::ast::Identifier>(loc, it_name);
+        auto method = std::make_unique<vyb::ast::Identifier>(loc, "next");
+        auto member = std::make_unique<vyb::ast::MemberExpression>(
+            loc, std::move(obj), std::move(method), false);
+        return std::make_unique<vyb::ast::CallExpression>(
+            loc, std::move(member), std::vector<vyb::ast::ExprPtr>());
+    };
+
+    // None -> { break }
+    auto none_pattern = std::make_unique<vyb::ast::Identifier>(loc, "None");
+    std::vector<vyb::ast::StmtPtr> break_block_stmts;
+    break_block_stmts.push_back(std::make_unique<vyb::ast::BreakStatement>(loc));
+    auto break_block = std::make_unique<vyb::ast::BlockStatement>(loc, std::move(break_block_stmts));
+    auto none_body = std::make_unique<vyb::ast::BlockExpression>(loc, std::move(break_block));
+
+    // The Some-arm pattern binding: without a step it is the user's `item`;
+    // with a step the Some-arm first advances `step`-1 more elements (so the
+    // loop yields indices 0, step, 2*step, ... exactly like the Vec index path)
+    // and the `item` it yields is the seed of each group.
+    vyb::ast::ExprPtr some_binding = std::make_unique<vyb::ast::Identifier>(loc, ident.lexeme);
+    std::vector<vyb::ast::StmtPtr> outer_pre; // statements placed before the main while
+
+    if (skip_expr) {
+        std::string step_name = "__step_" + ident.lexeme;
+        std::string s_name = "__s_" + ident.lexeme;
+        std::string v_name = "__v_" + ident.lexeme;
+
+        // var __step_<item> = <skip>;
+        auto step_var = std::make_unique<vyb::ast::Identifier>(loc, step_name);
+        auto step_decl = std::make_unique<vyb::ast::VariableDeclaration>(
+            loc, std::move(step_var), false, nullptr, std::move(skip_expr));
+        outer_pre.push_back(std::move(step_decl));
+
+        // var __s_<item> = 1;
+        auto s_var = std::make_unique<vyb::ast::Identifier>(loc, s_name);
+        auto s_one = std::make_unique<vyb::ast::IntegerLiteral>(loc, 1);
+        auto s_decl = std::make_unique<vyb::ast::VariableDeclaration>(
+            loc, std::move(s_var), false, nullptr, std::move(s_one));
+
+        // while (__s_<item> < __step_<item>) { ... }
+        auto lt_s = std::make_unique<vyb::ast::Identifier>(loc, s_name);
+        auto lt_step = std::make_unique<vyb::ast::Identifier>(loc, step_name);
+        token::Token lt_op(vyb::TokenType::LT, "<", loc);
+        auto cond = std::make_unique<vyb::ast::BinaryExpression>(loc, std::move(lt_s), lt_op, std::move(lt_step));
+
+        // inner match: Some(__v_<item>) -> { __s_ += 1 } | None -> { __s_ = __step_ }
+        auto v_binding = std::make_unique<vyb::ast::Identifier>(loc, v_name);
+        auto v_some_type_id = std::make_unique<vyb::ast::Identifier>(loc, "Some");
+        auto v_some_name = std::make_unique<vyb::ast::TypeName>(loc, std::move(v_some_type_id));
+        std::vector<vyb::ast::ExprPtr> v_some_args;
+        v_some_args.push_back(std::move(v_binding));
+        auto v_some_pattern = std::make_unique<vyb::ast::ConstructionExpression>(
+            loc, std::move(v_some_name), std::move(v_some_args));
+        auto s_inc_l = std::make_unique<vyb::ast::Identifier>(loc, s_name);
+        auto s_inc_rl = std::make_unique<vyb::ast::Identifier>(loc, s_name);
+        auto s_one2 = std::make_unique<vyb::ast::IntegerLiteral>(loc, 1);
+        token::Token plus_op(vyb::TokenType::PLUS, "+", loc);
+        auto s_rhs = std::make_unique<vyb::ast::BinaryExpression>(loc, std::move(s_inc_rl), plus_op, std::move(s_one2));
+        token::Token eq1(vyb::TokenType::EQ, "=", loc);
+        auto s_inc = std::make_unique<vyb::ast::AssignmentExpression>(loc, std::move(s_inc_l), eq1, std::move(s_rhs));
+        std::vector<vyb::ast::StmtPtr> v_arm_stmts;
+        v_arm_stmts.push_back(std::make_unique<vyb::ast::ExpressionStatement>(loc, std::move(s_inc)));
+        auto v_arm_block = std::make_unique<vyb::ast::BlockStatement>(loc, std::move(v_arm_stmts));
+        auto v_arm_body = std::make_unique<vyb::ast::BlockExpression>(loc, std::move(v_arm_block));
+
+        auto s_reset_l = std::make_unique<vyb::ast::Identifier>(loc, s_name);
+        auto s_reset_r = std::make_unique<vyb::ast::Identifier>(loc, step_name);
+        token::Token eq2(vyb::TokenType::EQ, "=", loc);
+        auto s_reset = std::make_unique<vyb::ast::AssignmentExpression>(loc, std::move(s_reset_l), eq2, std::move(s_reset_r));
+        std::vector<vyb::ast::StmtPtr> inner_none_stmts;
+        inner_none_stmts.push_back(std::make_unique<vyb::ast::ExpressionStatement>(loc, std::move(s_reset)));
+        auto inner_none_block = std::make_unique<vyb::ast::BlockStatement>(loc, std::move(inner_none_stmts));
+        auto inner_none_body = std::make_unique<vyb::ast::BlockExpression>(loc, std::move(inner_none_block));
+        auto inner_none_pattern = std::make_unique<vyb::ast::Identifier>(loc, "None");
+        std::vector<std::pair<vyb::ast::ExprPtr, vyb::ast::ExprPtr>> inner_cases;
+        inner_cases.emplace_back(std::move(v_some_pattern), std::move(v_arm_body));
+        inner_cases.emplace_back(std::move(inner_none_pattern), std::move(inner_none_body));
+        auto inner_match = std::make_unique<vyb::ast::MatchStatement>(loc, make_next(), std::move(inner_cases));
+        std::vector<vyb::ast::StmtPtr> inner_while_stmts;
+        inner_while_stmts.push_back(std::move(inner_match));
+        auto inner_while_block = std::make_unique<vyb::ast::BlockStatement>(loc, std::move(inner_while_stmts));
+        auto inner_while = std::make_unique<vyb::ast::WhileStatement>(loc, std::move(cond), std::move(inner_while_block));
+
+        // Prepend `{ var __s_ = 1; while (...) {...}; ` to the body so the user's
+        // `item` (bound by the Some pattern) is the seed of each group.
+        if (body) {
+            body->body.insert(body->body.begin(), std::move(inner_while));
+            body->body.insert(body->body.begin(), std::move(s_decl));
+        }
+    }
+
+    // Some(<item>) -> { body }   (body may absorb the skip prologue above)
+    auto some_type_id = std::make_unique<vyb::ast::Identifier>(loc, "Some");
+    auto some_name = std::make_unique<vyb::ast::TypeName>(loc, std::move(some_type_id));
+    std::vector<vyb::ast::ExprPtr> some_args;
+    some_args.push_back(std::move(some_binding));
+    auto outer_some_pattern = std::make_unique<vyb::ast::ConstructionExpression>(
+        loc, std::move(some_name), std::move(some_args));
+    auto some_body_expr = std::make_unique<vyb::ast::BlockExpression>(loc, std::move(body));
+
+    std::vector<std::pair<vyb::ast::ExprPtr, vyb::ast::ExprPtr>> cases;
+    cases.emplace_back(std::move(outer_some_pattern), std::move(some_body_expr));
+    cases.emplace_back(std::move(none_pattern), std::move(none_body));
+    auto iter_match = std::make_unique<vyb::ast::MatchStatement>(loc, make_next(), std::move(cases));
+
+    // while (true) { iter_match }
+    auto true_lit = std::make_unique<vyb::ast::BooleanLiteral>(loc, true);
+    std::vector<vyb::ast::StmtPtr> while_stmts;
+    while_stmts.push_back(std::move(iter_match));
+    auto while_block = std::make_unique<vyb::ast::BlockStatement>(loc, std::move(while_stmts));
+    auto while_stmt = std::make_unique<vyb::ast::WhileStatement>(loc, std::move(true_lit), std::move(while_block));
+
+    // { [step_decl]; it_decl; while_stmt; }
+    std::vector<vyb::ast::StmtPtr> outer_stmts;
+    for (auto& st : outer_pre) outer_stmts.push_back(std::move(st));
+    outer_stmts.push_back(std::move(it_decl));
+    outer_stmts.push_back(std::move(while_stmt));
+    auto final_block = std::make_unique<vyb::ast::BlockStatement>(loc, std::move(outer_stmts));
+
+    // Wrap in a __run_once for-loop to satisfy the ForStatement return type.
+    std::string run_name = "__run_once_" + ident.lexeme;
+    auto run_var = std::make_unique<vyb::ast::Identifier>(loc, run_name);
+    auto run_init = std::make_unique<vyb::ast::BooleanLiteral>(loc, true);
+    auto run_decl = std::make_unique<vyb::ast::VariableDeclaration>(loc, std::move(run_var), false, nullptr, std::move(run_init));
+    auto run_cond = std::make_unique<vyb::ast::Identifier>(loc, run_name);
+    auto run_upd_l = std::make_unique<vyb::ast::Identifier>(loc, run_name);
+    auto run_upd_r = std::make_unique<vyb::ast::BooleanLiteral>(loc, false);
+    token::Token eq_token(vyb::TokenType::EQ, "=", loc);
+    auto run_update = std::make_unique<vyb::ast::AssignmentExpression>(loc, std::move(run_upd_l), eq_token, std::move(run_upd_r));
+    return std::make_unique<vyb::ast::ForStatement>(loc, std::move(run_decl), std::move(run_cond), std::move(run_update), std::move(final_block));
 }
 
 std::unique_ptr<vyb::ast::ReturnStatement> StatementParser::parse_return() {

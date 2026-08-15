@@ -3,6 +3,22 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-15: **`for`-loop `skip`/step over `Iterator`**. The iterator desugar
+  increased: `for (item in <iter-expr>, step)` now advances the iterator `step`
+  elements per iteration, yielding indices 0, step, 2*step, ... — the same
+  semantics as the Vec index-based path. The parser logic moved into
+  `StatementParser::buildForLoopIteratorDesugar`; with a step, the Some arm
+  prepends `{ var __s=1; while (__s<__step) { match (next()){Some(__v)->{__s+=1}
+  None->{__s=__step}} } }` before the user body, so the loop variable stays the
+  seed of each group and `break`/`continue` target the outer while (verified).
+  Full suite 860/864 (only the 4 pre-existing trap/vec-edge failures). This
+  clears the last fully-shippable for-iterator follow-up; the remaining two
+  (Vec identifier path onto the protocol; `HashMap`/`HashSet` iterator binds)
+  are noted in TODO.md, with the latter currently blocked by a `their<T>` view
+  generic-struct member-access compiler gap (reading fields / calling bound
+  methods through `self.set` / `self.map` doesn't resolve outside of the
+  Vec-specific nested-`their<Vec<T>>` case).
+
 - 2026-08-15: **`for (item in col)` desugar over `Iterator`**. A `for` loop whose
   iterable is a **non-identifier expression** (e.g. `ints.iter()`) now lowers to the
   `core::iter::Iterator` protocol: the parser emits `{ var __it_<item> = <expr>;

@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   path, so those loops are untouched. `break`/`continue` re-enter `next()`, and
   re-evaluating the producer each loop starts a fresh iterator. Covered by
   `test/modules/test_for_iter.vyb`.
+- **`for`-loop `skip`/step parameter over `Iterator`** — `for (item in <iter-expr>, step)`
+  advances the iterator `step` elements per iteration and yields indices
+  `0, step, 2*step, ...` (identical to the Vec index-based path). The desugar
+  exists behind `StatementParser::buildForLoopIteratorDesugar`; `break` and
+  `continue` remain correct under a step. Covered by
+  `test/modules/test_for_iter_skip.vyb`.
 - **Closure capture via a uniform environment struct** — every lambda now
   lowers to a closure value `struct { ptr env, ptr fn }` instead of a bare
   function pointer. The semantic analyzer detects free-variable references in a
