@@ -427,9 +427,18 @@ private:
             if (ptype.empty()) { keep = false; p_ = pmark; break; }
             std::string pname;
             if (isIdent(cur())) { pname = cur().text; advance(); }
+            // C array parameters decay to pointers (`T a[N]` / `T a[]` == `T*`),
+            // so `char out[64]` is a `char*` buffer, not a scalar byte. Map the
+            // decayed type to the same pointer form an explicit `*` would use.
             if (atPunct("[")) {
-                while (!atPunct("]") && cur().kind != Kind::Eof) advance();
-                if (atPunct("]")) advance();
+                while (atPunct("[")) {
+                    while (!atPunct("]") && cur().kind != Kind::Eof) advance();
+                    if (atPunct("]")) advance();
+                }
+                if (!pptr && !ptype.empty()) {
+                    if (ptype == "CChar") ptype = "CString";       // char buf[N] -> char*
+                    else ptype = "loc<" + ptype + ">";             // T buf[N]   -> T*
+                }
             }
             if (pname.empty()) pname = "a" + std::to_string(arg);
             f.params.push_back({pname, ptype});

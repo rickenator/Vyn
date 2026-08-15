@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   binding target for side-effects only. Block arms without `pass` now branch to
   the select end block instead of leaving an unterminated case block. Covered by
   `test/new_features/test_select_statement.vyb`.
+- **`vyb bindgen` array-parameter decay** — C function parameters written as
+  arrays (`T a[]` / `T a[N]`) decay to pointers, matching the C ABI. They now
+  bind as pointers instead of scalars: `char s[]` → `CString`, and any other
+  element type becomes `loc<T>` (`double vals[]` → `loc<CDouble>`).
+  Covered by `test/bindgen/arrayparams.h` /
+  `test/bindgen/test_arrayparams_bindings.vyb`.
 - **Nested `select`** — a `select` may now appear as an arm body of an enclosing
   `select` (naked or a block with `pass`), enabling per-branch sub-selection.
   Previously the outer select's type-inference preview ran the inner select's

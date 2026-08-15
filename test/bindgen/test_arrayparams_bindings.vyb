@@ -1,0 +1,19 @@
+// @test: vyb bindgen array-parameter decay
+// @description: C array params (`T a[]` / `T a[N]`) decay to T* and bind as pointers (CString / loc<T>), not scalars; imports resolve against libc at JIT
+// @category: ffi, bindgen
+// @expect: pass
+// @expect-output: 4
+// @expect-return: 0
+// @tags: ffi, bindgen, arrays, extern
+
+import arrayparams
+
+main()<Int> -> {
+    freedom {
+        n<CSize> = strlen("abcd")
+        println_int(n)
+        c<CInt> = strcmp("abc", "abd")
+        println_int(c)
+    }
+    return 0
+}
