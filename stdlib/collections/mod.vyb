@@ -21,6 +21,12 @@
 #     same auto-growing bucket/chain index. Provides `insert` (returns `Bool`),
 #     `contains` and `size`. Build one with `HashSet<K>()`, `HashSet<K>(cap)`,
 #     or the fixed `HashSet<K>(cap, true)`.
+#   - `BTreeMap<K, V>`: an ordered map keyed by `Comparable`. Keys live in a
+#     `keys` vector kept sorted ascending (with a parallel `vals` vector), so
+#     iteration walks entries in key order and `get` / `contains_key` binary
+#     search (O(log n)); `put` inserts at the sorted position (O(n) shift).
+#     Keyed methods (`put` / `get` / `contains_key` / `size` / `iter`) are bound
+#     as `BTreeMapOps`. Build one with `BTreeMap<K, V>()`.
 #   - `VecOps` (on the built-in `Vec<T>`): non-mutating view helpers written in
 #     Vyb over the Vec primitives — `first` / `last` (head/tail element),
 #     `reversed` (a fresh reversed copy) and `find` (first matching index, or
@@ -425,6 +431,140 @@ bind<K<Hashable, Equatable>> SetOps -> HashSet<K> {
     }
 }
 
+# BTreeMap<K, V> - an ordered map keyed by `Comparable`, bound to `BTreeMapOps`.
+# Keys are held in a `keys` vector that is kept sorted ascending (with a
+# parallel `vals` vector of the same indices), so `iter()` walks the entries in
+# ascending key order and `get` / `contains_key` binary search (O(log n));
+# `put` inserts at the sorted position (O(n) shift). Ordering goes through the
+# `Comparable`-bounded `cmp_lt` helper (mirroring `samekey` for equality), which
+# works for any keys that bind `Comparable` (Int, Float, Bool, String, ...).
+# Build one with `BTreeMap<K, V>()`. `MapEntry<K, V>` (reused from `HashMap`) is
+# the iterator item, so `for (kv in bt.iter())` reads `kv.key` / `kv.value`.
+share(all)
+struct BTreeMap<K, V> {
+    keys<Vec<K>>,
+    vals<Vec<V>>
+
+    # Empty ordered map.
+    constructor() {
+        return BTreeMap<K, V> { keys = Vec<K>(), vals = Vec<V>() }
+    }
+}
+
+share(all)
+struct BTreeIter<K, V> {
+    map<their<BTreeMap<K, V>>>,
+    index<Int>
+}
+
+share(all)
+bind<K<Comparable, Equatable>, V> Iterator -> BTreeIter<K, V> {
+    type Item = MapEntry<K, V>
+    next(self<their<BTreeIter<K, V>>>)<Option<MapEntry<K, V>>> -> {
+        if (self.index < self.map.keys.len()) {
+            e<MapEntry<K, V>> = MapEntry<K, V> { key = self.map.keys.get(self.index), value = self.map.vals.get(self.index) }
+            self.index = self.index + 1
+            return Some(e)
+        }
+        return None
+    }
+
+    # Iterators are themselves iterable over the same underlying map.
+    iter(self<their<BTreeIter<K, V>>>)<BTreeIter<K, V>> -> {
+        return BTreeIter<K, V> { map = self.map, index = self.index }
+    }
+}
+
+share(all)
+aspect BTreeMapOps {
+    put(self<their<BTreeMap<K, V>>>, key<K>, val<V>)<Bool>
+    get(self<their<BTreeMap<K, V>>>, key<K>)<Option<V>>
+    contains_key(self<their<BTreeMap<K, V>>>, key<K>)<Bool>
+    size(self<their<BTreeMap<K, V>>>)<Int>
+    iter(self<their<BTreeMap<K, V>>>)<BTreeIter<K, V>>
+}
+
+share(all)
+bind<K<Comparable, Equatable>, V> BTreeMapOps -> BTreeMap<K, V> {
+    put(self<their<BTreeMap<K, V>>>, key<K>, val<V>)<Bool> -> {
+        # Binary search for the insertion point: keys[lo] is the first key >= `key`.
+        lo<Int> = 0
+        hi<Int> = self.keys.len()
+        while (lo < hi) {
+            mid<Int> = lo + (hi - lo) / 2
+            if (cmp_lt(self.keys.get(mid), key)) {
+                lo = mid + 1
+            } else {
+                hi = mid
+            }
+        }
+        # If the key already exists (keys[lo] == key), update its value in place.
+        if (lo < self.keys.len()) {
+            if (!cmp_lt(key, self.keys.get(lo))) {
+                self.vals.set(lo, val)
+                return true
+            }
+        }
+        # Insert the new key/value pair at the sorted position `lo`, bubbling the
+        # tail pair down so the vectors stay sorted ascending.
+        self.keys.push(key)
+        self.vals.push(val)
+        p<Int> = self.keys.len() - 1
+        while (p > lo) {
+            ktmp<K> = self.keys.get(p)
+            self.keys.set(p, self.keys.get(p - 1))
+            self.keys.set(p - 1, ktmp)
+            vtmp<V> = self.vals.get(p)
+            self.vals.set(p, self.vals.get(p - 1))
+            self.vals.set(p - 1, vtmp)
+            p = p - 1
+        }
+        return true
+    }
+    get(self<their<BTreeMap<K, V>>>, key<K>)<Option<V>> -> {
+        lo<Int> = 0
+        hi<Int> = self.keys.len()
+        while (lo < hi) {
+            mid<Int> = lo + (hi - lo) / 2
+            if (cmp_lt(self.keys.get(mid), key)) {
+                lo = mid + 1
+            } else {
+                hi = mid
+            }
+        }
+        if (lo < self.keys.len()) {
+            if (!cmp_lt(key, self.keys.get(lo))) {
+                return Option<V>::Some(self.vals.get(lo))
+            }
+        }
+        return Option<V>::None
+    }
+    contains_key(self<their<BTreeMap<K, V>>>, key<K>)<Bool> -> {
+        lo<Int> = 0
+        hi<Int> = self.keys.len()
+        while (lo < hi) {
+            mid<Int> = lo + (hi - lo) / 2
+            if (cmp_lt(self.keys.get(mid), key)) {
+                lo = mid + 1
+            } else {
+                hi = mid
+            }
+        }
+        if (lo < self.keys.len()) {
+            if (!cmp_lt(key, self.keys.get(lo))) {
+                return true
+            }
+        }
+        return false
+    }
+    size(self<their<BTreeMap<K, V>>>)<Int> -> {
+        return self.keys.len()
+    }
+    iter(self<their<BTreeMap<K, V>>>)<BTreeIter<K, V>> -> {
+        return BTreeIter<K, V> { map = self, index = 0 }
+    }
+}
+
 # ---------------------------------------------------------------------------
 # Pure-Vyb `Vec<T>` extension operations.
 #
@@ -646,5 +786,5 @@ bind<T> VecHigherOps -> Vec<T> {
 
 share(all)
 collections_status_message()<String> -> {
-    return "collections: HashMap / HashSet (hash-bucket) + VecIter (v.iter()) + MapIter (m.iter()) / HashIter (s.iter())"
+    return "collections: HashMap / HashSet (hash-bucket) + BTreeMap (ordered, Comparable) + VecIter (v.iter()) + MapIter (m.iter()) / HashIter (s.iter()) + BTreeIter (bt.iter())"
 }

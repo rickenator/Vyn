@@ -3,6 +3,20 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-15: **`BTreeMap<K,V>` ordered map**. Added to `stdlib/collections/mod.vyb` a
+  `Comparable`-keyed ordered map bound as `BTreeMapOps`: keys live in a `keys` vector kept
+  sorted ascending with a parallel `vals` vector, so `get` / `contains_key` binary search
+  (O(log n)) and `put` inserts at the sorted position (O(n) shift), with duplicate keys
+  updating in place. Ordering dispatches through the existing `Comparable`-bounded `cmp_lt`
+  helper, so any `Comparable` key works (Int/Float/Bool/String). `iter()` yields `BTreeIter<K,V>`
+  bound to `core::iter::Iterator` with `Item = MapEntry<K,V>` (reusing the pair iterator item
+  pattern), so `for (kv in bt.iter())` walks entries in ascending key order and a stored
+  `BTreeIter` is itself iterable. Build with `BTreeMap<K,V>()`. NOTE: the empty-`for`-iteration
+  seen while prototyping was an unrelated pre-existing `String` variable `+ Int` concatenation
+  bug (emit emits a `Storing ptr into location of type { ptr, i64 }` warning and yields an empty
+  string), not a BTreeMap issue. Covered by `test/modules/test_collections_btreemap.vyb`;
+  leak-free under ASAN; full suite 867/863 pass (same 4 pre-existing trap/vec-edge failures).
+
 - 2026-08-15: **Identifier iterables route onto the `Iterator` protocol**. `for (x in vec)`
   now desugars exactly like `for (x in vec.iter())`: the parser's identifier branch drops the
   old index-based `__idx`/`__len` over `vec.get(i)` desugar in `StatementParser::parse_for`

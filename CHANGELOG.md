@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`BTreeMap<K, V>` (ordered map, `import collections`)** — keyed by
+  `Comparable`; keys are held in a `keys` vector kept sorted ascending (with a
+  parallel `vals` vector), so `get` / `contains_key` use binary search (O(log
+  n)) and `put` inserts at the sorted position (O(n) shift). `iter()` yields a
+  `BTreeIter<K,V>` (Item = `MapEntry<K,V>`) that walks the entries in ascending
+  key order, usable in `for (kv in bt.iter())`; a stored `BTreeIter` is itself
+  iterable. Covered by `test/modules/test_collections_btreemap.vyb`.
 - **Identifier iterables route onto the `Iterator` protocol** — `for (x in vec)`
   now desugars exactly like `for (x in vec.iter())`, iterating over
   `core::iter::Iterator` instead of the old index-based Vec path. Any iterable

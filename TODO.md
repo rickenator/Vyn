@@ -36,7 +36,7 @@ is the working audit for what needs to be implemented next.
 | Lambda/closure codegen | ~70% | Capture-by-value closure env structs shipped; move/mutable/`our` capture planned |
 | Module system (`import`/`smuggle`/`bundle`) | ~70% | Local/module-path resolution, aliases, bundle/share visibility done; stdlib modules/package integration pending |
 | FFI (`extern "C"`) | ~35% | Extern blocks, C aliases, freedom-gated JIT calls done; repr(C), variadics, linker flow pending |
-| Standard library | ~50% | Vec, String, HashMap/HashSet, File I/O, Math done; BTreeMap, network I/O needed |
+| Standard library | ~55% | Vec, String, HashMap/HashSet, BTreeMap, File I/O, Math done; network I/O needed |
 | Introspection (`typeof`/`typename`) | ~75% | Downcasting, type assertions |
 | Auto-serialization | ~80% | Edge cases remain |
 | Pattern matching | ~60% | Destructuring, guards, enum variants |
@@ -302,7 +302,10 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
 - [ ] **String formatting** — Format strings or `fmt()` intrinsic
 - [x] **`HashMap<K, V>`** — Hash map with `Hashable + Equatable` bounds (parallel `keys`/`vals` vectors indexed by auto-growing hash-bucket chains; `import collections`)
 - [x] **`HashSet<T>`** — Hash set (`values` vector indexed by hash-bucket chains with duplicate suppression; `import collections`)
-- [ ] **`BTreeMap<K, V>`** — Ordered map with `Comparable` bounds
+- [x] **`BTreeMap<K, V>`** — Ordered map with `Comparable` bounds (keys in a
+  sorted `keys` vector + parallel `vals`; `get`/`contains_key` binary search,
+  `put` inserts at the sorted position; `iter()` walks entries in ascending key
+  order via `BTreeIter` with `MapEntry<K,V>` items; `import collections`)
 - [x] **File I/O** — `import io`: `File { fd, path }`, `open(path, flags)` + `open_read`/`open_write`/`open_append`, `close`, `write_str`, `read_all` (whole file into a `String`, empty on error), and the `error_code()`/`error_message()` + `FILE_*` helpers, layered on runtime `__vyb_file_*` intrinsics (`test/modules/test_file_io.vyb`)
 - [x] **Math library** — `sqrt`, `sin`, `cos`, `tan`, `exp`, `log`, `log2`, `log10`, `pow`, `floor`, `ceil`, `round`, `abs`, `min`, `max`
 - [x] **I/O intrinsics** — `print()` (no newline), `println_int()`, `print_int()`, `println_bool()`, `print_bool()`
