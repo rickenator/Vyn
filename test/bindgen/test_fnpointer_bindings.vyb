@@ -1,15 +1,23 @@
 // @test: vyb bindgen function-pointer parameters
-// @description: inline and typedef'd C function-pointer params bind as Vyb `fn(...) -> ...` types; the generated module imports, compiles, and JITs (the callback-calling side is future work)
+// @description: inline and typedef'd C function-pointer params bind as Vyb `loc<fn(...) -> ...>` (a bare C function pointer, ABIs to a single ptr); the generated module imports and a Vyb function can be passed to and called through a loc<fn> param
 // @category: ffi, bindgen
 // @expect: pass
+// @expect-output: square4= 16
 // @expect-return: 0
 // @tags: ffi, bindgen, function-pointer, callback
 
 import fnpointer
 
+apply(f<loc<fn(CInt) -> CInt>>, x<CInt>)<CInt> -> {
+    return f(x)
+}
+
+square(a<CInt>)<CInt> -> { return a * a }
+cube(a<CInt>)<CInt> -> { return a * a * a }
+
 main()<Int> -> {
-    // The externs above take fn(...) callbacks; passing a Vyb function as a C
-    // callback is not yet ABI-supported (fn lowers to {ptr,ptr}), so this test
-    // only verifies the generated bindings are valid Vyb that import and link.
+    s<CInt> = apply(square, 4)
+    println("square4=", s)
+    println("cube3=", apply(cube, 3))
     return 0
 }

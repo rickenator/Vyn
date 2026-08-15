@@ -28,12 +28,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test/bindgen/test_arrayparams_bindings.vyb`.
 - **`vyb bindgen` function-pointer parameters** — C function-pointer params,
   both inline (`void (*cb)(int, void*)`) and typedef'd (`typedef int (*op_fn)(int,int)`),
-  bind as Vyb `fn(...) -> ...` types (`fn(CInt, loc<CVoid>) -> CVoid`), and the
-  pointer's declared name is carried into the binding. Covered by
-  `test/bindgen/fnpointer.h` / `test/bindgen/test_fnpointer_bindings.vyb`.
-  Note: passing a Vyb function as a C callback is not ABI-supported yet (`fn`
-  lowers to a `{ptr, ptr}` closure, whereas C expects a bare function pointer);
-  that remains future work.
+  bind as `loc<fn(...) -> ...>` (`cb<loc<fn(CInt, loc<CVoid>) -> CVoid>>`), a bare
+  C function pointer that ABIs to a single `ptr` and carries the callsite's
+  declared name. Covered by `test/bindgen/fnpointer.h` /
+  `test/bindgen/test_fnpointer_bindings.vyb`.
+- **FFI callbacks through function pointers** — a Vyb function can be passed to a
+  C callback parameter (`loc<fn(...)>`), C invokes it, and a function pointer
+  returned/stored from C can be called from Vyb via an indirect call. Previously
+  a C callback bound as Vyb `fn(...)` (a `{ptr, ptr}` closure) and could not be
+  invoked with a function argument; `loc<fn(...)>` maps to a single bare code
+  pointer so the ABI lines up. Covered by `test/ffi/callback_fnptr.vyb`.
 - **Nested `select`** — a `select` may now appear as an arm body of an enclosing
   `select` (naked or a block with `pass`), enabling per-branch sub-selection.
   Previously the outer select's type-inference preview ran the inner select's

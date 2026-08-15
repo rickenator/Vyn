@@ -3235,16 +3235,32 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 }
             }
             }
-            // It may be a function-typed parameter (`f<fn(Int) -> Int>`), which is
-            // also lowered to a function pointer stored in the parameter's alloca.
-            // See main.cpp / cgen so that `f(args)` inside a function body performs
-            // an indirect call through the passed pointer.
+            // It may be a function-typed parameter (`f<fn(Int) -> Int>`, a closure)
+            // or a bare C function pointer (`cb<loc<fn(Int) -> Int>>`), both lowered
+            // to an indirect call through a pointer stored in the variable's alloca.
+            // The closure carries a hidden environment parameter; the bare pointer
+            // (a C callback) calls straight through with the declared signature.
             if (identCallee) {
                 auto varIt = namedValues.find(identCallee->name);
                 if (varIt != namedValues.end()) {
                     auto vtmIt = valueTypeMap.find(varIt->second);
-                    auto* fnTypeNode = vtmIt != valueTypeMap.end()
-                        ? dynamic_cast<ast::FunctionType*>(vtmIt->second.get()) : nullptr;
+                    ast::TypeNode* valTypeNode =
+                        vtmIt != valueTypeMap.end() ? vtmIt->second.get() : nullptr;
+                    ast::FunctionType* fnTypeNode = dynamic_cast<ast::FunctionType*>(valTypeNode);
+                    bool bareFnPtr = false;
+                    if (!fnTypeNode) {
+                        // A bare C function pointer arrives as `loc<fn(...)>` / `CPtr<fn(...)>`,
+                        // i.e. a `loc` TypeName wrapping a FunctionType generic argument.
+                        if (auto* tn = dynamic_cast<ast::TypeName*>(valTypeNode)) {
+                            if (tn->identifier &&
+                                (tn->identifier->name == "loc" || tn->identifier->name == "CPtr") &&
+                                !tn->genericArgs.empty()) {
+                                if ((fnTypeNode = dynamic_cast<ast::FunctionType*>(tn->genericArgs[0].get()))) {
+                                    bareFnPtr = true; // a bare code pointer
+                                }
+                            }
+                        }
+                    }
                     if (fnTypeNode) {
                         // Rebuild the LLVM function type from the declared signature
                         // (opaque-pointer mode has no typed PointerType to inspect).
@@ -3257,19 +3273,30 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                             ? codegenType(fnTypeNode->returnType.get())
                             : llvm::Type::getVoidTy(*context);
                         llvm::FunctionType* fnParamType = llvm::FunctionType::get(rt, ptypes, false);
-                        // The `fn` parameter is a closure struct { env, fn }.
-                        llvm::StructType* closureTy = getClosureStructType();
-                        llvm::Value* closureVal = builder->CreateLoad(closureTy, varIt->second, "fnparam.closure");
-                        llvm::Value* envPtr = builder->CreateExtractValue(closureVal, 0, "fnparam.env");
-                        llvm::Value* fnPtr = builder->CreateExtractValue(closureVal, 1, "fnparam.fn");
-                        // The callee's real signature carries the environment too.
+
+                        llvm::Value* envPtr = nullptr;
+                        llvm::Value* funcPtr = nullptr;
                         std::vector<llvm::Type*> calleeParamTypes;
-                        calleeParamTypes.push_back(llvm::PointerType::get(*context, 0));
-                        for (auto* pt : fnParamType->params()) calleeParamTypes.push_back(pt);
+                        if (bareFnPtr) {
+                            // A bare C function pointer is a single code pointer; load
+                            // it from the alloca and call with the declared signature only.
+                            llvm::Type* ptrTy = llvm::PointerType::get(*context, 0);
+                            funcPtr = builder->CreateLoad(ptrTy, varIt->second, "fnptr.val");
+                            for (auto* pt : fnParamType->params()) calleeParamTypes.push_back(pt);
+                        } else {
+                            // The `fn` value is a closure struct { env, fn }.
+                            llvm::StructType* closureTy = getClosureStructType();
+                            llvm::Value* closureVal = builder->CreateLoad(closureTy, varIt->second, "fnparam.closure");
+                            envPtr = builder->CreateExtractValue(closureVal, 0, "fnparam.env");
+                            funcPtr = builder->CreateExtractValue(closureVal, 1, "fnparam.fn");
+                            // The callee's real signature carries the environment too.
+                            calleeParamTypes.push_back(llvm::PointerType::get(*context, 0));
+                            for (auto* pt : fnParamType->params()) calleeParamTypes.push_back(pt);
+                        }
                         llvm::FunctionType* calleeType = llvm::FunctionType::get(rt, calleeParamTypes, false);
-                        llvm::Value* funcPtr = builder->CreateBitCast(fnPtr, calleeType->getPointerTo(), "fnparam.fptr");
+                        funcPtr = builder->CreateBitCast(funcPtr, calleeType->getPointerTo(), "fnparam.fptr");
                         std::vector<llvm::Value*> fnArgValues;
-                        fnArgValues.push_back(envPtr);  // hidden environment parameter
+                        if (envPtr) fnArgValues.push_back(envPtr);  // hidden environment parameter
                         for (size_t i = 0; i < node->arguments.size(); ++i) {
                             node->arguments[i]->accept(*this);
                             llvm::Value* argVal = m_currentLLVMValue;

@@ -1,0 +1,28 @@
+// @test: FFI callback via function pointer
+// @description: a Vyb function passed to a C callback param `loc<fn(CInt) -> CVoid>` (a bare C function pointer) is invoked by C, and a fn pointer received from C can be called from Vyb
+// @category: ffi, interop
+// @expect: pass
+// @expect-output: handler ran with 22
+// @expect-return: 0
+// @tags: ffi, callback, function-pointer
+
+extern "C" {
+    signal(sig<CInt>, handler<loc<fn(CInt) -> CVoid>>)<loc<fn(CInt) -> CVoid>>
+    raise(sig<CInt>)<CInt>
+}
+
+on_sig(sig<CInt>)<CVoid> -> {
+    println("handler ran with", sig)
+}
+
+main()<Int> -> {
+    freedom {
+        dflt<loc<fn(CInt) -> CVoid>> = signal(22, on_sig)
+        raised<CInt> = raise(22)
+        println("raise rc=", raised)
+        handler<loc<fn(CInt) -> CVoid>> = signal(22, on_sig)
+        println("calling stored handler pointer")
+        handler(22)
+    }
+    return 0
+}

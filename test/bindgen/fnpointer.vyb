@@ -4,17 +4,17 @@
 // @parse-only: true
 
 share(all)
-run_cb(cb<fn(CInt, loc<CVoid>) -> CVoid>, arg<CInt>)<CInt>
+run_cb(cb<loc<fn(CInt, loc<CVoid>) -> CVoid>>, arg<CInt>)<CInt>
 
 share(all)
-apply_cb(f<fn(CDouble, CDouble) -> CDouble>, a<CDouble>, b<CDouble>)<CDouble>
+apply_cb(f<loc<fn(CDouble, CDouble) -> CDouble>>, a<CDouble>, b<CDouble>)<CDouble>
 
 share(all)
-use_op(f<fn(CInt, CInt) -> CInt>, a<CInt>, b<CInt>)<CInt>
+use_op(f<loc<fn(CInt, CInt) -> CInt>>, a<CInt>, b<CInt>)<CInt>
 
 share(all)
-map_str(cb<fn(CInt) -> CString>)<CString>
+map_str(cb<loc<fn(CInt) -> CString>>)<CString>
 
 share(all)
-on_quit(quit<fn() -> CVoid>)<CVoid>
+on_quit(quit<loc<fn() -> CVoid>>)<CVoid>
 

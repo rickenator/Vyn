@@ -280,7 +280,10 @@ private:
                 if (atPunct(")")) advance();
             }
             fn += ") -> " + pointerWrap(base, ptrDepth);
-            return fn;
+            // A C function pointer is a bare code pointer (single `ptr`), not a
+            // Vyb closure (`fn(...)` lowers to `{ env, fn }`). Wrap it in `loc<>`
+            // so the binding carries the C ABI and accepts a Vyb function.
+            return "loc<" + fn + ">";
         }
 
         return pointerWrap(base, ptrDepth);
