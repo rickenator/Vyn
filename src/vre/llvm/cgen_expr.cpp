@@ -3524,6 +3524,38 @@ void LLVMCodegen::visit(vyb::ast::AssignmentExpression *node) {
         }
     }
 
+    // Vec-typed overwrites: a `my` Vec binding owns an exclusive heap data
+    // buffer. Storing a new value over it must release the outgoing buffer, or
+    // the old data leaks (e.g. reassigning a build-up Vec from a function's
+    // return in quicksort / insertion-sort / select-return paths). Guard against
+    // a null buffer and against a self-assignment (old data == new data) so a
+    // `s = s` style store does not free the value it just wrote.
+    bool vecOverwrite = false;
+    llvm::Value* oldVecVal = nullptr;
+    if (isAssignToVar && destPointeeType && isVecStructType(destPointeeType)) {
+        const ScopeVariable* owner = nullptr;
+        for (auto sit = scopeStack.rbegin(); sit != scopeStack.rend(); ++sit) {
+            for (const auto& sv : *sit) {
+                if (sv.name == identLeft->name && sv.allocaInst == LHS) { owner = &sv; break; }
+            }
+            if (owner) break;
+        }
+        if (owner && owner->ownership == ast::OwnershipKind::MY && owner->isVecWithMallocData) {
+            vecOverwrite = true;
+            oldVecVal = builder->CreateLoad(destPointeeType, LHS, "assign.old_vec");
+        }
+    }
+    // A Vec<String> keeps one reference per element; releasing the buffer on
+    // overwrite must drop those element references first (mirrors scope-exit
+    // cleanup) or the pointed-to String buffers would leak.
+    bool vecHoldsStrings = false;
+    if (vecOverwrite) {
+        auto vtIt = valueTypeMap.find(LHS);
+        if (vtIt != valueTypeMap.end() && vtIt->second) {
+            vecHoldsStrings = isVecOfStringTypeNode(vtIt->second.get());
+        }
+    }
+
     // Create the store instruction with proper alignment
     builder->CreateStore(RHS, LHS);
     writeThroughMutable(RHS);
@@ -3532,6 +3564,29 @@ void LLVMCodegen::visit(vyb::ast::AssignmentExpression *node) {
     }
     if (stringOverwrite && oldStringVal) {
         releaseStringValue(oldStringVal);
+    }
+    if (vecOverwrite && oldVecVal) {
+        llvm::Value* oldData = builder->CreateExtractValue(oldVecVal, 0, "assign.old_vec_data");
+        llvm::PointerType* rawPtr = llvm::PointerType::get(*context, 0);
+        llvm::Constant* nullPtr = llvm::ConstantPointerNull::get(rawPtr);
+        llvm::Value* isNotNull = builder->CreateICmpNE(oldData, nullPtr, "assign.vec_not_null");
+        llvm::Value* notSelfVal = llvm::ConstantInt::get(llvm::Type::getInt1Ty(*context), 1);
+        if (RHS->getType() == destPointeeType) {
+            llvm::Value* newData = builder->CreateExtractValue(RHS, 0, "assign.new_vec_data");
+            notSelfVal = builder->CreateICmpNE(oldData, newData, "assign.vec_not_self");
+        }
+        llvm::Value* shouldFree = builder->CreateAnd(isNotNull, notSelfVal, "assign.vec_should_free");
+        llvm::BasicBlock* freeBB = llvm::BasicBlock::Create(*context, "assign.vec_free", currentFunction);
+        llvm::BasicBlock* contBB = llvm::BasicBlock::Create(*context, "assign.vec_cont", currentFunction);
+        builder->CreateCondBr(shouldFree, freeBB, contBB);
+        builder->SetInsertPoint(freeBB);
+        if (vecHoldsStrings) {
+            llvm::Value* oldSize = builder->CreateExtractValue(oldVecVal, 1, "assign.old_vec_size");
+            releaseStringElements(oldData, oldSize);
+        }
+        builder->CreateCall(getOrCreateFreeFunction(), {oldData});
+        builder->CreateBr(contBB);
+        builder->SetInsertPoint(contBB);
     }
 
     // If we're assigning to a member of a struct, we need to preserve type information

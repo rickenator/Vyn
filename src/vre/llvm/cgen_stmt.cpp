@@ -534,11 +534,52 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                 // deep inside nested blocks (e.g. `while { if { return } }`) must
                 // pop every scope this function introduced, not just the innermost.
                 if (!scopeStack.empty()) {
+                    // A branch-taking return (`select`/`match`) may hand one of
+                    // several owning locals to the caller, but which one is chosen
+                    // at runtime. Name-based suppression would leak the non-selected
+                    // arms. For a Vec-returning branch we deep-copy the selected
+                    // value into an independent buffer and let the ordinary scope
+                    // cleanup free every local binding instead.
+                    bool branchVecCopied = false;
+                    ast::Expression* retExpr = node->argument.get();
+                    bool branchReturn = retExpr &&
+                        (dynamic_cast<ast::SelectExpression*>(retExpr) != nullptr ||
+                         dynamic_cast<ast::MatchExpression*>(retExpr) != nullptr);
+                    if (branchReturn && returnValue && isVecStructType(returnValue->getType()) &&
+                        currentFunctionAST && currentFunctionAST->returnTypeNode) {
+                        const vyb::ast::TypeNode* elemNode = nullptr;
+                        if (auto* vt = dynamic_cast<ast::VecType*>(currentFunctionAST->returnTypeNode.get())) {
+                            elemNode = vt->elementType.get();
+                        } else if (auto* nn = dynamic_cast<ast::TypeName*>(currentFunctionAST->returnTypeNode.get())) {
+                            if (nn->identifier && nn->identifier->name == "Vec" && !nn->genericArgs.empty()) {
+                                elemNode = nn->genericArgs[0].get();
+                            }
+                        }
+                        if (elemNode) {
+                            if (llvm::Type* elemLLVM = codegenType(const_cast<ast::TypeNode*>(elemNode))) {
+                                auto* vecTy = llvm::cast<llvm::StructType>(returnValue->getType());
+                                returnValue = generateVecDeepCopy(returnValue, elemLLVM, vecTy);
+                                branchVecCopied = true;
+                                VYB_CDBG << "DEBUG: Branch (select/match) Vec return deep-copied for safe cleanup" << std::endl;
+                            }
+                        }
+                    }
                     // If returning an owning variable, skip its local cleanup because
                     // ownership of that binding is transferred to the caller.
-                    if (node->argument) {
+                    // Snapshot lives outside the argument guard so the restore can
+                    // run after exitToFunctionBaseline() re-created the scope stack.
+                    struct SavedFlag { llvm::Value* alloca; bool nc, iw, io; };
+                    std::vector<SavedFlag> savedFlags;
+                    if (node->argument && !branchVecCopied) {
                         std::set<std::string> transferNames;
                         collectReturnTransferNames(node->argument.get(), transferNames);
+                        // Suppression must be scoped to THIS return path. A
+                        // `return param` in one branch (e.g. a recursion base case)
+                        // disables the parameter's cleanup for the whole function if
+                        // the flag mutation persists; sibling returns that do NOT hand
+                        // that binding over would then leak its buffer. Snapshot the
+                        // pre-suppression flags and restore them after the cleanup for
+                        // this path is emitted.
                         for (auto& scopeVars : scopeStack) {
                             for (auto& var : scopeVars) {
                                 bool transfersOwnership =
@@ -548,6 +589,8 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                                      var.ownership == ast::OwnershipKind::OUR ||
                                      var.ownership == ast::OwnershipKind::MILD);
                                 if (transfersOwnership) {
+                                    savedFlags.push_back({var.allocaInst, var.needsCleanup,
+                                                          var.isVecWithMallocData, var.isOwnedStruct});
                                     var.needsCleanup = false;
                                     var.isVecWithMallocData = false;
                                     var.isOwnedStruct = false;
@@ -556,6 +599,18 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                         }
                     }
                     exitToFunctionBaseline();
+                    for (const auto& sf : savedFlags) {
+                        for (auto& scopeVars : scopeStack) {
+                            for (auto& var : scopeVars) {
+                                if (var.allocaInst == sf.alloca) {
+                                    var.needsCleanup = sf.nc;
+                                    var.isVecWithMallocData = sf.iw;
+                                    var.isOwnedStruct = sf.io;
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Phase 6.4: Pop call frame before return

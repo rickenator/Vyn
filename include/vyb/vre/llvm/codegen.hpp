@@ -459,6 +459,11 @@ private:
     void reclaimOwnedStructAt(llvm::Value* structPtr, const vyb::ast::TypeNode* astType,
                               llvm::StructType* llvmTy);
 
+    // Release an `our`/`mild` refcount control block (shared by top-level
+    // bindings and struct fields). `controlBlockPtr` may be null.
+    void releaseOurControlBlock(llvm::Value* controlBlockPtr, const std::string& tag);
+    void releaseMildControlBlock(llvm::Value* controlBlockPtr, const std::string& tag);
+
     // Async/await support
     struct AsyncState {
         llvm::Function* asyncFunction;
