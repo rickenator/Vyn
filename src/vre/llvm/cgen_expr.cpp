@@ -4766,6 +4766,10 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
 
     currentFunction = function;
     builder->SetInsertPoint(entryBB);
+    // Give the lambda its own runtime call-stack frame so explicit `return`
+    // statements inside its body (which emit a matching pop) stay balanced and
+    // the lambda shows up in error stack traces.
+    generatePushFrameCall(funcName, node->loc);
     namedValues.clear();
     mutableCaptureOuterPointers.clear();
 
@@ -4809,8 +4813,10 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
         llvm::Value* bodyValue = m_currentLLVMValue;
         if (!builder->GetInsertBlock()->getTerminator()) {
             if (returnType->isVoidTy()) {
+                generatePopFrameCall();
                 builder->CreateRetVoid();
             } else if (bodyValue && bodyValue->getType() == returnType) {
+                generatePopFrameCall();
                 builder->CreateRet(bodyValue);
             } else if (bodyValue && returnType->isStructTy() &&
                        bodyValue->getType()->isPointerTy()) {
@@ -4832,14 +4838,18 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
                     }
                     llvm::Value* len = builder->CreateCall(strlenFn, {bodyValue}, "lambda.str.len");
                     sw = builder->CreateInsertValue(sw, len, 1, "lambda.str");
+                    generatePopFrameCall();
                     builder->CreateRet(sw);
                 } else {
+                    generatePopFrameCall();
                     builder->CreateRet(llvm::UndefValue::get(returnType));
                     logWarning(node->loc, "Function expression with non-trivial return type is missing return statement");
                 }
             } else if (bodyValue && returnType->isIntegerTy() && bodyValue->getType()->isIntegerTy()) {
+                generatePopFrameCall();
                 builder->CreateRet(builder->CreateSExtOrTrunc(bodyValue, returnType, "lambda.intcast"));
             } else if (bodyValue && returnType->isFloatingPointTy() && bodyValue->getType()->isIntegerTy()) {
+                generatePopFrameCall();
                 builder->CreateRet(builder->CreateSIToFP(bodyValue, returnType, "lambda.fpcast"));
             } else {
                 llvm::Value* defaultValue = nullptr;
@@ -4847,17 +4857,21 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
                 else if (returnType->isFloatingPointTy()) defaultValue = llvm::ConstantFP::get(returnType, 0.0);
                 else if (returnType->isPointerTy()) defaultValue = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(returnType));
                 else { defaultValue = llvm::UndefValue::get(returnType); logWarning(node->loc, "Function expression with non-trivial return type is missing return statement"); }
+                generatePopFrameCall();
                 builder->CreateRet(defaultValue);
             }
         }
     } else {
-        if (returnType->isVoidTy()) builder->CreateRetVoid();
-        else {
+        if (returnType->isVoidTy()) {
+            generatePopFrameCall();
+            builder->CreateRetVoid();
+        } else {
             llvm::Value* defaultValue = nullptr;
             if (returnType->isIntegerTy()) defaultValue = llvm::ConstantInt::get(returnType, 0);
             else if (returnType->isFloatingPointTy()) defaultValue = llvm::ConstantFP::get(returnType, 0.0);
             else if (returnType->isPointerTy()) defaultValue = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(returnType));
             else defaultValue = llvm::UndefValue::get(returnType);
+            generatePopFrameCall();
             builder->CreateRet(defaultValue);
         }
     }
