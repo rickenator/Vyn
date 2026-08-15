@@ -22,6 +22,11 @@
 #include <cstdio> // For printf and fflush
 #include <cstdlib> // For malloc/free
 #include <cstring> // For memset
+#if defined(__unix__) || defined(__APPLE__)
+#include <unistd.h>
+#include <sys/wait.h>
+#include <cerrno>
+#endif
 
 // Declare the intrinsic functions from intrinsics.cpp
 extern "C" {
@@ -1066,33 +1071,143 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
     }
 }
 
+namespace {
+// Resolves the libclang helper binary sitting next to the running executable.
+std::string helperBinPath(const char* argv0) {
+#if defined(__unix__) || defined(__APPLE__)
+    std::error_code ec;
+    std::string self = std::filesystem::canonical(argv0, ec);
+    if (!ec) {
+        std::filesystem::path exe(self);
+        if (exe.has_parent_path()) return (exe.parent_path() / "vyb-libclang").string();
+    }
+#endif
+    return "vyb-libclang";
+}
+
+// Runs the libclang helper, capturing its stdout (the generated bindings).
+// The helper writes diagnostics to its stderr, which is inherited by us.
+#if defined(__unix__) || defined(__APPLE__)
+bool runHelper(const std::string& helper, const std::vector<std::string>& args,
+               std::string& out, int& exitCode) {
+    int pipefd[2];
+    if (pipe(pipefd) != 0) return false;
+    pid_t pid = fork();
+    if (pid < 0) { close(pipefd[0]); close(pipefd[1]); return false; }
+    if (pid == 0) {
+        close(pipefd[0]);
+        dup2(pipefd[1], STDOUT_FILENO);
+        close(pipefd[1]);
+        std::vector<char*> argv;
+        argv.push_back(const_cast<char*>(helper.c_str()));
+        for (const auto& a : args) argv.push_back(const_cast<char*>(a.c_str()));
+        argv.push_back(nullptr);
+        execv(helper.c_str(), argv.data());
+        std::fprintf(stderr, "Error: could not exec '%s': %s\n", helper.c_str(), std::strerror(errno));
+        _exit(127);
+    }
+    close(pipefd[1]);
+    char buf[4096];
+    ssize_t n;
+    while ((n = read(pipefd[0], buf, sizeof(buf))) > 0) out.append(buf, static_cast<size_t>(n));
+    close(pipefd[0]);
+    int status = 0;
+    waitpid(pid, &status, 0);
+    exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+    return true;
+}
+#else
+bool runHelper(const std::string&, const std::vector<std::string>&,
+               std::string&, int& exitCode) {
+    (void)exitCode;
+    return false;  // subprocess dispatch is POSIX-only; --full unsupported here
+}
+#endif
+} // namespace
+
 int main(int argc, char* argv[]) {
     Catch::Session session; // Catch2 entry point
 
-    // `vyb bindgen <header.h> [-o out.vyb]` -- generate Vyb FFI bindings from a C header.
+    // `vyb bindgen <header.h> [--full] [-D NAME[=VAL]] [-o out.vyb]` -- generate
+    // Vyb FFI bindings from a C header. The default path is the lightweight
+    // hand-rolled parser; `--full` selects the libclang full-preprocessor
+    // backend (`#include` expansion, conditional evaluation, expression and
+    // function-like macros).
     if (argc >= 2 && std::string(argv[1]) == "bindgen") {
         if (argc < 3) {
-            std::cerr << "Usage: " << argv[0] << " bindgen <header.h> [-o out.vyb]" << std::endl;
+            std::cerr << "Usage: " << argv[0] << " bindgen <header.h> [--full] [-D NAME[=VAL]] [-o out.vyb]" << std::endl;
             return 1;
         }
         std::string headerPath = argv[2];
         std::string outputPath;
+        bool full = false;
+        std::vector<std::string> clangArgs;
         for (int i = 3; i < argc; ++i) {
-            if (std::string(argv[i]) == "-o" && i + 1 < argc) {
+            std::string a = argv[i];
+            if (a == "-o" && i + 1 < argc) {
                 outputPath = argv[++i];
+            } else if (a == "--full" || a == "--libclang") {
+                full = true;
+            } else if (a.compare(0, 2, "-D") == 0) {
+                clangArgs.push_back(a);
+            } else {
+                std::cerr << "Error: unknown argument '" << a << "'" << std::endl;
+                return 1;
             }
         }
-        std::ifstream headerFile(headerPath);
-        if (!headerFile) {
-            std::cerr << "Error: could not open C header '" << headerPath << "'" << std::endl;
-            return 1;
-        }
-        std::string source((std::istreambuf_iterator<char>(headerFile)),
-                           std::istreambuf_iterator<char>());
-        headerFile.close();
 
         std::vector<std::string> bindgenWarnings;
-        std::string bindings = vyb::bindgen::generateBindings(source, &bindgenWarnings);
+        std::string bindings;
+        bool usedFull = false;
+
+        if (full) {
+            if (headerPath == "-") {
+                std::cerr << "Error: --full needs a file path (stdin has no preprocessor context)" << std::endl;
+                return 1;
+            }
+            std::string helper = helperBinPath(argv[0]);
+            if (!std::filesystem::exists(helper)) {
+                std::cerr << "Error: libclang helper not found ('" << helper
+                          << "'); rebuild with libclang enabled" << std::endl;
+                return 1;
+            }
+            std::string helperOut;
+            int helperStatus = 0;
+            std::vector<std::string> helperArgs;
+            helperArgs.push_back(headerPath);
+            for (const auto& d : clangArgs) helperArgs.push_back(d);
+            if (!runHelper(helper, helperArgs, helperOut, helperStatus)) {
+                std::cerr << "Error: could not start the libclang helper" << std::endl;
+                return 1;
+            }
+            if (helperStatus != 0) {
+                std::cerr << "Error: libclang backend exited with code " << helperStatus << std::endl;
+                return helperStatus;
+            }
+            bindings = helperOut;
+            usedFull = true;
+        }
+
+        if (!usedFull) {
+            if (!clangArgs.empty()) {
+                std::cerr << "Error: -D flags select the full (libclang) preprocessor; add --full" << std::endl;
+                return 1;
+            }
+            if (headerPath == "-") {
+                std::cerr << "Error: could not open C header '-'" << std::endl;
+                return 1;
+            }
+            std::ifstream headerFile(headerPath);
+            if (!headerFile) {
+                std::cerr << "Error: could not open C header '" << headerPath << "'" << std::endl;
+                return 1;
+            }
+            std::string source((std::istreambuf_iterator<char>(headerFile)),
+                               std::istreambuf_iterator<char>());
+            headerFile.close();
+            bindings = vyb::bindgen::generateBindings(source, &bindgenWarnings);
+        }
+
         for (const auto& warning : bindgenWarnings) {
             std::cerr << "warning: " << warning << std::endl;
         }

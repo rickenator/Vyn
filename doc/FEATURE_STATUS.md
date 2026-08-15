@@ -118,7 +118,7 @@ Legend: ✅ Implemented | 🚧 Partial / Stubbed | 📋 Planned
 | Multi-file compilation | ✅ | ModuleRegistry resolves local imports, module paths, stdlib discovery, and dependency order |
 | `extern "C"` FFI | ✅ | Extern blocks parse/codegen, freedom-gated calls, C ABI scalar/pointer aliases, conservative `#[repr(C)]` structs |
 | Variadic C functions | ✅ | A trailing `...` marks an extern declaration variadic (isVarArg); call sites accept extra args and auto-extract Vyb `String` data pointers for `%s` (`test/ffi/variadic_c_printf.vyb`) |
-| `vyb bindgen` (MVP) | ✅ | `vyb bindgen <header.h> [-o out.vyb]` parses a C subset and emits importable extern/`repr(C)`/enum bindings (`test/bindgen/*`). Full libclang-based parsing is future work. |
+| `vyb bindgen` (MVP + libclang `--full`) | ✅ | `vyb bindgen <header.h> [-o out.vyb]` parses a C subset and emits importable extern/`repr(C)`/enum bindings (`test/bindgen/*`). `--full` adds the libclang full-preprocessor backend (`#include` expansion, conditional evaluation, object-like/expression/function-like macros; `full_preproc.h`/`test_full_preproc_bindings.vyb`). |
 
 ---
 

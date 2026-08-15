@@ -1,0 +1,24 @@
+// @test: vyb bindgen --full (libclang) bindings are usable
+// @description: libclang full-preprocessor glue: includes resolved (word_t -> CInt), conditionals evaluated (#if COUNT>2 -> BIG_ENOUGH=1), object-like/expression/function-like macros bind as shared functions (COUNT, WIDE, BIG_ENOUGH, SQUARE, ADD2, LIMIT_HI)
+// @category: ffi, bindgen
+// @expect: pass
+// @expect-output: count= 4
+// @expect-output: wide= 8
+// @expect-output: big= 1
+// @expect-output: sq= 25
+// @expect-output: add= 7
+// @expect-output: hi= 65280
+// @expect-return: 0
+// @tags: ffi, bindgen, libclang, preprocessor, macro
+
+import full_preproc
+
+main()<Int> -> {
+    println("count=", COUNT())
+    println("wide=", WIDE())
+    println("big=", BIG_ENOUGH())
+    println("sq=", SQUARE(5))
+    println("add=", ADD2(3, 4))
+    println("hi=", LIMIT_HI())
+    return 0
+}

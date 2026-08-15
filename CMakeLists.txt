@@ -23,6 +23,26 @@ foreach(comp Core Support IRReader AsmParser BitReader BitWriter ipo TransformUt
   endif()
 endforeach()
 
+# libclang (optional): enables `vyb bindgen <header.h> --full` (full
+# preprocessor: #include expansion, conditional evaluation, object-like and
+# function-like macros, canonical-type resolution for <stdint.h> typedefs).
+option(VYB_BINDGEN_LIBCLANG "Build the libclang full-preprocessor bindgen backend" ON)
+if(VYB_BINDGEN_LIBCLANG)
+    find_path(LIBCLANG_INCLUDE_DIR NAMES clang-c/Index.h
+              HINTS ${LLVM_INCLUDE_DIRS} /usr/lib/llvm-*/include)
+    find_library(LIBCLANG_LIBRARY NAMES clang libclang-18 libclang
+                 HINTS ${LLVM_LIBRARY_DIRS} /usr/lib/llvm-*/lib)
+    if(LIBCLANG_INCLUDE_DIR AND LIBCLANG_LIBRARY)
+        message(STATUS "libclang: ${LIBCLANG_LIBRARY} (headers ${LIBCLANG_INCLUDE_DIR})")
+        set(VYB_HAVE_LIBCLANG TRUE)
+    else()
+        message(WARNING "libclang headers/library not found; `vyb bindgen --full` disabled")
+        set(VYB_HAVE_LIBCLANG FALSE)
+    endif()
+else()
+    set(VYB_HAVE_LIBCLANG FALSE)
+endif()
+
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
 # Make sure AddLLVM.cmake is on the module path
@@ -157,6 +177,18 @@ target_link_libraries(vyb PRIVATE
     Catch2::Catch2WithMain
     ${LLVM_LIBS} # Link against the mapped LLVM libraries
 )
+if(VYB_HAVE_LIBCLANG)
+    add_executable(vyb-libclang
+        src/bindgen_libclang_main.cpp
+        src/bindgen_libclang.cpp
+    )
+    target_include_directories(vyb-libclang PRIVATE
+        include
+        SYSTEM ${LIBCLANG_INCLUDE_DIR}
+    )
+    target_compile_definitions(vyb-libclang PRIVATE VYB_BINDGEN_LIBCLANG)
+    target_link_libraries(vyb-libclang PRIVATE ${LIBCLANG_LIBRARY})
+endif()
 
 # Platform-specific libraries for error handling runtime
 if(UNIX AND NOT APPLE)

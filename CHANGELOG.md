@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`vyb bindgen --full` (libclang full preprocessor)** — a new
+  `vyb bindgen <header.h> --full` backend expands `#include` and evaluates
+  conditionals (`#if`/`#ifdef`), resolves typedefs through their canonical
+  types (`int32_t` → `CInt`, `uint64_t` → `CULong` on LP64, `size_t` → `CSize`),
+  and binds `#define` macros: object-like numeric/string and constant-expression
+  macros (`WIDE (2 * COUNT)` → `WIDE()<CInt>`, returns 8) as shared constant
+  functions, and function-like integer-arithmetic macros
+  (`SQUARE(x) ((x)*(x))` → `SQUARE(x<Int>)<Int>`) as shared functions.
+  `-D NAME[=VAL]` flags steer `#ifdef`/`#if`. It runs in a standalone
+  `vyb-libclang` helper so libclang's LLVM command-line options cannot collide
+  with the statically-linked JIT engine. Covered by `test/bindgen/full_preproc.h`
+  / `full_preproc.vyb` / `test_full_preproc_bindings.vyb`.
 - **Docs: consolidated `doc/`** — archived 19 obsolete/superseded documents
   (`ROADMAP.md`, `TODO_CURRENT.md`, completion markers, phase summaries,
   proposals/RFCs, duplicated syntax docs) into `doc/archive/`, rewrote

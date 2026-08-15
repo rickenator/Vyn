@@ -449,7 +449,7 @@ Enable Vyb to call C functions and use C libraries (libc, POSIX, external deps).
    vyb bindgen /usr/include/stdio.h > stdio.vyb
    ```
 
-2. **libclang Integration**
+2. **libclang Integration** *(landed as `vyb bindgen --full`; see `test/bindgen/full_preproc.vyb`)*
    - Use libclang to parse C headers
    - Extract function declarations, structs, enums
    - Generate Vyb `extern "C" { }` blocks

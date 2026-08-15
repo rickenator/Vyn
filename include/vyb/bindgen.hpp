@@ -23,5 +23,24 @@ namespace bindgen {
 std::string generateBindings(const std::string& headerSource,
                              std::vector<std::string>* warnings = nullptr);
 
+#ifdef VYB_BINDGEN_LIBCLANG
+// libclang-based full-preprocessor backend, selected with `vyb bindgen
+// <header.h> --full`. Reads the header from disk so the preprocessor can
+// expand `#include` (e.g. `<stdint.h>` typedefs) and evaluate conditionals
+// (`#if`/`#ifdef`), mapping typedefs through their canonical types
+// (`int32_t` -> CInt on this platform, `uint64_t` -> CULong on LP64, and
+// similarly for the other <stdint.h> widths). Object-like `#define` constants
+// (numeric, string, or integer constant expressions) bind as shared constant
+// functions; function-like macros bind as `Int`-typed Vyb functions over
+// integer arithmetic. `cmdArgs` holds extra compiler flags passed to libclang
+// (e.g. `-DUSE_64`); only declarations whose source is the input header are
+// emitted (system/libc types are resolved but not rebound). Returns the
+// generated Vyb source; parse failures return "" with a diagnostic in
+// `warnings`.
+std::string generateBindingsFull(const std::string& headerPath,
+                                 const std::vector<std::string>& cmdArgs,
+                                 std::vector<std::string>* warnings = nullptr);
+#endif // VYB_BINDGEN_LIBCLANG
+
 } // namespace bindgen
 } // namespace vyb
