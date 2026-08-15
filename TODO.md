@@ -113,6 +113,14 @@ is the working audit for what needs to be implemented next.
 
 ### Expressions & Operations
 - [x] **Binary operations** — `+`, `-`, `*`, `/`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `&&`, `||`
+- [ ] **Bitwise operators** — `|` (or), `&` (and), `^` (xor), `~` (not), `<<` (left
+  shift), `>>` (right shift) on `Int`. **Needed, not just nice-to-have**: Vyb has no
+  bitwise operators at all. The stdlib File I/O module currently combines its
+  non-overlapping `FILE_*` open-mode bits by **addition**
+  (`FILE_WRITE() + FILE_CREATE() + FILE_TRUNC()`) because `|` does not exist — a real
+  gap for POSIX flags/permissions and any FFI. Add the tokens to the lexer, the
+  arithmetic branch in semantic analysis, and LLVM `and`/`or`/`xor`/`shl`/`lshr`/`ashr`
+  codegen; keywords (`and`/`or`) must stay distinct from the new symbol operators.
 - [x] **Unary operations** — `!`, `-`
 - [x] **Member access** — `obj.field`, `arr[index]`
 - [x] **String concatenation** — `str1 + str2` with mixed-type auto-`toString`
