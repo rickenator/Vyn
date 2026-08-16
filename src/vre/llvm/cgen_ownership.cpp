@@ -1295,6 +1295,14 @@ llvm::Value* LLVMCodegen::generateStructDeepCopy(llvm::Value* structValue,
 bool LLVMCodegen::isVybStringStructType(llvm::Type* type) {
     auto* st = llvm::dyn_cast<llvm::StructType>(type);
     if (!st || st->getNumElements() != 2) return false;
+    // A Vyb String is an anonymous inline `{ ptr, i64 }` value. A *named* struct
+    // that happens to share this shape (e.g. `struct Holder { first<my<Node>>,
+    // second<Int> }`) is a user type, and treating it as a String here would make
+    // the ownership / retention machinery mistrust a non-String first field (a
+    // `my<Node>` heap pointer), so a callee would reclaim caller-owned data and a
+    // returned holder would be handed back with a dangling field (double free).
+    // Named generic / enum / tuple / option structs are likewise never a String.
+    if (!st->isLiteral()) return false;
     return st->getElementType(0)->isPointerTy() && st->getElementType(1)->isIntegerTy(64);
 }
 

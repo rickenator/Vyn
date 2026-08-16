@@ -1,0 +1,55 @@
+// @test: my<Struct> field inside a plain struct stays single-owned
+// @description: A `my<Node>` field (`Holder.first`) owns a heap allocation. Returning
+//   a holder that carries such a field hands the allocation to the caller once, and
+//   passing the holder by value borrows it (the callee must not reclaim the caller's
+//   field). A {ptr, i64}-shaped struct such as Holder is also NOT a String, so the
+//   string retention paths must not mis-treat its my field.
+// @category: ownership, my, memory, struct, return, param
+// @expect: pass
+// @expect-return: 0
+
+struct Node {
+    value<Int>,
+    label<String>
+}
+
+struct Holder {
+    first<my<Node>>,
+    second<Int>
+}
+
+make_holder()<Holder> -> {
+    return Holder { first = my(Node { value = 5, label = "h" }), second = 9 }
+}
+
+get_val(h<Holder>)<Int> -> {
+    return h.first.value
+}
+
+main()<Int> -> {
+    // 1: declare a holder with a my field, then read through it.
+    p<Holder> = Holder { first = my(Node { value = 1, label = "a" }), second = 2 }
+    if (p.first.value != 1) {
+        return 1
+    }
+
+    // 2: pass the holder by value (borrow) and read the my field in the callee.
+    if (get_val(p) != 1) {
+        return 2
+    }
+
+    // 3: reassign the field to a fresh my (old allocation freed, new kept).
+    p.first = my(Node { value = 3, label = "b" })
+    if (p.first.value != 3) {
+        return 3
+    }
+
+    // 4: return a holder carrying a my field from a function.
+    h<Holder> = make_holder()
+    if (get_val(h) != 5) {
+        return 4
+    }
+
+    println("ok")
+    return 0
+}
