@@ -43,6 +43,7 @@ extern "C" char* __vyb_convert_lit_string(const char* str) {
         const char* nullJson = "null";
         char* result = (char*)malloc(strlen(nullJson) + 1);
         if (result) strcpy(result, nullJson);
+        if (result) __vyb_string_register(result);
         return result;
     }
 
@@ -127,6 +128,9 @@ extern "C" char* __vyb_convert_lit_string(const char* str) {
     // Return a heap-allocated copy of the result
     char* result = (char*)malloc(output.length() + 1);
     if (result) strcpy(result, output.c_str());
+    // Register so the runtime's refcount teardown (__vyb_string_free/release)
+    // reclaims this buffer instead of leaking it (mirrors __vyb_string_concat).
+    if (result) __vyb_string_register(result);
     return result;
 }
 
