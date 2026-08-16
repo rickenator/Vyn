@@ -961,6 +961,38 @@ void LLVMCodegen::releaseMildControlBlock(llvm::Value* controlBlockPtr, const st
     builder->SetInsertPoint(continueBlock);
 }
 
+// Bump the weak count of a `mild<T>` control block so a newly-created weak
+// reference (e.g. a shallow struct-field copy stored in an async env) owns one
+// more weak ref. A storage location that will release on scope exit must retain
+// on copy, mirroring releaseMildControlBlock. `controlBlockPtr` may be null.
+void LLVMCodegen::retainMildControlBlock(llvm::Value* controlBlockPtr, const std::string& tag) {
+    if (!controlBlockPtr || !builder || !currentFunction) return;
+    llvm::PointerType* rawPtr = llvm::PointerType::get(*context, 0);
+    llvm::Constant* nullPtr = llvm::ConstantPointerNull::get(rawPtr);
+
+    llvm::Value* isNull = builder->CreateICmpEQ(controlBlockPtr, nullPtr, tag + "_mild_retain_null");
+    llvm::BasicBlock* doRetain = llvm::BasicBlock::Create(*context, tag + "_mild_do_retain", currentFunction);
+    llvm::BasicBlock* continueBlock = llvm::BasicBlock::Create(*context, tag + "_mild_retain_done", currentFunction);
+    builder->CreateCondBr(isNull, continueBlock, doRetain);
+
+    builder->SetInsertPoint(doRetain);
+    std::vector<llvm::Type*> cbFields = {
+        llvm::Type::getInt32Ty(*context),  // strong_count
+        llvm::Type::getInt32Ty(*context),  // weak_count
+        llvm::Type::getInt8Ty(*context),   // object_freed
+        rawPtr                             // object_ptr
+    };
+    llvm::StructType* controlBlockType = llvm::StructType::get(*context, cbFields, /*isPacked=*/false);
+    llvm::Value* weakCountPtr = builder->CreateStructGEP(controlBlockType, controlBlockPtr, 1, tag + "_mild_weak_count_ptr");
+    builder->CreateAtomicRMW(
+        llvm::AtomicRMWInst::Add, weakCountPtr,
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 1),
+        llvm::MaybeAlign(), llvm::AtomicOrdering::AcquireRelease);
+    builder->CreateBr(continueBlock);
+
+    builder->SetInsertPoint(continueBlock);
+}
+
 // Does a data-carrying built-in enum (Option<T>, Result<T, E>) carry an `our<T>`
 // reference in one of its payloads? Only `our` refs need retain/release
 // bookkeeping inside an enum: `mild` is a weak count (a copy must not re-count),
@@ -1105,6 +1137,112 @@ llvm::Value* LLVMCodegen::generateVecDeepCopy(llvm::Value* vecStructValue,
     newVecStruct = builder->CreateInsertValue(newVecStruct, vecSize,    1, "vdc.new_vec1");
     newVecStruct = builder->CreateInsertValue(newVecStruct, vecCap,     2, "vdc.new_vec2");
     return newVecStruct;
+}
+
+// Deep-copy a struct value into an independent owned copy, mirroring the field
+// categories `reclaimStructOwnedFieldsAt` releases so that reclaiming the result
+// on scope exit exactly balances this copy:
+//   - String fields   -> retain the buffer (+1)
+//   - Vec<T> fields   -> clone the data buffer (retaining String elements)
+//   - `my<Struct>`    -> malloc a fresh block and deep-copy the pointee
+//   - `our`/`mild`    -> retain the shared control block (+1 strong/weak)
+//   - nested structs  -> recurse
+//   - scalars         -> copied by value
+// Used to snapshot struct-typed async params so the task env owns an independent
+// copy that survives the caller's frame. `structValue` must be a value of the
+// same type as `llvmTy` (the env field layout's struct type).
+llvm::Value* LLVMCodegen::generateStructDeepCopy(llvm::Value* structValue,
+                                                 const vyb::ast::TypeNode* astType,
+                                                 llvm::StructType* llvmTy) {
+    if (!structValue || !astType || !llvmTy || !builder || !currentFunction) return structValue;
+    llvm::StructType* st = llvm::dyn_cast<llvm::StructType>(structValue->getType());
+    if (!st) return structValue;
+    llvm::PointerType* rawPtr = llvm::PointerType::get(*context, 0);
+    llvm::Constant* nullPtr = llvm::ConstantPointerNull::get(rawPtr);
+
+    std::vector<vyb::ast::TypeNodePtr> fields;
+    if (!collectStructConcreteFieldTypes(astType, fields)) return structValue;
+
+    const size_t n = std::min(fields.size(), (size_t)st->getNumElements());
+    llvm::Value* outVal = llvm::UndefValue::get(st);
+    for (size_t i = 0; i < n; ++i) {
+        const vyb::ast::TypeNode* f = fields[i].get();
+        if (!f) continue;
+        llvm::Type* fLLVM = st->getElementType(i);
+        if (!fLLVM) continue;
+        llvm::Value* fv = builder->CreateExtractValue(structValue, i, "sdc.field");
+
+        if (isVecTypeNode(f)) {
+            auto* vt = llvm::dyn_cast<llvm::StructType>(fLLVM);
+            if (vt && isVecStructType(vt)) {
+                llvm::Type* elemType = nullptr;
+                if (const auto* vnode = dynamic_cast<const vyb::ast::VecType*>(f))
+                    elemType = vnode->elementType
+                        ? codegenType(const_cast<vyb::ast::TypeNode*>(vnode->elementType.get())) : nullptr;
+                else if (const auto* nn = dynamic_cast<const vyb::ast::TypeName*>(f))
+                    if (!nn->genericArgs.empty())
+                        elemType = codegenType(const_cast<vyb::ast::TypeNode*>(nn->genericArgs[0].get()));
+                if (elemType) {
+                    if (llvm::Value* dc = generateVecDeepCopy(fv, elemType, vt)) {
+                        outVal = builder->CreateInsertValue(outVal, dc, i, "sdc.vec");
+                        continue;
+                    }
+                }
+            }
+        } else if (isOwnedFieldString(f)) {
+            auto* st2 = llvm::dyn_cast<llvm::StructType>(fLLVM);
+            if (st2 && isVybStringStructType(st2)) {
+                retainStringValue(fv);
+                outVal = builder->CreateInsertValue(outVal, fv, i, "sdc.str");
+                continue;
+            }
+        } else if (const vyb::ast::TypeNode* myArg = myTypeArg(f)) {
+            if (fLLVM->isPointerTy() && isMyOwnedStructTypeNode(f)) {
+                llvm::Type* pointeeTy = codegenType(const_cast<vyb::ast::TypeNode*>(myArg));
+                if (auto* pois = llvm::dyn_cast<llvm::StructType>(pointeeTy)) {
+                    llvm::Value* p = fv;
+                    llvm::Value* isNull = builder->CreateICmpEQ(p, nullPtr, "sdc.my.null");
+                    llvm::BasicBlock* doBB = llvm::BasicBlock::Create(*context, "sdc.my.do", currentFunction);
+                    llvm::BasicBlock* doneBB = llvm::BasicBlock::Create(*context, "sdc.my.done", currentFunction);
+                    llvm::BasicBlock* entryBlock = builder->GetInsertBlock();
+                    builder->CreateCondBr(isNull, doneBB, doBB);
+                    builder->SetInsertPoint(doBB);
+                    llvm::DataLayout dl(module.get());
+                    llvm::Value* blockBytes = llvm::ConstantInt::get(
+                        llvm::Type::getInt64Ty(*context), dl.getTypeAllocSize(pois));
+                    llvm::Value* rawNew = builder->CreateCall(getOrCreateMallocFunction(), {blockBytes}, "sdc.my.alloc");
+                    llvm::Value* newBlock = builder->CreateBitCast(rawNew, pois->getPointerTo(), "sdc.my.block");
+                    llvm::Value* pointeeVal = builder->CreateLoad(pois, p, "sdc.my.load");
+                    llvm::Value* copied = generateStructDeepCopy(pointeeVal, myArg, pois);
+                    builder->CreateStore(copied, newBlock);
+                    llvm::BasicBlock* doDoneBlock = builder->GetInsertBlock();
+                    builder->CreateBr(doneBB);
+                    builder->SetInsertPoint(doneBB);
+                    llvm::PHINode* ph = builder->CreatePHI(fLLVM, 2, "sdc.my.phi");
+                    ph->addIncoming(nullPtr, entryBlock);
+                    ph->addIncoming(newBlock, doDoneBlock);
+                    outVal = builder->CreateInsertValue(outVal, ph, i, "sdc.my");
+                    continue;
+                }
+            }
+        } else if (isRefTypeNode(f, "mild") || isRefTypeNode(f, "our")) {
+            if (fLLVM->isPointerTy()) {
+                if (isRefTypeNode(f, "mild")) retainMildControlBlock(fv, "sdc.mild");
+                else retainOurControlBlock(fv, "sdc.our");
+                outVal = builder->CreateInsertValue(outVal, fv, i, "sdc.ref");
+                continue;
+            }
+        } else if (isKnownStructTypeNode(f)) {
+            if (auto* st3 = llvm::dyn_cast<llvm::StructType>(fLLVM)) {
+                llvm::Value* nested = generateStructDeepCopy(fv, f, st3);
+                outVal = builder->CreateInsertValue(outVal, nested, i, "sdc.nested");
+                continue;
+            }
+        }
+        // Plain scalar (or an uncommon unsupported field): copy by value.
+        outVal = builder->CreateInsertValue(outVal, fv, i, "sdc.scalar");
+    }
+    return outVal;
 }
 
 // Vec struct layout: { ptr, i64 (size), i64 (capacity) }
@@ -1344,6 +1482,14 @@ llvm::Function* LLVMCodegen::generateAsyncEnvDtor(
             clr = builder->CreateInsertValue(clr, nullPtr, 0);
             clr = builder->CreateInsertValue(clr, zero, 1);
             builder->CreateStore(clr, fieldPtr);
+        } else if (fld.isStruct && fld.structType) {
+            // An inline struct param snapshot: reclaim every owned field of the
+            // deep copy (String buffers, Vec storage, `my` blocks, our/mild
+            // control-block refs, nested structs) before the env block is freed.
+            if (auto* st3 = llvm::dyn_cast<llvm::StructType>(fty)) {
+                std::set<std::string> visited;
+                reclaimStructOwnedFieldsAt(fieldPtr, fld.structType, st3, visited);
+            }
         }
     }
     builder->CreateCall(getOrCreateFreeFunction(), {dtor->getArg(0)});

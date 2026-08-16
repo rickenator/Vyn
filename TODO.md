@@ -578,12 +578,18 @@ with `pass` for multi-statement case bodies. Needs polishing:
   results compose as values anywhere an expression does — as a method receiver,
   inside arithmetic (e.g. `await mk(2) + await mk(3)`), as a nested call argument
   (`sv(await mk(5))`), as a comparison, and on a bound future awaited later
-  (`test/async/async_await_chains.vyb`). Remaining stages: richer owned params
-  (structs, closures). See
+  (`test/async/async_await_chains.vyb`). **`struct` / owned struct params done**
+  (Stage 10): the launcher deep-copies a struct-typed argument into the env as an
+  independent snapshot — retaining String buffers and `our`/`mild` control-block
+  refs, cloning Vec buffers, and recursing into `my<Struct>` blocks and nested
+  structs (mirroring `reclaimStructOwnedFieldsAt` so the env dtor's reclaim of that
+  copy balances it) — and the worker merely borrows it, keeping the caller's
+  binding valid across nested awaits (`test/async/async_struct_param.vyb`,
+  valgrind-clean). Remaining stages: closures as params. See
   `test/async/async_event_loop.vyb`, `async_params.vyb`, `async_nested_await.vyb`,
   `async_string.vyb`, `async_void.vyb`, `async_multicore.vyb`,
   `async_float_bool.vyb`, `async_string_param.vyb`, `async_vec_param.vyb`,
-  `async_our_param.vyb`, and `async_await_chains.vyb`.
+  `async_our_param.vyb`, `async_struct_param.vyb`, and `async_await_chains.vyb`.
 - [x] **`spawn` for concurrent tasks** — two storylines: the pthread `tasks`
   module (`t = task_spawn(fn() -> Int)`, `task_await`/`task_poll`/`task_free`)
   for real parallel workers, and the cooperative `asyncs` module above for

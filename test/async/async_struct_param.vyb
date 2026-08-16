@@ -1,0 +1,79 @@
+// Stage-10 real async: owned struct params. The launcher deep-copies the caller's
+// struct into the task env so the worker owns an independent snapshot: String
+// buffers are retained (+1), Vec buffers are cloned, and `our`/`mild` control-block
+// refs are retained (+1 strong/weak). The env's per-layout dtor reclaims every owned
+// field of that copy on task cleanup, and the worker merely borrows it, so the
+// caller's binding stays valid after the task completes (incl. across nested await).
+// @env: VYB_STDLIB=stdlib
+// @expect: pass
+
+import asyncs::{async_sleep_ms}
+
+struct Node {
+    value<Int>
+}
+
+struct Profile {
+    name<String>,
+    scores<Vec<Int>>,
+    owner<our<Node>>,
+    watch<mild<Node>>
+}
+
+make_scores()<Vec<Int>> -> {
+    v<Vec<Int>> = Vec()
+    v.push(10)
+    v.push(20)
+    v.push(15)
+    return v
+}
+
+async describe(p<Profile>)<Future<Int>> -> {
+    async_sleep_ms(5)
+    n<Int> = p.owner.value
+    sum<Int> = 0
+    i<Int> = 0
+    while (i < p.scores.len()) {
+        sum = sum + p.scores.get(i)
+        i = i + 1
+    }
+    return p.name.len() + sum + n
+}
+
+// Nested await: the struct snapshot stays valid across awaiting a child task.
+async pass_profile(p<Profile>)<Future<Int>> -> {
+    async_sleep_ms(5)
+    inner<Int> = await describe(p)
+    return inner + p.name.len()
+}
+
+main()<Int> -> {
+    // `obj` strongly owns the Node; the Profile's `watch` field is a weak (mild)
+    // reference to it, so the async env retains that weak count too.
+    obj<our<Node>> = our(Node { value: 7 })
+    a<Profile> = Profile { name: "hello", scores: make_scores(), owner: our(Node { value: 7 }), watch: soft(obj) }
+
+    f1<Future<Int>> = describe(a)
+    r1<Int> = await f1
+    // name.len()=5; scores=10+20+15=45; owner.value=7 => 57
+    if (r1 != 57) { return 1 }
+
+    f2<Future<Int>> = pass_profile(a)
+    r2<Int> = await f2
+    // 57 + name.len()=5 => 62
+    if (r2 != 62) { return 2 }
+
+    // Caller's binding is still valid and unchanged after the tasks.
+    if (a.name != "hello") { return 3 }
+    if (a.owner.value != 7) { return 4 }
+    sm<Int> = 0
+    j<Int> = 0
+    while (j < a.scores.len()) {
+        sm = sm + a.scores.get(j)
+        j = j + 1
+    }
+    if (sm != 45) { return 5 }
+
+    println("ok")
+    return 0
+}

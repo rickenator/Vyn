@@ -557,7 +557,8 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
             llvm::Type* pt = codegenType(p.typeNode.get());
             if (!pt || !(pt->isIntegerTy() || pt->isFloatTy() || pt->isDoubleTy() ||
                          isVybStringStructType(pt) || asyncParamIsVec(p.typeNode.get()) ||
-                         (pt->isPointerTy() && isOurRefType(p.typeNode.get())))) {
+                         (pt->isPointerTy() && isOurRefType(p.typeNode.get())) ||
+                         isKnownStructTypeNode(p.typeNode.get()))) {
                 paramsEnvSafe = false; break;
             }
         }
@@ -1671,6 +1672,7 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
     std::vector<AsyncEnvField> ownedFields;
     std::vector<bool> vecParam(n, false);
     std::vector<llvm::Type*> vecElemType(n, nullptr);
+    std::vector<const vyb::ast::TypeNode*> structParamAst(n, nullptr);
     for (size_t i = 0; i < n; ++i) {
         const vyb::ast::TypeNode* ptn = node->params[i].typeNode.get();
         if (paramTypes[i] && isVybStringStructType(paramTypes[i])) {
@@ -1686,6 +1688,13 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
             vecParam[i] = true;
             if (const vyb::ast::TypeNode* en = asyncParamVecElement(ptn))
                 vecElemType[i] = codegenType(const_cast<vyb::ast::TypeNode*>(en));
+        } else if (ptn && isKnownStructTypeNode(ptn)) {
+            // Inline struct param: the launcher deep-copies it into an
+            // independent owned snapshot; the env dtor reclaims its owned fields.
+            AsyncEnvField f; f.fieldIx = i + 2; f.isString = false; f.isVec = false; f.vecIsString = false; f.isOur = false;
+            f.isStruct = true; f.structType = ptn;
+            ownedFields.push_back(f);
+            structParamAst[i] = ptn;
         }
     }
 
@@ -1798,6 +1807,11 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
         } else if (vecParam[i] && vecElemType[i] && paramTypes[i]) {
             llvm::Value* copy = generateVecDeepCopy(av, vecElemType[i], paramTypes[i]);
             av = copy ? copy : av;
+        } else if (structParamAst[i] && paramTypes[i]) {
+            if (auto* sot = llvm::dyn_cast<llvm::StructType>(paramTypes[i])) {
+                llvm::Value* copy = generateStructDeepCopy(av, structParamAst[i], sot);
+                av = copy ? copy : av;
+            }
         }
         builder->CreateStore(av, fp);
     }

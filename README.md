@@ -505,6 +505,8 @@ main()<Void> -> {
 - ✅ `String` async parameters (env snapshot + retain, released by the env dtor)
 - ✅ `Vec<T>` async parameters (env deep-copy; dtor reclaims storage + String elements)
 - ✅ `our<T>` async parameters (env shared-control-block retain + release)
+- ✅ `struct` async parameters (env deep-copy of owned fields — String retain, Vec
+  clone, `our`/`mild` retain, nested structs — reclaimed by the env dtor)
 - ✅ Richer await chains (`await` result usable as a receiver, call arg, arithmetic operand, comparison; nested `await` in an argument)
 - ✅ Multi-threaded executor (a thread pool, one scheduler per CPU worker, fibers pinned to their worker)
 - ✅ Parameterized `Future<Int>` async tasks (scalar args captured in an env)
@@ -522,6 +524,8 @@ futures, including awaited from inside a task), `test/async/async_string_param.v
 (`String` params retained in the env), `test/async/async_vec_param.vyb` (`Vec<T>`
 params deep-copied, incl. nested await + mixed envs), `test/async/async_our_param.vyb`
 (`our<T>` params retained across tasks, caller ref stays valid),
+`test/async/async_struct_param.vyb` (struct params deep-copied with owned fields,
+caller binding stays valid across nested await),
 `test/async/async_await_chains.vyb` (await results composed in expressions), and
 the `asyncs` stdlib module section.
 

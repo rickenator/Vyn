@@ -451,11 +451,13 @@ private:
         const std::vector<std::pair<size_t, const vyb::ast::TypeNode*>>& ownedFields);
     // Describes one owned parameter field inside an async-task environment.
     struct AsyncEnvField {
-        size_t fieldIx;      // env struct field index to reclaim
-        bool isString;       // a Vyb String value
-        bool isVec;          // a Vec<T> value
-        bool vecIsString;    // Vec<String>: release String elements before freeing data
-        bool isOur;          // an `our<T>` control-block pointer (release on cleanup)
+        size_t fieldIx = 0;                    // env struct field index to reclaim
+        bool isString = false;                 // a Vyb String value
+        bool isVec = false;                    // a Vec<T> value
+        bool vecIsString = false;              // Vec<String>: release String elements before freeing data
+        bool isOur = false;                    // an `our<T>` control-block pointer (release on cleanup)
+        bool isStruct = false;                 // an inline struct value (deep-copied into the env)
+        const vyb::ast::TypeNode* structType = nullptr; // AST type of the struct field (for reclaim)
     };
     // Build the per-layout destructor for an async-task environment that holds
     // inline owned param fields (String / Vec<T>): release each String buffer
@@ -482,6 +484,14 @@ private:
     // Deep-copy a Vec struct value (clones malloc'd data so caller and callee are independent).
     // Returns an updated Vec struct value with a freshly malloc'd data buffer.
     llvm::Value* generateVecDeepCopy(llvm::Value* vecStructValue, llvm::Type* elemType, llvm::Type* vecStructType);
+    // Deep-copy a struct value into an independent owned copy: retain String
+    // buffers and our/mild control blocks, clone Vec buffers and `my<Struct>`
+    // heap blocks, and recurse into nested structs (scalars copied by value).
+    // Mirrors reclaimStructOwnedFieldsAt so reclaiming the result balances every
+    // action taken here. Returns an updated struct value.
+    llvm::Value* generateStructDeepCopy(llvm::Value* structValue,
+                                        const vyb::ast::TypeNode* astType,
+                                        llvm::StructType* llvmTy);
 
     // Owned-field introspection + reclaim for struct-typed storage. Resolves a
     // struct's concrete field type nodes (substituting generic args) in layout
@@ -510,6 +520,10 @@ private:
     // bindings and struct fields). `controlBlockPtr` may be null.
     void releaseOurControlBlock(llvm::Value* controlBlockPtr, const std::string& tag);
     void releaseMildControlBlock(llvm::Value* controlBlockPtr, const std::string& tag);
+    // Retain a `mild` weak-count control block: bump the weak count so a new
+    // storage location that will release on scope exit holds its own weak ref.
+    // `controlBlockPtr` may be null.
+    void retainMildControlBlock(llvm::Value* controlBlockPtr, const std::string& tag);
 
     // Data-carrying built-in enums (Option<T>, Result<T, E>) whose payload is an
     // `our<T>` reference own a strong count on a shared control block. Copies
