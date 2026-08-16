@@ -1,0 +1,86 @@
+// Regression: a struct field initialized from a SELECT expression whose arms are
+// all whole-value reads of owned variables (e.g. `{ true -> sc, false -> other }`)
+// must copy/retain so the struct owns data independent of the selected source —
+// otherwise the field and the source binding release the same buffer on scope
+// exit (a double free). Pure owned-variable selects are treated as a shared
+// borrow and the field deep-copies (Vec) / retains (String / our) on store,
+// mirroring the plain struct-literal ownership fix.
+// @env: VYB_STDLIB=stdlib
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+
+struct Node {
+    value<Int>
+}
+
+struct Box {
+    items<Vec<Int>>,
+    name<String>,
+    owner<our<Node>>
+}
+
+makev(n<Int>)<Vec<Int>> -> {
+    v<Vec<Int>> = Vec()
+    v.push(n)
+    return v
+}
+
+// Return-path: a struct literal built with pure owned-read selects flows out;
+// the returned object owns independent copies and the sources are cleaned up
+// inside the function.
+build_box(flag<Bool>)<Box> -> {
+    sc<Vec<Int>> = makev(10)
+    other<Vec<Int>> = makev(20)
+    nm<String> = "hello"
+    nm2<String> = "world"
+    nd<our<Node>> = our(Node { value: 5 })
+    nd2<our<Node>> = our(Node { value: 6 })
+    b<Box> = Box {
+        items: select(flag) -> { true -> sc, false -> other },
+        name: select(flag) -> { true -> nm, false -> nm2 },
+        owner: select(flag) -> { true -> nd, false -> nd2 }
+    }
+    return b
+}
+
+main()<Int> -> {
+    // Return-path struct literal, selected borrow arm.
+    rb<Box> = build_box(true)
+    if (rb.items.len() != 1) { return 1 }
+    if (rb.items.get(0) != 10) { return 2 }
+    if (rb.name != "hello") { return 3 }
+    if (rb.owner.value != 5) { return 4 }
+
+    // Plain-in-this-scope construction, selected borrow arm (was a double free).
+    sc2<Vec<Int>> = makev(30)
+    other2<Vec<Int>> = makev(40)
+    nm2<String> = "alpha"
+    nm3<String> = "beta"
+    nd2<our<Node>> = our(Node { value: 7 })
+    nd3<our<Node>> = our(Node { value: 8 })
+    b2<Box> = Box {
+        items: select(false) -> { true -> sc2, false -> other2 },
+        name: select(true) -> { true -> nm2, false -> nm3 },
+        owner: select(false) -> { true -> nd2, false -> nd3 }
+    }
+
+    // Sources remain valid and independent after construction.
+    if (sc2.len() != 1) { return 5 }
+    if (sc2.get(0) != 30) { return 6 }
+    if (other2.len() != 1) { return 7 }
+    if (other2.get(0) != 40) { return 8 }
+    if (nm2 != "alpha") { return 9 }
+    if (nm3 != "beta") { return 10 }
+    if (nd2.value != 7) { return 11 }
+    if (nd3.value != 8) { return 12 }
+
+    // Struct owns independent copies selected from each arm's source.
+    if (b2.items.len() != 1) { return 13 }
+    if (b2.items.get(0) != 40) { return 14 }
+    if (b2.name != "alpha") { return 15 }
+    if (b2.owner.value != 8) { return 16 }
+
+    println("ok")
+    return 0
+}

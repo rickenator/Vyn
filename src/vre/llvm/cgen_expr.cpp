@@ -95,6 +95,49 @@ static bool isMildTransferExpr(ast::Expression* expr) {
     return false;
 }
 
+// Is this expression a whole-value *shared* read (a bare variable or a member
+// borrow)? Fresh constructors / calls / literals are excluded: they produce (or
+// already are) owned values, not shared borrows of a source binding.
+static bool exprIsSharedOwnedRead(ast::Expression* expr) {
+    if (!expr) return false;
+    if (dynamic_cast<ast::Identifier*>(expr)) return true;
+    if (dynamic_cast<ast::MemberExpression*>(expr)) return true;
+    return false;
+}
+
+// True when every value-producing arm of a select expression is a whole-value
+// read of a variable or member (a *borrow*), never a fresh owner/constructor. A
+// select like `{ true -> sc, false -> other }` yields the selected binding's data
+// (a borrow), so an owned struct field receiving it must deep-copy/retain to own
+// data independent of the source. Because there is no fresh-producing arm, the
+// copy can never leak. A select that also has a fresh-constructor arm
+// (`false -> Vec()`) is left alone: its produced value may already be an owned
+// transfer, and copying it at the field store could leak that fresh value, so
+// that case stays on the existing ownership path.
+static bool selectAllArmsAreOwnedReads(ast::Expression* expr) {
+    auto* sel = dynamic_cast<ast::SelectExpression*>(expr);
+    if (!sel) return false;
+    if (sel->cases.empty()) return false;
+    for (const auto& cs : sel->cases) {
+        ast::Expression* body = cs.second.get();
+        if (!body) return false;
+        bool armIsBorrow = exprIsSharedOwnedRead(body);
+        if (!armIsBorrow && dynamic_cast<ast::BlockExpression*>(body)) {
+            auto* blk = static_cast<ast::BlockExpression*>(body);
+            if (blk->block) {
+                for (const auto& st : blk->block->body) {
+                    if (auto* pass = dynamic_cast<ast::PassStatement*>(st.get())) {
+                        if (pass->argument && exprIsSharedOwnedRead(pass->argument.get()))
+                            armIsBorrow = true;
+                    }
+                }
+            }
+        }
+        if (!armIsBorrow) return false;
+    }
+    return true;
+}
+
 void LLVMCodegen::visit(vyb::ast::IntegerLiteral *node) {
     if (node->isUnsigned) {
         m_currentLLVMValue = llvm::ConstantInt::get(*context, llvm::APInt(64, node->uvalue, false));
@@ -277,7 +320,8 @@ void LLVMCodegen::visit(vyb::ast::ObjectLiteral* node) {
         // constructors, calls, and literals already own their payload.
         bool borrowedRead =
             dynamic_cast<ast::Identifier*>(prop.value.get()) != nullptr ||
-            dynamic_cast<ast::MemberExpression*>(prop.value.get()) != nullptr;
+            dynamic_cast<ast::MemberExpression*>(prop.value.get()) != nullptr ||
+            selectAllArmsAreOwnedReads(prop.value.get());
         const vyb::ast::TypeNode* fieldAst =
             (fieldIndex >= 0 && (size_t)fieldIndex < objectFieldTypes.size())
                 ? objectFieldTypes[(size_t)fieldIndex].get() : nullptr;
