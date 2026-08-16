@@ -489,6 +489,15 @@ private:
     void releaseOurControlBlock(llvm::Value* controlBlockPtr, const std::string& tag);
     void releaseMildControlBlock(llvm::Value* controlBlockPtr, const std::string& tag);
 
+    // Data-carrying built-in enums (Option<T>, Result<T, E>) whose payload is an
+    // `our<T>` reference own a strong count on a shared control block. Copies
+    // (Some(owner)) must retain, and scope exit must release, so the control
+    // block is reclaimed once the last owner drops.
+    bool enumPayloadHoldsOurRef(const vyb::ast::TypeNode* astType) const;
+    void reclaimEnumOurPayload(llvm::Value* enumPtr, const vyb::ast::TypeNode* astType,
+                               bool retain);
+    bool enumInitIsOurTransfer(vyb::ast::Expression* init);
+
     // Async/await support
     struct AsyncState {
         llvm::Function* asyncFunction;

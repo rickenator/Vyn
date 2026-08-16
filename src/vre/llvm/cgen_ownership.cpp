@@ -8,6 +8,12 @@
 
 using namespace vyb;
 
+// Forward declaration (defined later, below cleanupVariable): return the pointee
+// type node of a `my<T>` wrapper, or null if not a `my`.
+namespace {
+const vyb::ast::TypeNode* myTypeArg(const vyb::ast::TypeNode* tn);
+}
+
 // Detect whether an AST type node is `Vec<String>` (either the VecType form or a
 // TypeName "Vec" with a single `String` argument). The element identity cannot be
 // recovered from the Vec struct's LLVM type ({ ptr, i64, i64 } is element-erased),
@@ -181,6 +187,19 @@ void LLVMCodegen::cleanupVariable(const ScopeVariable& var) {
 
     switch (var.ownership) {
         case ast::OwnershipKind::MY: {
+            // A data-carrying enum (Option<our<T>>, Result<..., our<T>>) owns a
+            // strong count on the payload's control block; drop it on scope exit.
+            {
+                auto astIt = valueTypeMap.find(var.allocaInst);
+                if (var.allocaInst && astIt != valueTypeMap.end() && astIt->second &&
+                    llvm::isa<llvm::StructType>(var.type) &&
+                    enumPayloadHoldsOurRef(astIt->second.get())) {
+                    VYB_CDBG << "DEBUG: Releasing owned enum payload for variable: "
+                              << var.name << std::endl;
+                    reclaimEnumOurPayload(var.allocaInst, astIt->second.get(), /*retain=*/false);
+                    return;
+                }
+            }
             // A struct-typed binding owns its Vec / String fields (and those of
             // any nested owning structs). Reclaim each owned field on scope exit.
             // String, Vec, and closure bindings fall through to their own branches.
@@ -194,6 +213,43 @@ void LLVMCodegen::cleanupVariable(const ScopeVariable& var) {
                             reclaimOwnedStructAt(var.allocaInst, astIt->second.get(), structLLVM);
                             return;
                         }
+                    }
+                }
+            }
+            // A standalone `my<Struct>` binding stores the pointer to its
+            // heap-allocated struct directly. Reclaim any owned fields inside the
+            // object, then free the block and null the slot so a later overwrite
+            // or return-path cleanup cannot double-reclaim it.
+            {
+                auto astIt = valueTypeMap.find(var.allocaInst);
+                const vyb::ast::TypeNode* myPointee = nullptr;
+                if (var.allocaInst && astIt != valueTypeMap.end() && astIt->second) {
+                    myPointee = myTypeArg(astIt->second.get());
+                }
+                if (var.type && var.type->isPointerTy() && myPointee) {
+                    llvm::Type* pointeeTy = codegenType(const_cast<vyb::ast::TypeNode*>(myPointee));
+                    if (auto* poise = llvm::dyn_cast<llvm::StructType>(pointeeTy)) {
+                        VYB_CDBG << "DEBUG: Freeing standalone my<Struct> object for variable: "
+                                  << var.name << std::endl;
+                        llvm::PointerType* rawPtr = llvm::PointerType::get(*context, 0);
+                        llvm::Constant* nullPtr = llvm::ConstantPointerNull::get(rawPtr);
+                        llvm::Value* heapPtr = builder->CreateLoad(var.type, var.allocaInst,
+                                                                  var.name + "_myobj");
+                        llvm::Value* isNull = builder->CreateICmpEQ(heapPtr, nullPtr,
+                                                                    var.name + "_myobj_null");
+                        llvm::BasicBlock* freeBB =
+                            llvm::BasicBlock::Create(*context, var.name + "_myobj_free", currentFunction);
+                        llvm::BasicBlock* contBB =
+                            llvm::BasicBlock::Create(*context, var.name + "_myobj_cont", currentFunction);
+                        builder->CreateCondBr(isNull, contBB, freeBB);
+                        builder->SetInsertPoint(freeBB);
+                        std::set<std::string> visited;
+                        reclaimStructOwnedFieldsAt(heapPtr, myPointee, poise, visited);
+                        builder->CreateCall(getOrCreateFreeFunction(), {heapPtr});
+                        builder->CreateStore(nullPtr, var.allocaInst);
+                        builder->CreateBr(contBB);
+                        builder->SetInsertPoint(contBB);
+                        return;
                     }
                 }
             }
@@ -903,6 +959,96 @@ void LLVMCodegen::releaseMildControlBlock(llvm::Value* controlBlockPtr, const st
     builder->CreateBr(continueBlock);
 
     builder->SetInsertPoint(continueBlock);
+}
+
+// Does a data-carrying built-in enum (Option<T>, Result<T, E>) carry an `our<T>`
+// reference in one of its payloads? Only `our` refs need retain/release
+// bookkeeping inside an enum: `mild` is a weak count (a copy must not re-count),
+// and my/Vec/String payload ownership is handled by their own storage paths.
+bool LLVMCodegen::enumPayloadHoldsOurRef(const vyb::ast::TypeNode* astType) const {
+    auto* tn = dynamic_cast<const vyb::ast::TypeName*>(astType);
+    if (!tn || !tn->identifier) return false;
+    const std::string& base = tn->identifier->name;
+    const bool isOption = (base == "Option" || base == "core::option::Option");
+    const bool isResult = (base == "Result" || base == "core::result::Result");
+    if (!isOption && !isResult) return false;
+    for (const auto& pa : tn->genericArgs) {
+        if (pa && isOurRefType(pa.get())) return true;
+    }
+    return false;
+}
+
+// Retain (retain=true) or release (retain=false) the `our<T>` strong reference
+// carried by an enum binding above. The runtime tag decides which variant (if
+// any) holds the payload, so this emits a per-owned-variant guarded call and
+// otherwise does nothing. `enumPtr` is the address of the enum struct value.
+void LLVMCodegen::reclaimEnumOurPayload(llvm::Value* enumPtr, const vyb::ast::TypeNode* astType,
+                                        bool retain) {
+    if (!enumPtr || !astType || !builder || !currentFunction) return;
+    auto* tn = dynamic_cast<const vyb::ast::TypeName*>(astType);
+    if (!tn || !tn->identifier) return;
+    const std::string& base = tn->identifier->name;
+    const bool isOption = (base == "Option" || base == "core::option::Option");
+    const bool isResult = (base == "Result" || base == "core::result::Result");
+    if (!isOption && !isResult) return;
+
+    const TaggedEnumInfo* info = findTaggedEnum(const_cast<vyb::ast::TypeNode*>(astType));
+    if (!info) return;
+    llvm::StructType* enumTy = info->llvmType;
+    if (!enumTy) return;
+    llvm::Value* enumVal = builder->CreateLoad(enumTy, enumPtr, "reclaim.enum");
+
+    struct OwnedVariant { const char* variant; unsigned argIdx; };
+    std::vector<OwnedVariant> variants;
+    if (isOption) variants.push_back({"Some", 0});
+    else { variants.push_back({"Ok", 0}); variants.push_back({"Err", 1}); }
+
+    for (const auto& v : variants) {
+        if (v.argIdx >= tn->genericArgs.size() || !tn->genericArgs[v.argIdx]) continue;
+        if (!isOurRefType(tn->genericArgs[v.argIdx].get())) continue;
+        auto tagIt = info->variantTags.find(v.variant);
+        if (tagIt == info->variantTags.end()) continue;
+        auto pIt = info->variantPayloadTypes.find(v.variant);
+        if (pIt == info->variantPayloadTypes.end() || !pIt->second) continue;
+
+        llvm::Value* tag = builder->CreateExtractValue(enumVal, 0, "reclaim.enum.tag");
+        llvm::Value* isThis = builder->CreateICmpEQ(
+            tag,
+            llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context),
+                                   static_cast<int64_t>(tagIt->second), true),
+            "reclaim.enum.is");
+        llvm::BasicBlock* doBB = llvm::BasicBlock::Create(*context, "reclaim.enum.owned", currentFunction);
+        llvm::BasicBlock* nextBB = llvm::BasicBlock::Create(*context, "reclaim.enum.next", currentFunction);
+        builder->CreateCondBr(isThis, doBB, nextBB);
+        builder->SetInsertPoint(doBB);
+
+        llvm::Value* cb = extractEnumVariantField(enumVal, pIt->second, 0);
+        if (cb) {
+            if (retain) retainOurControlBlock(cb, "reclaim.enum.retain");
+            else releaseOurControlBlock(cb, "reclaim.enum.release");
+        }
+        builder->CreateBr(nextBB);
+        builder->SetInsertPoint(nextBB);
+    }
+}
+
+// Does an enum-typed initializer hand over its payload's strong ref (a "fresh
+// transfer" that needs no further retain on stow), or is it a borrowed copy that
+// must be retained? `grab()` and function calls returning the enum transfer;
+// `Some(...)` with a fresh `our(...)`/`.grab()` payload also transfers. A bare
+// `Some(owner)` (borrowing an existing `our`) is a copy and must be retained.
+bool LLVMCodegen::enumInitIsOurTransfer(vyb::ast::Expression* init) {
+    if (!init) return false;
+    auto* call = dynamic_cast<vyb::ast::CallExpression*>(init);
+    if (!call) return false;
+    if (auto* id = dynamic_cast<vyb::ast::Identifier*>(call->callee.get())) {
+        if (id->name == "Some" || id->name == "Ok" || id->name == "Err") {
+            if (call->arguments.empty()) return true;  // unit variant (e.g. None-like)
+            return exprIsOurTransfer(call->arguments[0].get());
+        }
+    }
+    // Any other call (grab(), a function returning the enum, ...) transfers.
+    return true;
 }
 
 // Generate a deep copy of a Vec struct value.

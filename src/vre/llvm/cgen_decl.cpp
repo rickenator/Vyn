@@ -425,6 +425,17 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
                       << "' is a struct with owned fields - needs cleanup" << std::endl;
         }
 
+        // A data-carrying enum (Option<our<T>>, Result<..., our<T>>) owns a
+        // strong count on its payload's control block; register it so the count
+        // is released on scope exit.
+        bool enumOurVar = ownership == ast::OwnershipKind::MY && node->typeNode &&
+                          enumPayloadHoldsOurRef(node->typeNode.get());
+        if (enumOurVar) {
+            needsCleanup = true;
+            VYB_CDBG << "DEBUG: Variable '" << node->id->name
+                      << "' is an enum with an our payload - needs cleanup" << std::endl;
+        }
+
         // Register variable for scope-based cleanup
         registerVariable(node->id->name, alloca, initialVal, ownership, varType, needsCleanup);
 
@@ -472,6 +483,16 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
             } else {
                 VYB_CDBG << "DEBUG: our<T> variable '" << node->id->name << "' took over a fresh control block" << std::endl;
             }
+        }
+
+        // An enum binding with an `our<T>` payload owns a strong count that scope
+        // exit will release. A fresh transfer (grab(), a function returning the
+        // enum, or Some(our(...))) already supplied that ref; a borrowed copy
+        // (Some(owner)) must retain so the later release stays balanced.
+        if (enumOurVar && !enumInitIsOurTransfer(node->init.get())) {
+            reclaimEnumOurPayload(alloca, node->typeNode.get(), /*retain=*/true);
+            VYB_CDBG << "DEBUG: enum-with-our variable '" << node->id->name
+                      << "' retained a shared payload control block" << std::endl;
         }
 
         // Create debug information for the variable
