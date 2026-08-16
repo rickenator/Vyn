@@ -1277,16 +1277,17 @@ llvm::Function* LLVMCodegen::generateClosureEnvDtor(
 }
 
 // Build the per-layout destructor for an async-task environment that holds
-// inline `String` param fields (`{ i64 refcount; ptr cap_dtor; param0; ... }`).
+// inline owned param fields (`{ i64 refcount; ptr cap_dtor; param0; ... }`).
 // The runtime calls it once the last env reference is dropped (the cap_dtor slot
-// at header offset 8): each String field's buffer reference is released, then the
-// heap block is freed. The worker and launcher hold their own references, so this
-// must only drop the env's retained copies. Returns null when there is nothing to
-// reclaim.
+// at header offset 8): each String field's buffer reference is released, and each
+// Vec field's buffer is reclaimed (its String elements released when it is a
+// `Vec<String>`), then the heap block is freed. The worker and launcher hold
+// their own references, so this only drops the env's retained copies. Returns
+// null when there is nothing to reclaim.
 llvm::Function* LLVMCodegen::generateAsyncEnvDtor(
         llvm::StructType* envTy, const std::string& tag,
-        const std::vector<size_t>& stringFieldIx) {
-    if (!envTy || stringFieldIx.empty()) return nullptr;
+        const std::vector<AsyncEnvField>& fields) {
+    if (!envTy || fields.empty()) return nullptr;
 
     llvm::PointerType* rawPtr = llvm::PointerType::get(*context, 0);
     llvm::FunctionType* dtorTy = llvm::FunctionType::get(
@@ -1305,14 +1306,41 @@ llvm::Function* LLVMCodegen::generateAsyncEnvDtor(
 
     llvm::Value* envCast = builder->CreateBitCast(dtor->getArg(0), envTy->getPointerTo(),
                                                   "async.env.dtor.ptr");
-    for (size_t ix : stringFieldIx) {
-        if (ix + 2 >= envTy->getNumElements()) continue;
-        llvm::Type* strTy = envTy->getElementType(ix + 2);
-        if (!isVybStringStructType(strTy)) continue;
-        llvm::Value* fieldPtr = builder->CreateStructGEP(envTy, envCast, ix + 2,
-                                                         "async.env.dtor.str");
-        llvm::Value* strVal = builder->CreateLoad(strTy, fieldPtr, "async.env.dtor.strval");
-        releaseStringValue(strVal);
+    llvm::Constant* nullPtr = llvm::ConstantPointerNull::get(rawPtr);
+    llvm::Constant* zero = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 0);
+    for (const AsyncEnvField& fld : fields) {
+        if (fld.fieldIx >= envTy->getNumElements()) continue;
+        llvm::Value* fieldPtr = builder->CreateStructGEP(envTy, envCast, fld.fieldIx,
+                                                         "async.env.dtor.field");
+        llvm::Type* fty = envTy->getElementType(fld.fieldIx);
+        if (fld.isVec) {
+            if (auto* vt = llvm::dyn_cast<llvm::StructType>(fty)) {
+                if (!isVecStructType(vt)) continue;
+                llvm::Value* vec = builder->CreateLoad(vt, fieldPtr, "async.env.dtor.vec");
+                llvm::Value* data = builder->CreateExtractValue(vec, 0, "async.env.dtor.vec.data");
+                if (fld.vecIsString) {
+                    llvm::Value* sz = builder->CreateExtractValue(vec, 1, "async.env.dtor.vec.size");
+                    releaseStringElements(data, sz);
+                }
+                llvm::Value* isNull = builder->CreateICmpEQ(
+                    data, nullPtr, "async.env.dtor.vec.null");
+                llvm::BasicBlock* freeBB = llvm::BasicBlock::Create(*context, "async.env.dtor.vec.free", currentFunction);
+                llvm::BasicBlock* contBB = llvm::BasicBlock::Create(*context, "async.env.dtor.vec.cont", currentFunction);
+                builder->CreateCondBr(isNull, contBB, freeBB);
+                builder->SetInsertPoint(freeBB);
+                builder->CreateCall(getOrCreateFreeFunction(), {data});
+                builder->CreateBr(contBB);
+                builder->SetInsertPoint(contBB);
+            }
+        } else if (fld.isString) {
+            if (!isVybStringStructType(fty)) continue;
+            llvm::Value* strVal = builder->CreateLoad(fty, fieldPtr, "async.env.dtor.string");
+            releaseStringValue(strVal);
+            llvm::Value* clr = llvm::UndefValue::get(llvm::cast<llvm::StructType>(fty));
+            clr = builder->CreateInsertValue(clr, nullPtr, 0);
+            clr = builder->CreateInsertValue(clr, zero, 1);
+            builder->CreateStore(clr, fieldPtr);
+        }
     }
     builder->CreateCall(getOrCreateFreeFunction(), {dtor->getArg(0)});
     builder->CreateRetVoid();

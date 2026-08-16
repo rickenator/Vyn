@@ -563,11 +563,16 @@ with `pass` for multi-statement case bodies. Needs polishing:
   and released by the env's per-layout dtor on cleanup, so it safely outlives the
   caller's scope while the worker runs on the pool (two-String envs and nested
   `await` of a String param both covered by `test/async/async_string_param.vyb`,
-  valgrind-clean with no leaks). Remaining stages: richer owned params (Vec /
-  struct / `our<T>`) and `await`/multi-step value futures. See
+  valgrind-clean with no leaks). **`Vec<T>` async params done** (Stage 7): a `Vec`
+  argument is deep-copied into the env so the task owns an independent copy, and
+  the env dtor reclaims that storage (releasing `Vec<String>` element references)
+  on cleanup; `Vec<Int>` / `Vec<String>`, nested `await` of a Vec param, and a
+  mixed scalar + String + Vec env are covered by `test/async/async_vec_param.vyb`,
+  valgrind-clean. Remaining stages: richer owned params (struct / `our<T>`) and
+  `await`/multi-step value futures. See
   `test/async/async_event_loop.vyb`, `async_params.vyb`, `async_nested_await.vyb`,
   `async_string.vyb`, `async_void.vyb`, `async_multicore.vyb`,
-  `async_float_bool.vyb`, and `async_string_param.vyb`.
+  `async_float_bool.vyb`, `async_string_param.vyb`, and `async_vec_param.vyb`.
 - [x] **`spawn` for concurrent tasks** — two storylines: the pthread `tasks`
   module (`t = task_spawn(fn() -> Int)`, `task_await`/`task_poll`/`task_free`)
   for real parallel workers, and the cooperative `asyncs` module above for

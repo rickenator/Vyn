@@ -1,0 +1,85 @@
+// Stage-7 real async: owned/rich `Vec<T>` param values passed into an async
+// task. The launcher deep-copies the caller's Vec into the env (independent
+// ownership); the env's per-layout dtor reclaims that copy (releasing String
+// elements for Vec<String>, then freeing the buffer) on task cleanup. The worker
+// deep-copies again for its own independent use.
+// @env: VYB_STDLIB=stdlib
+// @expect: pass
+
+import asyncs::{async_sleep_ms}
+
+async total(nums<Vec<Int>>)<Future<Int>> -> {
+    async_sleep_ms(5)
+    sum<Int> = 0
+    i<Int> = 0
+    while (i < nums.len()) {
+        sum = sum + nums.get(i)
+        i = i + 1
+    }
+    return sum
+}
+
+async first_word(words<Vec<String>>)<Future<String>> -> {
+    async_sleep_ms(5)
+    return words.get(0)
+}
+
+async count_long(words<Vec<String>>)<Future<Int>> -> {
+    async_sleep_ms(5)
+    n<Int> = 0
+    i<Int> = 0
+    while (i < words.len()) {
+        if (words.get(i).len() > 3) { n = n + 1 }
+        i = i + 1
+    }
+    return n
+}
+
+
+// Nested await: the Vec copy stays valid across awaiting a child task.
+async nested_vec(nums<Vec<Int>>)<Future<Int>> -> {
+    async_sleep_ms(5)
+    inner<Int> = await total(nums)      // sum = 45
+    return inner + nums.len()           // 45 + 3
+}
+
+// Mixed env: scalar + String (retained) + Vec<String> (copied) in one task.
+async mixed(n<Int>, tag<String>, words<Vec<String>>)<Future<Int>> -> {
+    async_sleep_ms(5)
+    c<Int> = await count_long(words)    // 1 (only "elephant" > 3 chars)
+    return n + tag.len() + c
+}
+
+
+main()<Int> -> {
+    nums<Vec<Int>> = Vec()
+    nums.push(10)
+    nums.push(20)
+    nums.push(15)
+    f1<Future<Int>> = total(nums)
+    s<Int> = await f1
+    if (s != 45) { return 1 }
+
+    words<Vec<String>> = Vec()
+    words.push("cat")
+    words.push("elephant")
+    words.push("dog")
+    f2<Future<String>> = first_word(words)
+    w<String> = await f2
+    if (w != "cat") { return 2 }
+
+    f3<Future<Int>> = count_long(words)
+    c<Int> = await f3
+    if (c != 1) { return 3 }        // only "elephant" has more than 3 chars
+
+    nv<Future<Int>> = nested_vec(nums)
+    nvres<Int> = await nv
+    if (nvres != 48) { return 4 }
+
+    mx<Future<Int>> = mixed(100, "hey", words)
+    mxres<Int> = await mx
+    if (mxres != 104) { return 5 }
+
+    println("ok")
+    return 0
+}

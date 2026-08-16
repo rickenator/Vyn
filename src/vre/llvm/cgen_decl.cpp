@@ -22,6 +22,8 @@ using namespace vyb;
 // Forward declaration: helper used by the routing branch before its definition.
 enum class AsyncResultKind { None, Int, String, Void, Float, Bool };
 static AsyncResultKind asyncFutureResultKind(vyb::ast::FunctionDeclaration* node);
+static bool asyncParamIsVec(const vyb::ast::TypeNode* tn);
+static const vyb::ast::TypeNode* asyncParamVecElement(const vyb::ast::TypeNode* tn);
 
 // --- Declarations ---
 
@@ -554,7 +556,7 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
             if (!p.typeNode) { paramsEnvSafe = false; break; }
             llvm::Type* pt = codegenType(p.typeNode.get());
             if (!pt || !(pt->isIntegerTy() || pt->isFloatTy() || pt->isDoubleTy() ||
-                         isVybStringStructType(pt))) {
+                         isVybStringStructType(pt) || asyncParamIsVec(p.typeNode.get()))) {
                 paramsEnvSafe = false; break;
             }
         }
@@ -1594,6 +1596,25 @@ cloneParams(const std::vector<vyb::ast::FunctionParameter>& src) {
     return out;
 }
 
+// True when the AST type names a Vec<T> (either the `Vec<...>` node form or a
+// `TypeName` whose base identifier is `Vec`).
+static bool asyncParamIsVec(const vyb::ast::TypeNode* tn) {
+    if (!tn) return false;
+    if (dynamic_cast<const vyb::ast::VecType*>(tn)) return true;
+    if (auto* nn = dynamic_cast<const vyb::ast::TypeName*>(tn))
+        return nn->identifier && nn->identifier->name == "Vec";
+    return false;
+}
+
+// The `T` inside a `Vec<T>` parameter's type node, or null.
+static const vyb::ast::TypeNode* asyncParamVecElement(const vyb::ast::TypeNode* tn) {
+    if (!tn) return nullptr;
+    if (auto* vt = dynamic_cast<const vyb::ast::VecType*>(tn)) return vt->elementType.get();
+    if (auto* nn = dynamic_cast<const vyb::ast::TypeName*>(tn))
+        if (!nn->genericArgs.empty()) return nn->genericArgs[0].get();
+    return nullptr;
+}
+
 void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
     const std::string base = node->id->name;
     const std::string workerName = base + "$__async_body";
@@ -1642,12 +1663,27 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
     const size_t n = paramTypes.size();
     llvm::Value* nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(int8PtrType));
 
-    // Param indices whose LLVM type is a Vyb String. A String param is snapshotted
-    // into the env as an inline {ptr,len} value whose buffer the env retains (+1),
-    // balanced by the env's per-layout dtor releasing it on task cleanup.
-    std::vector<size_t> stringParamIx;
-    for (size_t i = 0; i < n; ++i)
-        if (paramTypes[i] && isVybStringStructType(paramTypes[i])) stringParamIx.push_back(i);
+    // Owned param fields snapshotted into the env (String / Vec<T>). A String is
+    // stored inline with the buffer retained (+1); a Vec is deep-copied so the env
+    // owns an independent copy. The env's per-layout dtor releases each one on
+    // task cleanup. `vecElemType` (indexed by param) feeds the deep copy.
+    std::vector<AsyncEnvField> ownedFields;
+    std::vector<bool> vecParam(n, false);
+    std::vector<llvm::Type*> vecElemType(n, nullptr);
+    for (size_t i = 0; i < n; ++i) {
+        const vyb::ast::TypeNode* ptn = node->params[i].typeNode.get();
+        if (paramTypes[i] && isVybStringStructType(paramTypes[i])) {
+            AsyncEnvField f; f.fieldIx = i + 2; f.isString = true; f.isVec = false; f.vecIsString = false;
+            ownedFields.push_back(f);
+        } else if (ptn && asyncParamIsVec(ptn)) {
+            AsyncEnvField f; f.fieldIx = i + 2; f.isString = false; f.isVec = true;
+            f.vecIsString = isVecOfStringTypeNode(ptn);
+            ownedFields.push_back(f);
+            vecParam[i] = true;
+            if (const vyb::ast::TypeNode* en = asyncParamVecElement(ptn))
+                vecElemType[i] = codegenType(const_cast<vyb::ast::TypeNode*>(en));
+        }
+    }
 
     // 2) Async-worker environment: a heap block `{ i64 refcount; ptr cap_dtor;
     //    param0; param1; ... }` snapshotted by the launcher and passed to the
@@ -1730,8 +1766,8 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
     llvm::Value* rcPtr = b.CreateStructGEP(envTy, envPtr, 0, "async.env.rc");
     b.CreateStore(llvm::ConstantInt::get(int64Type, 1), rcPtr);
     llvm::Value* dtorPtr = b.CreateStructGEP(envTy, envPtr, 1, "async.env.dtor");
-    if (!stringParamIx.empty()) {
-        llvm::Function* envDtor = generateAsyncEnvDtor(envTy, base, stringParamIx);
+    if (!ownedFields.empty()) {
+        llvm::Function* envDtor = generateAsyncEnvDtor(envTy, base, ownedFields);
         b.CreateStore(envDtor
                           ? llvm::ConstantExpr::getBitCast(envDtor, int8PtrType)
                           : static_cast<llvm::Value*>(nullPtr),
@@ -1739,15 +1775,27 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
     } else {
         b.CreateStore(nullPtr, dtorPtr);
     }
+    // Point the member builder at the launcher so the shared retain/deep-copy
+    // helpers (which emit through it) go into this block, then restore.
+    std::unique_ptr<llvm::IRBuilder<>> savedBuilder = std::move(builder);
+    builder = std::make_unique<llvm::IRBuilder<>>(lbb);
     for (size_t i = 0; i < n; ++i) {
-        llvm::Value* fp = b.CreateStructGEP(envTy, envPtr, i + 2, "async.env.sp" + std::to_string(i));
+        llvm::Value* fp = builder->CreateStructGEP(envTy, envPtr, i + 2, "async.env.sp" + std::to_string(i));
         llvm::Value* av = launcher->getArg(i);
         if (paramTypes[i] && isVybStringStructType(paramTypes[i])) {
-            llvm::Value* data = b.CreateExtractValue(av, 0, "async.env.str.data");
-            b.CreateCall(getOrCreateVybStringRetainFunction(), {data}, "async.env.str.retain");
+            llvm::Value* data = builder->CreateExtractValue(av, 0, "async.env.str.data");
+            builder->CreateCall(getOrCreateVybStringRetainFunction(), {data}, "async.env.str.retain");
+        } else if (vecParam[i] && vecElemType[i] && paramTypes[i]) {
+            llvm::Value* copy = generateVecDeepCopy(av, vecElemType[i], paramTypes[i]);
+            av = copy ? copy : av;
         }
-        b.CreateStore(av, fp);
+        builder->CreateStore(av, fp);
     }
+    // The deep copy may have advanced the insert point into a clone block; snap
+    // the local builder to wherever the member builder ended before restoring.
+    llvm::BasicBlock* contBlock = builder->GetInsertBlock();
+    builder = std::move(savedBuilder);
+    b.SetInsertPoint(contBlock);
 
     llvm::Function* spawn = module->getFunction("__vyb_async_spawn");
     if (!spawn) {
