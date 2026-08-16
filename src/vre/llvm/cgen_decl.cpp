@@ -220,6 +220,7 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
             node->id->name
         );
         namedValues[node->id->name] = globalVar;
+        globalValues_[node->id->name] = globalVar;
         m_currentLLVMValue = globalVar;
         // Propagate type info for struct/class variables
         if (node->typeNode) {

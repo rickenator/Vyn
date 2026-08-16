@@ -4807,6 +4807,25 @@ void LLVMCodegen::visit(ast::Identifier* node) {
         return;
     }
 
+    // Module-level global variable. Function bodies start from an isolated
+    // namedValues, so look up globals here; read loads the value (unless this
+    // is an assignment target, which needs the address).
+    auto globalIt = globalValues_.find(node->name);
+    if (globalIt != globalValues_.end()) {
+        llvm::GlobalVariable* globalVar = globalIt->second;
+        if (!m_isLHSOfAssignment) {
+            llvm::Value* loaded = builder->CreateLoad(globalVar->getValueType(), globalVar, node->name);
+            auto typeIt = valueTypeMap.find(globalVar);
+            if (typeIt != valueTypeMap.end()) {
+                valueTypeMap[loaded] = typeIt->second;
+            }
+            m_currentLLVMValue = loaded;
+            return;
+        }
+        m_currentLLVMValue = globalVar;
+        return;
+    }
+
     // Check if it's a global function
     llvm::Function* func = module->getFunction(node->name);
     if (func) {

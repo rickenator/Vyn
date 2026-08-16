@@ -129,6 +129,10 @@ private:
 
     // Global and type information
     std::map<std::string, llvm::Value*> namedValues;
+    // Module-level global variables, kept visible to generated function bodies
+    // even though each function starts codegen from an isolated namedValues
+    // (functions swap the module scope out and back in on entry/exit).
+    std::map<std::string, llvm::GlobalVariable*> globalValues_;
     // For mutable captures, maps the captured variable name to the address of
     // the *outer* variable's alloca, so writes inside a lambda can propagate
     // back to the enclosing scope. Populated only while generating a lambda.
