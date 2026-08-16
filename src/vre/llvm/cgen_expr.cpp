@@ -7526,19 +7526,38 @@ void LLVMCodegen::visit(ast::AwaitExpression* node) {
         return;
     }
 
-    // Check if we're in an async context
-    if (!currentAsyncState.isAsync) {
-        logError(node->loc, "await can only be used in async functions");
-        m_currentLLVMValue = nullptr;
-        return;
-    }
-
     // Evaluate the expression being awaited (should be a Future<T>)
     node->expr->accept(*this);
     llvm::Value* futureValue = m_currentLLVMValue;
 
     if (!futureValue) {
         logError(node->loc, "Failed to evaluate await expression");
+        return;
+    }
+
+    // Stage-1 real async: if the operand is a four-field Future struct
+    // ({T* result, i32 state, i64 task_id, i8* runtime_data}), await it on the
+    // cooperative event loop. The single __vyb_async_await intrinsic both drives
+    // the loop from the main thread and suspends from inside a fiber, so this
+    // works both in `main` and in other tasks.
+    if (futureValue->getType()->isStructTy()) {
+        llvm::StructType* st = llvm::dyn_cast<llvm::StructType>(futureValue->getType());
+        if (st && st->getNumElements() == 4 && st->getElementType(2)->isIntegerTy(64)) {
+            llvm::Function* awaitFn = module->getFunction("__vyb_async_await");
+            if (!awaitFn) {
+                llvm::FunctionType* at = llvm::FunctionType::get(int64Type, {int64Type}, false);
+                awaitFn = llvm::Function::Create(at, llvm::Function::ExternalLinkage, "__vyb_async_await", module.get());
+            }
+            llvm::Value* taskId = builder->CreateExtractValue(futureValue, 2, "future.task");
+            m_currentLLVMValue = builder->CreateCall(awaitFn, {taskId}, "await.result");
+            return;
+        }
+    }
+
+    // Check if we're in an async context
+    if (!currentAsyncState.isAsync) {
+        logError(node->loc, "await can only be used in async functions");
+        m_currentLLVMValue = nullptr;
         return;
     }
 

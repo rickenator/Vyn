@@ -535,7 +535,16 @@ private:
     llvm::Function* getOrCreateScheduleTaskFunction();
     llvm::Function* getOrCreateAwaitTaskFunction();
     llvm::Function* getOrCreateCreateFutureFunction();
+    /// Cache of Future<T> struct types keyed by their result type so that all
+    /// references to a given Future<T> (async fn return, explicit variable type,
+    /// launcher) share one canonical LLVM struct type instead of distinct ones.
+    std::map<llvm::Type*, llvm::StructType*> futureStructCache;
     llvm::StructType* createFutureStructType(llvm::Type* resultType);
+    /// Stage-1 real async: a zero-argument `async fn()<Future<Int>>` runs its
+    /// body as a task on the cooperative event loop. Splits the declaration into
+    /// a public launcher (`fn` returns a Future, spawning the task) and a hidden
+    /// worker (`<fn>$__async_body` is a plain `fn() -> Int`) that runs the body.
+    void codegenAsyncZeroArgTask(vyb::ast::FunctionDeclaration* node);
 
     // Ensure all core intrinsic functions are declared
     void ensureCoreIntrinsicFunctions();

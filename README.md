@@ -444,8 +444,12 @@ count<Int> = get_csv().split(",").len()                   // number of fields
 ### ✅ **Async Programming & Debugging**
 
 Vyb parses and compiles `async` functions returning `Future<T>` and the `await`
-expression. On the current runtime, `await` resolves its future synchronously.
-The syntax and type plumbing below are stable and tested:
+expression. Stage 1 wires this to the stdlib's cooperative event loop: a
+zero-argument `async fn()<Future<Int>>` starts as an event-loop fiber when
+called, and `await` drives the loop from `main` (or suspends a fiber when used
+inside a task). The future is returned by value as a real struct; the syntax and
+type plumbing below are stable and tested. Non-`Int` and parameterized async
+futures still use the legacy eager path (a follow-on stage).
 
 #### Async Function Syntax
 ```vyb
@@ -457,7 +461,7 @@ async compute_value()<Future<Int>> -> {
 
 // Async function that awaits another async function
 async process_data()<Future<String>> -> {
-    value<Int> = await compute_value()  // awaits the future's value (synchronously today)
+    value<Int> = await compute_value()  // runs the pending task to completion
     println("Got value")
     return "processed"
 }
@@ -485,8 +489,12 @@ main()<Void> -> {
 **Implementation Status:**
 - ✅ Async function parsing and validation
 - ✅ Future<T> type checking
-- ✅ await expression support
+- ✅ await expression support (from `main` and inside tasks)
+- ✅ Real event-loop execution for zero-arg `Future<Int>` async tasks
 - ✅ LLVM codegen with debug metadata
+
+**See also:** `test/async/async_event_loop.vyb` (two concurrent sleeps finish in
+~20ms, proving real concurrency) and the `asyncs` stdlib module section.
 
 ### ✅ **Concurrency Modules (stdlib)**
 

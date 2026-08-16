@@ -19,6 +19,9 @@
 using namespace vyb;
 // using namespace llvm; // Uncomment if desired for brevity
 
+// Forward declaration: helper used by the routing branch before its definition.
+static bool isZeroArgAsyncFutureInt(vyb::ast::FunctionDeclaration* node);
+
 // --- Declarations ---
 
 // A module-level global can be statically (compile-time) initialized when its
@@ -535,6 +538,15 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
 
         // Don't codegen generic functions directly - they'll be monomorphized on call
         m_currentLLVMValue = nullptr;
+        return;
+    }
+
+    // Stage-1 real async: a zero-argument `async fn()<Future<Int>>` runs its body
+    // as a task on the cooperative event loop (worker + launcher split). Top-level
+    // non-failable declarations only; everything else keeps the legacy eager path.
+    if (node->isAsync && !m_currentImplTypeNode && node->params.empty() &&
+        !node->canFail && isZeroArgAsyncFutureInt(node)) {
+        codegenAsyncZeroArgTask(node);
         return;
     }
 
@@ -1530,4 +1542,92 @@ void LLVMCodegen::createFunctionForwardDeclaration(vyb::ast::FunctionDeclaration
     llvm::Function* func = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, node->id->name, module.get());
 
     VYB_CDBG << "DEBUG: Successfully created forward declaration for function: " << node->id->name << std::endl;
+}
+
+static bool isZeroArgAsyncFutureInt(vyb::ast::FunctionDeclaration* node) {
+    if (!node || !node->isAsync || !node->params.empty() || !node->returnTypeNode)
+        return false;
+    auto isIntName = [](vyb::ast::TypeNode* tn) -> bool {
+        if (auto* name = dynamic_cast<vyb::ast::TypeName*>(tn))
+            if (name->identifier) return name->identifier->name == "Int";
+        return false;
+    };
+    if (auto* ft = dynamic_cast<vyb::ast::FutureType*>(node->returnTypeNode.get()))
+        return ft->resultType && isIntName(ft->resultType.get());
+    if (auto* tn = dynamic_cast<vyb::ast::TypeName*>(node->returnTypeNode.get()))
+        if (tn->identifier && tn->identifier->name == "Future" && tn->genericArgs.size() == 1)
+            return isIntName(tn->genericArgs[0].get());
+    return false;
+}
+
+void LLVMCodegen::codegenAsyncZeroArgTask(vyb::ast::FunctionDeclaration* node) {
+    const std::string base = node->id->name;
+    const std::string workerName = base + "$__async_body";
+
+    // The worker is a plain `fn() -> Int` that runs the original body through the
+    // normal codegen path (parameter scope, trap/epilogue handling). The event-loop
+    // trampoline invokes it as `i64(i8*)` with a null environment, so the zero-arg
+    // worker simply ignores that (unused) argument - ABI-safe on the SysV targets.
+    auto workerRet = std::make_unique<ast::TypeName>(node->loc,
+        std::make_unique<ast::Identifier>(node->loc, "Int"));
+    std::vector<ast::FunctionParameter> noParams;
+    std::unique_ptr<ast::FunctionDeclaration> workerNode = std::make_unique<ast::FunctionDeclaration>(
+        node->loc,
+        std::make_unique<ast::Identifier>(node->loc, workerName),
+        std::move(noParams),
+        std::move(node->body),
+        /*isAsync=*/false,
+        std::move(workerRet));
+    workerNode->canFail = node->canFail;
+    workerNode->needsErrorReturn = node->needsErrorReturn;
+    visit(workerNode.get());
+
+    llvm::Function* worker = module->getFunction(workerName);
+    if (!worker) {
+        logError(node->loc, "internal error: failed to generate async worker '" + workerName + "'");
+        m_currentLLVMValue = nullptr;
+        return;
+    }
+
+    // The launcher is a plain `fn() -> Future<Int>` ({Int*, i32 state, i64 task,
+    // i8* runtime_data}). It enqueues the worker on the cooperative event loop and
+    // hands back a Future whose `task_id` field lets `await` either drive the loop
+    // (main thread) or suspend the current fiber on completion.
+    llvm::StructType* futureTy = createFutureStructType(int64Type);
+    llvm::FunctionType* launcherTy = llvm::FunctionType::get(futureTy, {}, false);
+    // A plain forward declaration for the base name is usually created by the
+    // forward-declaration pass (so earlier callers reference it). Reuse it when the
+    // signature matches; otherwise drop it and re-create with our intended type.
+    llvm::Function* launcher = module->getFunction(base);
+    if (launcher) {
+        if (launcher->getFunctionType() != launcherTy) {
+            launcher->eraseFromParent();
+            launcher = nullptr;
+        }
+    }
+    if (!launcher) {
+        launcher = llvm::Function::Create(launcherTy, llvm::Function::ExternalLinkage, base, module.get());
+    }
+    launcher->addFnAttr(llvm::Attribute::NoInline);
+
+    llvm::BasicBlock* entry = llvm::BasicBlock::Create(*context, "entry", launcher);
+    llvm::IRBuilder<> b(entry);
+
+    llvm::Function* spawn = module->getFunction("__vyb_async_spawn");
+    if (!spawn) {
+        llvm::FunctionType* spawnTy = llvm::FunctionType::get(int64Type, {int8PtrType, int8PtrType}, false);
+        spawn = llvm::Function::Create(spawnTy, llvm::Function::ExternalLinkage, "__vyb_async_spawn", module.get());
+    }
+    llvm::Value* nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(int8PtrType));
+    llvm::Value* nullResult = llvm::ConstantPointerNull::get(llvm::PointerType::get(int64Type, 0));
+    llvm::Value* taskId = b.CreateCall(spawn, {nullPtr, b.CreateBitCast(worker, int8PtrType)}, "async.task");
+
+    llvm::Value* fut = llvm::UndefValue::get(futureTy);
+    fut = b.CreateInsertValue(fut, nullResult, {0});
+    fut = b.CreateInsertValue(fut, llvm::ConstantInt::get(int32Type, 0), {1});
+    fut = b.CreateInsertValue(fut, taskId, {2});
+    fut = b.CreateInsertValue(fut, nullPtr, {3});
+    b.CreateRet(fut);
+
+    m_currentLLVMValue = launcher;
 }

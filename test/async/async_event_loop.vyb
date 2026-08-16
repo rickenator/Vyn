@@ -1,0 +1,31 @@
+// Stage-1 real async: zero-argument `async fn()<Future<Int>>` bodies run as
+// tasks on the cooperative event loop. Calling the async fn spawns a fiber
+// immediately; `await` drives the loop from main (or suspends from a fiber).
+// Two concurrent 20ms sleeps must complete in ~20ms total, not ~40ms serial.
+// @env: VYB_STDLIB=stdlib
+// @expect: pass
+
+import asyncs::{async_sleep_ms}
+import time::{time_mono_millis}
+
+async a()<Future<Int>> -> {
+    async_sleep_ms(20)
+    return 10
+}
+
+async b()<Future<Int>> -> {
+    async_sleep_ms(20)
+    return 32
+}
+
+main()<Int> -> {
+    t0<Int> = time_mono_millis()
+    fa<Future<Int>> = a()
+    fb<Future<Int>> = b()
+    va<Int> = await fa
+    vb<Int> = await fb
+    if (va != 10 || vb != 32) { return 1 }
+    if (time_mono_millis() - t0 >= 40) { return 2 }
+    println("ok")
+    return 0
+}

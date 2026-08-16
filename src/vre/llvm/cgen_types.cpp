@@ -621,9 +621,20 @@ llvm::Type* LLVMCodegen::codegenType(vyb::ast::TypeNode* typeNode) {
 
             // Future type (async)
             } else if (typeNameStr == "Future") {
-                // For now, treat generic Future type as opaque pointer
-                // The real Future<T> types will be handled by the FutureType visitor
-                llvmType = llvm::PointerType::getUnqual(int8Type);
+                // `Future<T>` resolves to the same canonical struct the async fn
+                // return and launcher use ({T* result, i32 state, i64 task_id,
+                // i8* runtime_data}), keyed by the resolved result type.
+                if (typeNameNode->genericArgs.size() == 1) {
+                    llvm::Type* resultTy = codegenType(typeNameNode->genericArgs[0].get());
+                    if (resultTy) {
+                        llvmType = createFutureStructType(resultTy);
+                    } else {
+                        llvm::Type* elem = llvm::Type::getInt64Ty(*context);
+                        llvmType = createFutureStructType(elem);
+                    }
+                } else {
+                    llvmType = llvm::PointerType::getUnqual(int8Type);
+                }
             } else {
                 // Check type alias map first
                 auto typeAliasIt = typeAliasMap.find(typeNameStr);

@@ -78,6 +78,11 @@ llvm::Function* LLVMCodegen::getOrCreateCreateFutureFunction() {
 }
 
 llvm::StructType* LLVMCodegen::createFutureStructType(llvm::Type* resultType) {
+    // Reuse one canonical struct type per result type so that the async function's
+    // return, explicit `Future<T>` variable annotations, and the launcher all agree.
+    auto cached = futureStructCache.find(resultType);
+    if (cached != futureStructCache.end()) return cached->second;
+
     // Future<T> struct: { T* result, i32 state, i64 task_id, i8* runtime_data }
     std::vector<llvm::Type*> futureFields = {
         llvm::PointerType::get(resultType, 0),           // T* result
@@ -87,7 +92,9 @@ llvm::StructType* LLVMCodegen::createFutureStructType(llvm::Type* resultType) {
     };
 
     m_asyncResultType = resultType;  // Track result type for opaque pointer handling
-    return llvm::StructType::create(*context, futureFields, "Future");
+    llvm::StructType* st = llvm::StructType::create(*context, futureFields, "Future");
+    futureStructCache[resultType] = st;
+    return st;
 }
 
 } // namespace vyb

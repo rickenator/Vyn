@@ -699,9 +699,15 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                         generatePopFrameCall();
                         builder->CreateRetVoid();
                     } else {
-                        // Non-main function: emit null return to avoid crash
-                        
-                        builder->CreateRet(llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)));
+                        // Non-main function: emit a dummy return to avoid crash. A
+                        // struct return (e.g. a Future<T>) takes an undef struct;
+                        // other types keep the legacy null pointer.
+                        llvm::Type* retTy = currentFunction->getReturnType();
+                        if (retTy->isStructTy()) {
+                            builder->CreateRet(llvm::UndefValue::get(retTy));
+                        } else {
+                            builder->CreateRet(llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)));
+                        }
                     }
                 } else {
                     builder->CreateRet(returnValue);
@@ -741,8 +747,15 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
             successStruct = builder->CreateInsertValue(successStruct, nullErrorPtr, {1}, "result.error");
             builder->CreateRet(successStruct);
         } else if (currentAsyncState.isAsync) {
-            // Async function with no return value: return null Future pointer
-            builder->CreateRet(llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)));
+            // Async function with no return value: build an empty Future<T>. A
+            // struct-typed Future needs an undef struct (null pointer no longer
+            // matches once Future<T> is a real {T*,i32,i64,i8*} struct).
+            llvm::Type* retTy = currentFunction->getReturnType();
+            if (retTy->isStructTy()) {
+                builder->CreateRet(llvm::UndefValue::get(retTy));
+            } else {
+                builder->CreateRet(llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)));
+            }
         } else {
             builder->CreateRetVoid();
         }
