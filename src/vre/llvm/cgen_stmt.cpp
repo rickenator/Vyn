@@ -512,7 +512,16 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                 // this frame's scope cleanup (which still releases the source binding
                 // normally) and stays alive for the caller to take over.
                 bool fnReturn = currentFunctionAST && isFnTypeNode(currentFunctionAST->returnTypeNode.get());
-                if (fnReturn && returnValue && isClosureStructType(returnValue->getType())) {
+                // Lambda bodies compile with currentFunctionAST pointing at the
+                // enclosing declaration (or null), so the AST check alone misses a
+                // lambda that returns a closure. Fall back on the LLVM function's
+                // return type: when it is itself a closure struct, the value being
+                // returned is being handed to the caller and must be retained.
+                bool lambdaFnReturn = currentFunction &&
+                    returnValue && isClosureStructType(returnValue->getType()) &&
+                    isClosureStructType(currentFunction->getReturnType());
+                if (returnValue && isClosureStructType(returnValue->getType()) &&
+                    (fnReturn || lambdaFnReturn)) {
                     retainClosureValue(returnValue);
                 }
 

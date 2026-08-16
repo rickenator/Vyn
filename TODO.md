@@ -263,13 +263,16 @@ is the working audit for what needs to be implemented next.
   frees it when the env's last reference drops. This keeps the captured value
   alive (and its owned fields reclaimed) even when a closure outlives the
   enclosing scope or is returned (`test/lambda/test_closure_owned_struct_capture.vyb`).
-- [ ] **Returned-closure env release** — A closure handed back across a `return`
-  is stored in the caller without retaining its env, so the env refcount never
-  returns to 0 and the env block is never freed (`__vyb_closure_release` is only
-  reached at -1). Affects any returned capturing closure (even a plain-`Int`
-  capture), leaking the env (24B) and, for a transferred `my<Struct>`, its
-  payload too. Values are correct (no dangling reads) since the transfer-own fix;
-  the release side still needs balancing.
+- [x] **Returned-closure env release** — A closure handed back across a `return`
+  now retains its env so the caller's later release returns it to 0 and frees the
+  block. The retain was only emitted for top-level `fn` declarations (via the
+  AST), not for lambda bodies (`currentFunctionAST` points at the enclosing
+  declaration); the return retain now also triggers when the LLVM function's
+  return type is itself a closure struct, and the expression-body lambda return
+  path retains as well. Eliminates the env (24B) leak for any returned capturing
+  closure and lets a transferred `my<Struct>` payload's cap_dtor run
+  (verified clean under valgrind for block-body, expression-body, and `my`-owned
+  returns).
 
 ---
 

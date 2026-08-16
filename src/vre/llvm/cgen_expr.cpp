@@ -6071,6 +6071,12 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
                 generatePopFrameCall();
                 builder->CreateRetVoid();
             } else if (bodyValue && bodyValue->getType() == returnType) {
+                // An expression-body lambda returning a closure hands an owned
+                // reference to the caller (the caller stores it without retain),
+                // so retain the env here to survive this frame's cleanup.
+                if (isClosureStructType(bodyValue->getType())) {
+                    retainClosureValue(bodyValue);
+                }
                 generatePopFrameCall();
                 builder->CreateRet(bodyValue);
             } else if (bodyValue && returnType->isStructTy() &&
