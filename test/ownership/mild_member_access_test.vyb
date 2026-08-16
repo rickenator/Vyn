@@ -1,0 +1,55 @@
+// @test: member access through mild<T> reads the wrapped struct's fields
+// @description: Field access (`m.value`, `b.watch.value`) on a mild<T> resolves to
+//   the inner T and reads through the shared control block's payload, mirroring
+//   `our<T>`. Previously `mild<T>` was missing from the ownership-wrapper unwrap
+//   list, so any field read reported "Unknown struct type: mild".
+// @category: ownership, mild, structs
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+struct Node {
+    value<Int>
+}
+
+struct Box {
+    watch<mild<Node>>
+}
+
+// Read a mild<T> field that arrived as a function parameter. Parameters store a
+// pointer-typed control block, so this exercises the non-alloca pointee path.
+read_field(w<mild<Node>>)<Int> -> {
+    if (w.value != 42) { return 10 }
+    return 0
+}
+
+main()<Int> -> {
+    shared<our<Node>> = our(Node { value: 42 })
+    m<mild<Node>> = soft(shared)
+
+    // Plain-variable mild field read.
+    if (m.value != 42) { return 1 }
+
+    // Assign the mild read to a local.
+    v<Int> = m.value
+    if (v != 42) { return 2 }
+
+    // mild<T> field read through a function parameter (control-block pointer).
+    if (read_field(m) != 0) { return 3 }
+
+    // mild<T> stored as a struct field via a struct literal, then read back.
+    b<Box> = Box { watch: soft(shared) }
+    if (b.watch.value != 42) { return 4 }
+
+    // A second, independent mild sees the same payload.
+    shared2<our<Node>> = our(Node { value: 7 })
+    b2<Box> = Box { watch: soft(shared2) }
+    if (b2.watch.value != 7) { return 5 }
+
+    // mild<T> members still expose their own intrinsic methods.
+    if (m.released()) { return 6 }
+
+    println("ok")
+    return 0
+}

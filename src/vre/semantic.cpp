@@ -4067,7 +4067,7 @@ void SemanticAnalyzer::visit(ast::MemberExpression* node) {
 
         // Check if this is an ownership keyword (their, my, view, our, etc.)
         if (baseStructName == "their" || baseStructName == "my" || baseStructName == "view" ||
-            baseStructName == "our" || baseStructName == "borrow") {
+            baseStructName == "our" || baseStructName == "borrow" || baseStructName == "mild") {
             // Extract the inner type: their<Counter> -> Counter
             size_t closeAnglePos = structTypeName.find('>');
             if (closeAnglePos != std::string::npos && closeAnglePos > anglePos + 1) {

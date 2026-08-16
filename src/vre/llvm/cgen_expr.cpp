@@ -5581,10 +5581,13 @@ void LLVMCodegen::visit(ast::MemberExpression* node) {
                             if (auto typeNameNode = dynamic_cast<ast::TypeName*>(astType)) {
                                 std::string typeNameStr = typeNameNode->identifier ? typeNameNode->identifier->name : "";
                                 if ((typeNameStr == "my" || typeNameStr == "our" || typeNameStr == "their" ||
-                                     typeNameStr == "borrow" || typeNameStr == "view") &&
+                                     typeNameStr == "borrow" || typeNameStr == "view" || typeNameStr == "mild") &&
                                     !typeNameNode->genericArgs.empty() && typeNameNode->genericArgs[0]) {
                                     underlyingType = typeNameNode->genericArgs[0].get();
-                                    objectIsOurControlBlock = typeNameStr == "our";
+                                    // `our<T>` and `mild<T>` are both stored as a shared
+                                    // control-block pointer, so field access on either goes
+                                    // through the block's payload pointer.
+                                    objectIsOurControlBlock = typeNameStr == "our" || typeNameStr == "mild";
                                     VYB_CDBG << "DEBUG: Extracted underlying type from ownership type: " << typeNameStr
                                               << " -> " << underlyingType->toString() << std::endl;
                                 }
