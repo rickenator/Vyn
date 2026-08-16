@@ -34,16 +34,12 @@ static void collectReturnTransferNames(ast::Expression* expr,
             collectReturnTransferNames(arm.second.get(), out);
         }
     }
-    // A struct literal consumes its field values as whole values, so a bare
-    // owning variable read as an initializer (e.g. a Vec handed into a struct
-    // field) must flow out with the returned object rather than being freed by
-    // its local cleanup on the way out.
-    if (auto* obj = dynamic_cast<ast::ObjectLiteral*>(expr)) {
-        for (const auto& prop : obj->properties) {
-            collectReturnTransferNames(prop.value.get(), out);
-        }
-        return;
-    }
+    // A struct literal does NOT consume its field values: since the ObjectLiteral
+    // store copies/retains owned fields (deep-copying a Vec, retaining a String /
+    // our / mild reference, deep-copying a nested owned struct), the returned
+    // object owns data independent of the source binding. So a bare owning
+    // variable used as an initializer stays owned by its local binding and is
+    // cleaned up normally here, rather than flowing out with the returned object.
     if (auto* ctor = dynamic_cast<ast::ConstructionExpression*>(expr)) {
         for (const auto& arg : ctor->arguments) {
             collectReturnTransferNames(arg.get(), out);

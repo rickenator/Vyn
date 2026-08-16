@@ -39,6 +39,62 @@ static bool isUnsignedIntName(const std::string& n) {
 }
 
 // --- Literal Codegen ---
+// Field-type probe helpers for struct-literal ownership transfer (below). A
+// struct field initialized from a *shared* read (a bare owning variable or a
+// member borrow) needs assignment-like copy semantics — deep-copy a Vec, retain a
+// String / our / mild reference, deep-copy a nested owned struct — so both the
+// source and the struct field own independent data. Fresh constructors and
+// transfer producers (`Vec()`, `our(...)`, `soft(x)`, String-returning calls)
+// hand over a single owned reference and are stored as-is.
+static bool objFieldTypeIsString(const vyb::ast::TypeNode* tn) {
+    if (!tn) return false;
+    if (auto* nn = dynamic_cast<const vyb::ast::TypeName*>(tn)) {
+        if (nn->identifier) {
+            const std::string& n = nn->identifier->name;
+            if (n == "String" || n == "string") return true;
+        }
+    }
+    return false;
+}
+
+static bool objFieldTypeIsVec(const vyb::ast::TypeNode* tn) {
+    if (!tn) return false;
+    if (dynamic_cast<const vyb::ast::VecType*>(tn)) return true;
+    if (auto* nn = dynamic_cast<const vyb::ast::TypeName*>(tn))
+        return nn->identifier && nn->identifier->name == "Vec";
+    return false;
+}
+
+// The element type node of a `Vec<T>` field, or null.
+static const vyb::ast::TypeNode* objFieldVecElement(const vyb::ast::TypeNode* tn) {
+    if (!tn) return nullptr;
+    if (auto* vt = dynamic_cast<const vyb::ast::VecType*>(tn)) return vt->elementType.get();
+    if (auto* nn = dynamic_cast<const vyb::ast::TypeName*>(tn)) {
+        if (nn->identifier && nn->identifier->name == "Vec" && !nn->genericArgs.empty())
+            return nn->genericArgs[0].get();
+    }
+    return nullptr;
+}
+
+// A fresh `mild<T>` owns a single weak reference that can be handed to a storage
+// location without an extra retain. This covers the `soft(...)` operation (which
+// already bumped the weak count) and any call returning `mild<T>`. A bare
+// identifier or field read of an existing `mild` value is shared and must be
+// retained on stow (mirrors exprIsOurTransfer).
+static bool isMildTransferExpr(ast::Expression* expr) {
+    if (!expr) return false;
+    auto* call = dynamic_cast<ast::CallExpression*>(expr);
+    if (!call) return false;
+    if (auto* id = dynamic_cast<ast::Identifier*>(call->callee.get())) {
+        if (id->name == "soft") return true;
+    }
+    if (call->type) {
+        std::string t = call->type->toString();
+        if (t.rfind("mild<", 0) == 0) return true;
+    }
+    return false;
+}
+
 void LLVMCodegen::visit(vyb::ast::IntegerLiteral *node) {
     if (node->isUnsigned) {
         m_currentLLVMValue = llvm::ConstantInt::get(*context, llvm::APInt(64, node->uvalue, false));
@@ -161,6 +217,11 @@ void LLVMCodegen::visit(vyb::ast::ObjectLiteral* node) {
         }
     }
 
+    // Resolve the concrete field types (in layout order) so the store below can
+    // apply assignment-like ownership semantics to owned fields.
+    std::vector<vyb::ast::TypeNodePtr> objectFieldTypes;
+    collectStructConcreteFieldTypes(node->typePath.get(), objectFieldTypes);
+
     // Store each field
     for (size_t i = 0; i < node->properties.size(); ++i) {
         const auto& prop = node->properties[i];
@@ -203,6 +264,46 @@ void LLVMCodegen::visit(vyb::ast::ObjectLiteral* node) {
             if (!fieldValue) {
                 m_currentLLVMValue = nullptr;
                 return;
+            }
+        }
+
+        // Owned-field ownership transfer: a field initialized from a *shared*
+        // read (a bare owning variable or a member borrow) must copy/retain so
+        // the struct owns data independent of the source — otherwise both the
+        // source binding and the field would release the same buffer on scope
+        // exit (a double free). Fresh constructor / transfer producers hand over
+        // a single owned reference and are stored as-is. Only fields whose value
+        // came from a bare identifier or a member read borrow; explicit
+        // constructors, calls, and literals already own their payload.
+        bool borrowedRead =
+            dynamic_cast<ast::Identifier*>(prop.value.get()) != nullptr ||
+            dynamic_cast<ast::MemberExpression*>(prop.value.get()) != nullptr;
+        const vyb::ast::TypeNode* fieldAst =
+            (fieldIndex >= 0 && (size_t)fieldIndex < objectFieldTypes.size())
+                ? objectFieldTypes[(size_t)fieldIndex].get() : nullptr;
+        if (fieldValue && borrowedRead && fieldAst) {
+            if (objFieldTypeIsVec(fieldAst) && isVecStructType(fieldValue->getType())) {
+                // Deep-copy a borrowed Vec so the field owns an independent buffer.
+                if (const vyb::ast::TypeNode* elem = objFieldVecElement(fieldAst)) {
+                    if (llvm::Type* elemT = codegenType(const_cast<vyb::ast::TypeNode*>(elem))) {
+                        if (auto* vecTy = llvm::dyn_cast<llvm::StructType>(fieldValue->getType())) {
+                            llvm::Value* copy = generateVecDeepCopy(fieldValue, elemT, vecTy);
+                            fieldValue = copy ? copy : fieldValue;
+                        }
+                    }
+                }
+            } else if (objFieldTypeIsString(fieldAst) && isVybStringStructType(fieldValue->getType())) {
+                if (!exprIsStringTransfer(prop.value.get())) retainStringValue(fieldValue);
+            } else if (fieldValue->getType()->isPointerTy() && isOurRefType(fieldAst)) {
+                if (!exprIsOurTransfer(prop.value.get())) retainOurControlBlock(fieldValue, "objlit.our");
+            } else if (fieldValue->getType()->isPointerTy() && isMildRefType(fieldAst)) {
+                if (!isMildTransferExpr(prop.value.get())) retainMildControlBlock(fieldValue, "objlit.mild");
+            } else if (fieldValue->getType()->isStructTy() && isKnownStructTypeNode(fieldAst)) {
+                // A borrowed nested struct (whose owned fields are deep-copied).
+                if (auto* nestTy = llvm::dyn_cast<llvm::StructType>(fieldValue->getType())) {
+                    llvm::Value* copy = generateStructDeepCopy(fieldValue, fieldAst, nestTy);
+                    fieldValue = copy ? copy : fieldValue;
+                }
             }
         }
         builder->CreateStore(fieldValue, fieldPtr);

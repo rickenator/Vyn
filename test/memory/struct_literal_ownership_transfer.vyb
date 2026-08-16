@@ -1,0 +1,76 @@
+// Regression: a struct literal whose owned fields are initialized from SHARED
+// reads (bare owning variables) must copy/retain so the struct owns data
+// independent of the source binding. Previously the field store was a plain
+// shallow copy (no deep copy for a Vec, no retain for a String / our / mild), so
+// both the source binding and the struct field released the same heap buffer on
+// scope exit -> a double free. The fix applies assignment-like copy semantics on
+// the field store; the source stays valid and reusable afterwards, and a struct
+// literal returned from a function stays leak-free.
+// @env: VYB_STDLIB=stdlib
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+
+struct Node {
+    value<Int>
+}
+
+struct Box {
+    items<Vec<Int>>,
+    name<String>,
+    owner<our<Node>>,
+    watch<mild<Node>>
+}
+
+makev()<Vec<Int>> -> {
+    v<Vec<Int>> = Vec()
+    v.push(10)
+    v.push(20)
+    return v
+}
+
+// Return-path: a struct literal built from shared variables flows out; the
+// returned object owns independent copies and the sources are cleaned up here.
+build_box()<Box> -> {
+    sc<Vec<Int>> = makev()
+    nm<String> = "hello"
+    nd<our<Node>> = our(Node { value: 3 })
+    b<Box> = Box { items: sc, name: nm, owner: nd, watch: soft(nd) }
+
+    // Reusing a source after building proves the struct owns its own copy.
+    sc.push(30)
+    return b
+}
+
+main()<Int> -> {
+    // Plain-assignment path (previously double-freed at scope exit).
+    sc2<Vec<Int>> = makev()
+    nm2<String> = "hello"
+    nd2<our<Node>> = our(Node { value: 5 })
+    b2<Box> = Box { items: sc2, name: nm2, owner: nd2, watch: soft(nd2) }
+
+    // Sources still own/valid and reusable.
+    if (sc2.len() != 2) { return 1 }
+    if (sc2.get(0) != 10) { return 2 }
+    sc2.push(40)
+    if (sc2.len() != 3) { return 3 }
+    if (nm2.len() != 5) { return 4 }
+    if (nd2.value != 5) { return 5 }
+
+    // Struct owns independent copies (its Vec unaffected by the push above).
+    if (b2.items.len() != 2) { return 6 }
+    if (b2.items.get(1) != 20) { return 7 }
+    if (b2.name != "hello") { return 8 }
+    if (b2.owner.value != 5) { return 9 }
+
+    // Return-path struct literal.
+    rb<Box> = build_box()
+    if (rb.items.len() != 2) { return 10 }
+    if (rb.items.get(0) != 10) { return 11 }
+    if (rb.items.get(1) != 20) { return 12 }
+    if (rb.name != "hello") { return 13 }
+    if (rb.owner.value != 3) { return 14 }
+
+    println("ok")
+    return 0
+}
