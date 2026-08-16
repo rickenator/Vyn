@@ -20,14 +20,18 @@
 #     http_read_rest(conn, max) -> String         everything until the peer closes
 #     http_get(host, port, path) -> String        full GET round-trip -> body
 #
-# Concurrency note: Vyb is single-threaded and the sockets are blocking, so a
-# server can only answer a client once the kernel has queued its connect (the
-# accept returns immediately then). Building the server path against a client
-# that connects then waits works in one process (interleaved send/recv);
-# http_get does its whole connect/send/recv itself and so blocks until a
-# *living* peer responds - in a single process you exercise it against an
-# external/local server. A real event loop / async accept loop remains on the
-# roadmap.
+#   Concurrent server:
+#     http_serve(port, backlog) -> Int   listen + accept on a worker thread
+#                                        (one detached thread per connection)
+#
+# Threading: `http_serve` runs the accept loop on a worker thread and serves
+# each accepted connection on its own detached thread, so the server keeps
+# accepting while connections are handled concurrently. It uses the
+# `vyb_thread_*` pthread intrinsics directly (the same primitives the `threads`
+# module wraps), keeping `http` self-contained like it is for sockets. The
+# sockets remain blocking, so an accept only returns once the kernel has queued
+# a connect. `http_get` blocks until a *living* peer responds, so exercise it
+# against an external/local server.
 
 # Underlying socket domain/type/protocol constants (same values as `network`'s
 # `Socket`). Kept local with a distinct name so importing both `network` and
@@ -164,4 +168,48 @@ http_get(host<String>, port<Int>, path<String>)<String> -> {
     body<String> = http_read_rest(fd, 65536)
     vyb_net_close(fd)
     return body
+}
+
+# Serve one accepted connection on a fresh detached thread: read its head,
+# extract the request path, and answer with a well-formed response before
+# closing. Runs concurrently with the rest of the server.
+share(all)
+http_serve_conn(conn<Int>)<Int> -> {
+    h<Int> = vyb_thread_spawn(|| -> {
+        head<String> = http_read_head(conn, 65536)
+        path<String> = http_request_path(head)
+        pk<String> = http_response(200, "hi from vyb: " + path)
+        http_send_all(conn, pk)
+        http_close(conn)
+        return 0
+    })
+    if (h >= 0) { vyb_thread_detach(h) }
+    return 0
+}
+
+# Start a threaded HTTP/1.1 server: bind+listen on `port` (0 = ephemeral; read
+# it back via http_local_port), spawn a detached worker running the accept
+# loop, and return the listening descriptor (or -1 on failure). Each connection
+# is served concurrently on its own detached thread via http_serve_conn. The
+# server stops once the fd is closed and the pending accept returns -1 (the
+# accept worker then reaps itself); pre-1.0, prefer closing when no connect is
+# in flight.
+share(all)
+http_serve(port<Int>, backlog<Int>)<Int> -> {
+    fd<Int> = http_listen(port, backlog)
+    if (fd < 0) { return -1 }
+    thr<Int> = vyb_thread_spawn(|| -> {
+        while (true) {
+            c<Int> = http_accept(fd)
+            if (c < 0) { return 0 }
+            http_serve_conn(c)
+        }
+        return 0
+    })
+    if (thr < 0) {
+        http_close(fd)
+        return -1
+    }
+    vyb_thread_detach(thr)
+    return fd
 }

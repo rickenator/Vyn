@@ -589,7 +589,9 @@ typedef struct {
     void* fn;      // the lambda's function pointer
     void* env;     // the lambda's capture environment (hidden first param)
     int64_t result;
-    int used;
+    int used;      // slot in use (set on spawn, cleared on join/reap)
+    int done;      // thread body has returned (so detaching a finished thread reaps it)
+    int detach;    // detached: the slot self-reaps when the body returns
 } vyb_thread;
 static vyb_thread vyb_threads[VYB_THREAD_CAP];
 static pthread_mutex_t vyb_threads_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -597,6 +599,10 @@ static pthread_mutex_t vyb_threads_lock = PTHREAD_MUTEX_INITIALIZER;
 static void* vyb_thread_trampoline(void* arg) {
     vyb_thread* t = (vyb_thread*)arg;
     t->result = ((int64_t (*)(void*))t->fn)(t->env);
+    pthread_mutex_lock(&vyb_threads_lock);
+    if (t->detach) t->used = 0;  // fire-and-forget: reclaim the slot now
+    t->done = 1;
+    pthread_mutex_unlock(&vyb_threads_lock);
     return NULL;
 }
 
@@ -619,6 +625,8 @@ VYB_WEAK int64_t __vyb_thread_spawn(void* env, void* fn) {
     t->env = env;
     t->result = 0;
     t->used = 1;
+    t->done = 0;
+    t->detach = 0;
     int rc = pthread_create(&t->tid, NULL, vyb_thread_trampoline, t);
     if (rc != 0) {
         t->used = 0;
@@ -640,6 +648,10 @@ VYB_WEAK int64_t __vyb_thread_join(int64_t handle) {
         pthread_mutex_unlock(&vyb_threads_lock);
         return -2;
     }
+    if (t->detach) {
+        pthread_mutex_unlock(&vyb_threads_lock);
+        return -2;  // detached threads are not joinable
+    }
     pthread_mutex_unlock(&vyb_threads_lock);
 
     pthread_join(t->tid, NULL); // blocks until the thread completes
@@ -649,6 +661,29 @@ VYB_WEAK int64_t __vyb_thread_join(int64_t handle) {
     t->used = 0; // reclaim the slot
     pthread_mutex_unlock(&vyb_threads_lock);
     return result;
+}
+
+// Detach a spawned thread: it becomes non-joinable and its slot is reclaimed
+// automatically when its body returns (a reaper), so fire-and-forget threads
+// (e.g. per-request HTTP handlers) can't exhaust the fixed table. Returns 0 on
+// success, -2 for an unknown/already-reaped handle, or -1 if already detached.
+VYB_WEAK int64_t __vyb_thread_detach(int64_t handle) {
+    int idx = (int)handle - 1;
+    if (idx < 0 || idx >= VYB_THREAD_CAP) return -2;
+    pthread_mutex_lock(&vyb_threads_lock);
+    vyb_thread* t = &vyb_threads[idx];
+    if (!t->used) {
+        pthread_mutex_unlock(&vyb_threads_lock);
+        return -2;
+    }
+    if (t->detach) {
+        pthread_mutex_unlock(&vyb_threads_lock);
+        return -1;  // already detached
+    }
+    t->detach = 1;
+    if (t->done) t->used = 0;  // already finished: reclaim immediately
+    pthread_mutex_unlock(&vyb_threads_lock);
+    return 0;
 }
 
 // A heap-allocated pthread mutex; the Vyb handle is the mutex pointer itself.

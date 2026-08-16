@@ -1,10 +1,11 @@
 // @test: threads stdlib module - pthread spawn/join + mutex
 // @description: the `threads` module wraps POSIX threads: thread_spawn runs a
 //   `fn() -> Int` closure on a fresh pthread, thread_join blocks for its result,
-//   and a Mutex provides mutual exclusion. Verified: per-thread results, overlap
-//   (three ~60ms sleeps joined in reverse finish in well under the 180ms a
-//   sequential run would take), invalid/already-joined handles, and a full
-//   mutex lock/unlock/free round-trip.
+//   thread_detach makes a fire-and-forget thread self-reap its slot, and a Mutex
+//   provides mutual exclusion. Verified: per-thread results, overlap (three
+//   ~60ms sleeps joined in reverse finish in well under the 180ms a sequential
+//   run would take), invalid/already-joined/detached handles, slot reclamation
+//   past the 256 cap, and a full mutex lock/unlock/free round-trip.
 // @category: modules, threads, concurrency, stdlib
 // @expect: pass
 // @expect-output: ok
@@ -26,6 +27,30 @@ main()<Int> -> {
     d<Int> = thread_spawn(|| -> 7)
     if (thread_join(d) != 7) { return 3 }
     if (thread_join(d) != -2) { return 4 }
+
+    // Detach semantics: a detached thread is not joinable (-2), detaching it
+    // again reports -1, and a handle already reclaimed by join detaches to -2.
+    e<Int> = thread_spawn(|| -> 0)
+    if (e < 0) { return 12 }
+    if (thread_detach(e) != 0) { return 13 }
+    if (thread_join(e) != -2) { return 14 }
+    if (thread_detach(e) != -1) { return 15 }
+    f<Int> = thread_spawn(|| -> 0)
+    if (f < 0) { return 16 }
+    if (thread_join(f) != 0) { return 17 }
+    if (thread_detach(f) != -2) { return 18 }
+    if (thread_detach(9999) != -2) { return 19 }
+
+    // Reaper: spawn+detach more than the 256-slot cap sequentially; the
+    // detached reaper frees each slot as its body returns, so no spawn fails.
+    k<Int> = 0
+    while (k < 260) {
+        g<Int> = thread_spawn(|| -> 0)
+        if (g < 0) { return 20 }  // table would be full without the reaper
+        thread_detach(g)
+        sleep_ms(1)
+        k = k + 1
+    }
 
     // True parallelism: three ~60ms threads joined in reverse finish in far less
     // than the 180ms a sequential run would take (>=30ms overlap => concurrent).

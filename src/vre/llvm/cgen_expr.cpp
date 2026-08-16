@@ -2805,8 +2805,9 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             }
             m_currentLLVMValue = builder->CreateCall(f, {envPtr, fnPtr}, "thr.handle");
             return;
-        } else if (fname == "vyb_thread_join" || fname == "vyb_mutex_lock" ||
-                   fname == "vyb_mutex_unlock" || fname == "vyb_mutex_free") {
+        } else if (fname == "vyb_thread_join" || fname == "vyb_thread_detach" ||
+                   fname == "vyb_mutex_lock" || fname == "vyb_mutex_unlock" ||
+                   fname == "vyb_mutex_free") {
             if (node->arguments.size() != 1) {
                 logError(node->loc, fname + " expects 1 argument");
                 m_currentLLVMValue = nullptr; return;
@@ -2818,6 +2819,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             if (a->getType()->isIntegerTy() && !a->getType()->isIntegerTy(64))
                 a = builder->CreateSExt(a, int64Type, "thr.toi64");
             std::string rtName = (fname == "vyb_thread_join") ? "__vyb_thread_join"
+                              : (fname == "vyb_thread_detach") ? "__vyb_thread_detach"
                               : (fname == "vyb_mutex_lock") ? "__vyb_mutex_lock"
                               : (fname == "vyb_mutex_unlock") ? "__vyb_mutex_unlock" : "__vyb_mutex_free";
             llvm::Function* f = module->getFunction(rtName);

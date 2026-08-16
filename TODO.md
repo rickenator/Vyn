@@ -382,18 +382,28 @@ with only the pthread ABI beneath). The thread-safety foundation above came firs
 - [x] **`threads` stdlib module (pthread-backed, MVP)** — `import threads`:
   `thread_spawn(fn() -> Int)` starts a closure on a fresh pthread and returns a
   handle, `thread_join(handle)` blocks for its result (reclaiming the slot; -2
-  for an unknown/already-joined handle), and a `Mutex` (`mutex_new`/`lock`/
+  for an unknown/already-joined handle), `thread_detach(handle)` marks a
+  fire-and-forget thread that self-reaps its slot when its body returns (a
+  reaper, so detached workers can't exhaust the 256-slot table; detaching again
+  → -1, joining a detached/already-reaped handle → -2), and a `Mutex`
+  (`mutex_new`/`lock`/
   `unlock`/`free`). A thread-entry trampoline unpacks a Vyb `fn` (a uniform
   closure `{ptr env, ptr fn}`) and runs it as `int64_t (*)(void*)` with its
   hidden environment param. MVP is `fn() -> Int` (no captures → nothing to move
-  across the join boundary); the shiny-level follow-ons are `thread_detach`
-  (needs a reaper so a detached thread frees its own slot), capturing closures,
-  `CondVar`, and `AtomicInt` (`load`/`store`/`add`/`cas`) — plus wiring
-  `http_accept` onto a worker thread (below). Verified with overlapping sleeps,
-  per-thread results, and a mutex round-trip
+  across the join boundary); the remaining shiny-level follow-ons are capturing
+  closures, `CondVar`, and `AtomicInt` (`load`/`store`/`add`/`cas`).
+  Verified with overlapping sleeps, per-thread results, per-handle detach
+  semantics, slot reclamation past the 256 cap, and a mutex round-trip
   (`test/modules/test_threads.vyb`).
-- [ ] **Wire `http_accept` onto a worker thread** — the payoff: a server can
-  accept one connection while earlier connections are handled concurrently.
+- [x] **Threaded HTTP server (`http_serve`)** — the payoff of a worker-thread
+  accept loop: `http_serve(port, backlog)` binds+listens, starts a detached
+  worker running the accept loop, and serves each accepted connection
+  concurrently on its own detached thread (`http_serve_conn` reads the head,
+  extracts the path, and answers). The server keeps accepting while earlier
+  connections are handled; closing the listen fd stops the loop. Uses the
+  `vyb_thread_*` pthread intrinsics directly (the same primitives `threads`
+  wraps, the `http` module stays self-contained like it is for sockets).
+  Covered by `test/modules/test_http_threaded.vyb`.
 
 ### 5. Sum Types / Enums (MEDIUM PRIORITY)
 Vyb needs a way to express sum types. Essential for `Option<T>`, `Result<T,E>`, and

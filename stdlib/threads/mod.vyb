@@ -30,6 +30,16 @@ thread_join(handle<Int>)<Int> -> {
     return vyb_thread_join(handle)
 }
 
+# Detach `handle`: the thread becomes non-joinable and its slot is reclaimed
+# automatically once its body returns (a reaper), so fire-and-forget workers
+# (e.g. per-connection HTTP handlers) can't exhaust the fixed thread table.
+# Returns 0 on success, -2 for an unknown/already-reaped handle, -1 if it was
+# already detached.
+share(all)
+thread_detach(handle<Int>)<Int> -> {
+    return vyb_thread_detach(handle)
+}
+
 # A fresh, unlocked mutex handle (0 on allocation/init failure).
 share(all)
 mutex_new()<Int> -> {

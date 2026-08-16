@@ -3,6 +3,28 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-15: **Threaded HTTP + `thread_detach`**. Two coordinated pieces that
+  finally make the `http` module concurrent. (1) `threads` gains
+  `thread_detach(handle)`: marks a spawned thread fire-and-forget so its slot
+  self-reaps the moment its body returns (a reaper — detached workers can't
+  exhaust the 256-slot table); `thread_detach` on the reaped is -1, `thread_join`
+  on a detached/already-reaped handle is -2, and the runtime registers
+  `__vyb_thread_detach` with the JIT (`src/main.cpp` `runtimeSymbols`). (2)
+  `http` gains `http_serve(port, backlog) -> Int`: bind+listen, then a detached
+  worker-thread accept loop; each accepted connection is served concurrently on
+  its own detached thread (`http_serve_conn`: read head -> path -> response),
+  so the server keeps accepting while earlier connections are handled. Closing
+  the listen fd stops the loop. `http` calls the `vyb_thread_*` intrinsics
+  directly (as it does `__vyb_net_*`), because a stdlib module cannot yet
+  `import` a sibling module — the module resolver doesn't re-expose an imported
+  module's symbols into an importing module's scope (noted as an open gap). Both
+  wire through the existing `fn() -> Int` closure machinery, which already
+  handles captures (e.g. the listen fd / connection fd captured by the worker
+  closures). Tests: `thread_detach` semantics + slot-reclamation past the cap in
+  `test/modules/test_threads.vyb`; two concurrent clients served in
+  `test/modules/test_http_threaded.vyb`; full suite passes.
+  Commit: `feat(threads/http): thread_detach reaper + threaded http_serve`.
+
 - 2026-08-15: **`vyb bindgen` emits constant enums for C integer constants**.
   Object-like integer `#define` macros (e.g. `MAX_BUFSIZE 4096`) and C enums
   whose variants all carry explicit `= <int>` values (e.g. `MODE_EXACT = 1`)

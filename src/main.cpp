@@ -128,6 +128,7 @@ extern "C" {
     // arrives as { env, fn }; spawn runs it on a pthread.
     int64_t __vyb_thread_spawn(void* env, void* fn);
     int64_t __vyb_thread_join(int64_t handle);
+    int64_t __vyb_thread_detach(int64_t handle);
     int64_t __vyb_mutex_new(void);
     int64_t __vyb_mutex_lock(int64_t mh);
     int64_t __vyb_mutex_unlock(int64_t mh);
@@ -828,6 +829,10 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_closure_retain), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_closure_release")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_closure_release), llvm::JITSymbolFlags::Exported);
+
+        // The detached-thread reaper (always export — the `threads` module may emit it).
+        runtimeSymbols[mangle("__vyb_thread_detach")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_thread_detach), llvm::JITSymbolFlags::Exported);
 
         // Register toString functions
         if (toStringIntFunc) {
