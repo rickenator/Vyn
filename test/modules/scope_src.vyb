@@ -9,3 +9,6 @@ share(all)
 src_value()<Int> -> {
     return 11
 }
+
+share(all)
+SRC_CONST<Int> = 101

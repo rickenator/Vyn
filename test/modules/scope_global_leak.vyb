@@ -1,0 +1,13 @@
+// @test: Top-level global init cannot name a private dependency
+// @description: a module-body (top-level) initializer in the entry file must
+//               not resolve a transitive dependency of a plain import
+// @category: modules
+// @expect: fail
+// @expect-error: Undefined identifier: SRC_CONST
+// @tags: modules, visibility
+
+import scope_lib
+
+x<Int> = SRC_CONST
+
+main()<Int> -> { return x }
