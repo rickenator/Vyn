@@ -444,16 +444,16 @@ count<Int> = get_csv().split(",").len()                   // number of fields
 ### ✅ **Async Programming & Debugging**
 
 Vyb parses and compiles `async` functions returning `Future<T>` and the `await`
-expression. Phases 1-3 wire this to the stdlib's cooperative event loop: an
-`async fn(params...)<Future<T>>` (T = `Int`, `String`, or `Void`) starts as an
-event-loop fiber when called — its scalar arguments are snapshotted into a closing
-environment, and a `String` result travels back as a heap slot that `await` hands
-to the consumer as an owned transfer. `await` drives the loop from `main` or
-suspends a fiber when used inside a task (so a worker can `await` a child task),
-including as a bare statement (`await f`) for `Future<Void>`. The future is
-returned by value as a real struct; the syntax and type plumbing below are stable
-and tested. `Float`/`Bool` futures and owned/rich parameter types still use the
-legacy eager path (a follow-on stage).
+expression. An `async fn(params...)<Future<T>>` (T = `Int`, `String`, or `Void`)
+starts a task on the stdlib's **multi-threaded executor** when called — its scalar
+arguments are snapshotted into a closing environment, and a `String` result
+travels back as a heap slot that `await` hands to the consumer as an owned
+transfer. `await` parks the caller until the task completes (from `main`) or
+suspends the current fiber (so a worker can `await` a child task), including as a
+bare statement (`await f`) for `Future<Void>`. The future is returned by value as
+a real struct; the syntax and type plumbing below are stable and tested.
+`Float`/`Bool` futures and owned/rich parameter types still use the legacy eager
+path (a follow-on stage).
 
 #### Async Function Syntax
 ```vyb
@@ -495,6 +495,7 @@ main()<Void> -> {
 - ✅ Future<T> type checking
 - ✅ await expression support (from `main` and inside tasks)
 - ✅ Real event-loop execution for `Future<Int>` / `Future<String>` / `Future<Void>`
+- ✅ Multi-threaded executor (a thread pool, one scheduler per CPU worker, fibers pinned to their worker)
 - ✅ Parameterized `Future<Int>` async tasks (scalar args captured in an env)
 - ✅ Nested `await` from inside a task (fiber suspension)
 - ✅ Bare `await f` statement form (drives the loop, no assignment needed)
@@ -503,8 +504,9 @@ main()<Void> -> {
 **See also:** `test/async/async_event_loop.vyb` (two concurrent sleeps finish in
 ~20ms, proving real concurrency), `test/async/async_params.vyb` (parameterized
 concurrency), `test/async/async_nested_await.vyb` (a task that awaits a child),
-`test/async/async_string.vyb` / `async_void.vyb` (non-`Int` futures), and the
-`asyncs` stdlib module section.
+`test/async/async_string.vyb` / `async_void.vyb` (non-`Int` futures),
+`test/async/async_multicore.vyb` (four CPU-bound tasks finish in parallel across
+the pool, ~120ms not ~480ms), and the `asyncs` stdlib module section.
 
 ### ✅ **Concurrency Modules (stdlib)**
 
@@ -522,11 +524,13 @@ pthread runtime (no raw C ABI in user code):
 - **`tasks`** — fire-and-forget workers on a detached pthread: `task_spawn` runs a
   `fn() -> Int`, `task_await` blocks on its result, `task_poll` checks
   non-blockingly, `task_free` reclaims it.
-- **`asyncs`** — a **cooperative event loop** with stackful fibers. Each
-  `async_spawn(work<fn() -> Int>)` runs on its own stack and can suspend
-  *mid-body* with `async_sleep_ms` (a timer, not a thread sleep), `async_yield`
-  (round-robin), or `async_await` (wait on another task) — so concurrent timers
-  complete in ~max rather than ~sum wall time, with no state-machine transform.
+- **`asyncs`** — a **multi-threaded executor**: a pool of worker threads (one
+  scheduler per CPU core) running stackful fibers, each fiber pinned to its
+  worker and load-balanced by round-robin spawn. Tasks suspend *mid-body* with
+  `async_sleep_ms` (a timer, not a thread sleep), `async_yield` (round-robin),
+  or `async_await` (wait on another task) — so concurrent timers complete in
+  ~max rather than ~sum wall time, and CPU-bound tasks run across cores, with no
+  state-machine transform.
 
 ```vyb
 import asyncs

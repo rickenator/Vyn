@@ -1122,34 +1122,55 @@ VYB_WEAK int64_t __vyb_strchan_free(int64_t ch) {
 }
 
 // ============================================================================
-// Cooperative event loop + async tasks (stackful fibers).
+// Cooperative async tasks (stackful fibers) on a multi-threaded thread pool.
 //
-// Each spawned async task gets a private stack (a ucontext fiber). The event
-// loop is a single-threaded executor with a FIFO ready queue and a sorted timer
-// heap. A running fiber can suspend cooperatively without blocking the loop:
-//   __vyb_async_yield()      -> reschedule (round-robin fairness),
-//   __vyb_async_sleep_ms(m)  -> sleep via the timer heap (other tasks proceed),
-//   __vyb_async_await(t)     -> block until task `t` completes, then return it.
-// Because the fibers are stackful, a Vyb function can suspend mid-body simply by
-// calling a suspendable intrinsic -- no compiler state-machine transform needed;
-// the whole Vyb call stack lives on the fiber's stack.
+// Each spawned async task gets a private stack (a ucontext fiber) pinned to a
+// worker thread: once a fiber has run on a worker it must suspend and resume on
+// that same worker (a ucontext is not safe to migrate across OS threads), so
+// every task remembers its home worker and is always re-queued there. A fresh
+// task's context is built lazily by its worker at first run, so no context is
+// ever fabricated on one thread and launched on another.
 //
-// Lifecycle: tasks are valid while the loop is running. When driving finishes
-// (async_run_all returns, or a main-thread await resolves), every spawned task
-// is reclaimed (stacks + structs + closure-env retains), so handles must not be
-// used afterwards. A single-threaded loop; a multi-threaded executor is a later
-// follow-on.
+// A small pool of worker threads (lazily spawned on first use, sized to the
+// CPU count) each run their own scheduler loop: fire due timers, drain their
+// FIFO ready queue, and idle on a condition variable whose timeout is the next
+// pending deadline. Spawn assigns tasks round-robin across the workers to load
+// balance CPU-bound work; `__thread` state keeps each worker's ucontext and
+// current fiber isolated to its OS thread. Mutable scheduler state is guarded
+// by `g_async_lock`; workers signal each other's condition variables when they
+// enqueue work, and the main thread parks on a condition variable while a
+// main-thread await is outstanding.
+//
+// Suspension is cooperative: __vyb_async_yield() reschedules round-robin via
+// the worker's ready queue, __vyb_async_sleep_ms(m) parks on the global timer
+// heap (honoured by whichever worker runs it), and __vyb_async_await(t)
+// registers the caller as a waiter on `t` and suspends until `t` completes.
+// Because the fibers are stackful, a Vyb function can suspend mid-body simply
+// by calling a suspendable intrinsic -- no compiler state-machine transform is
+// needed; the whole Vyb call stack lives on the fiber's stack.
+//
+// Lifecycle: tasks stay valid while loops are running. When every worker is
+// idle with no queued work and no pending timer, __vyb_async_run_all() returns
+// after reclaiming every task (stacks + structs + closure-env retains); handles
+// must not be used afterwards. An atexit hook stops + joins the worker threads
+// and reclaims anything a forgotten run_all left behind.
 #include <ucontext.h>
 #define VYB_ASYNC_STACK_SIZE (1u << 20)   // 1 MiB per fiber
+#define VYB_WORKER_MAX 64
+
+typedef struct vyb_async_task vyb_async_task;
+typedef struct vyb_worker vyb_worker;
 
 typedef struct vyb_async_task {
     ucontext_t ctx;
+    int context_made;          // ctx built by this task's worker (see pinning)
     int64_t (*fn)(void*);
     void* env;
-    int state;               // 0 = READY, 1 = BLOCKED, 2 = DONE
+    int state;                 // 0 = READY, 1 = BLOCKED, 2 = DONE
     int64_t result;
-    int64_t wake_ms;         // abs mono-ms when on the timer heap, else -1
+    int64_t wake_ms;           // abs mono-ms when on the timer heap, else -1
     void* stack;
+    vyb_worker* home;          // worker this fiber is pinned to
     struct vyb_async_task* next_ready;
     struct vyb_async_task* next_timer;
     struct vyb_async_task* next_waiter;   // I am waiting on a task
@@ -1158,25 +1179,47 @@ typedef struct vyb_async_task {
     struct vyb_async_task* next_all;      // lifecycle list
 } vyb_async_task;
 
-static pthread_mutex_t g_async_lock = PTHREAD_MUTEX_INITIALIZER;
-static vyb_async_task* g_ready = NULL;
-static vyb_async_task* g_ready_tail = NULL;
-static vyb_async_task* g_timers = NULL;   // ascending by wake_ms
-static vyb_async_task* g_all = NULL;      // every live task
-static vyb_async_task* g_sched_cur = NULL;// fiber currently running (NULL = scheduler/main)
-static vyb_async_task* g_main_wait = NULL;// task a main-thread await is waiting on
-static ucontext_t g_sched_ctx;
+typedef struct vyb_worker {
+    int id;
+    pthread_t thread;
+    int started;
+    int busy;                  // currently executing a fiber
+    vyb_async_task* ready;     // this worker's FIFO ready queue
+    vyb_async_task* ready_tail;
+    pthread_cond_t cv;         // signaled when work arrives / at shutdown
+    ucontext_t sched_ctx;      // this worker's scheduler context
+} vyb_worker;
 
+static pthread_mutex_t g_async_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t g_main_cv = PTHREAD_COND_INITIALIZER;   // wake a main-thread await
+static pthread_cond_t g_drain_cv = PTHREAD_COND_INITIALIZER;  // wake run_all once quiescent
+static vyb_async_task* g_timers = NULL;       // ascending by wake_ms
+static vyb_async_task* g_all = NULL;          // every live task
+static vyb_async_task* g_main_wait = NULL;    // task a main-thread await is waiting on
+static vyb_worker g_workers[VYB_WORKER_MAX];
+static int g_nworkers = 0;       // worker threads actually spawned
+static int g_spin = 0;           // spawn round-robin cursor
+static int g_nready = 0;         // tasks queued across all workers
+static int g_ntimers = 0;        // timers pending on the heap
+static int g_shutdown = 0;       // set at atexit: stop + join workers
+static __thread vyb_async_task* tls_cur = NULL;   // fiber currently running on this thread
+
+// Enqueue `t` on its home worker's ready queue and wake that worker. Lock held.
 static void async_ready_push(vyb_async_task* t) {
     t->state = 0;
     t->next_ready = NULL;
-    if (g_ready_tail) g_ready_tail->next_ready = t;
-    else g_ready = t;
-    g_ready_tail = t;
+    vyb_worker* w = t->home;
+    if (w->ready_tail) w->ready_tail->next_ready = t;
+    else w->ready = t;
+    w->ready_tail = t;
+    g_nready++;
+    pthread_cond_signal(&w->cv);
 }
 
+// Insert `t` into the ascending timer heap. Lock held.
 static void async_timer_add(vyb_async_task* t) {
     t->next_timer = NULL;
+    g_ntimers++;
     if (!g_timers || t->wake_ms < g_timers->wake_ms) { t->next_timer = g_timers; g_timers = t; return; }
     vyb_async_task* p = g_timers;
     while (p->next_timer && p->next_timer->wake_ms <= t->wake_ms) p = p->next_timer;
@@ -1184,13 +1227,34 @@ static void async_timer_add(vyb_async_task* t) {
     p->next_timer = t;
 }
 
+// Requeue every timer that is due at or before `now`. Lock held.
+static void async_fire_due(int64_t now) {
+    while (g_timers && g_timers->wake_ms <= now) {
+        vyb_async_task* t = g_timers;
+        g_timers = t->next_timer;
+        t->next_timer = NULL;
+        t->wake_ms = -1;
+        g_ntimers--;
+        async_ready_push(t);
+    }
+}
+
+// True when no worker is executing a fiber and no work (ready/timer) remains,
+// i.e. run_all may safely reclaim every task. Lock held.
+static int async_quiescent_locked(void) {
+    if (g_nready != 0 || g_ntimers != 0) return 0;
+    for (int i = 0; i < g_nworkers; i++)
+        if (g_workers[i].busy) return 0;
+    return 1;
+}
+
 static void vyb_async_tramp(void) {
-    vyb_async_task* t = g_sched_cur;      // set by the executor before entering
-    int64_t r = 0;
-    if (t->fn) r = t->fn(t->env);
+    vyb_async_task* t = tls_cur;
+    int64_t r = t->fn ? t->fn(t->env) : 0;
     pthread_mutex_lock(&g_async_lock);
     t->result = r;
     t->state = 2;
+    if (g_main_wait == t) pthread_cond_signal(&g_main_cv);
     vyb_async_task* w = t->waiters;
     t->waiters = NULL;
     while (w) {
@@ -1200,21 +1264,104 @@ static void vyb_async_tramp(void) {
         w = nxt;
     }
     pthread_mutex_unlock(&g_async_lock);
-    swapcontext(&t->ctx, &g_sched_ctx);
+    swapcontext(&t->ctx, &t->home->sched_ctx);
 }
 
-static void async_enter(vyb_async_task* t) {
-    g_sched_cur = t;
-    swapcontext(&g_sched_ctx, &t->ctx);
-    g_sched_cur = NULL;
+// Forward decl (defined after the worker pool helpers below).
+static void* async_worker_main(void* arg);
+
+// Build the fiber context on the worker thread that will run it (portability:
+// a ucontext is only launched on the thread that fabricates it). Returns 0 on
+// success; the worker is free to run the fiber only after this succeeds.
+static int async_make_context(vyb_async_task* t) {
+    if (getcontext(&t->ctx) != 0) return -1;
+    t->ctx.uc_stack.ss_sp = t->stack;
+    t->ctx.uc_stack.ss_size = VYB_ASYNC_STACK_SIZE;
+    t->ctx.uc_link = NULL;
+    makecontext(&t->ctx, (void(*)(void))vyb_async_tramp, 0);
+    t->context_made = 1;
+    return 0;
+}
+
+// Lazily spawn the worker pool (once), sized to the CPU count. Must hold lock.
+static void async_ensure_workers(void) {
+    if (g_nworkers > 0) return;
+    long ncpu = sysconf(_SC_NPROCESSORS_ONLN);
+    int n = (ncpu > 0) ? (int)ncpu : 4;
+    if (n < 1) n = 1;
+    if (n > VYB_WORKER_MAX) n = VYB_WORKER_MAX;
+    for (int i = 0; i < n; i++) {
+        g_workers[i].id = i;
+        pthread_cond_init(&g_workers[i].cv, NULL);
+    }
+    for (int i = 0; i < n; i++) {
+        if (pthread_create(&g_workers[i].thread, NULL, async_worker_main, &g_workers[i]) == 0) {
+            g_workers[i].started = 1;
+            g_nworkers++;
+        }
+    }
+}
+
+// Per-worker scheduler loop. Only this worker touches its own sched_ctx and
+// ready queue, so the fiber-pinning invariant is kept. Exits on shutdown.
+static void* async_worker_main(void* arg) {
+    vyb_worker* w = (vyb_worker*)arg;
+    pthread_mutex_lock(&g_async_lock);
+    for (;;) {
+        async_fire_due(__vyb_time_mono_millis());
+        vyb_async_task* t = w->ready;
+        if (t) {
+            w->ready = t->next_ready;
+            if (!w->ready) w->ready_tail = NULL;
+            g_nready--;
+            w->busy = 1;
+        } else {
+            if (g_shutdown) { pthread_mutex_unlock(&g_async_lock); break; }
+            if (async_quiescent_locked()) pthread_cond_broadcast(&g_drain_cv);
+            if (g_timers) {
+                int64_t diff = g_timers->wake_ms - __vyb_time_mono_millis();
+                if (diff < 1) diff = 1;
+                struct timespec ts;
+                clock_gettime(CLOCK_REALTIME, &ts);
+                ts.tv_sec += diff / 1000;
+                ts.tv_nsec += (long)(diff % 1000) * 1000000L;
+                if (ts.tv_nsec >= 1000000000L) { ts.tv_sec += 1; ts.tv_nsec -= 1000000000L; }
+                pthread_cond_timedwait(&w->cv, &g_async_lock, &ts);
+            } else {
+                pthread_cond_wait(&w->cv, &g_async_lock);
+            }
+            continue;
+        }
+        pthread_mutex_unlock(&g_async_lock);
+
+        if (!t->context_made && async_make_context(t) != 0) {
+            // Extremely unlikely (getcontext failure): leave the task DONE in
+            // g_all so the lifecycle cleanup reclaims its stack/env.
+            pthread_mutex_lock(&g_async_lock);
+            t->result = -1;
+            t->state = 2;
+            pthread_mutex_unlock(&g_async_lock);
+        } else {
+            tls_cur = t;
+            swapcontext(&w->sched_ctx, &t->ctx);
+            tls_cur = NULL;
+        }
+
+        pthread_mutex_lock(&g_async_lock);
+        w->busy = 0;
+    }
+    return NULL;
 }
 
 static void async_cleanup_all(void) {
+    vyb_async_task* t;
     pthread_mutex_lock(&g_async_lock);
-    vyb_async_task* t = g_all; g_all = NULL;
-    g_ready = g_ready_tail = NULL;
+    t = g_all; g_all = NULL;
     g_timers = NULL;
+    g_ntimers = 0;
     g_main_wait = NULL;
+    for (int i = 0; i < g_nworkers; i++) g_workers[i].ready = g_workers[i].ready_tail = NULL;
+    g_nready = 0;
     pthread_mutex_unlock(&g_async_lock);
     while (t) {
         vyb_async_task* nxt = t->next_all;
@@ -1225,50 +1372,10 @@ static void async_cleanup_all(void) {
     }
 }
 
-// Drive the loop until `want_all` (no work left) or the main-thread wait
-// resolves, then reclaim every task. Returns -1 if deadlocked (nothing to run
-// but a task remains blocked), else 0.
-static int async_drive(int want_all) {
-    for (;;) {
-        pthread_mutex_lock(&g_async_lock);
-        int64_t now = __vyb_time_mono_millis();
-        while (g_timers && g_timers->wake_ms <= now) {
-            vyb_async_task* t = g_timers;
-            g_timers = t->next_timer;
-            t->next_timer = NULL;
-            t->wake_ms = -1;
-            async_ready_push(t);
-        }
-        int stop = 0, deadlock = 0;
-        if (g_main_wait && g_main_wait->state == 2) stop = 1;
-        else if (!g_ready && !g_timers) {
-            if (want_all && g_all) { /* a task may be blocked on another blocked task */ }
-            stop = 1;
-            if (g_all) deadlock = 1;   // leftover blocked work
-        }
-        if (stop) { pthread_mutex_unlock(&g_async_lock); break; }
-        vyb_async_task* to_run = g_ready;
-        if (to_run) {
-            g_ready = to_run->next_ready;
-            if (!g_ready) g_ready_tail = NULL;
-        }
-        pthread_mutex_unlock(&g_async_lock);
-        if (to_run) { async_enter(to_run); }
-        else {
-            pthread_mutex_lock(&g_async_lock);
-            int64_t wait = g_timers ? (g_timers->wake_ms - __vyb_time_mono_millis()) : 0;
-            pthread_mutex_unlock(&g_async_lock);
-            if (wait < 1) wait = 1;
-            __vyb_time_sleep_ms(wait);
-        }
-    }
-    if (want_all) async_cleanup_all();
-    return 0;
-}
-
-// Spawn a `fn() -> Int` closure as an async task on the event loop. Returns a
-// task handle (>= 1) or 0 on failure. The task is queued until the loop is
-// driven (async_run_all / a main-thread async_await / from within another task).
+// Spawn a `fn() -> Int` closure as an async task on the thread pool. Returns a
+// task handle (>= 1) or 0 on failure. The task is queued to a worker until the
+// pool is driven (async_run_all / a main-thread async_await / from within
+// another task).
 VYB_WEAK int64_t __vyb_async_spawn(void* env, void* fn) {
     if (!fn) return 0;
     vyb_async_task* t = (vyb_async_task*)calloc(1, sizeof(vyb_async_task));
@@ -1278,15 +1385,15 @@ VYB_WEAK int64_t __vyb_async_spawn(void* env, void* fn) {
     t->fn = (int64_t (*)(void*))fn;
     t->wake_ms = -1;
     if (env) { __vyb_closure_retain(env); t->env = env; }
-    if (getcontext(&t->ctx) != 0) {
-        if (env) __vyb_closure_release(env);
-        free(t->stack); free(t); return 0;
-    }
-    t->ctx.uc_stack.ss_sp = t->stack;
-    t->ctx.uc_stack.ss_size = VYB_ASYNC_STACK_SIZE;
-    t->ctx.uc_link = NULL;
-    makecontext(&t->ctx, (void(*)(void))vyb_async_tramp, 0);
     pthread_mutex_lock(&g_async_lock);
+    async_ensure_workers();
+    if (g_nworkers < 1) {
+        if (t->env) __vyb_closure_release(t->env);
+        free(t->stack); free(t);
+        pthread_mutex_unlock(&g_async_lock);
+        return 0;
+    }
+    t->home = &g_workers[g_spin++ % g_nworkers];
     async_ready_push(t);
     t->next_all = g_all;
     g_all = t;
@@ -1294,41 +1401,52 @@ VYB_WEAK int64_t __vyb_async_spawn(void* env, void* fn) {
     return (int64_t)(intptr_t)t;
 }
 
-// Run the loop until no ready work and no pending timer remain, then reclaim
-// all tasks. Returns 0.
+// Run the pool until every worker is idle with no queued work or pending timer,
+// then reclaim all tasks. Returns 0.
 VYB_WEAK int64_t __vyb_async_run_all(void) {
-    return async_drive(1);
+    pthread_mutex_lock(&g_async_lock);
+    async_ensure_workers();
+    if (g_nworkers > 0)
+        for (int i = 0; i < g_nworkers; i++) pthread_cond_signal(&g_workers[i].cv);
+    while (!async_quiescent_locked())
+        pthread_cond_wait(&g_drain_cv, &g_async_lock);
+    pthread_mutex_unlock(&g_async_lock);
+    if (g_all) async_cleanup_all();
+    return 0;
 }
 
-// Awaits the result of `task` (blocking). From the main/scheduler thread this
-// drives the loop until the task completes; from inside a fiber it suspends the
-// fiber until the task completes (the loop keeps running other work).
+// Awaits the result of `task` (blocking). From the main thread this parks on a
+// condition variable until the worker completes it; from inside a fiber it
+// suspends the fiber until the task completes (the pool keeps running other
+// work).
 VYB_WEAK int64_t __vyb_async_await(int64_t task) {
     if (!task) return -1;
     vyb_async_task* t = (vyb_async_task*)(intptr_t)task;
-    if (!g_sched_cur) {
-        // Main/scheduler path: drive the loop until `t` is done.
+    if (tls_cur) {
+        // Fiber path: suspend this fiber until `t` completes.
+        vyb_async_task* self = tls_cur;
         pthread_mutex_lock(&g_async_lock);
         if (t->state == 2) { int64_t v = t->result; pthread_mutex_unlock(&g_async_lock); return v; }
-        g_main_wait = t;
+        self->next_waiter = t->waiters;
+        t->waiters = self;
+        self->state = 1;                       // BLOCKED
         pthread_mutex_unlock(&g_async_lock);
-        async_drive(0);
-        pthread_mutex_lock(&g_async_lock);
-        int64_t v = t->result;
-        g_main_wait = NULL;
-        pthread_mutex_unlock(&g_async_lock);
-        return v;
+        swapcontext(&self->ctx, &self->home->sched_ctx);
+        return self->awaited_result;
     }
-    // Fiber path: suspend this fiber until `t` completes.
-    vyb_async_task* self = g_sched_cur;
+    // Main-thread path: park until the workers deliver the result.
     pthread_mutex_lock(&g_async_lock);
     if (t->state == 2) { int64_t v = t->result; pthread_mutex_unlock(&g_async_lock); return v; }
-    self->next_waiter = t->waiters;
-    t->waiters = self;
-    self->state = 1;                       // BLOCKED
+    g_main_wait = t;
+    async_ensure_workers();
+    if (g_nworkers > 0)
+        for (int i = 0; i < g_nworkers; i++) pthread_cond_signal(&g_workers[i].cv);
+    while (t->state != 2 && g_nworkers > 0)
+        pthread_cond_wait(&g_main_cv, &g_async_lock);
+    int64_t v = (t->state == 2) ? t->result : 0;
+    g_main_wait = NULL;
     pthread_mutex_unlock(&g_async_lock);
-    swapcontext(&self->ctx, &g_sched_ctx);
-    return self->awaited_result;
+    return v;
 }
 
 // Non-blocking: returns the task's result if it has finished, else -1.
@@ -1344,32 +1462,39 @@ VYB_WEAK int64_t __vyb_async_poll(int64_t task) {
 // Cooperative yield: suspend the current fiber and reschedule it (no-op if not
 // running inside a fiber).
 VYB_WEAK int64_t __vyb_async_yield(void) {
-    if (!g_sched_cur) return 0;
-    vyb_async_task* self = g_sched_cur;
+    if (!tls_cur) return 0;
+    vyb_async_task* self = tls_cur;
     pthread_mutex_lock(&g_async_lock);
     async_ready_push(self);
     pthread_mutex_unlock(&g_async_lock);
-    swapcontext(&self->ctx, &g_sched_ctx);
+    swapcontext(&self->ctx, &self->home->sched_ctx);
     return 0;
 }
 
-// Cooperative sleep: suspend the current fiber via the timer heap so other loop
+// Cooperative sleep: suspend the current fiber via the timer heap so other pool
 // work proceeds. Outside a fiber this just sleeps the calling thread.
 VYB_WEAK int64_t __vyb_async_sleep_ms(int64_t ms) {
-    if (!g_sched_cur) { __vyb_time_sleep_ms(ms); return 0; }
-    vyb_async_task* self = g_sched_cur;
+    if (!tls_cur) { __vyb_time_sleep_ms(ms); return 0; }
+    vyb_async_task* self = tls_cur;
     pthread_mutex_lock(&g_async_lock);
     self->wake_ms = __vyb_time_mono_millis() + ms;
     async_timer_add(self);
     self->state = 1;                        // BLOCKED
     pthread_mutex_unlock(&g_async_lock);
-    swapcontext(&self->ctx, &g_sched_ctx);
+    swapcontext(&self->ctx, &self->home->sched_ctx);
     return 0;
 }
-
-
-// Reclaim any leftover tasks at process exit so a forgotten async_run_all never
-// leaks (the constructor-registered atexit handler runs once, before main()).
-static void vyb_async_atexit(void) { async_cleanup_all(); }
+// Stop + join the worker pool at process exit, then reclaim any leftover tasks
+// so a forgotten async_run_all never leaks (runs once, before main()).
+static void vyb_async_atexit(void) {
+    pthread_mutex_lock(&g_async_lock);
+    g_shutdown = 1;
+    for (int i = 0; i < g_nworkers; i++) pthread_cond_broadcast(&g_workers[i].cv);
+    pthread_mutex_unlock(&g_async_lock);
+    for (int i = 0; i < g_nworkers; i++)
+        if (g_workers[i].started) pthread_join(g_workers[i].thread, NULL);
+    async_cleanup_all();
+}
 static void vyb_async_atexit_reg(void) __attribute__((constructor));
 static void vyb_async_atexit_reg(void) { atexit(vyb_async_atexit); }
+

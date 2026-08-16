@@ -1,9 +1,9 @@
-# async - a cooperative event loop with stackful-fiber tasks.
+# async - a multi-threaded executor with stackful-fiber tasks.
 #
-# This is the real event-loop executor that the earlier `tasks` module's
-# fire-and-forget threads were steps toward. Each async_spawn task runs on its
-# own stack (a fiber), and a running fiber can suspend cooperatively without
-# blocking the loop:
+# This is the real executor that the earlier `tasks` module's fire-and-forget
+# threads were steps toward. Each async_spawn task runs on its own stack (a
+# fiber) pinned to one of the pool's worker threads (one scheduler per CPU core),
+# and a running fiber can suspend cooperatively without blocking its worker:
 #
 #   import async
 #   a = async_spawn(|| -> { async_sleep_ms(40); return 10 })
@@ -20,25 +20,24 @@
 # Lifecycle: tasks stay valid across main-thread awaits, so you can spawn
 # several and await them in any order. async_run_all() runs whatever is left and
 # then reclaims every task (handles must not be used afterwards); a leftover-task
-# atexit hook reclaims anything forgotten. A single-threaded executor; a
-# multi-threaded loop is a later follow-on.
+# atexit hook stops the worker pool and reclaims anything forgotten.
 
-# Enqueue `work` (a fn() -> Int) on the event loop; returns a task handle (>= 1)
-# or 0 on failure. The loop runs on the next async_await/async_run_all.
+# Enqueue `work` (a fn() -> Int) on the worker pool; returns a task handle (>= 1)
+# or 0 on failure. The pool runs on the next async_await/async_run_all.
 share(all)
 async_spawn(work<fn() -> Int>)<Int> -> {
     return vyb_async_spawn(work)
 }
 
-# Run the loop until no ready work or pending timer remain, then reclaim tasks.
+# Run the pool until no queued work or pending timer remain, then reclaim tasks.
 share(all)
 async_run_all()<Int> -> {
     return vyb_async_run_all()
 }
 
 # Block until task `t` completes and return its closure result. From the entry
-# thread this drives the loop; from inside a fiber it suspends that fiber while
-# the loop continues other work.
+# thread this parks until the worker delivers it; from inside a fiber it suspends
+# that fiber while the pool continues other work.
 share(all)
 async_await(t<Int>)<Int> -> {
     return vyb_async_await(t)

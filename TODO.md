@@ -31,7 +31,7 @@ is the working audit for what needs to be implemented next.
 | `mild<T>` weak references | ~75% | Control blocks, `Option<our<T>>`-style failed `grab()`, and `our<T>` copy/assignment/parameter refcounting done; full copy/drop semantics remain |
 | Aspect/bind system | ~78% | Aspect objects/dyn dispatch |
 | Generic monomorphization | ~85% | **SEALED**: Compile-time only. See doc/MONOMORPHIZATION_DESIGN.md |
-| Async/await | ~80% | Real scheduler/executor |
+| Async/await | ~90% | Multi-threaded thread-pool executor |
 | Error propagation (`fail`/`trap`) | ~80% | Standard error aspects, `rethrow`, ensure contracts |
 | Lambda/closure codegen | ~70% | Capture-by-value closure env structs shipped; move/mutable/`our` capture planned |
 | Module system (`import`/`smuggle`/`bundle`) | ~70% | Local/module-path resolution, aliases, bundle/share visibility done; stdlib modules/package integration pending |
@@ -526,27 +526,38 @@ with `pass` for multi-statement case bodies. Needs polishing:
   against the loop stack (`test/new_features/test_labeled_break_continue.vyb`).
 
 ### 10. Async System — Completion (LOWER PRIORITY)
-- [x] **Real event loop / executor (single-threaded, cooperative)** — the `asyncs`
+- [x] **Real event-loop executor — multi-threaded thread pool** — the `asyncs`
   module runs `fn() -> Int` closures as **stackful fibers** (ucontext), each on
-  its own 1 MiB stack, driven by a FIFO ready queue + a sorted timer heap. Because
-  the fibers are stackful, a fn() can suspend **mid-body** without a state-machine
-  transform: `async_sleep_ms` (a timer, not a thread sleep), `async_yield`
-  (round-robin), and `async_await` (block until a task completes) all reschedule
-  onto the loop, so concurrent timers complete in ~max rather than ~sum wall
-  (`test/modules/test_async.vyb`). Tasks stay valid across main-thread awaits;
-  `async_run_all` flushes + reclaims everything, with an atexit safety net.
+  its own 1 MiB stack, driven by a **pool of worker threads** (lazily spawned on
+  first use, sized to the CPU count) each running a FIFO ready queue + the shared
+  sorted timer heap. A fresh task's context is built lazily by its worker, and
+  once a fiber has run on a worker it is pinned there (ucontext is not portable
+  across OS threads): spawn hands work to workers round-robin to load balance, and
+  suspended tasks requeue to their own worker. Because the fibers are stackful, a
+  fn() can suspend **mid-body** without a state-machine transform:
+  `async_sleep_ms` (a timer, not a thread sleep), `async_yield` (round-robin), and
+  `async_await` (block until a task completes) all reschedule onto the pool, so
+  concurrent timers complete in ~max rather than ~sum wall
+  (`test/modules/test_async.vyb`) and CPU-bound tasks run across cores
+  (`test/async/async_multicore.vyb`: 4x120ms tasks finish in ~120ms, not ~480ms,
+  under valgrind-clean with no leaks). Tasks stay valid across main-thread awaits;
+  `async_run_all` waits for the pool to go idle, then flushes + reclaims
+  everything, and an atexit hook stops/joins the workers and reclaims leftovers.
   **Vyb-level `async`/`await` syntax codegen — Stage 1/2/3 done**: an
   `async fn(params...)<Future<T>>` (T = Int, String, Void) compiles into a public
   launcher (returns the Future struct by value, spawning the body as an event-loop
   fiber) plus a hidden worker `$__async_body`; parameterized calls snapshot scalar
   args into a closure env via an `$__async_entry` trampoline, and a `String` result
   travels back as a heap slot `await` hands to the consumer as an owned transfer.
-  `await` works from `main` (drives the loop) and from inside a task (suspends the
-  fiber), including nested `await` of a child task and the bare `await f` statement
-  form. Remaining stages: Float/Bool futures, owned/rich async parameter types,
-  `await`/multi-step value futures, and a **multi-threaded executor**. See
+  `await` works from `main` (parks the caller, signaled by a condvar) and from
+  inside a task (suspends the fiber), including nested `await` of a child task and
+  the bare `await f` statement form. **The multi-threaded executor is done** (Stage
+  4): workers idle on condition variables with the min timer deadline, wake each
+  other when they enqueue work, and a main-thread await blocks on a condvar until
+  the worker delivers. Remaining stages: Float/Bool futures, owned/rich async
+  parameter types, and `await`/multi-step value futures. See
   `test/async/async_event_loop.vyb`, `async_params.vyb`, `async_nested_await.vyb`,
-  `async_string.vyb`, and `async_void.vyb`.
+  `async_string.vyb`, `async_void.vyb`, and `async_multicore.vyb`.
 - [x] **`spawn` for concurrent tasks** — two storylines: the pthread `tasks`
   module (`t = task_spawn(fn() -> Int)`, `task_await`/`task_poll`/`task_free`)
   for real parallel workers, and the cooperative `asyncs` module above for

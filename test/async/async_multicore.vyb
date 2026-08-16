@@ -1,0 +1,36 @@
+// Stage-4 real async: a multi-threaded executor. Four CPU-bound tasks (no
+// sleeps; each burns ~120ms of a core) must finish in parallel across the
+// worker pool: ~120-160ms wall total, not ~480ms serial. Sleep-based tests
+// cannot prove threading, so this hammers pure arithmetic.
+// @env: VYB_STDLIB=stdlib
+// @expect: pass
+
+import time::{time_mono_millis}
+
+// CPU-bound ~`ms` milliseconds of arithmetic (checks the clock each iteration,
+// so it self-limits in wall time while keeping the core busy).
+async burn(ms<Int>)<Future<Int>> -> {
+    t0<Int> = time_mono_millis()
+    x<Int> = 0
+    while (time_mono_millis() - t0 < ms) {
+        x = x + 1
+    }
+    return x
+}
+
+main()<Int> -> {
+    t0<Int> = time_mono_millis()
+    f1<Future<Int>> = burn(120)
+    f2<Future<Int>> = burn(120)
+    f3<Future<Int>> = burn(120)
+    f4<Future<Int>> = burn(120)
+    r1<Int> = await f1
+    r2<Int> = await f2
+    r3<Int> = await f3
+    r4<Int> = await f4
+    total<Int> = time_mono_millis() - t0
+    // Serial would cost ~480ms; parallel (4 workers, CPU-bound) is ~120-160ms.
+    if (total >= 380) { return 1 }
+    println("ok")
+    return 0
+}
