@@ -1850,7 +1850,10 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_net_error_code" || name == "vyb_net_error_message" ||
             name == "vyb_time_epoch_secs" || name == "vyb_time_epoch_millis" ||
             name == "vyb_time_nanos" || name == "vyb_time_mono_millis" ||
-            name == "vyb_time_sleep_ms") {
+            name == "vyb_time_sleep_ms" ||
+            name == "vyb_thread_spawn" || name == "vyb_thread_join" ||
+            name == "vyb_mutex_new" || name == "vyb_mutex_lock" ||
+            name == "vyb_mutex_unlock" || name == "vyb_mutex_free") {
             isIntrinsic = true;
         }
     }
@@ -2282,6 +2285,17 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             if (name == "vyb_time_epoch_secs" || name == "vyb_time_epoch_millis" ||
                 name == "vyb_time_nanos" || name == "vyb_time_mono_millis" ||
                 name == "vyb_time_sleep_ms") {
+                auto* resTy = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "Int"));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+
+            // Threads intrinsics (threads stdlib module): all return Int.
+            if (name == "vyb_thread_spawn" || name == "vyb_thread_join" ||
+                name == "vyb_mutex_new" || name == "vyb_mutex_lock" ||
+                name == "vyb_mutex_unlock" || name == "vyb_mutex_free") {
                 auto* resTy = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "Int"));
                 expressionTypes[node] = retainType(resTy);

@@ -3,6 +3,29 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-15: **`threads` stdlib module (pthread-backed, MVP)**. First real
+  multithreading for Vyb: `import threads` runs a `fn() -> Int` closure on a
+  fresh POSIX thread. `thread_spawn(work)` unpacks the closure (a uniform
+  `{ ptr env, ptr fn }`) in codegen and hands both pointers to
+  `__vyb_thread_spawn` in `runtime/vyb_runtime.c`, which parks them in a fixed
+  slot, starts a pthread running `vyb_thread_trampoline`, and returns a handle.
+  The trampoline calls the closure as `int64_t (*)(void*)` with its hidden
+  environment param and stores the result; `thread_join(handle)` blocks on
+  `pthread_join`, returns the closure's result, and reclaims the slot (-2 for
+  an unknown/already-joined handle). `Mutex` (`new`/`lock`/`unlock`/`free`)
+  round-trips a heap pthread_mutex as an Int handle. Plumbed end-to-end on the
+  established intrinsic pattern: `vyb_thread_*`/`vyb_mutex_*` names added to the
+  semantic `isIntrinsic` allowlist and typed Int, a codegen block maps them to
+  the `__vyb_*` symbols (spawn extracts `env`/`fn` from the closure struct;
+  join/mutex pass a widened i64), and the symbols are declared + registered in
+  `src/main.cpp`. MVP is `fn() -> Int` (no captures → nothing to move across the
+  join boundary; capturing closures, `thread_detach` with a reaper, `CondVar`,
+  and `AtomicInt` are follow-ons). Verified by `test/modules/test_threads.vyb`:
+  per-thread results sum correctly, three ~60ms threads joined in reverse finish
+  in well under the sequential 180ms (proving concurrent execution), unknown and
+  already-joined handles return -2, and a full mutex round-trip works. Full
+  suite passes.
+
 - 2026-08-15: **Thread-safe runtime refcounts (threading foundation)**. With
   full multithreading now a primary goal (pthread-backed `threads` module is
   next), the two refcount paths outside the already-atomic `our<T>` control

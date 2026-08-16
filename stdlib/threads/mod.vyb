@@ -1,0 +1,55 @@
+# threads - pthread-backed threading and mutexes for Vyb.
+#
+# A thread runs a `fn() -> Int` closure (no captures / no arguments in this
+# first cut — capturing closures are a later follow-on): thread_spawn starts it
+# and returns a handle, thread_join blocks until it finishes and returns the
+# closure's result. A Mutex provides mutual exclusion. Everything maps 1:1 onto
+# POSIX threads underneath, keeping the pthread ABI out of Vyb code.
+#
+# Usage:
+#   import threads
+#   h = thread_spawn(|| -> 40 + 2)
+#   v = thread_join(h)     // 42
+#
+#   m = mutex_new()
+#   mutex_lock(m); ... shared section ...; mutex_unlock(m)
+#   mutex_free(m)
+
+# Start `work` on a new thread; returns a handle (>= 1) or -1 on failure
+# (thread-table full or pthread_create failed).
+share(all)
+thread_spawn(work<fn() -> Int>)<Int> -> {
+    return vyb_thread_spawn(work)
+}
+
+# Wait for the thread `handle` to finish and return its closure result. Returns
+# -2 if the handle is unknown or already joined. A spawned thread's slot is only
+# reclaimed once it is joined.
+share(all)
+thread_join(handle<Int>)<Int> -> {
+    return vyb_thread_join(handle)
+}
+
+# A fresh, unlocked mutex handle (0 on allocation/init failure).
+share(all)
+mutex_new()<Int> -> {
+    return vyb_mutex_new()
+}
+
+# Lock `m`, blocking until acquired; returns 0 or -1 on error.
+share(all)
+mutex_lock(m<Int>)<Int> -> {
+    return vyb_mutex_lock(m)
+}
+
+# Unlock `m`; returns 0 or -1 on error.
+share(all)
+mutex_unlock(m<Int>)<Int> -> {
+    return vyb_mutex_unlock(m)
+}
+
+# Destroy and free `m`; returns 0 or -1 on error.
+share(all)
+mutex_free(m<Int>)<Int> -> {
+    return vyb_mutex_free(m)
+}

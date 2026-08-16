@@ -124,6 +124,15 @@ extern "C" {
     int64_t __vyb_time_mono_millis(void);
     int64_t __vyb_time_sleep_ms(int64_t millis);
 
+    // Threads runtime helpers (threads stdlib module). A `fn() -> Int` closure
+    // arrives as { env, fn }; spawn runs it on a pthread.
+    int64_t __vyb_thread_spawn(void* env, void* fn);
+    int64_t __vyb_thread_join(int64_t handle);
+    int64_t __vyb_mutex_new(void);
+    int64_t __vyb_mutex_lock(int64_t mh);
+    int64_t __vyb_mutex_unlock(int64_t mh);
+    int64_t __vyb_mutex_free(int64_t mh);
+
     // JSON serialization for complex types
     char* __vyb_complex_to_json(void* instance, const char* type_name);
     void* __vyb_complex_from_json(const char* json_str, const char* type_name);
@@ -962,6 +971,19 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_time_mono_millis), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_time_sleep_ms")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_time_sleep_ms), llvm::JITSymbolFlags::Exported);
+
+        runtimeSymbols[mangle("__vyb_thread_spawn")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_thread_spawn), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_thread_join")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_thread_join), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_mutex_new")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_mutex_new), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_mutex_lock")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_mutex_lock), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_mutex_unlock")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_mutex_unlock), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_mutex_free")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_mutex_free), llvm::JITSymbolFlags::Exported);
 
         // Register JSON serialization functions
         runtimeSymbols[mangle("__vyb_complex_to_json")] = llvm::orc::ExecutorSymbolDef(

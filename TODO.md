@@ -315,25 +315,6 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
   the pthread-backed `threads` module.
 
 ### 4. Standard Library Expansion (HIGH PRIORITY)
-
-## Threading and Concurrency (now a primary issue)
-
-Vyb is single-threaded today. After the `http` module, the decision is that full
-multithreading is a primary goal, implemented with **pthreads underneath** and a
-thin, ergonomic Vyb-facing module (not raw C-shape; a C-shaped surface is exactly
-the "weeds" to avoid — abstraction to pure-Vyb ergonomics is built in up front,
-with only the pthread ABI beneath). The thread-safety foundation above came first.
-
-- [ ] **`threads` stdlib module (pthread-backed)** — `import threads`:
-  `thread_spawn(fn()<Int>)<Thread>` + `thread_join(t)<Int>` returning the
-  closure result (+ `thread_detach`), a `Mutex` (`new`/`lock`/`unlock`), and
-  later `CondVar` and `AtomicInt` (`load`/`store`/`add`/`cas`). Requires a
-  thread-entry trampoline: a Vyb `fn` is a uniform closure `{ptr env, ptr fn}`,
-  so the runtime entry must unpack it and run the closure on the pthread. Safe
-  MVP is `fn()<Int>` (no captures → no env to move across the join boundary);
-  capturing closures are a later follow-on.
-- [ ] **Wire `http_accept` onto a worker thread** — the payoff: a server can
-  accept one connection while earlier connections are handled concurrently.
 - [x] **`Option<T>`** — `Some(value)` / `None` for nullable values; built-in generic enum (transitional `core::option::OptionInt` bridge retained for source-compat)
 - [x] **`Result<T, E>`** — `Ok(value)` / `Err(error)` for fallible operations; built-in generic enum (`core::result` placeholder module retained for source-compat)
 - [x] **Core aspects** — `Display`, `Debug`, `Clone`, `Equatable`, `Comparable`, `Hashable` — the `core::aspects` stdlib module declares all six contracts with `Comparable : Equatable`, re-exported via `core::prelude`/prelude, and they are bindable to both structs and primitive scalar targets with unqualified dispatch and generic bounds. Binds now carry across module imports (visibility via `share`, dedup by `(target, aspect)`), so `core::aspects` ships pre-wired `Display`/`Clone`/`Equatable`/`Comparable`/`Hashable` impls for `Int`, `Float`, `Bool`, and `String` that take effect on `import core::aspects` / `import core::prelude` (`test/aspect/test_core_aspects_bindings.vyb`, `test_bind_primitive_target.vyb`, `test_core_aspects_primitive_impls.vyb`). Auto-import of `core::*` remains under Module System Phase 1.6.
@@ -388,6 +369,31 @@ with only the pthread ABI beneath). The thread-safety foundation above came firs
   codegen evaluates the member in LHS mode (a pointer to the field) and hands it
   to the bind's by-ref `self<their<Self>>` receiver. `.contains()` is now correct.
 - [x] **`Vec<T>` constructor idiom** — `Vec::new()` / `Vec::new(size)` replaced by a vybish constructor call: `Vec()` (empty growable) and `Vec(n)` (preallocate `n` elements/capacity), element type inferred from the annotation. `Vec::new()` stays as a back-compat alias.
+
+
+### Threading and Concurrency (now a primary issue)
+
+Vyb is single-threaded today. After the `http` module, the decision is that full
+multithreading is a primary goal, implemented with **pthreads underneath** and a
+thin, ergonomic Vyb-facing module (not raw C-shape; a C-shaped surface is exactly
+the "weeds" to avoid — abstraction to pure-Vyb ergonomics is built in up front,
+with only the pthread ABI beneath). The thread-safety foundation above came first.
+
+- [x] **`threads` stdlib module (pthread-backed, MVP)** — `import threads`:
+  `thread_spawn(fn() -> Int)` starts a closure on a fresh pthread and returns a
+  handle, `thread_join(handle)` blocks for its result (reclaiming the slot; -2
+  for an unknown/already-joined handle), and a `Mutex` (`mutex_new`/`lock`/
+  `unlock`/`free`). A thread-entry trampoline unpacks a Vyb `fn` (a uniform
+  closure `{ptr env, ptr fn}`) and runs it as `int64_t (*)(void*)` with its
+  hidden environment param. MVP is `fn() -> Int` (no captures → nothing to move
+  across the join boundary); the shiny-level follow-ons are `thread_detach`
+  (needs a reaper so a detached thread frees its own slot), capturing closures,
+  `CondVar`, and `AtomicInt` (`load`/`store`/`add`/`cas`) — plus wiring
+  `http_accept` onto a worker thread (below). Verified with overlapping sleeps,
+  per-thread results, and a mutex round-trip
+  (`test/modules/test_threads.vyb`).
+- [ ] **Wire `http_accept` onto a worker thread** — the payoff: a server can
+  accept one connection while earlier connections are handled concurrently.
 
 ### 5. Sum Types / Enums (MEDIUM PRIORITY)
 Vyb needs a way to express sum types. Essential for `Option<T>`, `Result<T,E>`, and

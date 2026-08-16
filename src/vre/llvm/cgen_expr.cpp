@@ -2768,6 +2768,80 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         }
     }
 
+    // Handle Threads intrinsics (threads stdlib module). `vyb_thread_spawn`
+    // takes a `fn() -> Int` closure value `{ env, fn }`: unpack the two
+    // pointers and hand them to the pthread trampoline so it can run the
+    // closure with its hidden environment parameter. The rest take/return plain
+    // Int handles.
+    if (identCallee) {
+        const std::string& fname = identCallee->name;
+        if (fname == "vyb_thread_spawn") {
+            if (node->arguments.size() != 1) {
+                logError(node->loc, "vyb_thread_spawn expects 1 argument (fn() -> Int)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this);
+            llvm::Value* cl = m_currentLLVMValue;
+            if (!cl) return;
+            llvm::StructType* closureTy = getClosureStructType();
+            llvm::Value* envPtr = nullptr;
+            llvm::Value* fnPtr = nullptr;
+            if (cl->getType()->isStructTy()) {
+                envPtr = builder->CreateExtractValue(cl, 0, "thr.env");
+                fnPtr = builder->CreateExtractValue(cl, 1, "thr.fn");
+            } else if (cl->getType()->isPointerTy()) {
+                llvm::Value* closureVal = builder->CreateLoad(closureTy, cl, "thr.closure");
+                envPtr = builder->CreateExtractValue(closureVal, 0, "thr.env");
+                fnPtr = builder->CreateExtractValue(closureVal, 1, "thr.fn");
+            } else {
+                logError(node->loc, "vyb_thread_spawn argument is not a fn() closure");
+                m_currentLLVMValue = nullptr; return;
+            }
+            llvm::Function* f = module->getFunction("__vyb_thread_spawn");
+            if (!f) {
+                llvm::FunctionType* ft = llvm::FunctionType::get(
+                    int64Type, {llvm::PointerType::get(*context, 0), llvm::PointerType::get(*context, 0)}, false);
+                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_thread_spawn", module.get());
+            }
+            m_currentLLVMValue = builder->CreateCall(f, {envPtr, fnPtr}, "thr.handle");
+            return;
+        } else if (fname == "vyb_thread_join" || fname == "vyb_mutex_lock" ||
+                   fname == "vyb_mutex_unlock" || fname == "vyb_mutex_free") {
+            if (node->arguments.size() != 1) {
+                logError(node->loc, fname + " expects 1 argument");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this);
+            llvm::Value* arg = m_currentLLVMValue;
+            if (!arg) return;
+            llvm::Value* a = arg;
+            if (a->getType()->isIntegerTy() && !a->getType()->isIntegerTy(64))
+                a = builder->CreateSExt(a, int64Type, "thr.toi64");
+            std::string rtName = (fname == "vyb_thread_join") ? "__vyb_thread_join"
+                              : (fname == "vyb_mutex_lock") ? "__vyb_mutex_lock"
+                              : (fname == "vyb_mutex_unlock") ? "__vyb_mutex_unlock" : "__vyb_mutex_free";
+            llvm::Function* f = module->getFunction(rtName);
+            if (!f) {
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
+                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, rtName, module.get());
+            }
+            m_currentLLVMValue = builder->CreateCall(f, {a}, "thr.ret");
+            return;
+        } else if (fname == "vyb_mutex_new") {
+            if (!node->arguments.empty()) {
+                logError(node->loc, "vyb_mutex_new expects no arguments");
+                m_currentLLVMValue = nullptr; return;
+            }
+            llvm::Function* f = module->getFunction("__vyb_mutex_new");
+            if (!f) {
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {}, false);
+                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_mutex_new", module.get());
+            }
+            m_currentLLVMValue = builder->CreateCall(f, {}, "mutex.handle");
+            return;
+        }
+    }
+
     // Handle serialization mode intrinsics: lit(), notype(), bare(), deserial()
     if (identCallee && identCallee->name == "lit" && node->arguments.size() >= 1) {
         // lit() intrinsic - convert value(s) to their raw string/JSON literal representation

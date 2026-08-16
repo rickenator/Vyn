@@ -1,0 +1,56 @@
+// @test: threads stdlib module - pthread spawn/join + mutex
+// @description: the `threads` module wraps POSIX threads: thread_spawn runs a
+//   `fn() -> Int` closure on a fresh pthread, thread_join blocks for its result,
+//   and a Mutex provides mutual exclusion. Verified: per-thread results, overlap
+//   (three ~60ms sleeps joined in reverse finish in well under the 180ms a
+//   sequential run would take), invalid/already-joined handles, and a full
+//   mutex lock/unlock/free round-trip.
+// @category: modules, threads, concurrency, stdlib
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import threads
+import time::{sleep_ms, time_mono_millis}
+
+main()<Int> -> {
+    // Correctness: each thread returns its own result; sum matches.
+    a<Int> = thread_join(thread_spawn(|| -> 10))
+    b<Int> = thread_join(thread_spawn(|| -> 20))
+    c<Int> = thread_join(thread_spawn(|| -> 12))
+    if (a + b + c != 42) { return 1 }
+
+    // Edge cases: unknown handle and already-joined handle both report -2.
+    if (thread_join(9999) != -2) { return 2 }
+    d<Int> = thread_spawn(|| -> 7)
+    if (thread_join(d) != 7) { return 3 }
+    if (thread_join(d) != -2) { return 4 }
+
+    // True parallelism: three ~60ms threads joined in reverse finish in far less
+    // than the 180ms a sequential run would take (>=30ms overlap => concurrent).
+    hs<Vec<Int>> = Vec<Int>()
+    start<Int> = time_mono_millis()
+    hs.push(thread_spawn(|| -> sleep_ms(60)))
+    hs.push(thread_spawn(|| -> sleep_ms(60)))
+    hs.push(thread_spawn(|| -> sleep_ms(60)))
+    if (hs.get(0) < 0 || hs.get(1) < 0 || hs.get(2) < 0) { return 5 }
+    j<Int> = 2
+    while (j >= 0) {
+        thread_join(hs.get(j))
+        j = j - 1
+    }
+    elapsed<Int> = time_mono_millis() - start
+    if (elapsed >= 150) { return 6 }  // not concurrent (>=180 would be sequential)
+    if (elapsed < 30) { return 7 }    // implausibly instant
+
+    // Mutex round-trip.
+    m<Int> = mutex_new()
+    if (m == 0) { return 8 }
+    if (mutex_lock(m) != 0) { return 9 }
+    if (mutex_unlock(m) != 0) { return 10 }
+    if (mutex_free(m) != 0) { return 11 }
+
+    println("ok")
+    return 0
+}

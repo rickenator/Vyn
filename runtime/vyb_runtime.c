@@ -569,3 +569,110 @@ VYB_WEAK int64_t __vyb_time_sleep_ms(int64_t millis) {
     while (nanosleep(&req, &rem) != 0 && errno == EINTR) req = rem;
     return 0;
 }
+
+// ============================================================================
+// THREADS + MUTEX RUNTIME (threads stdlib module)
+// ============================================================================
+// Minimal pthread-backed threading for Vyb. A Vyb `fn() -> Int` closure is a
+// uniform `{ void* env; void* fn }`; spawn stores it in a fixed slot and hands a
+// trampoline the slot. The trampoline calls the closure (`int64_t (*)(void*)`)
+// with its hidden environment parameter and parks the result for join().
+//
+// The slot table is fixed-capacity with a simple used flag: a spawned thread is
+// reclaimed only when its handle is joined (joinable), so nothing is leaked for
+// joined threads. Detached/fire-and-forget threads are a later follow-on (they
+// need a reaper that frees the slot once the thread body completes). A never
+// joined thread keeps its slot occupied.
+#define VYB_THREAD_CAP 256
+typedef struct {
+    pthread_t tid;
+    void* fn;      // the lambda's function pointer
+    void* env;     // the lambda's capture environment (hidden first param)
+    int64_t result;
+    int used;
+} vyb_thread;
+static vyb_thread vyb_threads[VYB_THREAD_CAP];
+static pthread_mutex_t vyb_threads_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void* vyb_thread_trampoline(void* arg) {
+    vyb_thread* t = (vyb_thread*)arg;
+    t->result = ((int64_t (*)(void*))t->fn)(t->env);
+    return NULL;
+}
+
+// Start `fn` (with its capture `env`) on a new thread. Returns a positive
+// handle (>=1, for thread_join) or -1 on failure (thread-table full / create
+// failed).
+VYB_WEAK int64_t __vyb_thread_spawn(void* env, void* fn) {
+    if (!fn) return -1;
+    pthread_mutex_lock(&vyb_threads_lock);
+    int idx = -1;
+    for (int i = 0; i < VYB_THREAD_CAP; ++i) {
+        if (!vyb_threads[i].used) { idx = i; break; }
+    }
+    if (idx < 0) {
+        pthread_mutex_unlock(&vyb_threads_lock);
+        return -1; // table full
+    }
+    vyb_thread* t = &vyb_threads[idx];
+    t->fn = fn;
+    t->env = env;
+    t->result = 0;
+    t->used = 1;
+    int rc = pthread_create(&t->tid, NULL, vyb_thread_trampoline, t);
+    if (rc != 0) {
+        t->used = 0;
+        pthread_mutex_unlock(&vyb_threads_lock);
+        return -1;
+    }
+    pthread_mutex_unlock(&vyb_threads_lock);
+    return (int64_t)(idx + 1);
+}
+
+// Block until the thread identified by `handle` finishes, then return its
+// closure result. Returns -2 for an unknown/already-joined handle.
+VYB_WEAK int64_t __vyb_thread_join(int64_t handle) {
+    int idx = (int)handle - 1;
+    if (idx < 0 || idx >= VYB_THREAD_CAP) return -2;
+    pthread_mutex_lock(&vyb_threads_lock);
+    vyb_thread* t = &vyb_threads[idx];
+    if (!t->used) {
+        pthread_mutex_unlock(&vyb_threads_lock);
+        return -2;
+    }
+    pthread_mutex_unlock(&vyb_threads_lock);
+
+    pthread_join(t->tid, NULL); // blocks until the thread completes
+
+    pthread_mutex_lock(&vyb_threads_lock);
+    int64_t result = t->result;
+    t->used = 0; // reclaim the slot
+    pthread_mutex_unlock(&vyb_threads_lock);
+    return result;
+}
+
+// A heap-allocated pthread mutex; the Vyb handle is the mutex pointer itself.
+VYB_WEAK int64_t __vyb_mutex_new(void) {
+    pthread_mutex_t* m = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
+    if (!m) return 0;
+    if (pthread_mutex_init(m, NULL) != 0) { free(m); return 0; }
+    return (int64_t)(intptr_t)m;
+}
+
+VYB_WEAK int64_t __vyb_mutex_lock(int64_t mh) {
+    if (!mh) return -1;
+    return pthread_mutex_lock((pthread_mutex_t*)(intptr_t)mh) == 0 ? 0 : -1;
+}
+
+VYB_WEAK int64_t __vyb_mutex_unlock(int64_t mh) {
+    if (!mh) return -1;
+    return pthread_mutex_unlock((pthread_mutex_t*)(intptr_t)mh) == 0 ? 0 : -1;
+}
+
+VYB_WEAK int64_t __vyb_mutex_free(int64_t mh) {
+    if (!mh) return -1;
+    pthread_mutex_t* m = (pthread_mutex_t*)(intptr_t)mh;
+    pthread_mutex_destroy(m);
+    free(m);
+    return 0;
+}
