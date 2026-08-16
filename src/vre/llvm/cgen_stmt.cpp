@@ -785,7 +785,11 @@ void LLVMCodegen::visit(vyb::ast::IfStatement* node) {
 
     llvm::BasicBlock* thenBB = llvm::BasicBlock::Create(*context, "then", parentFunction);
     llvm::BasicBlock* elseBB = nullptr;
-    llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(*context, "ifcont"); // Don't add to function yet, might not be needed if all paths return
+    // Create mergeBB detached and insert it at the end only if it's used. The
+    // function epilogue only terminates the function's back() block, so mergeBB
+    // must be appended last when live. When all paths return it is unused; we
+    // reclaim it below via deleteValue() (it previously leaked).
+    llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(*context, "ifcont");
 
     if (node->alternate) {
         elseBB = llvm::BasicBlock::Create(*context, "else", parentFunction);
@@ -824,12 +828,11 @@ void LLVMCodegen::visit(vyb::ast::IfStatement* node) {
         builder->SetInsertPoint(mergeBB);
     } else {
         // mergeBB was never added to the function, so we can't call eraseFromParent()
-        // Just let it be garbage collected or explicitly delete it
         if (mergeBB->getParent()) {
             mergeBB->eraseFromParent();
         } else {
-            // mergeBB will be automatically cleaned up when it goes out of scope
-            // since it was never added to the function
+            // Detached and unused: reclaim the block to avoid leaking it.
+            mergeBB->deleteValue();
         }
     }
 
