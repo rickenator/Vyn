@@ -1,0 +1,23 @@
+// @test: Module-level global variables codegen
+// @description: globals are emitted and read/written from function bodies
+// @category: basic, global
+// @expect: pass
+// @expect-output: 10
+// @expect-return: 2
+
+CONST_VAL<Int> = 10
+counter<Int> = 0
+
+bump()<Int> -> {
+    counter = counter + 1
+    return counter
+}
+
+main()<Int> -> {
+    println_int(CONST_VAL)
+    a<Int> = bump()
+    b<Int> = bump()
+    println_int(a)
+    println_int(b)
+    return b
+}
