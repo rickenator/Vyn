@@ -797,3 +797,117 @@ VYB_WEAK int64_t __vyb_atomic_free(int64_t ah) {
     free((void*)(intptr_t)ah);
     return 0;
 }
+
+// A thread-safe typed channel (Int payloads) with a Mutex + CondVar. The Vyb
+// handle is a pointer to a heap `vyb_chan`. A default channel (`capacity <= 0`)
+// is unbounded: send always succeeds (growing the ring buffer as needed). A
+// bounded channel keeps a fixed-capacity ring; a full bounded send returns 0
+// immediately (non-blocking), and `chan_try` offers a non-blocking recv so callers
+// can poll/select without risking a block. `chan_recv` blocks (releasing the
+// CondVar) until a value is available or the channel is closed.
+typedef struct {
+    pthread_mutex_t mutex;
+    pthread_cond_t not_empty;
+    int64_t* buf;
+    size_t head;  // index of the oldest element
+    size_t size;  // live element count
+    size_t cap;   // allocated ring capacity
+    int bounded;  // 1 = fixed capacity, 0 = grow on demand
+    int closed;
+} vyb_chan;
+
+VYB_WEAK int64_t __vyb_chan_new(int64_t capacity) {
+    vyb_chan* c = (vyb_chan*)calloc(1, sizeof(vyb_chan));
+    if (!c) return 0;
+    if (pthread_mutex_init(&c->mutex, NULL) != 0) { free(c); return 0; }
+    if (pthread_cond_init(&c->not_empty, NULL) != 0) { pthread_mutex_destroy(&c->mutex); free(c); return 0; }
+    c->bounded = capacity > 0;
+    size_t initial = c->bounded ? (size_t)capacity : 8;
+    c->buf = (int64_t*)malloc(sizeof(int64_t) * initial);
+    if (!c->buf) { pthread_cond_destroy(&c->not_empty); pthread_mutex_destroy(&c->mutex); free(c); return 0; }
+    c->cap = initial;
+    c->head = 0; c->size = 0; c->closed = 0;
+    return (int64_t)(intptr_t)c;
+}
+
+// Grow the ring buffer (caller holds the mutex). Returns 0 on success.
+static int vyb_chan_grow(vyb_chan* c) {
+    size_t ncap = (c->cap > 0) ? c->cap * 2 : 8;
+    int64_t* nb = (int64_t*)malloc(sizeof(int64_t) * ncap);
+    if (!nb) return -1;
+    for (size_t i = 0; i < c->size; ++i) {
+        nb[i] = c->buf[(c->head + i) % c->cap];
+    }
+    free(c->buf);
+    c->buf = nb; c->cap = ncap; c->head = 0;
+    return 0;
+}
+
+// Non-blocking enqueue: returns 1 on success, 0 if the channel is closed or a
+// bounded channel is full.
+VYB_WEAK int64_t __vyb_chan_send(int64_t ch, int64_t v) {
+    if (!ch) return 0;
+    vyb_chan* c = (vyb_chan*)(intptr_t)ch;
+    pthread_mutex_lock(&c->mutex);
+    if (c->closed) { pthread_mutex_unlock(&c->mutex); return 0; }
+    if (c->bounded && c->size >= c->cap) { pthread_mutex_unlock(&c->mutex); return 0; }
+    if (!c->bounded && c->size == c->cap && vyb_chan_grow(c) != 0) {
+        pthread_mutex_unlock(&c->mutex); return 0;
+    }
+    c->buf[(c->head + c->size) % c->cap] = v;
+    c->size++;
+    pthread_cond_signal(&c->not_empty);
+    pthread_mutex_unlock(&c->mutex);
+    return 1;
+}
+
+// Blocking dequeue: waits until a value is available or the channel is closed.
+// Returns the value, or -1 if closed and empty.
+VYB_WEAK int64_t __vyb_chan_recv(int64_t ch) {
+    if (!ch) return -1;
+    vyb_chan* c = (vyb_chan*)(intptr_t)ch;
+    pthread_mutex_lock(&c->mutex);
+    while (c->size == 0 && !c->closed) {
+        pthread_cond_wait(&c->not_empty, &c->mutex);
+    }
+    if (c->size == 0) { pthread_mutex_unlock(&c->mutex); return -1; }  // closed & empty
+    int64_t v = c->buf[c->head];
+    c->head = (c->head + 1) % c->cap;
+    c->size--;
+    pthread_mutex_unlock(&c->mutex);
+    return v;
+}
+
+// Non-blocking dequeue: returns the value, or -1 if empty/closed.
+VYB_WEAK int64_t __vyb_chan_try(int64_t ch) {
+    if (!ch) return -1;
+    vyb_chan* c = (vyb_chan*)(intptr_t)ch;
+    pthread_mutex_lock(&c->mutex);
+    if (c->size == 0) { pthread_mutex_unlock(&c->mutex); return -1; }
+    int64_t v = c->buf[c->head];
+    c->head = (c->head + 1) % c->cap;
+    c->size--;
+    pthread_mutex_unlock(&c->mutex);
+    return v;
+}
+
+// Number of buffered values.
+VYB_WEAK int64_t __vyb_chan_len(int64_t ch) {
+    if (!ch) return -1;
+    vyb_chan* c = (vyb_chan*)(intptr_t)ch;
+    pthread_mutex_lock(&c->mutex);
+    int64_t n = (int64_t)c->size;
+    pthread_mutex_unlock(&c->mutex);
+    return n;
+}
+
+// Destroy and free `ch`; returns 0 or -1.
+VYB_WEAK int64_t __vyb_chan_free(int64_t ch) {
+    if (!ch) return -1;
+    vyb_chan* c = (vyb_chan*)(intptr_t)ch;
+    pthread_cond_destroy(&c->not_empty);
+    pthread_mutex_destroy(&c->mutex);
+    free(c->buf);
+    free(c);
+    return 0;
+}

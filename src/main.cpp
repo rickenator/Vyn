@@ -146,6 +146,13 @@ extern "C" {
     int64_t __vyb_atomic_add(int64_t ah, int64_t v);
     int64_t __vyb_atomic_cas(int64_t ah, int64_t expected, int64_t desired);
     int64_t __vyb_atomic_free(int64_t ah);
+    // Typed channels (Int payloads): a heap ring-buffer under a Mutex + CondVar.
+    int64_t __vyb_chan_new(int64_t capacity);
+    int64_t __vyb_chan_send(int64_t ch, int64_t v);
+    int64_t __vyb_chan_recv(int64_t ch);
+    int64_t __vyb_chan_try(int64_t ch);
+    int64_t __vyb_chan_len(int64_t ch);
+    int64_t __vyb_chan_free(int64_t ch);
 
     // JSON serialization for complex types
     char* __vyb_complex_to_json(void* instance, const char* type_name);
@@ -1040,6 +1047,18 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_atomic_cas), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_atomic_free")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_atomic_free), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_chan_new")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_chan_new), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_chan_send")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_chan_send), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_chan_recv")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_chan_recv), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_chan_try")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_chan_try), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_chan_len")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_chan_len), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_chan_free")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_chan_free), llvm::JITSymbolFlags::Exported);
 
         // Register JSON serialization functions
         runtimeSymbols[mangle("__vyb_complex_to_json")] = llvm::orc::ExecutorSymbolDef(

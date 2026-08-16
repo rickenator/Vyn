@@ -424,6 +424,16 @@ with only the pthread ABI beneath). The thread-safety foundation above came firs
   `atomic_add` returns the *new* value and `atomic_cas` returns 1 on a successful
   swap, 0 otherwise. Verified by read-modify-write ordering checks
   (`test/modules/test_cond_atomic.vyb`).
+- [x] **Typed channels, first cut (`channels` module)** — a pthread/Mutex+CondVar
+  heap ring-buffer for Int values: `chan_new` (unbounded, send always grows the
+  buffer) and `chan_bounded(n)`, with non-blocking `chan_send` (1/0, 0 once a
+  bounded buffer is full or the channel is closed), blocking `chan_recv`,
+  non-blocking `chan_try`, `chan_len`, and `chan_free`. A minimal, ergonomic
+  surface in the `threads`-module style (`import channels`;
+  `test/modules/test_channels.vyb` — producer threads into a shared unbounded
+  channel with an order-insensitive blocking recv-sum, plus bounded capacity and
+  poll behavior). String payloads and a true generic `chan<T>` type remain
+  planned.
 - [x] **Threaded HTTP server (`http_serve`)** — the payoff of a worker-thread
   accept loop: `http_serve(port, backlog)` binds+listens, starts a detached
   worker running the accept loop, and serves each accepted connection

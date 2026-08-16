@@ -1,0 +1,67 @@
+# channels - thread-safe typed message channels for Vyb.
+#
+# A channel passes Int values between threads (a runtime heap ring-buffer under
+# a Mutex + CondVar). A default channel is unbounded: chan_send always succeeds
+# (the buffer grows as needed). chan_bounded(n) fixes the capacity, and a full
+# bounded send returns 0 immediately (non-blocking), so callers can apply their
+# own backpressure. chan_recv blocks until a value arrives (or the channel is
+# closed); chan_try is the non-blocking form for polling/select.
+#
+# Usage:
+#   import channels
+#   ch = chan_new()            // unbounded
+#   ok = chan_send(ch, 42)     // 1 on success, 0 if closed/full
+#   v  = chan_recv(ch)         // blocks until 42 arrives
+#
+#   b = chan_bounded(2)        // fixed capacity
+#   chan_send(b, 1); chan_send(b, 2)
+#   chan_send(b, 3)            // 0: buffer is full
+#
+# The channels compose with practical applications (e.g. a chunked HTTP body, a
+# pipeline, or an event queue). String payloads / a true `chan<T>` generic type
+# remain future work.
+
+# A fresh unbounded channel; returns a handle (0 on allocation failure).
+share(all)
+chan_new()<Int> -> {
+    return vyb_chan_new(0)
+}
+
+# A fresh bounded channel holding at most `cap` values (0 on failure).
+share(all)
+chan_bounded(cap<Int>)<Int> -> {
+    return vyb_chan_new(cap)
+}
+
+# Enqueue `v` (non-blocking). Returns 1 on success, or 0 if the channel is
+# closed or a bounded channel is full.
+share(all)
+chan_send(ch<Int>, v<Int>)<Int> -> {
+    return vyb_chan_send(ch, v)
+}
+
+# Dequeue a value, blocking until one is available (or the channel is closed).
+# Returns the value, or -1 if the channel is closed and empty.
+share(all)
+chan_recv(ch<Int>)<Int> -> {
+    return vyb_chan_recv(ch)
+}
+
+# Non-blocking dequeue. Returns a buffered value, or -1 if the channel is empty
+# (or closed). Useful for polling a channel without blocking.
+share(all)
+chan_try(ch<Int>)<Int> -> {
+    return vyb_chan_try(ch)
+}
+
+# Number of values currently buffered (-1 on an invalid handle).
+share(all)
+chan_len(ch<Int>)<Int> -> {
+    return vyb_chan_len(ch)
+}
+
+# Destroy and free `ch`; returns 0 or -1.
+share(all)
+chan_free(ch<Int>)<Int> -> {
+    return vyb_chan_free(ch)
+}

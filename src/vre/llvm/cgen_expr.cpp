@@ -2898,6 +2898,24 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         } else if (fname == "vyb_atomic_cas") {
             emitHandleIntrinsic("__vyb_atomic_cas", 3);
             return;
+        } else if (fname == "vyb_chan_new") {
+            emitHandleIntrinsic("__vyb_chan_new", 1);   // capacity (0 = unbounded)
+            return;
+        } else if (fname == "vyb_chan_recv") {
+            emitHandleIntrinsic("__vyb_chan_recv", 1);  // blocking
+            return;
+        } else if (fname == "vyb_chan_try") {
+            emitHandleIntrinsic("__vyb_chan_try", 1);   // non-blocking
+            return;
+        } else if (fname == "vyb_chan_len") {
+            emitHandleIntrinsic("__vyb_chan_len", 1);
+            return;
+        } else if (fname == "vyb_chan_free") {
+            emitHandleIntrinsic("__vyb_chan_free", 1);
+            return;
+        } else if (fname == "vyb_chan_send") {
+            emitHandleIntrinsic("__vyb_chan_send", 2);  // (chan, value) -> 1/0
+            return;
         }
     }
 
