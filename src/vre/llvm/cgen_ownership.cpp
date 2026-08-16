@@ -1332,6 +1332,10 @@ llvm::Function* LLVMCodegen::generateAsyncEnvDtor(
                 builder->CreateBr(contBB);
                 builder->SetInsertPoint(contBB);
             }
+        } else if (fld.isOur) {
+            if (!fty->isPointerTy()) continue;
+            llvm::Value* cb = builder->CreateLoad(rawPtr, fieldPtr, "async.env.dtor.our.cb");
+            releaseOurControlBlock(cb, "async.env.dtor.our");
         } else if (fld.isString) {
             if (!isVybStringStructType(fty)) continue;
             llvm::Value* strVal = builder->CreateLoad(fty, fieldPtr, "async.env.dtor.string");

@@ -556,7 +556,8 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
             if (!p.typeNode) { paramsEnvSafe = false; break; }
             llvm::Type* pt = codegenType(p.typeNode.get());
             if (!pt || !(pt->isIntegerTy() || pt->isFloatTy() || pt->isDoubleTy() ||
-                         isVybStringStructType(pt) || asyncParamIsVec(p.typeNode.get()))) {
+                         isVybStringStructType(pt) || asyncParamIsVec(p.typeNode.get()) ||
+                         (pt->isPointerTy() && isOurRefType(p.typeNode.get())))) {
                 paramsEnvSafe = false; break;
             }
         }
@@ -1673,10 +1674,13 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
     for (size_t i = 0; i < n; ++i) {
         const vyb::ast::TypeNode* ptn = node->params[i].typeNode.get();
         if (paramTypes[i] && isVybStringStructType(paramTypes[i])) {
-            AsyncEnvField f; f.fieldIx = i + 2; f.isString = true; f.isVec = false; f.vecIsString = false;
+            AsyncEnvField f; f.fieldIx = i + 2; f.isString = true; f.isVec = false; f.vecIsString = false; f.isOur = false;
+            ownedFields.push_back(f);
+        } else if (ptn && paramTypes[i] && paramTypes[i]->isPointerTy() && isOurRefType(ptn)) {
+            AsyncEnvField f; f.fieldIx = i + 2; f.isString = false; f.isVec = false; f.vecIsString = false; f.isOur = true;
             ownedFields.push_back(f);
         } else if (ptn && asyncParamIsVec(ptn)) {
-            AsyncEnvField f; f.fieldIx = i + 2; f.isString = false; f.isVec = true;
+            AsyncEnvField f; f.fieldIx = i + 2; f.isString = false; f.isVec = true; f.isOur = false;
             f.vecIsString = isVecOfStringTypeNode(ptn);
             ownedFields.push_back(f);
             vecParam[i] = true;
@@ -1775,8 +1779,11 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
     } else {
         b.CreateStore(nullPtr, dtorPtr);
     }
-    // Point the member builder at the launcher so the shared retain/deep-copy
-    // helpers (which emit through it) go into this block, then restore.
+    // Point the member builder + currentFunction at the launcher so the shared
+    // retain/deep-copy helpers (which emit through them, and create blocks in the
+    // current function) go into this block, then restore.
+    llvm::Function* savedCurrentFunc = currentFunction;
+    currentFunction = launcher;
     std::unique_ptr<llvm::IRBuilder<>> savedBuilder = std::move(builder);
     builder = std::make_unique<llvm::IRBuilder<>>(lbb);
     for (size_t i = 0; i < n; ++i) {
@@ -1785,6 +1792,9 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
         if (paramTypes[i] && isVybStringStructType(paramTypes[i])) {
             llvm::Value* data = builder->CreateExtractValue(av, 0, "async.env.str.data");
             builder->CreateCall(getOrCreateVybStringRetainFunction(), {data}, "async.env.str.retain");
+        } else if (paramTypes[i] && paramTypes[i]->isPointerTy() &&
+                   node->params[i].typeNode && isOurRefType(node->params[i].typeNode.get())) {
+            retainOurControlBlock(av, "async.env.our");
         } else if (vecParam[i] && vecElemType[i] && paramTypes[i]) {
             llvm::Value* copy = generateVecDeepCopy(av, vecElemType[i], paramTypes[i]);
             av = copy ? copy : av;
@@ -1795,6 +1805,7 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
     // the local builder to wherever the member builder ended before restoring.
     llvm::BasicBlock* contBlock = builder->GetInsertBlock();
     builder = std::move(savedBuilder);
+    currentFunction = savedCurrentFunc;
     b.SetInsertPoint(contBlock);
 
     llvm::Function* spawn = module->getFunction("__vyb_async_spawn");

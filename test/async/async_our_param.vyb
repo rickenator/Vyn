@@ -1,0 +1,42 @@
+// Stage-8 real async: `our<T>` async parameters (shared, reference-counted).
+// The launcher snapshots the control-block pointer into the env with an atomic
+// strong-count retain (+1); the env's per-layout dtor releases it on cleanup, so
+// the shared object safely outlives the caller's scope while the worker runs.
+// @env: VYB_STDLIB=stdlib
+// @expect: pass
+
+import asyncs::{async_sleep_ms}
+
+struct Node {
+    value<Int>
+}
+
+async read_node(n<our<Node>>)<Future<Int>> -> {
+    async_sleep_ms(5)
+    return n.value
+}
+
+// Pass the our<T> on to a child task (nested await with the param in hand).
+async pass_through(n<our<Node>>)<Future<Int>> -> {
+    async_sleep_ms(5)
+    v<Int> = await read_node(n)
+    return v + 1
+}
+
+main()<Int> -> {
+    a<our<Node>> = our(Node { value: 41 })
+
+    f1<Future<Int>> = read_node(a)
+    r1<Int> = await f1
+    if (r1 != 41) { return 1 }
+
+    f2<Future<Int>> = pass_through(a)
+    r2<Int> = await f2
+    if (r2 != 42) { return 2 }
+
+    s<Int> = a.value   // caller's binding still valid after the tasks
+    if (s != 41) { return 3 }
+
+    println("ok")
+    return 0
+}

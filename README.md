@@ -454,11 +454,12 @@ suspends the current fiber (so a worker can `await` a child task), including as 
 bare statement (`await f`) for `Future<Void>`. The future is returned by value as
 a real struct; the syntax and type plumbing below are stable and tested. Owned
 parameters are snapshotted into the task env: a `String` keeps its buffer with a
-retain (+1), and a `Vec<T>` is deep-copied so the env owns an independent copy;
-the env's per-layout dtor releases each one on cleanup (reclaiming `Vec<String>`
-element references too), so they safely outlive the caller's scope while the
-worker runs. Other owned/rich parameter types (structs, `our<T>`, closures) still
-use the legacy eager path (a follow-on stage).
+retain (+1), an `our<T>` takes a shared-control-block retain (+1), and a `Vec<T>`
+is deep-copied so the env owns an independent copy; the env's per-layout dtor
+releases each one on cleanup (reclaiming `Vec<String>` element references too),
+so they safely outlive the caller's scope while the worker runs. Other owned/rich
+parameter types (structs, closures) still use the legacy eager path (a follow-on
+stage).
 
 #### Async Function Syntax
 ```vyb
@@ -503,6 +504,7 @@ main()<Void> -> {
 - ✅ `Future<Float>` / `Future<Bool>` primitives (Int-slot bitcast / zero-extend + truncate)
 - ✅ `String` async parameters (env snapshot + retain, released by the env dtor)
 - ✅ `Vec<T>` async parameters (env deep-copy; dtor reclaims storage + String elements)
+- ✅ `our<T>` async parameters (env shared-control-block retain + release)
 - ✅ Multi-threaded executor (a thread pool, one scheduler per CPU worker, fibers pinned to their worker)
 - ✅ Parameterized `Future<Int>` async tasks (scalar args captured in an env)
 - ✅ Nested `await` from inside a task (fiber suspension)
@@ -517,8 +519,9 @@ concurrency), `test/async/async_nested_await.vyb` (a task that awaits a child),
 the pool, ~120ms not ~480ms), `test/async/async_float_bool.vyb` (`Float`/`Bool`
 futures, including awaited from inside a task), `test/async/async_string_param.vyb`
 (`String` params retained in the env), `test/async/async_vec_param.vyb` (`Vec<T>`
-params deep-copied, incl. nested await + mixed envs), and the `asyncs` stdlib
-module section.
+params deep-copied, incl. nested await + mixed envs), `test/async/async_our_param.vyb`
+(`our<T>` params retained across tasks, caller ref stays valid), and the `asyncs`
+stdlib module section.
 
 ### ✅ **Concurrency Modules (stdlib)**
 

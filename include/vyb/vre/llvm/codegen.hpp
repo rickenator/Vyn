@@ -455,6 +455,7 @@ private:
         bool isString;       // a Vyb String value
         bool isVec;          // a Vec<T> value
         bool vecIsString;    // Vec<String>: release String elements before freeing data
+        bool isOur;          // an `our<T>` control-block pointer (release on cleanup)
     };
     // Build the per-layout destructor for an async-task environment that holds
     // inline owned param fields (String / Vec<T>): release each String buffer
