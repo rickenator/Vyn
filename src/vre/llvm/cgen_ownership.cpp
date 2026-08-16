@@ -332,7 +332,16 @@ void LLVMCodegen::cleanupVariable(const ScopeVariable& var) {
                 return;
             }
             llvm::Value* controlBlockPtr = builder->CreateLoad(var.type, var.allocaInst, var.name + "_cb_load");
-            releaseOurControlBlock(controlBlockPtr, var.name);
+            const vyb::ast::TypeNode* pointeeAst = nullptr;
+            llvm::Type* pointeeLlvm = nullptr;
+            auto astIt = valueTypeMap.find(var.allocaInst);
+            if (astIt != valueTypeMap.end() && astIt->second) {
+                pointeeAst = ourPointeeOf(astIt->second.get());
+                if (pointeeAst) {
+                    pointeeLlvm = codegenType(const_cast<vyb::ast::TypeNode*>(pointeeAst));
+                }
+            }
+            releaseOurControlBlock(controlBlockPtr, var.name, pointeeAst, pointeeLlvm);
             break;
         }
 
@@ -664,6 +673,23 @@ bool LLVMCodegen::isMildRefType(const vyb::ast::TypeNode* tn) const {
     return isRefTypeNode(tn, "mild");
 }
 
+const vyb::ast::TypeNode* LLVMCodegen::refPointeeOf(const vyb::ast::TypeNode* tn,
+                                                    const std::string& kind) const {
+    if (ownedFieldTypeBase(tn) != kind) return nullptr;
+    if (const auto* nn = dynamic_cast<const vyb::ast::TypeName*>(tn)) {
+        if (nn->genericArgs.size() == 1) return nn->genericArgs[0].get();
+    }
+    return nullptr;
+}
+
+const vyb::ast::TypeNode* LLVMCodegen::ourPointeeOf(const vyb::ast::TypeNode* tn) const {
+    return refPointeeOf(tn, "our");
+}
+
+const vyb::ast::TypeNode* LLVMCodegen::mildPointeeOf(const vyb::ast::TypeNode* tn) const {
+    return refPointeeOf(tn, "mild");
+}
+
 bool LLVMCodegen::structTypeHasOwnedFields(const vyb::ast::TypeNode* astType) const {
     std::vector<vyb::ast::TypeNodePtr> fields;
     if (!collectStructConcreteFieldTypes(astType, fields)) return false;
@@ -786,7 +812,10 @@ void LLVMCodegen::reclaimStructOwnedFieldsAt(llvm::Value* structPtr,
             if (isRefTypeNode(f, "mild")) {
                 releaseMildControlBlock(cb, "reclaim.mild");
             } else {
-                releaseOurControlBlock(cb, "reclaim.our");
+                const vyb::ast::TypeNode* pointeeAst = ourPointeeOf(f);
+                llvm::Type* pointeeLlvm = pointeeAst
+                    ? codegenType(const_cast<vyb::ast::TypeNode*>(pointeeAst)) : nullptr;
+                releaseOurControlBlock(cb, "reclaim.our", pointeeAst, pointeeLlvm);
             }
             builder->CreateStore(nullPtr, fptr);
         } else if (isKnownStructTypeNode(f)) {
@@ -839,7 +868,9 @@ void LLVMCodegen::retainOurControlBlock(llvm::Value* controlBlockPtr, const std:
 // object when the count reaches zero, and freeing the control block itself once
 // both strong and weak counts are zero. `controlBlockPtr` must be the (possibly
 // null) pointer stored by the binding/field being released.
-void LLVMCodegen::releaseOurControlBlock(llvm::Value* controlBlockPtr, const std::string& tag) {
+void LLVMCodegen::releaseOurControlBlock(llvm::Value* controlBlockPtr, const std::string& tag,
+                                         const vyb::ast::TypeNode* pointeeAst,
+                                         llvm::Type* pointeeLlvm) {
     if (!controlBlockPtr || !builder || !currentFunction) return;
     llvm::PointerType* rawPtr = llvm::PointerType::get(*context, 0);
     llvm::Constant* nullPtr = llvm::ConstantPointerNull::get(rawPtr);
@@ -874,6 +905,16 @@ void LLVMCodegen::releaseOurControlBlock(llvm::Value* controlBlockPtr, const std
     builder->SetInsertPoint(freeObjectBlock);
     llvm::Value* objectPtrFieldPtr = builder->CreateStructGEP(controlBlockType, controlBlockPtr, 3, tag + "_obj_ptr_field_ptr");
     llvm::Value* objectPtr = builder->CreateLoad(rawPtr, objectPtrFieldPtr, tag + "_obj_ptr");
+    // A struct payload owns its fields (inner our/mild refs, Vec storage, String
+    // buffers, my blocks). Reclaim them before the raw payload is freed, or those
+    // nested resources leak. Only reached when the strong count dropped to zero,
+    // so the object is genuinely being destroyed (not a shared, still-live one).
+    if (pointeeAst && pointeeLlvm) {
+        if (auto* poise = llvm::dyn_cast<llvm::StructType>(pointeeLlvm)) {
+            std::set<std::string> visited;
+            reclaimStructOwnedFieldsAt(objectPtr, pointeeAst, poise, visited);
+        }
+    }
     builder->CreateCall(getOrCreateFreeFunction(), {objectPtr});
     llvm::Value* objectFreedPtr = builder->CreateStructGEP(controlBlockType, controlBlockPtr, 2, tag + "_obj_freed_ptr");
     builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt8Ty(*context), 1), objectFreedPtr);
@@ -1057,7 +1098,12 @@ void LLVMCodegen::reclaimEnumOurPayload(llvm::Value* enumPtr, const vyb::ast::Ty
         llvm::Value* cb = extractEnumVariantField(enumVal, pIt->second, 0);
         if (cb) {
             if (retain) retainOurControlBlock(cb, "reclaim.enum.retain");
-            else releaseOurControlBlock(cb, "reclaim.enum.release");
+            else {
+                const vyb::ast::TypeNode* pointeeAst = ourPointeeOf(tn->genericArgs[v.argIdx].get());
+                llvm::Type* pointeeLlvm = pointeeAst
+                    ? codegenType(const_cast<vyb::ast::TypeNode*>(pointeeAst)) : nullptr;
+                releaseOurControlBlock(cb, "reclaim.enum.release", pointeeAst, pointeeLlvm);
+            }
         }
         builder->CreateBr(nextBB);
         builder->SetInsertPoint(nextBB);

@@ -1,0 +1,67 @@
+// @test: owned fields nested in our<T>/mild<T> payloads are reclaimed on release
+// @description: Dropping the last strong owner of an our<T> struct payload frees its
+//   inner owned fields (our/mild refs, Vec storage, String buffers). Exercises scope
+//   exit, soft-wrapped temps, call arguments, assignment overwrite, and enums. The
+//   reclaim keeps deep ownership graphs leak-free (verified under valgrind).
+// @category: ownership, our, mild, enum
+// @expect: pass
+// @expect-return: 0
+
+struct Leaf {
+    v<Int>
+}
+
+struct Rich {
+    c<our<Leaf>>,
+    nums<Vec<Int>>,
+    tag<String>
+}
+
+read_c(r<our<Rich>>)<Int> -> {
+    if (r.c.v != 23) {
+        return 20
+    }
+    return 0
+}
+
+main()<Int> -> {
+    // Scope-exit binding: `a` owns its c/nums/tag fields until main returns.
+    a<our<Rich>> = our(Rich { c: our(Leaf { v: 1 }), nums: Vec(0), tag: "a" })
+    if (a.c.v != 1) {
+        return 1
+    }
+    a.nums.push(7)
+    a.tag = "zz"
+    if (a.nums.len() != 1) {
+        return 2
+    }
+
+    // soft-wrapped strong temp: its payload's fields must be reclaimed when the
+    // object's strong count reaches zero (no leak through the weak handle).
+    w<mild<Rich>> = soft(our(Rich { c: our(Leaf { v: 2 }), nums: Vec(0), tag: "b" }))
+
+    // fresh our(...) passed as a call argument (the temp owns fields too).
+    if (read_c(our(Rich { c: our(Leaf { v: 23 }), nums: Vec(0), tag: "c" })) != 0) {
+        return 3
+    }
+
+    // Assignment overwrite releases the outgoing payload's owned fields.
+    b<our<Rich>> = our(Rich { c: our(Leaf { v: 4 }), nums: Vec(0), tag: "d" })
+    b = our(Rich { c: our(Leaf { v: 5 }), nums: Vec(0), tag: "e" })
+    if (b.c.v != 5) {
+        return 4
+    }
+
+    // Option<our<Rich>> carrying owned fields drops cleanly on enum cleanup.
+    o<Option<our<Rich>>> = Some(our(Rich { c: our(Leaf { v: 6 }), nums: Vec(0), tag: "f" }))
+    r<Int> = match(o) {
+        Some(n) -> n.c.v
+        None -> 0
+    }
+    if (r != 6) {
+        return 5
+    }
+
+    println("ok")
+    return 0
+}

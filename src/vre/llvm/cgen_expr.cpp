@@ -2232,7 +2232,15 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         // operation does not take. Drop it so the object is released once the
         // strong count reaches zero (and a returned weak sees .released()).
         if (freshOwningCallArgKind(node->arguments[0].get()) == 1) {
-            releaseOurControlBlock(controlBlockPtr, "soft.temparg");
+            const vyb::ast::TypeNode* pointeeAst = nullptr;
+            llvm::Type* pointeeLlvm = nullptr;
+            if (node->arguments[0]->type) {
+                pointeeAst = ourPointeeOf(node->arguments[0]->type.get());
+                if (pointeeAst) {
+                    pointeeLlvm = codegenType(const_cast<vyb::ast::TypeNode*>(pointeeAst));
+                }
+            }
+            releaseOurControlBlock(controlBlockPtr, "soft.temparg", pointeeAst, pointeeLlvm);
         }
         VYB_CDBG << "DEBUG: Successfully processed soft() operation - incremented weak_count and returned mild<T> pointer" << std::endl;
         return;
@@ -4262,11 +4270,12 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
     // Fresh owning temporaries passed as arguments are owned solely by this call
     // site; by-value params retain their own independent count, so each temp must
     // be released once the callee returns (see freshOwningCallArgKind).
-    std::vector<std::pair<int, llvm::Value*>> pendingTemporaryReleases;
+    struct TempRelease { int kind; llvm::Value* cb; const vyb::ast::TypeNode* pointeeAst; llvm::Type* pointeeLlvm; };
+    std::vector<TempRelease> pendingTemporaryReleases;
     auto emitTemporaryReleases = [&]() {
         for (auto& pr : pendingTemporaryReleases) {
-            if (pr.first == 1) releaseOurControlBlock(pr.second, "temparg.our");
-            else if (pr.first == 2) releaseMildControlBlock(pr.second, "temparg.mild");
+            if (pr.kind == 1) releaseOurControlBlock(pr.cb, "temparg.our", pr.pointeeAst, pr.pointeeLlvm);
+            else if (pr.kind == 2) releaseMildControlBlock(pr.cb, "temparg.mild");
         }
     };
     for (size_t i = 0; i < node->arguments.size(); ++i) {
@@ -4340,7 +4349,16 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             }
         }
         int tempKind = freshOwningCallArgKind(node->arguments[i].get());
-        if (tempKind != 0) pendingTemporaryReleases.push_back({tempKind, argValue});
+        if (tempKind != 0) {
+            TempRelease tr{tempKind, argValue, nullptr, nullptr};
+            if (tempKind == 1 && node->arguments[i]->type) {
+                tr.pointeeAst = ourPointeeOf(node->arguments[i]->type.get());
+                if (tr.pointeeAst) {
+                    tr.pointeeLlvm = codegenType(const_cast<vyb::ast::TypeNode*>(tr.pointeeAst));
+                }
+            }
+            pendingTemporaryReleases.push_back(tr);
+        }
         argValues.push_back(argValue);
     }
 
@@ -5025,7 +5043,13 @@ void LLVMCodegen::visit(vyb::ast::AssignmentExpression *node) {
         llvm::BasicBlock* contBB = llvm::BasicBlock::Create(*context, "assign.our_cont", currentFunction);
         builder->CreateCondBr(isNotNull, freeBB, contBB);
         builder->SetInsertPoint(freeBB);
-        releaseOurControlBlock(oldOurPtr, "assign.our");
+        const vyb::ast::TypeNode* pointeeAst = nullptr;
+        llvm::Type* pointeeLlvm = nullptr;
+        if (lhsTypeNode && ourPointeeOf(lhsTypeNode.get())) {
+            pointeeAst = ourPointeeOf(lhsTypeNode.get());
+            pointeeLlvm = codegenType(const_cast<vyb::ast::TypeNode*>(pointeeAst));
+        }
+        releaseOurControlBlock(oldOurPtr, "assign.our", pointeeAst, pointeeLlvm);
         builder->CreateBr(contBB);
         builder->SetInsertPoint(contBB);
     }

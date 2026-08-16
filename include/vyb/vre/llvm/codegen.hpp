@@ -512,13 +512,26 @@ private:
     bool isOurRefType(const vyb::ast::TypeNode* tn) const;   // `our<...>` wrapper type node
     bool isMildRefType(const vyb::ast::TypeNode* tn) const;  // `mild<...>` wrapper type node
 
+    // Pointee type node `T` of an `our<T>` / `mild<T>` wrapper (or null when the
+    // node is not that ref wrapper). Used to reclaim a struct payload's owned
+    // fields when its strong count drops to zero.
+    const vyb::ast::TypeNode* refPointeeOf(const vyb::ast::TypeNode* tn, const std::string& kind) const;
+    const vyb::ast::TypeNode* ourPointeeOf(const vyb::ast::TypeNode* tn) const;
+    const vyb::ast::TypeNode* mildPointeeOf(const vyb::ast::TypeNode* tn) const;
+
     // Retain an `our`/`mild` refcount control block: bump the strong (our) or
     // weak (mild) count on the shared block so a new storage location that will
     // release on scope exit holds its own reference. `controlBlockPtr` may be null.
     void retainOurControlBlock(llvm::Value* controlBlockPtr, const std::string& tag);
     // Release an `our`/`mild` refcount control block (shared by top-level
-    // bindings and struct fields). `controlBlockPtr` may be null.
-    void releaseOurControlBlock(llvm::Value* controlBlockPtr, const std::string& tag);
+    // bindings and struct fields). `controlBlockPtr` may be null. When the strong
+    // count drops to zero, the payload struct is freed; if the pointee type is a
+    // struct with owned fields, those fields are reclaimed first so nested
+    // resources (inner our/mild refs, Vec storage, String buffers, my blocks) are
+    // not leaked. `pointeeAst`/`pointeeLlvm` may be null (treated as scalar/no-op).
+    void releaseOurControlBlock(llvm::Value* controlBlockPtr, const std::string& tag,
+                                const vyb::ast::TypeNode* pointeeAst = nullptr,
+                                llvm::Type* pointeeLlvm = nullptr);
     void releaseMildControlBlock(llvm::Value* controlBlockPtr, const std::string& tag);
     // Retain a `mild` weak-count control block: bump the weak count so a new
     // storage location that will release on scope exit holds its own weak ref.
