@@ -1,0 +1,41 @@
+// @test: closure capture of ownership-wrapped values with field access
+// @description: capturing an ownership-qualified value (our<T> shared, my<T>
+//   move, their<T>/view<T> borrow) and reading its fields inside the closure
+//   body resolves through the wrapper. The reloaded capture alloca carries the
+//   captured variable's AST type, so member access like `shared.n` compiles
+//   instead of erroring with "Cannot determine struct type for member access".
+// @category: lambda, closure, capture, ownership, our, my, their
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+struct Counter {
+    n<Int>
+}
+
+main()<Int> -> {
+    # our<T> shared capture: read + write-through to the shared field
+    shared<our<Counter>> = our(Counter { n: 5 })
+    bump<fn() -> Int> = || -> {
+        shared.n = shared.n + 1
+        return shared.n
+    }
+    a<Int> = bump()
+    b<Int> = bump()
+    if (!(a == 6 && b == 7 && shared.n == 7)) { return 1 }
+
+    # my<T> move capture: transfer ownership, read the field inside
+    mine<my<Counter>> = my(Counter { n: 8 })
+    readMine<fn(Int) -> Int> = |x<Int>| -> mine.n + x
+    if (readMine(2) != 10) { return 2 }
+
+    # their<T>/view<T> borrow capture: read through the held reference
+    c<Counter> = Counter { n: 3 }
+    vr<their<Counter>> = view(c)
+    readView<fn(Int) -> Int> = |x<Int>| -> vr.n + x
+    if (readView(4) != 7) { return 3 }
+
+    println("ok")
+    return 0
+}

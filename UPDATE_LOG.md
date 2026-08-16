@@ -18,9 +18,25 @@ Audit date: 2026-05-23
   mutations reach the caller's backing Vec. Works through a function/borrow parameter and
   a local `view()`/`borrow()` reference, for `Int` and `String` elements. Covered by
   `test/modules/test_vec_inplace_byref.vyb`; full unit/module/ownership/aspect suites pass.
-  Known separate (pre-existing) gap: codegen still lacks aspect/bind dispatch for
-  *member-expression* receivers generally (e.g. `h.c.bump()` on a plain struct field, or
-  `self.data.sort_in_place()` through a nested field), independent of any ownership wrapper.
+
+- 2026-08-15: **Member-receiver aspect/bind dispatch + owned closure captures**.
+  (a) **Member-expression receiver dispatch**. Codegen's aspect/bind dispatch previously
+  required an identifier receiver; invoking a bound method on a non-identifier receiver —
+  a struct field (`h.c.bump()`), an owned `self.items<Vec<Int>>` field, or a nested
+  `their<Vec<T>>` view field (`self.data.sort_in_place()`) — fell through to a stale
+  "Function ... not found" diagnostic. Codegen now evaluates the member in LHS (pointer)
+  mode to get the field's address, resolves the trait/monomorphized method against the
+  concrete type (unwrapping ownership-wrapped Vec fields to their inner type and loading
+  the `Vec*` slot), and passes the address to the bind's by-ref `self<their<Self>>`
+  receiver, so in-place mutations persist on the caller. Semantic was also fixed to let a
+  plain `Vec`-typed field's non-built-in methods reach the general trait dispatch instead
+  of short-circuiting to the built-in-only handler (`test/aspect/test_aspect_member_receiver.vyb`).
+  (b) **Ownership-qualified closure captures**. The closure prologue now records each
+  captured variable's AST type on its reloaded `capAlloca`, so member access on captured
+  ownership-wrapped values resolves — `our<T>` (read + write-through), `my<T>` (move), and
+  `their<T>`/`view<T>` (borrow) — instead of erroring "Cannot determine struct type for
+  member access" (`test/lambda/test_closure_owned_field_capture.vyb`). Both covered by
+  new regression tests; full unit/module/ownership/aspect/lambda suites pass.
 
 - 2026-08-15: **`BTreeMap<K,V>` ordered map**. Added to `stdlib/collections/mod.vyb` a
   `Comparable`-keyed ordered map bound as `BTreeMapOps`: keys live in a `keys` vector kept

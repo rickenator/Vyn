@@ -1,0 +1,80 @@
+// @test: aspect/bind method dispatch on a member-expression receiver
+// @description: an aspect/bind method invoked on a non-identifier receiver
+//   (a struct field like `h.c.bump()`), including the VecOps/VecHigherOps
+//   in-place forms on an owned `Vec<T>` field and through an ownership-wrapped
+//   `their<Vec<T>>` field, dispatches by reference so mutations persist on the
+//   caller. Codegen evaluates the member in LHS mode (a pointer to the field)
+//   and passes it to the bind's by-ref `self<their<Self>>` receiver.
+// @category: aspect, bind, receiver, member, ownership, their, vec
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import collections
+
+struct Counter {
+    n<Int>
+}
+aspect CounterOps {
+    bump(self<their<Self>>, by<Int>)<Int>
+}
+bind CounterOps -> Counter {
+    bump(self<their<Counter>>, by<Int>)<Int> -> {
+        self.n = self.n + by
+        return self.n
+    }
+}
+
+struct Holder {
+    c<Counter>
+}
+
+# owned Vec<T> field: call in-place VecOps/VecHigherOps through self
+struct Bag {
+    items<Vec<Int>>
+}
+aspect BagOps {
+    tidy(self<their<Self>>)<Int>
+}
+bind BagOps -> Bag {
+    tidy(self<their<Bag>>)<Int> -> {
+        self.items.sort_in_place()
+        self.items.map_in_place(|v<Int>| -> v * 2)
+        return self.items.get(0)
+    }
+}
+
+# nested their<Vec<T>> field: in-place form through a by-ref view field
+struct ViewBag {
+    data<their<Vec<Int>>>
+}
+aspect ViewBagOps {
+    sortme(self<their<Self>>)<Int>
+}
+bind ViewBagOps -> ViewBag {
+    sortme(self<their<ViewBag>>)<Int> -> {
+        self.data.sort_in_place()
+        return self.data.get(0)
+    }
+}
+
+main()<Int> -> {
+    h<Holder> = Holder { c: Counter { n: 5 } }
+    x<Int> = h.c.bump(3)
+    if (!(x == 8 && h.c.n == 8)) { return 1 }
+
+    b<Bag> = Bag { items: Vec() }
+    b.items.push(3); b.items.push(1); b.items.push(2)
+    first<Int> = b.tidy()
+    if (!(first == 2 && b.items.get(0) == 2 && b.items.get(2) == 6)) { return 2 }
+
+    w<Vec<Int>> = Vec()
+    w.push(3); w.push(9); w.push(5); w.push(1)
+    vb<ViewBag> = ViewBag { data: borrow(w) }
+    vf<Int> = vb.sortme()
+    if (!(vf == 1 && w.get(0) == 1 && w.get(3) == 9)) { return 3 }
+
+    println("ok")
+    return 0
+}

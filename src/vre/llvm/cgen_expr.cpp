@@ -3117,6 +3117,145 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 handleVecMethodOnValue(node, vecValue, methodName, memberExpr->object.get());
                 return;
             }
+
+            // General aspect/bind method dispatch for a member-expression receiver
+            // (e.g. `h.c.bump()` on a struct field, or `self.data.sort_in_place()`
+            // through an ownership-wrapped their<Vec<T>> field). Built-in String/Vec
+            // methods returned above; anything else that resolves to a bind lands here.
+            {
+                SemanticAnalyzer* semantic = driver_.hasSemanticAnalyzer()
+                    ? driver_.getSemanticAnalyzer() : nullptr;
+                ast::TypeNode* objTy2 = memberExpr->object->type
+                    ? memberExpr->object->type.get() : nullptr;
+                if (semantic && objTy2 && (dynamic_cast<ast::TypeName*>(objTy2) ||
+                                           dynamic_cast<ast::VecType*>(objTy2))) {
+                    std::string concreteType = objTy2->toString();
+                    bool ownershipWrappedVec = false;
+                    if (auto objTn2 = dynamic_cast<ast::TypeName*>(objTy2)) {
+                        const std::string kw = objTn2->identifier ? objTn2->identifier->name : "";
+                        if ((kw == "their" || kw == "my" || kw == "our" ||
+                             kw == "view" || kw == "borrow") && objTn2->genericArgs.size() == 1) {
+                            ast::TypeNode* inner = objTn2->genericArgs[0].get();
+                            bool innerIsVec = dynamic_cast<ast::VecType*>(inner) != nullptr;
+                            if (!innerIsVec) {
+                                if (auto innerTN = dynamic_cast<ast::TypeName*>(inner)) {
+                                    innerIsVec = innerTN->identifier && innerTN->identifier->name == "Vec";
+                                }
+                            }
+                            if (innerIsVec) {
+                                concreteType = inner->toString();
+                                ownershipWrappedVec = true;
+                            }
+                        }
+                    }
+
+                    // Find a bound aspect providing this method for concreteType.
+                    std::string foundTrait;
+                    bool found = false;
+                    const auto& impls = semantic->getTraitImpls();
+                    auto limpl = impls.find(concreteType);
+                    if (limpl != impls.end()) {
+                        for (const auto& traitEntry : limpl->second) {
+                            for (const ast::FunctionDeclaration* m : traitEntry.second) {
+                                if (m && m->id && m->id->name == methodName) {
+                                    foundTrait = traitEntry.first; found = true; break;
+                                }
+                            }
+                            if (found) break;
+                        }
+                    }
+                    if (!found) {
+                        TypePattern concretePattern = TypePattern::parse(concreteType);
+                        const auto& genImpls = semantic->getGenericTraitImpls();
+                        for (const auto& typeEntry : genImpls) {
+                            TypePattern tmpl = TypePattern::parse(typeEntry.first);
+                            std::map<std::string, std::string> sub;
+                            if (!tmpl.matchesPattern(concretePattern, sub)) continue;
+                            for (const auto& traitEntry : typeEntry.second) {
+                                const GenericImplInfo* gii = traitEntry.second.get();
+                                bool has = false;
+                                if (gii && gii->declaration) {
+                                    for (const auto& m : gii->declaration->methods) {
+                                        if (m && m->id && m->id->name == methodName) { has = true; break; }
+                                    }
+                                }
+                                if (has) { foundTrait = traitEntry.first; found = true; break; }
+                            }
+                            if (found) break;
+                        }
+                    }
+
+                    if (found) {
+                        llvm::Function* implFunc = module->getFunction(concreteType + "_" + foundTrait + "_" + methodName);
+                        if (!implFunc) implFunc = monomorphizeTraitMethod(concreteType, foundTrait, methodName);
+                        if (implFunc) {
+                            // Evaluate the receiver in LHS (pointer) mode to get the
+                            // address of the member field / object.
+                            bool savedLHS = m_isLHSOfAssignment;
+                            m_isLHSOfAssignment = true;
+                            memberExpr->object->accept(*this);
+                            m_isLHSOfAssignment = savedLHS;
+                            llvm::Value* recvPtr = m_currentLLVMValue;
+                            if (!recvPtr) {
+                                logError(memberExpr->object->loc, "Failed to evaluate member-expression receiver for aspect method " + methodName);
+                                m_currentLLVMValue = nullptr;
+                                return;
+                            }
+                            // Ownership-wrapped Vec field: recvPtr is the slot address
+                            // (Vec**); load once to recover the Vec* the by-ref self expects.
+                            llvm::Value* selfArg = recvPtr;
+                            if (ownershipWrappedVec) {
+                                selfArg = builder->CreateLoad(llvm::PointerType::get(*context, 0), recvPtr, "byref.aspect.recv.load");
+                            }
+                            bool selfIsByRef = implFunc->getArg(0)->getType()->isPointerTy();
+                            std::vector<llvm::Value*> argValues;
+                            if (selfIsByRef) {
+                                argValues.push_back(selfArg);
+                            } else {
+                                argValues.push_back(builder->CreateLoad(implFunc->getArg(0)->getType(), selfArg, "aspect.recv.load"));
+                            }
+                            std::vector<llvm::Value*> transientClosures;
+                            for (size_t a = 0; a < node->arguments.size(); ++a) {
+                                auto& arg = node->arguments[a];
+                                arg->accept(*this);
+                                if (!m_currentLLVMValue) {
+                                    logError(arg->loc, "Argument codegen failed for aspect method " + methodName);
+                                    m_currentLLVMValue = nullptr;
+                                    return;
+                                }
+                                llvm::Value* argVal = m_currentLLVMValue;
+                                if (dynamic_cast<ast::FunctionExpression*>(arg.get()) &&
+                                    argVal->getType()->isStructTy() &&
+                                    isClosureStructType(argVal->getType())) {
+                                    retainClosureValue(argVal);
+                                    transientClosures.push_back(argVal);
+                                }
+                                if (argVal->getType()->isPointerTy()) {
+                                    llvm::Type* expected = implFunc->getFunctionType()->getParamType(argValues.size());
+                                    if (expected && expected->isStructTy()) {
+                                        llvm::StructType* st = llvm::dyn_cast<llvm::StructType>(expected);
+                                        if (st && st->getNumElements() == 2 &&
+                                            st->getElementType(0)->isPointerTy() &&
+                                            st->getElementType(1)->isIntegerTy(64)) {
+                                            llvm::Value* wrapped = tryCast(argVal, expected, arg->loc);
+                                            if (wrapped) argVal = wrapped;
+                                        }
+                                    }
+                                }
+                                argValues.push_back(argVal);
+                            }
+                            if (implFunc->getReturnType()->isVoidTy()) {
+                                builder->CreateCall(implFunc, argValues);
+                                m_currentLLVMValue = nullptr;
+                            } else {
+                                m_currentLLVMValue = builder->CreateCall(implFunc, argValues, "aspect.method.result");
+                            }
+                            for (auto* tc : transientClosures) releaseClosureValue(tc);
+                            return;
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -5584,6 +5723,15 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
                 builder->CreateStore(fieldVal, capAlloca);
             }
             namedValues[captures[ci].name] = capAlloca;
+            // Record the captured variable's AST type on the reloaded alloca so
+            // field access resolves on ownership-wrapped captures (their/my/our/
+            // view/borrow) — e.g. `f = |x| -> shared.n` where `shared<our<T>>`.
+            // Without this, the capAlloca's pointee type is unknown and member
+            // access errors with "Cannot determine struct type for member access".
+            auto capOuterTy = valueTypeMap.find(captures[ci].outer);
+            if (capOuterTy != valueTypeMap.end() && capOuterTy->second) {
+                valueTypeMap[capAlloca] = std::shared_ptr<vyb::ast::TypeNode>(capOuterTy->second->clone().release());
+            }
         }
     }
 

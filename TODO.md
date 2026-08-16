@@ -250,6 +250,12 @@ is the working audit for what needs to be implemented next.
   into a storage location retains the env, and variable/parameter scope exit and
   overwrite release it, freeing the env block when the last reference is dropped.
   Returned closures hand an owned reference to the caller.
+- [x] **Owned/member-receiver capture** — Capturing an ownership-qualified value
+  (`our<T>` shared read and write-through, `my<T>` move, `their<T>`/`view<T>`
+  borrow) and reading its fields inside the closure now resolves: the reloaded
+  capture alloca carries the captured variable's AST type, so field access like
+  `shared.n` / `mine.n` / `vr.n` compiles instead of erroring
+  (`test/lambda/test_closure_owned_field_capture.vyb`).
 
 ---
 
@@ -330,9 +336,13 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
   in-place forms now dispatch on a by-ref `their<Vec<T>>` view too (function/borrow
   parameter or a local `view()`/`borrow()` reference, `Int`/`String` elements;
   `test/modules/test_vec_inplace_byref.vyb`) — codegen passes the wrapper's stored
-  `Vec*` pointer to the by-ref self. Remaining: full closure capture (env struct);
-  aspect/bind dispatch on *member-expression* receivers (e.g. `h.c.bump()`) is still
-  a separate pre-existing codegen gap. `.contains()` is now correct.
+  `Vec*` pointer to the by-ref self.
+  The in-place forms (and aspect/bind dispatch generally) now work on
+  *member-expression* receivers too — a struct field like `h.c.bump()`, an owned
+  `self.items<Vec<Int>>` field, or through a nested `their<Vec<T>>` view field
+  (`self.data.sort_in_place()`; `test/aspect/test_aspect_member_receiver.vyb`);
+  codegen evaluates the member in LHS mode (a pointer to the field) and hands it
+  to the bind's by-ref `self<their<Self>>` receiver. `.contains()` is now correct.
 - [x] **`Vec<T>` constructor idiom** — `Vec::new()` / `Vec::new(size)` replaced by a vybish constructor call: `Vec()` (empty growable) and `Vec(n)` (preallocate `n` elements/capacity), element type inferred from the annotation. `Vec::new()` stays as a back-compat alias.
 
 ### 5. Sum Types / Enums (MEDIUM PRIORITY)

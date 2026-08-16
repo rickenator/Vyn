@@ -3238,14 +3238,19 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
 
                 // Check if the object's type is a Vec type
                 if (auto vecType = dynamic_cast<ast::VecType*>(objTypeIt->second)) {
-                    // This is a Vec method call, handle it
-                    // We pass a dummy name since we're working with member expressions
-                    handleVecMethodCallOnMember(node, vecType, methodIdent->name);
-                    return;
+                    // This is a Vec method call, handle it. Built-in Vec primitives are
+                    // dispatched here; aspect/bind methods bound to Vec (VecOps/
+                    // VecHigherOps, e.g. sort_in_place) fall through to the general
+                    // trait dispatch below.
+                    if (isBuiltinVecMethodName(methodIdent->name)) {
+                        handleVecMethodCallOnMember(node, vecType, methodIdent->name);
+                        return;
+                    }
                 }
                 // Also handle TypeName "Vec<T>" (e.g., struct fields of Vec type)
                 if (auto tn = dynamic_cast<ast::TypeName*>(objTypeIt->second)) {
-                    if (tn->identifier && tn->identifier->name == "Vec") {
+                    if (tn->identifier && tn->identifier->name == "Vec" &&
+                        isBuiltinVecMethodName(methodIdent->name)) {
                         // Create a temporary VecType to pass to handleVecMethodCallOnMember
                         ast::TypeNodePtr elemType = tn->genericArgs.empty()
                             ? std::make_unique<ast::TypeName>(node->loc, std::make_unique<ast::Identifier>(node->loc, "Int"))
