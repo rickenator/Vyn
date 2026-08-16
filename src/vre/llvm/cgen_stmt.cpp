@@ -1341,6 +1341,7 @@ void LLVMCodegen::codegenMatch(vyb::ast::MatchStatement* node, llvm::AllocaInst*
         // variant, extract its payload fields into these named bindings.
         llvm::StructType* pendingVariantPayloadTy = nullptr;
         std::vector<std::string> pendingVariantBindings;
+        std::vector<std::shared_ptr<vyb::ast::TypeNode>> pendingVariantBindTypes;
         if (!casePattern) {
             builder->CreateBr(caseBodyBBs[i]);
         } else {
@@ -1471,6 +1472,9 @@ void LLVMCodegen::codegenMatch(vyb::ast::MatchStatement* node, llvm::AllocaInst*
                             for (auto& arg : ctor->arguments) {
                                 if (auto* b = dynamic_cast<ast::Identifier*>(arg.get())) {
                                     pendingVariantBindings.push_back(b->name);
+                                    pendingVariantBindTypes.push_back(
+                                        b->type ? std::shared_ptr<vyb::ast::TypeNode>(b->type->clone().release())
+                                                : std::shared_ptr<vyb::ast::TypeNode>());
                                 }
                             }
                         }
@@ -1549,6 +1553,9 @@ void LLVMCodegen::codegenMatch(vyb::ast::MatchStatement* node, llvm::AllocaInst*
                 llvm::AllocaInst* alloca = createEntryBlockAlloca(fv->getType(), bname);
                 builder->CreateStore(fv, alloca);
                 namedValues[bname] = alloca;
+                if (fi < pendingVariantBindTypes.size() && pendingVariantBindTypes[fi]) {
+                    valueTypeMap[alloca] = std::shared_ptr<vyb::ast::TypeNode>(pendingVariantBindTypes[fi]->clone().release());
+                }
             }
         }
 

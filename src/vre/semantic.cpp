@@ -3852,8 +3852,12 @@ void SemanticAnalyzer::visit(ast::MemberExpression* node) {
     }
 
     // `.tag` accessor: an enum value exposes its raw positional i64 tag as an Int.
-    // This works for both C-like scalar enums and data-carrying enums.
-    if (fieldName == "tag" && enumTypeNames.count(baseStructName)) {
+    // This works for both C-like scalar enums and data-carrying enums, and for the
+    // built-in generic enums (Option<T> / Result<T,E>), which are registered as
+    // templates rather than source enum declarations and so live in
+    // enumGenericParamOrder rather than enumTypeNames.
+    if (fieldName == "tag" &&
+        (enumTypeNames.count(baseStructName) || enumGenericParamOrder.count(baseStructName))) {
         auto* tagTy = new ast::TypeName(node->loc,
             std::make_unique<ast::Identifier>(node->loc, "Int"));
         expressionTypes[node] = retainType(tagTy);
@@ -4864,6 +4868,11 @@ void SemanticAnalyzer::visit(ast::SelectExpression* node) {
                             ast::TypeNode* pt = (bi < payload.size()) ? payload[bi].get() : nullptr;
                             currentScope->add(SymbolInfo{SymbolInfo::Kind::Variable, bname, false,
                                 ast::OwnershipKind::MY, pt ? retainType(pt->clone().release()) : nullptr});
+                            // Record the payload field type on the bound identifier so
+                            // codegen can resolve member access / field reads on it (needed
+                            // for ownership-wrapped payloads like our<Node>, which are stored
+                            // as control-block pointers).
+                            bid->type = pt ? std::shared_ptr<ast::TypeNode>(pt->clone().release()) : nullptr;
                         }
                     }
                 }
@@ -5570,6 +5579,11 @@ void SemanticAnalyzer::visit(ast::MatchStatement* node) {
                             ast::TypeNode* pt = (bi < payload.size()) ? payload[bi].get() : nullptr;
                             currentScope->add(SymbolInfo{SymbolInfo::Kind::Variable, bname, false,
                                 ast::OwnershipKind::MY, pt ? retainType(pt->clone().release()) : nullptr});
+                            // Record the payload field type on the bound identifier so
+                            // codegen can resolve member access / field reads on it (needed
+                            // for ownership-wrapped payloads like our<Node>, which are stored
+                            // as control-block pointers).
+                            bid->type = pt ? std::shared_ptr<ast::TypeNode>(pt->clone().release()) : nullptr;
                         }
                     }
                 }

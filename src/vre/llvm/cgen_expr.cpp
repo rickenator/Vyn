@@ -6401,6 +6401,13 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
             llvm::AllocaInst* alloca = createEntryBlockAlloca(fv->getType(), b->name);
             builder->CreateStore(fv, alloca);
             namedValues[b->name] = alloca;
+            // Record the AST payload field type on the alloca (set by semantic on
+            // the bound identifier). Reading the binding later propagates it to the
+            // loaded value, so member access can resolve an ownership-wrapped
+            // (control-block pointer) payload's fields like `Some(n) -> n.value`.
+            if (b->type) {
+                valueTypeMap[alloca] = std::shared_ptr<vyb::ast::TypeNode>(b->type->clone().release());
+            }
         }
         return payloadTy;
     };

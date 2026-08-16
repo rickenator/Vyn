@@ -1,0 +1,23 @@
+// @test: match-arm member access on ownership-wrapped payload
+// @description: matching Some(n) on Option<our<Node>> binds the owned payload so
+//   field reads like n.value resolve through the control-block pointer.
+// @category: ownership, our, enum, match
+// @expect: pass
+// @expect-return: 0
+
+struct Node {
+    value<Int>
+}
+
+main()<Int> -> {
+    owner<our<Node>> = our(Node { value: 33 })
+    o<Option<our<Node>>> = Some(owner)
+    r<Int> = match(o) {
+        Some(n) -> n.value
+        None -> 0
+    }
+    if (r == 33) {
+        return 0
+    }
+    return 1
+}
