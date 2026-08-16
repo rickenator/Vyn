@@ -1,0 +1,29 @@
+// @test: closure capture across threads - owning the closure env
+// @description: a capturing closure passed to thread_spawn must carry its own
+//   captured value. Regression for a lifetime bug where a per-argument release
+//   in the `threads` wrapper freed the closure env before a worker ran, so two
+//   concurrent workers observed the same (last) capture. Verified by spawning
+//   two threads that each capture a distinct value and join both back.
+// @category: modules, threads, concurrency, stdlib
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import threads
+
+mk(v<Int>)<Int> -> {
+    return thread_spawn(|| -> { return v })
+}
+
+main()<Int> -> {
+    a<Int> = mk(111)
+    b<Int> = mk(222)
+    if (a < 0 || b < 0) { return 1 }
+    xa<Int> = thread_join(a)
+    xb<Int> = thread_join(b)
+    if (xa != 111) { return 2 }  // would be 222 if both workers shared one env
+    if (xb != 222) { return 3 }
+    println("ok")
+    return 0
+}

@@ -584,6 +584,17 @@ VYB_WEAK int64_t __vyb_time_sleep_ms(int64_t millis) {
 // need a reaper that frees the slot once the thread body completes). A never
 // joined thread keeps its slot occupied.
 #define VYB_THREAD_CAP 256
+
+// Closure environments are reference-counted by the compiler's ownership pass
+// (`{ refcount; cap_dtor; ...captures }`). A closure handed to a thread is owned
+// by that thread: spawn takes a reference so the env outlives the caller, and
+// the trampoline drops it once the body returns. Without this, a per-argument
+// release in a wrapper function (e.g. the `threads` module's `thread_spawn`)
+// frees the env while the worker still needs it, so concurrent workers would
+// all observe the last capture (a use-after-reuse corruption).
+extern void* __vyb_closure_retain(void* env);
+extern void  __vyb_closure_release(void* env);
+
 typedef struct {
     pthread_t tid;
     void* fn;      // the lambda's function pointer
@@ -598,7 +609,9 @@ static pthread_mutex_t vyb_threads_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void* vyb_thread_trampoline(void* arg) {
     vyb_thread* t = (vyb_thread*)arg;
-    t->result = ((int64_t (*)(void*))t->fn)(t->env);
+    void* env = t->env;  // the closure's capture environment (may be null)
+    t->result = ((int64_t (*)(void*))t->fn)(env);
+    if (env) __vyb_closure_release(env);  // drop the thread's reference
     pthread_mutex_lock(&vyb_threads_lock);
     if (t->detach) t->used = 0;  // fire-and-forget: reclaim the slot now
     t->done = 1;
@@ -627,8 +640,12 @@ VYB_WEAK int64_t __vyb_thread_spawn(void* env, void* fn) {
     t->used = 1;
     t->done = 0;
     t->detach = 0;
+    // The thread owns the closure for its whole lifetime (retained before the
+    // worker can run, so it can never be reaped before spawn returns).
+    if (t->env) __vyb_closure_retain(t->env);
     int rc = pthread_create(&t->tid, NULL, vyb_thread_trampoline, t);
     if (rc != 0) {
+        if (t->env) __vyb_closure_release(t->env);
         t->used = 0;
         pthread_mutex_unlock(&vyb_threads_lock);
         return -1;
