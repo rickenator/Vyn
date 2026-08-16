@@ -572,7 +572,7 @@ bool SemanticAnalyzer::isWildcardErrorExpr(ast::Expression* expr) const {
 }
 
 void SemanticAnalyzer::enterScope() {
-    currentScope = new SymbolTable(currentScope);
+    currentScope = new SymbolTable(currentScope, &scopeGate_);
     borrowScopes.emplace_back();
     moveScopes.emplace_back();
 }
@@ -587,6 +587,14 @@ void SemanticAnalyzer::exitScope() {
         borrowScopes.pop_back();
         moveScopes.pop_back();
     }
+}
+
+void SemanticAnalyzer::setModuleScoping(
+    const std::unordered_map<std::string, std::string>& ownerByName,
+    const std::unordered_map<std::string, std::unordered_set<std::string>>& effectiveScope) {
+    scopeGate_.ownerByName = ownerByName;
+    scopeGate_.effectiveScope = effectiveScope;
+    scopeGate_.currentOwner.clear();
 }
 
 void SemanticAnalyzer::analyze(ast::Module* root) {
@@ -1200,6 +1208,15 @@ void SemanticAnalyzer::visit(ast::FunctionDeclaration* node) {
     auto previousFunction = currentFunction;
     currentFunction = node;
 
+    // Namespace scoping: resolve this function's body against its owning
+    // module's resolvable scope, so a module's private dependencies are usable
+    // here but stay hidden from any consumer that calls this function.
+    ownerStack_.push_back(scopeGate_.currentOwner);
+    auto ownerIt = scopeGate_.ownerByName.find(node->id->name);
+    if (ownerIt != scopeGate_.ownerByName.end()) {
+        scopeGate_.currentOwner = ownerIt->second;
+    }
+
     enterScope();
 
     // Handle generic parameters if present (e.g., fn printItem<T<Display>>)
@@ -1412,6 +1429,8 @@ void SemanticAnalyzer::visit(ast::FunctionDeclaration* node) {
 
     // Restore previous function context
     currentFunction = previousFunction;
+    scopeGate_.currentOwner = ownerStack_.back();
+    ownerStack_.pop_back();
 }
 
 void SemanticAnalyzer::visit(ast::VariableDeclaration* node) {

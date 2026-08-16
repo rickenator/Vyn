@@ -277,13 +277,27 @@ struct ModuleParseOptions {
 
 ModuleParseOptions g_module_parse_options;
 
-std::unique_ptr<vyb::ast::Module> parse_vyb_module(const std::string& source, const std::string& fileName) {
+struct ParsedModule {
+    std::unique_ptr<vyb::ast::Module> ast;
+    // Namespace-scope data computed during import resolution: which module owns
+    // each top-level symbol and which names each module's own code may resolve.
+    // Copied here so the analyzer can hide a consumer from another module's
+    // private dependencies (see vyb::SemanticAnalyzer::setModuleScoping).
+    std::unordered_map<std::string, std::string> ownerByName;
+    std::unordered_map<std::string, std::unordered_set<std::string>> effectiveScope;
+};
+
+ParsedModule parse_vyb_module(const std::string& source, const std::string& fileName) {
     vyb::ModuleRegistryOptions options;
     options.cliModulePaths = g_module_parse_options.cliModulePaths;
     options.executablePath = g_module_parse_options.executablePath;
     options.skipImportResolution = g_module_parse_options.skipImportResolution;
     vyb::ModuleRegistry registry(std::move(options));
-    return registry.resolveRoot(source, fileName);
+    ParsedModule parsed;
+    parsed.ast = registry.resolveRoot(source, fileName);
+    parsed.ownerByName = registry.moduleKeyByName();
+    parsed.effectiveScope = registry.effectiveScope();
+    return parsed;
 }
 } // namespace
 
@@ -306,13 +320,14 @@ int compile_vyb_to_object(const std::string& source, const std::string& fileName
         vyb::Driver driver;
 
         std::cout << "Parsing source and resolving imports..." << std::endl;
-        auto ast = parse_vyb_module(source, fileName);
+        auto parsed = parse_vyb_module(source, fileName);
         std::cout << "AST created successfully" << std::endl;
 
         std::cout << "Running semantic analysis..." << std::endl;
         vyb::SemanticAnalyzer semanticAnalyzer(driver);
         driver.setSemanticAnalyzer(&semanticAnalyzer);
-        semanticAnalyzer.analyze(ast.get());
+        semanticAnalyzer.setModuleScoping(parsed.ownerByName, parsed.effectiveScope);
+        semanticAnalyzer.analyze(parsed.ast.get());
 
         const auto& semanticErrors = semanticAnalyzer.getErrors();
         if (!semanticErrors.empty()) {
@@ -327,7 +342,7 @@ int compile_vyb_to_object(const std::string& source, const std::string& fileName
 
         std::cout << "Generating LLVM IR code..." << std::endl;
         vyb::LLVMCodegen codegen(driver);
-        codegen.generate(ast.get(), fileName + ".ll");
+        codegen.generate(parsed.ast.get(), fileName + ".ll");
         std::cout << "LLVM IR generation completed" << std::endl;
 
         // Get the LLVM module
@@ -629,13 +644,14 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
         vyb::Driver driver;
 
         VYB_CDBG << "Parsing source and resolving imports..." << std::endl;
-        auto ast = parse_vyb_module(source, fileName);
+        auto parsed = parse_vyb_module(source, fileName);
         VYB_CDBG << "AST created successfully" << std::endl;
 
         VYB_CDBG << "Running semantic analysis..." << std::endl;
         vyb::SemanticAnalyzer semanticAnalyzer(driver);
         driver.setSemanticAnalyzer(&semanticAnalyzer);  // Make semantic data available to codegen
-        semanticAnalyzer.analyze(ast.get());
+        semanticAnalyzer.setModuleScoping(parsed.ownerByName, parsed.effectiveScope);
+        semanticAnalyzer.analyze(parsed.ast.get());
 
         // Check for semantic errors and fail if any exist
         const auto& semanticErrors = semanticAnalyzer.getErrors();
@@ -651,7 +667,7 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
 
         VYB_CDBG << "Generating LLVM IR code..." << std::endl;
         vyb::LLVMCodegen codegen(driver);
-        codegen.generate(ast.get(), fileName + ".ll");
+        codegen.generate(parsed.ast.get(), fileName + ".ll");
         VYB_CDBG << "LLVM IR generation completed" << std::endl;
 
         if (generateLLVMIR) {
@@ -1483,7 +1499,7 @@ int main(int argc, char* argv[]) {
 
             // In parse-only mode, just tokenize and parse
             if (parse_only_mode) {
-                auto ast = parse_vyb_module(source, filename);
+                auto parsed = parse_vyb_module(source, filename);
 
                 std::cout << "Parse completed successfully" << std::endl;
                 return 0;
@@ -1491,7 +1507,7 @@ int main(int argc, char* argv[]) {
 
             // Generate LLVM IR to a file if requested
             if (emit_llvm_ir) {
-                auto ast = parse_vyb_module(source, filename);
+                auto parsed = parse_vyb_module(source, filename);
 
                 vyb::Driver driver;
 
@@ -1499,7 +1515,8 @@ int main(int argc, char* argv[]) {
                 std::cout << "Running semantic analysis..." << std::endl;
                 vyb::SemanticAnalyzer semanticAnalyzer(driver);
                 driver.setSemanticAnalyzer(&semanticAnalyzer);
-                semanticAnalyzer.analyze(ast.get());
+                semanticAnalyzer.setModuleScoping(parsed.ownerByName, parsed.effectiveScope);
+                semanticAnalyzer.analyze(parsed.ast.get());
 
                 // Check for semantic errors
                 const auto& semanticErrors = semanticAnalyzer.getErrors();
@@ -1520,19 +1537,20 @@ int main(int argc, char* argv[]) {
                 if (dot != std::string::npos) out_ll = out_ll.substr(0, dot);
                 out_ll += ".ll";
 
-                codegen.generate(ast.get(), out_ll);
+                codegen.generate(parsed.ast.get(), out_ll);
                 std::cout << "LLVM IR generated to " << out_ll << std::endl;
                 return 0;
             }
 
             // In semantic-only mode, run semantic analysis without execution
             if (semantic_only_mode) {
-                auto ast = parse_vyb_module(source, filename);
+                auto parsed = parse_vyb_module(source, filename);
 
                 vyb::Driver driver;
                 vyb::SemanticAnalyzer semanticAnalyzer(driver);
                 driver.setSemanticAnalyzer(&semanticAnalyzer);  // Make semantic data available
-                semanticAnalyzer.analyze(ast.get());
+                semanticAnalyzer.setModuleScoping(parsed.ownerByName, parsed.effectiveScope);
+                semanticAnalyzer.analyze(parsed.ast.get());
 
                 const auto& semanticErrors = semanticAnalyzer.getErrors();
                 if (!semanticErrors.empty()) {
@@ -1611,12 +1629,13 @@ int main(int argc, char* argv[]) {
 
             // --no-execute: parse + semantic analysis to validate the file without running it
             {
-                auto ast = parse_vyb_module(source, filename);
+                auto parsed = parse_vyb_module(source, filename);
 
                 vyb::Driver driver;
                 vyb::SemanticAnalyzer semanticAnalyzer(driver);
                 driver.setSemanticAnalyzer(&semanticAnalyzer);
-                semanticAnalyzer.analyze(ast.get());
+                semanticAnalyzer.setModuleScoping(parsed.ownerByName, parsed.effectiveScope);
+                semanticAnalyzer.analyze(parsed.ast.get());
 
                 const auto& semanticErrors = semanticAnalyzer.getErrors();
                 if (!semanticErrors.empty()) {

@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace vyb {
@@ -47,6 +48,17 @@ public:
     const std::unordered_map<std::string, ModuleRecord>& records() const { return records_; }
     const std::vector<std::filesystem::path>& configuredSearchPaths() const { return configuredSearchPaths_; }
 
+    // Namespace-scope resolution data, computed during module resolution so a
+    // consumer never sees another module's private dependencies.
+    //   moduleKeyByName_ : every top-level symbol -> the module that declares it
+    //   effectiveScope_  : module key -> the set of names that module's own code
+    //                      may resolve (its declarations plus what it imported)
+    //   exports_         : module key -> the names the module shares to importers
+    const std::unordered_map<std::string, std::string>& moduleKeyByName() const { return moduleKeyByName_; }
+    const std::unordered_map<std::string, std::unordered_set<std::string>>& effectiveScope() const { return effectiveScope_; }
+    const std::unordered_map<std::string, std::unordered_set<std::string>>& exportsPerModule() const { return exports_; }
+    const std::unordered_map<std::string, std::unordered_set<std::string>>& allNamesPerModule() const { return allNames_; }
+
 private:
     struct SourceMetadata {
         std::string source;
@@ -69,6 +81,10 @@ private:
     std::unordered_map<std::string, ModuleRecord> records_;
     std::vector<std::string> activeStack_;
     std::vector<std::string> topologicalOrder_;
+    std::unordered_map<std::string, std::string> moduleKeyByName_;
+    std::unordered_map<std::string, std::unordered_set<std::string>> effectiveScope_;
+    std::unordered_map<std::string, std::unordered_set<std::string>> exports_;
+    std::unordered_map<std::string, std::unordered_set<std::string>> allNames_;
 
     std::string resolveModule(const std::string& source,
                               const std::filesystem::path& sourcePath,

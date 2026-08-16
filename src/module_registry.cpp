@@ -302,6 +302,24 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
         currentRecord.sharesByName = metadata.sharesByName;
         currentRecord.importedModuleKeys.clear();
 
+        // Namespace-scope bookkeeping: this module's own declarations seed its
+        // resolvable scope and belong to it; its `share(...)` declarations are
+        // the names it exports to importers. Plain-imported symbols are granted
+        // into the scope below but never become part of the export set, so a
+        // consumer of this module does not inherit this module's dependencies.
+        std::unordered_set<std::string>& ownScope = effectiveScope_[currentKey];
+        for (auto& stmt : module->body) {
+            std::string name = declarationName(stmt);
+            if (name.empty()) {
+                continue;
+            }
+            ownScope.insert(name);
+            moduleKeyByName_[name] = currentKey;
+        }
+        for (const auto& kv : metadata.sharesByName) {
+            exports_[currentKey].insert(kv.first);
+        }
+
         // Auto-import core::* contracts (core::aspects) unless opted out via the
         // `no_core()` directive, the module is part of the stdlib itself (the stdlib
         // wires its own imports precisely), or the module already imports/defines the
@@ -357,9 +375,6 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
 
                 currentRecord.importedModuleKeys.push_back(importedKey);
                 ModuleRecord& importedRecord = records_.at(importedKey);
-                if (importedRecord.emitted || !importedRecord.module) {
-                    continue;
-                }
 
                 std::unordered_map<std::string, std::string> requestedRenames;
                 std::unordered_set<std::string> requestedNames;
@@ -368,6 +383,41 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                     requestedNames.insert(importedName);
                     requestedRenames[importedName] = specifier.localName ? specifier.localName->name : importedName;
                 }
+
+                // Grants: a plain `import` exposes only the origin module's
+                // *genuine* exports to this module's resolvable scope (a leaked
+                // transitive dependency of the origin is not available here);
+                // `smuggle` grants whatever is smuggled; `share(...)` also adds
+                // the granted names back to this module's exports. Computed even
+                // for an already-emitted module so every importer's scope is
+                // correct regardless of splice order.
+                {
+                    const bool isSmuggle = importDecl->kind == ast::ImportKind::Smuggle;
+                    const std::unordered_set<std::string>& importedExports = exports_[importedKey];
+                    const std::unordered_set<std::string>& importedScope =
+                        isSmuggle ? allNames_[importedKey] : importedExports;
+                    std::unordered_set<std::string>& scope = effectiveScope_[currentKey];
+                    if (requestedNames.empty()) {
+                        scope.insert(importedScope.begin(), importedScope.end());
+                        if (!importShare.empty() && !isSmuggle) {
+                            exports_[currentKey].insert(importedScope.begin(), importedScope.end());
+                        }
+                    } else {
+                        for (const auto& pair : requestedRenames) {
+                            if (isSmuggle || importedExports.count(pair.first)) {
+                                scope.insert(pair.second);
+                                if (!importShare.empty() && !isSmuggle) {
+                                    exports_[currentKey].insert(pair.second);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (importedRecord.emitted || !importedRecord.module) {
+                    continue;
+                }
+
                 // Immutable snapshot for filtering carried binds: requestedNames shrinks
                 // as aspects are spliced, but binds must not leak in just because the
                 // requested set emptied mid-splice.
@@ -481,6 +531,18 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                 seenNames.insert(name);
             }
             resolvedBody.push_back(std::move(stmt));
+        }
+
+        // Every name present in the module's (now fully spliced) scope - its own
+        // declarations and everything it pulled in - so `smuggle <module>` can
+        // grant the whole scope, bypassing export checks.
+        auto& moduleAll = allNames_[currentKey];
+        moduleAll.clear();
+        for (auto& stmt : resolvedBody) {
+            std::string name = declarationName(stmt);
+            if (!name.empty()) {
+                moduleAll.insert(name);
+            }
         }
 
         module->body = std::move(resolvedBody);

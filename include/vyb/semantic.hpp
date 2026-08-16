@@ -113,6 +113,39 @@ struct SymbolInfo {
     std::vector<std::string> bounds; // For TYPE_PARAMETER: aspect bounds (e.g., ["Display", "Clone"])
 };
 
+// Namespace-scope resolution gate. Holds, per top-level symbol, the module that
+// owns it plus the set of names each module's own code may resolve
+// (`effectiveScope`). `SymbolTable::lookup` consults this so a consumer never
+// sees - or can name - another module's private dependencies, even though those
+// declarations are still present in the fused AST so codegen can emit them.
+// `currentOwner` is refreshed as the analyzer enters each compiled function.
+struct ModuleScopeGate {
+    std::unordered_map<std::string, std::string> ownerByName;
+    std::unordered_map<std::string, std::unordered_set<std::string>> effectiveScope;
+    mutable std::string currentOwner;
+
+    // A module-owned top-level symbol is resolvable only from code owned by a
+    // module that scopes it. Local variables and builtins pass through
+    // unchecked, so a local that shadows a module name is never hidden.
+    bool hides(const SymbolInfo& sym, const std::string& name) const {
+        if (sym.kind == SymbolInfo::Kind::Variable) {
+            return false;
+        }
+        auto it = ownerByName.find(name);
+        if (it == ownerByName.end()) {
+            return false;
+        }
+        if (currentOwner.empty()) {
+            return false;
+        }
+        auto es = effectiveScope.find(currentOwner);
+        if (es == effectiveScope.end()) {
+            return true;
+        }
+        return es->second.find(name) == es->second.end();
+    }
+};
+
 class Scope {
 public:
     Scope(Scope* parent_scope = nullptr);
@@ -128,11 +161,18 @@ private:
 
 class SymbolTable {
 public:
-    SymbolTable(SymbolTable* parent = nullptr) : parent(parent), isUnsafeBlock(false), isLoop(false) {}
+    SymbolTable(SymbolTable* parent = nullptr, const ModuleScopeGate* gate = nullptr)
+        : parent(parent), scopeGate(gate), isUnsafeBlock(false), isLoop(false) {}
     void add(const SymbolInfo& sym) { table[sym.name] = sym; }
     SymbolInfo* lookup(const std::string& name) {
         auto it = table.find(name);
-        if (it != table.end()) return &it->second;
+        if (it != table.end()) {
+            SymbolInfo* found = &it->second;
+            if (scopeGate && scopeGate->hides(*found, name)) {
+                return parent ? parent->lookup(name) : nullptr;
+            }
+            return found;
+        }
         if (parent) return parent->lookup(name);
         return nullptr;
     }
@@ -140,6 +180,7 @@ public:
     SymbolTable* getParent() { return parent; }
     bool isUnsafeBlock;
     bool isLoop;
+    const ModuleScopeGate* scopeGate;
 
 private:
     std::unordered_map<std::string, SymbolInfo> table;
@@ -305,6 +346,13 @@ public:
     ~SemanticAnalyzer();
     void analyze(ast::Module* root);
     const std::vector<std::string>& getErrors() const { return errors; }
+
+    // Feed in the registry-computed namespace-scope data (top-level symbol
+    // owners + each module's resolvable scope) so identifier resolution hides a
+    // consumer from another module's private dependencies.
+    void setModuleScoping(
+        const std::unordered_map<std::string, std::string>& ownerByName,
+        const std::unordered_map<std::string, std::unordered_set<std::string>>& effectiveScope);
 
     // Access to generic trait implementations for monomorphization
     const std::unordered_map<std::string, std::unordered_map<std::string, std::unique_ptr<GenericImplInfo>>>&
@@ -474,6 +522,8 @@ public:
 private:
     Driver& driver_;
     SymbolTable* currentScope;
+    ModuleScopeGate scopeGate_;
+    std::vector<std::string> ownerStack_;
     std::vector<std::string> errors;
     std::unordered_map<ast::Node*, ast::TypeNode*> expressionTypes;
     // Type nodes the analyzer synthesizes during analysis (owned by no AST node).
