@@ -4784,7 +4784,24 @@ void LLVMCodegen::visit(ast::Identifier* node) {
                 return;
             }
         }
-        // For global variables, functions, or LHS of assignment, return the value directly
+        // Module-level global variable read (used when emitting the deferred
+        // runtime initializers, where globals still live in this map): load the
+        // stored value rather than the address. Functions normally resolve
+        // globals through globalValues_ below because they isolate namedValues.
+        if (llvm::GlobalVariable* gv = llvm::dyn_cast<llvm::GlobalVariable>(it->second)) {
+            if (!m_isLHSOfAssignment) {
+                llvm::Value* loaded = builder->CreateLoad(gv->getValueType(), gv, node->name);
+                auto typeIt = valueTypeMap.find(gv);
+                if (typeIt != valueTypeMap.end()) {
+                    valueTypeMap[loaded] = typeIt->second;
+                }
+                m_currentLLVMValue = loaded;
+                return;
+            }
+            m_currentLLVMValue = gv;
+            return;
+        }
+        // For functions or LHS of assignment, return the value directly
         m_currentLLVMValue = it->second;
         return;
     }

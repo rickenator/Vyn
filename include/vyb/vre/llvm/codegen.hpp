@@ -133,6 +133,10 @@ private:
     // even though each function starts codegen from an isolated namedValues
     // (functions swap the module scope out and back in on entry/exit).
     std::map<std::string, llvm::GlobalVariable*> globalValues_;
+    // Module-level globals whose initializers are not pure compile-time
+    // constants (they reference other globals, or compute a value at runtime).
+    // Their value is stored in __vyb_module_init before main body runs.
+    std::vector<std::pair<llvm::GlobalVariable*, vyb::ast::Expression*>> pendingGlobalInits_;
     // For mutable captures, maps the captured variable name to the address of
     // the *outer* variable's alloca, so writes inside a lambda can propagate
     // back to the enclosing scope. Populated only while generating a lambda.

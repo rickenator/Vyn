@@ -21,6 +21,24 @@ using namespace vyb;
 
 // --- Declarations ---
 
+// A module-level global can be statically (compile-time) initialized when its
+// initializer is a literal (or a parenthesised/negated literal); a reference to
+// another global or a computed expression must be initialized at runtime.
+static bool isStaticLiteralInit(const ast::Expression* e) {
+    if (!e) return false;
+    if (dynamic_cast<const ast::IntegerLiteral*>(e) ||
+        dynamic_cast<const ast::FloatLiteral*>(e) ||
+        dynamic_cast<const ast::StringLiteral*>(e) ||
+        dynamic_cast<const ast::BooleanLiteral*>(e) ||
+        dynamic_cast<const ast::NilLiteral*>(e)) {
+        return true;
+    }
+    if (dynamic_cast<const ast::UnaryExpression*>(e)) {
+        return true;  // e.g. `-5`; LLVM folds it to a constant
+    }
+    return false;
+}
+
 void LLVMCodegen::visit(ast::AspectDeclaration* node) {
     // Traits are interfaces/type constraints that don't generate runtime code by themselves
     // They're primarily used for compile-time type checking and polymorphism
@@ -139,7 +157,15 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
         }
     }
 
-    if (node->init) {
+    // A module-level global whose initializer is not a literal (it references
+    // another global, or computes a value) cannot be a compile-time constant, so
+    // defer its value to a runtime store in __vyb_module_init. Locals and
+    // literal-initialized globals keep the normal codegen path below.
+    const bool isModuleGlobal = (currentFunction == nullptr);
+    const bool globalNeedsRuntime =
+        isModuleGlobal && node->init && !isStaticLiteralInit(node->init.get());
+
+    if (node->init && !globalNeedsRuntime) {
         // Make sure the initializer knows its intended type if available
         if (node->typeNode && !node->init->type) {
             node->init->type = node->typeNode->clone();
@@ -187,7 +213,7 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
                 }
             }
         }
-    } else { // No initializer
+    } else if (!node->init) { // No initializer
         if (!varType) {
             logError(node->loc, "Variable '" + node->id->name + "' has no initializer and no explicit type. Type inference from no initializer is not possible.");
             m_currentLLVMValue = nullptr;
@@ -204,23 +230,44 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
     }
 
     if (!currentFunction) { // Global variable
-        // Global variables must have constant initializers.
-        if (!llvm::isa<llvm::Constant>(initialVal)) {
+        llvm::Constant* staticInit = nullptr;
+        if (globalNeedsRuntime) {
+            if (!varType) {
+                logError(node->loc, "Global variable '" + node->id->name +
+                                    "' initializer depends on a runtime value; it needs an explicit type.");
+                m_currentLLVMValue = nullptr;
+                return;
+            }
+            // Zero-initialize now; the real value is stored during __vyb_module_init.
+            staticInit = llvm::Constant::getNullValue(varType);
+        } else {
+            if (!initialVal || !llvm::isa<llvm::Constant>(initialVal)) {
+                logError(node->init ? node->init->loc : node->loc,
+                         "Global variable '" + node->id->name + "' initializer must be a constant.");
+                m_currentLLVMValue = nullptr;
+                return;
+            }
+            staticInit = llvm::cast<llvm::Constant>(initialVal);
+        }
+        if (!varType) {
             logError(node->init ? node->init->loc : node->loc,
-                     "Global variable '" + node->id->name + "' initializer must be a constant.");
+                     "Global variable '" + node->id->name + "' has no resolvable LLVM type.");
             m_currentLLVMValue = nullptr;
             return;
         }
         auto* globalVar = new llvm::GlobalVariable(
             *module,
             varType,
-            node->isConst, // LLVM's const for global means its value is constant, not necessarily its memory
+            node->isConst && !globalNeedsRuntime, // runtime-initialized globals must be writable memory
             llvm::GlobalValue::PrivateLinkage, // Or ExternalLinkage if exported
-            static_cast<llvm::Constant*>(initialVal),
+            staticInit,
             node->id->name
         );
         namedValues[node->id->name] = globalVar;
         globalValues_[node->id->name] = globalVar;
+        if (globalNeedsRuntime) {
+            pendingGlobalInits_.push_back(std::make_pair(globalVar, node->init.get()));
+        }
         m_currentLLVMValue = globalVar;
         // Propagate type info for struct/class variables
         if (node->typeNode) {

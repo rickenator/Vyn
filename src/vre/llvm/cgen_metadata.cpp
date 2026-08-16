@@ -337,6 +337,23 @@ void LLVMCodegen::registerTypeNames() {
             llvm::Value* nameStr = initBuilder.CreateGlobalStringPtr(name);
             initBuilder.CreateCall(registerFn, {id, nameStr});
         }
+        // Module-level globals whose initializers could not be constants (they
+        // reference other globals or compute a value) are stored here so they
+        // hold the correct runtime value before any function body runs.
+        if (!pendingGlobalInits_.empty()) {
+            builder->SetInsertPoint(initBuilder.GetInsertBlock());
+            for (auto& globalInit : pendingGlobalInits_) {
+                llvm::GlobalVariable* globalVar = globalInit.first;
+                vyb::ast::Expression* initExpr = globalInit.second;
+                initExpr->accept(*this);
+                if (llvm::Value* val = m_currentLLVMValue) {
+                    builder->CreateStore(val, globalVar);
+                } else {
+                    logError(initExpr->loc, "Initializer for global variable failed to evaluate.");
+                }
+            }
+            initBuilder.SetInsertPoint(builder->GetInsertBlock());
+        }
         initBuilder.CreateRetVoid();
     }
 
