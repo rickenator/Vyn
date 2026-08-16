@@ -1,0 +1,60 @@
+// @test: fresh my<Struct> temporary call arguments are released
+// @description: A fresh `my(Struct {...})` / `my(value)` temporary built inline as a
+//   call argument is a caller-owned heap allocation with no named binding. The callee's
+//   `my` parameter borrows rather than frees, so the discarded temporary must be
+//   reclaimed after the call or its payload leaks. Also verifies the sharing cases
+//   (my<Vec>/my<String> temps) and stored/moved/returned my owners stay correct.
+// @category: ownership, my, move, temporary, memory
+// @expect: pass
+// @expect-return: 0
+
+struct Node {
+    value<Int>,
+    label<String>
+}
+
+consume(n<my<Node>>)<Int> -> {
+    if (n.value != 42) {
+        return 100
+    }
+    return 0
+}
+
+add_node(n1<my<Node>>, n2<my<Node>>)<Int> -> {
+    return n1.value + n2.value
+}
+
+mk()<my<Node>> -> {
+    return my(Node { value = 5, label = "r" })
+}
+
+main()<Int> -> {
+    // 1: fresh my(Struct{...}) temporary passed straight to a consuming param.
+    if (consume(my(Node { value = 42, label = "a" })) != 0) {
+        return 1
+    }
+
+    // 2: wrap a named plain value into a fresh my payload, passed as a temp.
+    plain<Node> = Node { value = 7, label = "p" }
+    consume(my(plain))
+
+    // 3: two fresh my temporaries as arguments in one call.
+    if (add_node(my(Node { value = 1, label = "x" }), my(Node { value = 2, label = "y" })) != 3) {
+        return 3
+    }
+
+    // 4: stored my moved into a param stays leak-free (caller's binding frees).
+    a<my<Node>> = my(Node { value = 42, label = "m" })
+    if (consume(a) != 0) {
+        return 4
+    }
+
+    // 5: a function-returned my owner is freed by its binding.
+    r<my<Node>> = mk()
+    if (r.value != 5) {
+        return 5
+    }
+
+    println("ok")
+    return 0
+}

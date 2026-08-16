@@ -138,13 +138,17 @@ static bool selectAllArmsAreOwnedReads(ast::Expression* expr) {
     return true;
 }
 
-// A refcounted owning temporary freshly created inline as a call argument
-// (`our(...)` -> a strong owner, `soft(x)` -> a weak owner) is owned solely by
-// the call site. By-value `our`/`mild` parameters retain their OWN independent
-// count on entry (a non-consuming copy), so the temporary's own count must be
-// released once the callee returns, or its control block is leaked. Shared reads
-// (bare identifiers / member borrows) and non-owning values return 0 here.
-// Returns 1 = release strong (our), 2 = release weak (mild / soft), 0 = none.
+// An owning temporary freshly created inline as a call argument is owned solely
+// by the call site. `our(...)` (a strong owner) and `soft(x)` (a weak owner)
+// return refcounted control blocks: by-value `our`/`mild` parameters retain
+// their OWN independent count on entry (a non-consuming copy), so the temporary's
+// own count must be released once the callee returns or its control block is
+// leaked. A fresh `my(...)` payload (e.g. `my(Struct{...})`) is a new heap
+// allocation with no named binding; `my` parameters behave as borrows that do
+// not free, so the caller must free the discarded temporary after the call.
+// Shared reads (bare identifiers / member borrows) and non-owning values return
+// 0 here. Returns 1 = release our, 2 = release mild/soft, 3 = free my payload
+// (caller-owned fresh allocation), 0 = none.
 static int freshOwningCallArgKind(ast::Expression* expr) {
     auto* call = dynamic_cast<ast::CallExpression*>(expr);
     if (!call) return 0;
@@ -152,6 +156,7 @@ static int freshOwningCallArgKind(ast::Expression* expr) {
     if (!id) return 0;
     if (id->name == "our") return 1;
     if (id->name == "soft") return 2;
+    if (id->name == "my") return 3;
     return 0;
 }
 
@@ -4276,6 +4281,28 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         for (auto& pr : pendingTemporaryReleases) {
             if (pr.kind == 1) releaseOurControlBlock(pr.cb, "temparg.our", pr.pointeeAst, pr.pointeeLlvm);
             else if (pr.kind == 2) releaseMildControlBlock(pr.cb, "temparg.mild");
+            else if (pr.kind == 3) {
+                // A fresh `my(...)` payload (a new, caller-owned heap allocation)
+                // with no named binding: reclaim any owned fields inside the struct
+                // and free the block. The callee's `my` parameter borrows rather
+                // than frees, so ownership returns to the call site.
+                llvm::PointerType* rawPtr = llvm::PointerType::get(*context, 0);
+                llvm::Constant* nullPtr = llvm::ConstantPointerNull::get(rawPtr);
+                llvm::Value* isNull = builder->CreateICmpEQ(pr.cb, nullPtr, "temparg.my_null");
+                llvm::BasicBlock* freeBB = llvm::BasicBlock::Create(*context, "temparg.my_free", currentFunction);
+                llvm::BasicBlock* contBB = llvm::BasicBlock::Create(*context, "temparg.my_cont", currentFunction);
+                builder->CreateCondBr(isNull, contBB, freeBB);
+                builder->SetInsertPoint(freeBB);
+                if (pr.pointeeAst && pr.pointeeLlvm) {
+                    if (auto* structTy = llvm::dyn_cast<llvm::StructType>(pr.pointeeLlvm)) {
+                        std::set<std::string> visited;
+                        reclaimStructOwnedFieldsAt(pr.cb, pr.pointeeAst, structTy, visited);
+                    }
+                }
+                builder->CreateCall(getOrCreateFreeFunction(), {pr.cb});
+                builder->CreateBr(contBB);
+                builder->SetInsertPoint(contBB);
+            }
         }
     };
     for (size_t i = 0; i < node->arguments.size(); ++i) {
@@ -4351,13 +4378,26 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         int tempKind = freshOwningCallArgKind(node->arguments[i].get());
         if (tempKind != 0) {
             TempRelease tr{tempKind, argValue, nullptr, nullptr};
-            if (tempKind == 1 && node->arguments[i]->type) {
-                tr.pointeeAst = ourPointeeOf(node->arguments[i]->type.get());
+            if (node->arguments[i]->type) {
+                if (tempKind == 1) {
+                    tr.pointeeAst = ourPointeeOf(node->arguments[i]->type.get());
+                } else if (tempKind == 3) {
+                    // Only free a fresh `my(...)` temp when it owns a new struct
+                    // payload. `my` over a Vec/String shares its source, so those
+                    // are released by the originating binding (never freed here).
+                    if (isMyOwnedStructTypeNode(node->arguments[i]->type.get())) {
+                        tr.pointeeAst = myPointeeOf(node->arguments[i]->type.get());
+                    } else {
+                        tempKind = 0;  // shared my<Vec>/my<String> temp: nothing to free
+                    }
+                }
                 if (tr.pointeeAst) {
                     tr.pointeeLlvm = codegenType(const_cast<vyb::ast::TypeNode*>(tr.pointeeAst));
                 }
             }
-            pendingTemporaryReleases.push_back(tr);
+            if (tempKind != 0) {
+                pendingTemporaryReleases.push_back(tr);
+            }
         }
         argValues.push_back(argValue);
     }
