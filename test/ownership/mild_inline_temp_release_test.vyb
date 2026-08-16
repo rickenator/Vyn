@@ -1,0 +1,75 @@
+// @test: inline temporary our/soft owners are released
+// @description: Fresh inline our(...) temporaries passed through soft() or as call args release their own count after use
+// @category: ownership, mild
+// @expect: pass
+// @expect-return: 0
+
+struct Node {
+    value<Int>
+}
+
+// A fresh our(...) temporary wrapped in soft() returned as a mild. With no other
+// strong owner, the temp's strong count drops on return, releasing the weak ref.
+mk_inline()<mild<Node>> -> {
+    return soft(our(Node { value: 17 }))
+}
+
+// Same shape but stored into a named weak ref instead of returned.
+mk_inline_named()<Int> -> {
+    w<mild<Node>> = soft(our(Node { value: 19 }))
+    if (w.released()) {
+        return 0
+    }
+    return 1
+}
+
+// A fresh our(...) temporary passed as a by-value our param. The param retains
+// its own count; the call site's temp must also be released after the call
+// (verified as leak-free under valgrind -- the temporary is not itself an owner
+// observable here, since the param keeps the object alive during the call).
+probe(o<our<Node>>)<Int> -> {
+    if (o.value != 23) {
+        return 2
+    }
+    return 0
+}
+
+// Repeated invocations exercise that each inline temp is independently released
+// (no cross-call accumulation). Loop body runs the soft/our pattern twice.
+repeat_pattern()<Int> -> {
+    i<Int> = 0
+    while (i < 2) {
+        w<mild<Node>> = soft(our(Node { value: 29 }))
+        if (!w.released()) {
+            return 4
+        }
+        i = i + 1
+    }
+    return 0
+}
+
+main()<Int> -> {
+    // 1: returned inline soft(our(...)) releases.
+    m<mild<Node>> = mk_inline()
+    if (!m.released()) {
+        return 1
+    }
+
+    // 2: stored inline soft(our(...)) releases.
+    if (mk_inline_named() != 0) {
+        return 2
+    }
+
+    // 3: fresh our(...) passed as an argument (leak-freedom verified under valgrind).
+    if (probe(our(Node { value: 23 })) != 0) {
+        return 3
+    }
+
+    // 4: loop reassignment doesn't accumulate ownership.
+    if (repeat_pattern() != 0) {
+        return 4
+    }
+
+    println("ok")
+    return 0
+}

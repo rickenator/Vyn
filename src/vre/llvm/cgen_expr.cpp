@@ -138,6 +138,23 @@ static bool selectAllArmsAreOwnedReads(ast::Expression* expr) {
     return true;
 }
 
+// A refcounted owning temporary freshly created inline as a call argument
+// (`our(...)` -> a strong owner, `soft(x)` -> a weak owner) is owned solely by
+// the call site. By-value `our`/`mild` parameters retain their OWN independent
+// count on entry (a non-consuming copy), so the temporary's own count must be
+// released once the callee returns, or its control block is leaked. Shared reads
+// (bare identifiers / member borrows) and non-owning values return 0 here.
+// Returns 1 = release strong (our), 2 = release weak (mild / soft), 0 = none.
+static int freshOwningCallArgKind(ast::Expression* expr) {
+    auto* call = dynamic_cast<ast::CallExpression*>(expr);
+    if (!call) return 0;
+    auto* id = dynamic_cast<ast::Identifier*>(call->callee.get());
+    if (!id) return 0;
+    if (id->name == "our") return 1;
+    if (id->name == "soft") return 2;
+    return 0;
+}
+
 void LLVMCodegen::visit(vyb::ast::IntegerLiteral *node) {
     if (node->isUnsigned) {
         m_currentLLVMValue = llvm::ConstantInt::get(*context, llvm::APInt(64, node->uvalue, false));
@@ -2211,6 +2228,12 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         // Return the control block pointer as mild<T>
         // Both our<T> and mild<T> are represented as control block pointers
         m_currentLLVMValue = controlBlockPtr;
+        // A temp `our(...)` fed straight into soft() owns a strong ref this
+        // operation does not take. Drop it so the object is released once the
+        // strong count reaches zero (and a returned weak sees .released()).
+        if (freshOwningCallArgKind(node->arguments[0].get()) == 1) {
+            releaseOurControlBlock(controlBlockPtr, "soft.temparg");
+        }
         VYB_CDBG << "DEBUG: Successfully processed soft() operation - incremented weak_count and returned mild<T> pointer" << std::endl;
         return;
     }
@@ -4236,6 +4259,16 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
     }
 
     std::vector<llvm::Value *> argValues;
+    // Fresh owning temporaries passed as arguments are owned solely by this call
+    // site; by-value params retain their own independent count, so each temp must
+    // be released once the callee returns (see freshOwningCallArgKind).
+    std::vector<std::pair<int, llvm::Value*>> pendingTemporaryReleases;
+    auto emitTemporaryReleases = [&]() {
+        for (auto& pr : pendingTemporaryReleases) {
+            if (pr.first == 1) releaseOurControlBlock(pr.second, "temparg.our");
+            else if (pr.first == 2) releaseMildControlBlock(pr.second, "temparg.mild");
+        }
+    };
     for (size_t i = 0; i < node->arguments.size(); ++i) {
         node->arguments[i]->accept(*this);
         llvm::Value* argValue = m_currentLLVMValue;
@@ -4306,14 +4339,18 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 }
             }
         }
+        int tempKind = freshOwningCallArgKind(node->arguments[i].get());
+        if (tempKind != 0) pendingTemporaryReleases.push_back({tempKind, argValue});
         argValues.push_back(argValue);
     }
 
     if (calleeFunc->getReturnType()->isVoidTy()) {
         builder->CreateCall(calleeFunc, argValues);
+        emitTemporaryReleases();
         m_currentLLVMValue = nullptr; // No value for void calls
     } else {
         llvm::Value* callResult = builder->CreateCall(calleeFunc, argValues, "calltmp");
+        emitTemporaryReleases();
 
         // Track Future<T> result type for opaque pointer handling in await expressions
         if (calleeFunc->getReturnType()->isStructTy()) {
