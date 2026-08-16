@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <time.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -506,4 +507,45 @@ VYB_WEAK char* __vyb_net_error_message(void) {
     char* copy = strdup(m);
     if (copy) __vyb_string_register(copy);
     return copy;
+}
+
+// ============================================================================
+// TIME module (stdlib/network is separate) - epoch/monotonic clocks and sleep.
+// ============================================================================
+
+VYB_WEAK int64_t __vyb_time_epoch_secs(void) {
+    struct timespec ts;
+    if (clock_gettime(CLOCK_REALTIME, &ts) != 0) return -1;
+    return (int64_t)ts.tv_sec;
+}
+
+VYB_WEAK int64_t __vyb_time_epoch_millis(void) {
+    struct timespec ts;
+    if (clock_gettime(CLOCK_REALTIME, &ts) != 0) return -1;
+    return (int64_t)ts.tv_sec * 1000LL + (int64_t)(ts.tv_nsec / 1000000LL);
+}
+
+VYB_WEAK int64_t __vyb_time_nanos(void) {
+    struct timespec ts;
+    if (clock_gettime(CLOCK_REALTIME, &ts) != 0) return -1;
+    return (int64_t)ts.tv_sec * 1000000000LL + (int64_t)ts.tv_nsec;
+}
+
+// A monotonic source (unaffected by wall-clock changes) ideal for measuring
+// intervals.
+VYB_WEAK int64_t __vyb_time_mono_millis(void) {
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) return -1;
+    return (int64_t)ts.tv_sec * 1000LL + (int64_t)(ts.tv_nsec / 1000000LL);
+}
+
+// Sleep for `millis` milliseconds, retrying on EINTR. Always returns 0.
+VYB_WEAK int64_t __vyb_time_sleep_ms(int64_t millis) {
+    if (millis < 0) millis = 0;
+    struct timespec req;
+    req.tv_sec = millis / 1000;
+    req.tv_nsec = (millis % 1000) * 1000000L;
+    struct timespec rem;
+    while (nanosleep(&req, &rem) != 0 && errno == EINTR) req = rem;
+    return 0;
 }

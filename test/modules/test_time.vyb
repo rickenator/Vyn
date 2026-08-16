@@ -1,0 +1,28 @@
+// @test: time stdlib module epochs + monotonic sleep
+// @description: the `time` module wraps the runtime's __vyb_time_* intrinsics:
+//   epoch seconds/millis/nanos (wall clock) and time_mono_millis (monotonic).
+//   A monotonic sleep of ~20ms measures at least ~15ms, proving the clock + sleep.
+// @category: modules, time, stdlib, clock
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import time::{time_epoch_secs, time_epoch_millis, time_nanos, time_mono_millis, sleep_ms}
+
+main()<Int> -> {
+    s<Int> = time_epoch_secs()
+    if (s <= 0) { return 1 }
+    ms<Int> = time_epoch_millis()
+    if (ms < s * 1000) { return 2 }
+    ns<Int> = time_nanos()
+    if (ns < ms * 1000) { return 3 }
+
+    start<Int> = time_mono_millis()
+    sleep_ms(20)
+    delta<Int> = time_mono_millis() - start
+    if (delta < 15) { return 4 }
+
+    println("ok")
+    return 0
+}

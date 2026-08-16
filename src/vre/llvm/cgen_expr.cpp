@@ -2728,6 +2728,46 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         }
     }
 
+    // Time module intrinsics: each vyb_time_* maps to a no-arg (or one-arg
+    // sleep) Int-returning runtime symbol in `runtime/vyb_runtime.c`.
+    if (identCallee) {
+        const std::string& tname = identCallee->name;
+        std::string rtTime;
+        if (tname == "vyb_time_epoch_secs") rtTime = "__vyb_time_epoch_secs";
+        else if (tname == "vyb_time_epoch_millis") rtTime = "__vyb_time_epoch_millis";
+        else if (tname == "vyb_time_nanos") rtTime = "__vyb_time_nanos";
+        else if (tname == "vyb_time_mono_millis") rtTime = "__vyb_time_mono_millis";
+        else if (tname == "vyb_time_sleep_ms") rtTime = "__vyb_time_sleep_ms";
+        if (!rtTime.empty()) {
+            llvm::Function* f = module->getFunction(rtTime);
+            if (!f) {
+                llvm::FunctionType* ft = (tname == "vyb_time_sleep_ms")
+                    ? llvm::FunctionType::get(int64Type, {int64Type}, false)
+                    : llvm::FunctionType::get(int64Type, {}, false);
+                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, rtTime, module.get());
+            }
+            if (tname == "vyb_time_sleep_ms") {
+                if (node->arguments.size() != 1) {
+                    logError(node->loc, rtTime + " expects 1 argument (millis)");
+                    m_currentLLVMValue = nullptr; return;
+                }
+                node->arguments[0]->accept(*this);
+                llvm::Value* ms = m_currentLLVMValue;
+                if (!ms) return;
+                if (ms->getType()->isIntegerTy(64)) m_currentLLVMValue = builder->CreateCall(f, {ms}, "time.slept");
+                else if (ms->getType()->isIntegerTy()) m_currentLLVMValue = builder->CreateCall(f, {builder->CreateSExt(ms, int64Type, "time.ms")}, "time.slept");
+                else m_currentLLVMValue = nullptr;
+                return;
+            }
+            if (!node->arguments.empty()) {
+                logError(node->loc, rtTime + " expects no arguments");
+                m_currentLLVMValue = nullptr; return;
+            }
+            m_currentLLVMValue = builder->CreateCall(f, {}, "time.value");
+            return;
+        }
+    }
+
     // Handle serialization mode intrinsics: lit(), notype(), bare(), deserial()
     if (identCallee && identCallee->name == "lit" && node->arguments.size() >= 1) {
         // lit() intrinsic - convert value(s) to their raw string/JSON literal representation

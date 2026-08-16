@@ -3,6 +3,19 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-15: **`time` stdlib module (clocks + sleep)**. A thin `import time`
+  wrapper over new `__vyb_time_*` runtime intrinsics in `runtime/vyb_runtime.c`
+  (POSIX `clock_gettime`/`nanosleep`), following the `io`/`network` intrinsic
+  pattern end to end: Vyb-name `vyb_time_*` calls are recognized in semantic
+  (typed `Int`) and mapped to the exported `__vyb_time_*` symbols in codegen,
+  with the symbols declared + registered in `src/main.cpp`. Vyb surface:
+  `time_epoch_secs`/`time_epoch_millis`/`time_nanos` (Unix epoch wall-clock
+  timestamps), `time_mono_millis` (monotonic ms — unaffected by NTP/system clock
+  changes, the right source for measuring intervals/timeouts), and
+  `sleep_ms(millis)`. All values are plain `Int`, so the module is
+  allocation/pointer-free. Covered by `test/modules/test_time.vyb`; full
+  unit/module suites pass.
+
 - 2026-08-15: **By-ref `their<Vec<T>>` aspect/bind in-place dispatch**. The in-place
   collection methods (`sort_in_place`, `retain`, `map_in_place`, `reverse_in_place`,
   from the `VecOps` / `VecHigherOps` binds in `stdlib/collections`) now dispatch through

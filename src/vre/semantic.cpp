@@ -1847,7 +1847,10 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_net_open" || name == "vyb_net_close" || name == "vyb_net_bind" ||
             name == "vyb_net_listen" || name == "vyb_net_accept" || name == "vyb_net_connect" ||
             name == "vyb_net_send" || name == "vyb_net_recv" || name == "vyb_net_local_port" ||
-            name == "vyb_net_error_code" || name == "vyb_net_error_message") {
+            name == "vyb_net_error_code" || name == "vyb_net_error_message" ||
+            name == "vyb_time_epoch_secs" || name == "vyb_time_epoch_millis" ||
+            name == "vyb_time_nanos" || name == "vyb_time_mono_millis" ||
+            name == "vyb_time_sleep_ms") {
             isIntrinsic = true;
         }
     }
@@ -2270,6 +2273,17 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 auto* resTy = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc,
                         netIntFuncs.count(name) ? "Int" : "String"));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+
+            // Time intrinsics (time stdlib module): all return Int.
+            if (name == "vyb_time_epoch_secs" || name == "vyb_time_epoch_millis" ||
+                name == "vyb_time_nanos" || name == "vyb_time_mono_millis" ||
+                name == "vyb_time_sleep_ms") {
+                auto* resTy = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "Int"));
                 expressionTypes[node] = retainType(resTy);
                 node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
                 return;

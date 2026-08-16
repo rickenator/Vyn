@@ -117,6 +117,13 @@ extern "C" {
     int64_t __vyb_net_error_code(void);
     const char* __vyb_net_error_message(void);
 
+    // Time runtime helpers (time stdlib module)
+    int64_t __vyb_time_epoch_secs(void);
+    int64_t __vyb_time_epoch_millis(void);
+    int64_t __vyb_time_nanos(void);
+    int64_t __vyb_time_mono_millis(void);
+    int64_t __vyb_time_sleep_ms(int64_t millis);
+
     // JSON serialization for complex types
     char* __vyb_complex_to_json(void* instance, const char* type_name);
     void* __vyb_complex_from_json(const char* json_str, const char* type_name);
@@ -945,6 +952,16 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_error_code), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_net_error_message")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_error_message), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_time_epoch_secs")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_time_epoch_secs), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_time_epoch_millis")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_time_epoch_millis), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_time_nanos")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_time_nanos), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_time_mono_millis")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_time_mono_millis), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_time_sleep_ms")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_time_sleep_ms), llvm::JITSymbolFlags::Exported);
 
         // Register JSON serialization functions
         runtimeSymbols[mangle("__vyb_complex_to_json")] = llvm::orc::ExecutorSymbolDef(
