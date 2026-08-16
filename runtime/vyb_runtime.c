@@ -728,3 +728,72 @@ VYB_WEAK int64_t __vyb_mutex_free(int64_t mh) {
     free(m);
     return 0;
 }
+
+// A heap-allocated condition variable; the Vyb handle is the pointer itself.
+// As with the mutex, pthread_cond_wait needs the caller's mutex handle passed
+// explicitly (cond_wait releases it while sleeping and reacquires on wake), so
+// a condition variable composes 1:1 with the existing Mutex ergonomics.
+typedef struct { pthread_cond_t cond; } vyb_cond;
+VYB_WEAK int64_t __vyb_cond_new(void) {
+    vyb_cond* c = (vyb_cond*)malloc(sizeof(vyb_cond));
+    if (!c) return 0;
+    if (pthread_cond_init(&c->cond, NULL) != 0) { free(c); return 0; }
+    return (int64_t)(intptr_t)c;
+}
+VYB_WEAK int64_t __vyb_cond_wait(int64_t cv, int64_t mh) {
+    if (!cv || !mh) return -1;
+    return pthread_cond_wait(&((vyb_cond*)(intptr_t)cv)->cond,
+                             (pthread_mutex_t*)(intptr_t)mh) == 0 ? 0 : -1;
+}
+VYB_WEAK int64_t __vyb_cond_signal(int64_t cv) {
+    if (!cv) return -1;
+    return pthread_cond_signal(&((vyb_cond*)(intptr_t)cv)->cond) == 0 ? 0 : -1;
+}
+VYB_WEAK int64_t __vyb_cond_broadcast(int64_t cv) {
+    if (!cv) return -1;
+    return pthread_cond_broadcast(&((vyb_cond*)(intptr_t)cv)->cond) == 0 ? 0 : -1;
+}
+VYB_WEAK int64_t __vyb_cond_free(int64_t cv) {
+    if (!cv) return -1;
+    vyb_cond* c = (vyb_cond*)(intptr_t)cv;
+    pthread_cond_destroy(&c->cond);
+    free(c);
+    return 0;
+}
+
+// A heap-allocated lock-free atomic int; the Vyb handle is the pointer itself.
+// All operations are seq_cst. atomic_add returns the *new* value (result after
+// the addition); atomic_cas returns 1 if the swap happened, else 0.
+typedef struct { _Atomic int64_t v; } vyb_atomic;
+VYB_WEAK int64_t __vyb_atomic_new(int64_t init) {
+    vyb_atomic* a = (vyb_atomic*)malloc(sizeof(vyb_atomic));
+    if (!a) return 0;
+    atomic_init(&a->v, init);
+    return (int64_t)(intptr_t)a;
+}
+VYB_WEAK int64_t __vyb_atomic_load(int64_t ah) {
+    if (!ah) return 0;
+    return atomic_load_explicit(&((vyb_atomic*)(intptr_t)ah)->v, memory_order_seq_cst);
+}
+VYB_WEAK int64_t __vyb_atomic_store(int64_t ah, int64_t v) {
+    if (!ah) return -1;
+    atomic_store_explicit(&((vyb_atomic*)(intptr_t)ah)->v, v, memory_order_seq_cst);
+    return 0;
+}
+VYB_WEAK int64_t __vyb_atomic_add(int64_t ah, int64_t v) {
+    if (!ah) return 0;
+    return atomic_fetch_add_explicit(&((vyb_atomic*)(intptr_t)ah)->v, v,
+                                     memory_order_seq_cst) + v;
+}
+VYB_WEAK int64_t __vyb_atomic_cas(int64_t ah, int64_t expected, int64_t desired) {
+    if (!ah) return 0;
+    int64_t exp = expected;
+    return atomic_compare_exchange_strong_explicit(
+        &((vyb_atomic*)(intptr_t)ah)->v, &exp, desired,
+        memory_order_seq_cst, memory_order_seq_cst) ? 1 : 0;
+}
+VYB_WEAK int64_t __vyb_atomic_free(int64_t ah) {
+    if (!ah) return -1;
+    free((void*)(intptr_t)ah);
+    return 0;
+}

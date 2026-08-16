@@ -14,6 +14,12 @@
 #   m = mutex_new()
 #   mutex_lock(m); ... shared section ...; mutex_unlock(m)
 #   mutex_free(m)
+#
+#   cv = cond_new()                 // pair a condvar with a Mutex
+#   cond_wait(cv, m); cond_signal(cv); cond_broadcast(cv)
+#
+#   cnt = atomic_new(0)             // lock-free shared Int
+#   atomic_add(cnt, 1); atomic_load(cnt); atomic_cas(cnt, old, new)
 
 # Start `work` on a new thread; returns a handle (>= 1) or -1 on failure
 # (thread-table full or pthread_create failed).
@@ -62,4 +68,96 @@ mutex_unlock(m<Int>)<Int> -> {
 share(all)
 mutex_free(m<Int>)<Int> -> {
     return vyb_mutex_free(m)
+}
+
+
+# Condition variable: a lightweight signal/wake primitive that pairs with a
+# Mutex. cond_wait atomically releases `m`, sleeps until signalled, then
+# reacquires `m` before returning. Usage:
+#
+#   cv = cond_new()
+#   m  = mutex_new()
+#   ...
+#   mutex_lock(m)
+#   while (!ready) { cond_wait(cv, m) }   // releases + reacquires around wait
+#   mutex_unlock(m)
+#
+#   cond_signal(cv)   // wake one waiter
+#   cond_broadcast(cv) // wake all waiters
+#   cond_free(cv)
+
+# A fresh, unlocked-pair condition variable handle (0 on allocation/init failure).
+share(all)
+cond_new()<Int> -> {
+    return vyb_cond_new()
+}
+
+# Atomically release `m`, block until signalled/broadcast, then reacquire `m`.
+# Returns 0, or -1 on error.
+share(all)
+cond_wait(cv<Int>, m<Int>)<Int> -> {
+    return vyb_cond_wait(cv, m)
+}
+
+# Wake one waiter blocked in cond_wait on `cv` (no-op if none); returns 0 or -1.
+share(all)
+cond_signal(cv<Int>)<Int> -> {
+    return vyb_cond_signal(cv)
+}
+
+# Wake every waiter blocked in cond_wait on `cv`; returns 0 or -1.
+share(all)
+cond_broadcast(cv<Int>)<Int> -> {
+    return vyb_cond_broadcast(cv)
+}
+
+# Destroy and free `cv`; returns 0 or -1 on error.
+share(all)
+cond_free(cv<Int>)<Int> -> {
+    return vyb_cond_free(cv)
+}
+
+# AtomicInt: a lock-free integer shared across threads (seq_cst). Usage:
+#
+#   cnt = atomic_new(0)
+#   atomic_add(cnt, 1)      // returns the new value
+#   v = atomic_load(cnt)
+#   atomic_cas(cnt, v, v+1) // 1 if the compare-and-swap succeeded, else 0
+#   atomic_free(cnt)
+
+# A fresh atomic int initialized to `init` (0 on allocation failure).
+share(all)
+atomic_new(init<Int>)<Int> -> {
+    return vyb_atomic_new(init)
+}
+
+# Atomically read and return the stored value.
+share(all)
+atomic_load(a<Int>)<Int> -> {
+    return vyb_atomic_load(a)
+}
+
+# Atomically store `v`; returns 0 or -1 on error.
+share(all)
+atomic_store(a<Int>, v<Int>)<Int> -> {
+    return vyb_atomic_store(a, v)
+}
+
+# Atomically add `v` to the stored value; returns the *new* value after the add.
+share(all)
+atomic_add(a<Int>, v<Int>)<Int> -> {
+    return vyb_atomic_add(a, v)
+}
+
+# Atomically set the value to `desired` if it is currently `expected`; returns
+# 1 if the swap happened, else 0.
+share(all)
+atomic_cas(a<Int>, expected<Int>, desired<Int>)<Int> -> {
+    return vyb_atomic_cas(a, expected, desired)
+}
+
+# Destroy and free `a`; returns 0 or -1 on error.
+share(all)
+atomic_free(a<Int>)<Int> -> {
+    return vyb_atomic_free(a)
 }

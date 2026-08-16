@@ -1926,7 +1926,13 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_time_sleep_ms" ||
             name == "vyb_thread_spawn" || name == "vyb_thread_join" || name == "vyb_thread_detach" ||
             name == "vyb_mutex_new" || name == "vyb_mutex_lock" ||
-            name == "vyb_mutex_unlock" || name == "vyb_mutex_free") {
+            name == "vyb_mutex_unlock" || name == "vyb_mutex_free" ||
+            name == "vyb_cond_new" || name == "vyb_cond_wait" ||
+            name == "vyb_cond_signal" || name == "vyb_cond_broadcast" ||
+            name == "vyb_cond_free" ||
+            name == "vyb_atomic_new" || name == "vyb_atomic_load" ||
+            name == "vyb_atomic_store" || name == "vyb_atomic_add" ||
+            name == "vyb_atomic_cas" || name == "vyb_atomic_free") {
             isIntrinsic = true;
         }
     }
@@ -2369,7 +2375,13 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             if (name == "vyb_thread_spawn" || name == "vyb_thread_join" ||
                 name == "vyb_thread_detach" ||
                 name == "vyb_mutex_new" || name == "vyb_mutex_lock" ||
-                name == "vyb_mutex_unlock" || name == "vyb_mutex_free") {
+                name == "vyb_mutex_unlock" || name == "vyb_mutex_free" ||
+                name == "vyb_cond_new" || name == "vyb_cond_wait" ||
+                name == "vyb_cond_signal" || name == "vyb_cond_broadcast" ||
+                name == "vyb_cond_free" ||
+                name == "vyb_atomic_new" || name == "vyb_atomic_load" ||
+                name == "vyb_atomic_store" || name == "vyb_atomic_add" ||
+                name == "vyb_atomic_cas" || name == "vyb_atomic_free") {
                 auto* resTy = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "Int"));
                 expressionTypes[node] = retainType(resTy);

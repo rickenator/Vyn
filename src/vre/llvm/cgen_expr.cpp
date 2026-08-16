@@ -2842,6 +2842,63 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             m_currentLLVMValue = builder->CreateCall(f, {}, "mutex.handle");
             return;
         }
+
+        // CondVar + AtomicInt intrinsics (threads stdlib module). Each takes a
+        // fixed number of Int arguments (handles / values) and returns an Int.
+        // A small helper evaluates/sexts the args and lowers to the `__vyb_*`
+        // runtime function, mirroring the mutex/thread_join pattern.
+        auto emitHandleIntrinsic = [&](const std::string& rtName, size_t nArgs) -> void {
+            if (node->arguments.size() != nArgs) {
+                logError(node->loc, fname + " expects " + std::to_string(nArgs) + " argument(s)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            llvm::Function* f = module->getFunction(rtName);
+            if (!f) {
+                std::vector<llvm::Type*> params(nArgs, int64Type);
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, params, false);
+                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, rtName, module.get());
+            }
+            std::vector<llvm::Value*> args;
+            args.reserve(nArgs);
+            for (size_t i = 0; i < nArgs; ++i) {
+                node->arguments[i]->accept(*this);
+                llvm::Value* a = m_currentLLVMValue;
+                if (!a) { m_currentLLVMValue = nullptr; return; }
+                if (a->getType()->isIntegerTy() && !a->getType()->isIntegerTy(64))
+                    a = builder->CreateSExt(a, int64Type, "thr.toi64");
+                args.push_back(a);
+            }
+            m_currentLLVMValue = builder->CreateCall(f, args, "thr.ret");
+        };
+
+        if (fname == "vyb_cond_new") {
+            emitHandleIntrinsic("__vyb_cond_new", 0);
+            return;
+        } else if (fname == "vyb_cond_signal" || fname == "vyb_cond_broadcast" ||
+                   fname == "vyb_cond_free") {
+            emitHandleIntrinsic((fname == "vyb_cond_signal") ? "__vyb_cond_signal"
+                             : (fname == "vyb_cond_broadcast") ? "__vyb_cond_broadcast"
+                             : "__vyb_cond_free", 1);
+            return;
+        } else if (fname == "vyb_cond_wait") {
+            emitHandleIntrinsic("__vyb_cond_wait", 2);
+            return;
+        } else if (fname == "vyb_atomic_new") {
+            emitHandleIntrinsic("__vyb_atomic_new", 1);
+            return;
+        } else if (fname == "vyb_atomic_load" || fname == "vyb_atomic_free") {
+            emitHandleIntrinsic((fname == "vyb_atomic_load") ? "__vyb_atomic_load" : "__vyb_atomic_free", 1);
+            return;
+        } else if (fname == "vyb_atomic_store") {
+            emitHandleIntrinsic("__vyb_atomic_store", 2);
+            return;
+        } else if (fname == "vyb_atomic_add") {
+            emitHandleIntrinsic("__vyb_atomic_add", 2);
+            return;
+        } else if (fname == "vyb_atomic_cas") {
+            emitHandleIntrinsic("__vyb_atomic_cas", 3);
+            return;
+        }
     }
 
     // Handle serialization mode intrinsics: lit(), notype(), bare(), deserial()

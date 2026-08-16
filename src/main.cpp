@@ -133,6 +133,19 @@ extern "C" {
     int64_t __vyb_mutex_lock(int64_t mh);
     int64_t __vyb_mutex_unlock(int64_t mh);
     int64_t __vyb_mutex_free(int64_t mh);
+    // CondVar (composes with a Mutex handle for pthread_cond_wait).
+    int64_t __vyb_cond_new(void);
+    int64_t __vyb_cond_wait(int64_t cv, int64_t mh);
+    int64_t __vyb_cond_signal(int64_t cv);
+    int64_t __vyb_cond_broadcast(int64_t cv);
+    int64_t __vyb_cond_free(int64_t cv);
+    // AtomicInt (lock-free seq_cst).
+    int64_t __vyb_atomic_new(int64_t init);
+    int64_t __vyb_atomic_load(int64_t ah);
+    int64_t __vyb_atomic_store(int64_t ah, int64_t v);
+    int64_t __vyb_atomic_add(int64_t ah, int64_t v);
+    int64_t __vyb_atomic_cas(int64_t ah, int64_t expected, int64_t desired);
+    int64_t __vyb_atomic_free(int64_t ah);
 
     // JSON serialization for complex types
     char* __vyb_complex_to_json(void* instance, const char* type_name);
@@ -1005,6 +1018,28 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_mutex_unlock), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_mutex_free")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_mutex_free), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_cond_new")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_cond_new), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_cond_wait")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_cond_wait), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_cond_signal")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_cond_signal), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_cond_broadcast")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_cond_broadcast), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_cond_free")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_cond_free), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_atomic_new")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_atomic_new), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_atomic_load")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_atomic_load), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_atomic_store")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_atomic_store), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_atomic_add")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_atomic_add), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_atomic_cas")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_atomic_cas), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_atomic_free")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_atomic_free), llvm::JITSymbolFlags::Exported);
 
         // Register JSON serialization functions
         runtimeSymbols[mangle("__vyb_complex_to_json")] = llvm::orc::ExecutorSymbolDef(

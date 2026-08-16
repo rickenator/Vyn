@@ -1,0 +1,64 @@
+// @test: threads stdlib module - CondVar + AtomicInt
+// @description: the `threads` module's lock-free AtomicInt (new/load/store/add/
+//   cas/free) and its condition variable (new/wait/signal/broadcast/free) pair
+//   with a Mutex for producer/consumer-style wakes. Verified: atomic read-modify-
+//   write ordering (add returns the new value, cas succeeds only on a match),
+//   and a worker that blocks in cond_wait until the producer publishes a flag
+//   and signals it (no busy-wait, no lost wakeup thanks to the mutex-guarded
+//   predicate).
+// @category: modules, threads, concurrency, stdlib
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import threads
+import time::{sleep_ms}
+
+main()<Int> -> {
+    # --- AtomicInt: ordering and compare-and-swap ---
+    cnt<Int> = atomic_new(5)
+    if (atomic_load(cnt) != 5) { return 1 }
+    if (atomic_add(cnt, 3) != 8) { return 2 }
+    if (atomic_load(cnt) != 8) { return 3 }
+    if (atomic_cas(cnt, 7, 99) != 0) { return 4 }   # expected mismatch -> no swap
+    if (atomic_load(cnt) != 8) { return 5 }
+    if (atomic_cas(cnt, 8, 42) != 1) { return 6 }   # match -> swap
+    if (atomic_load(cnt) != 42) { return 7 }
+    atomic_store(cnt, 100)
+    if (atomic_load(cnt) != 100) { return 8 }
+    atomic_free(cnt)
+
+    # --- CondVar + Mutex: a worker waits until a flag is published ---
+    cv<Int> = cond_new()
+    if (cv == 0) { return 9 }
+    m<Int> = mutex_new()
+    flag<Int> = atomic_new(0)   # 0 = not ready, 1 = ready
+
+    w<fn() -> Int> = || -> {
+        mutex_lock(m)
+        while (atomic_load(flag) == 0) {
+            cond_wait(cv, m)
+        }
+        mutex_unlock(m)
+        return atomic_load(flag)
+    }
+    s<Int> = thread_spawn(w)
+    if (s < 0) { return 10 }
+
+    sleep_ms(20)
+    # Publish under the mutex, then signal: no lost wakeup.
+    mutex_lock(m)
+    atomic_store(flag, 1)
+    cond_signal(cv)
+    mutex_unlock(m)
+
+    if (thread_join(s) != 1) { return 11 }
+
+    cond_free(cv)
+    mutex_free(m)
+    atomic_free(flag)
+
+    println("ok")
+    return 0
+}

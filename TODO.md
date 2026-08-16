@@ -409,11 +409,21 @@ with only the pthread ABI beneath). The thread-safety foundation above came firs
   hidden environment param. Capturing closures work across the spawn boundary:
   the runtime retains the closure env on spawn and releases it when the body
   returns, so each worker sees its own capture (regression
-  `test/modules/test_closure_capture.vyb`). The remaining shiny-level follow-ons
-  are `CondVar` and `AtomicInt` (`load`/`store`/`add`/`cas`).
+  `test/modules/test_closure_capture.vyb`).
   Verified with overlapping sleeps, per-thread results, per-handle detach
   semantics, slot reclamation past the 256 cap, and a mutex round-trip
   (`test/modules/test_threads.vyb`).
+- [x] **CondVar** — `cond_new`/`cond_wait`/`cond_signal`/`cond_broadcast`/
+  `cond_free` over a heap `pthread_cond_t`; `cond_wait(cv, m)` takes the caller's
+  Mutex handle so it atomically releases `m` while sleeping and reacquires it on
+  wake (mutex-guarded predicate pattern, no lost wakeup). Verified by a worker
+  blocked in `cond_wait` until the producer publishes a flag under the mutex and
+  signals it (`test/modules/test_cond_atomic.vyb`).
+- [x] **AtomicInt** — `atomic_new`/`atomic_load`/`atomic_store`/`atomic_add`/
+  `atomic_cas`/`atomic_free` over a heap lock-free seq_cst integer;
+  `atomic_add` returns the *new* value and `atomic_cas` returns 1 on a successful
+  swap, 0 otherwise. Verified by read-modify-write ordering checks
+  (`test/modules/test_cond_atomic.vyb`).
 - [x] **Threaded HTTP server (`http_serve`)** — the payoff of a worker-thread
   accept loop: `http_serve(port, backlog)` binds+listens, starts a detached
   worker running the accept loop, and serves each accepted connection
