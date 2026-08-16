@@ -50,7 +50,7 @@ Vyb is a statically typed, compiled systems language targeting native code via L
 * **Concurrency**: `async`/`await` and `Future<T>`.
 * **Native Compilation**: Full JIT (LLVM ORC), AOT (object files), and executable generation pipeline.
 
-**Current Version:** 0.5.4 (freedom-1.0 series) 🚀 **AOT COMPILATION + CROSS-PLATFORM SUPPORT**
+**Current Version:** 0.6.0 (freedom-1.0 series) 🚀 **AOT COMPILATION + CROSS-PLATFORM SUPPORT**
 
 ## Quick Start
 
@@ -263,7 +263,7 @@ This unique `import`/`smuggle` distinction makes Vyb's module system both secure
 
 ## In This Release
 
-Vyb **v0.5.4** (freedom-1.0 series) is a mature systems programming language with **native executable generation** and a broad core feature set.
+Vyb **v0.6.0** (freedom-1.0 series) is a mature systems programming language with **native executable generation** and a broad core feature set.
 
 ### ✅ **Recent Milestones**
 These features were completed in the current release cycle and are fully tested:
@@ -2827,7 +2827,7 @@ See `doc/` directory for detailed design documents and RFCs.
 - ✅ **Async/Await**: `async` functions with `Future<T>` types and `await` (synchronous resolution today)
 - ✅ **Debug Infrastructure**: Full LLVM debug metadata for source-level debugging
 
-**Language Status**: Vyb (freedom-1.0 series, tracked as v0.5.x) is an actively developed systems programming language with unified canonical syntax, a sized type system (Int8–Int64, UInt8–UInt64, Float32/Float64, Char, Rune, Bytes), compile-time monomorphized generics, aspect/bind polymorphism, a `fail`/`trap` error system, JIT/AOT/native codegen, and a modern test harness. The core language is stable and well tested; see `doc/FEATURE_STATUS.md` for the current feature matrix.
+**Language Status**: Vyb (freedom-1.0 series, tracked as v0.6.x) is an actively developed systems programming language with unified canonical syntax, a sized type system (Int8–Int64, UInt8–UInt64, Float32/Float64, Char, Rune, Bytes), compile-time monomorphized generics, aspect/bind polymorphism, a `fail`/`trap` error system, JIT/AOT/native codegen, and a modern test harness. The core language is stable and well tested; see `doc/FEATURE_STATUS.md` for the current feature matrix.
 
 ## Getting Help
 
