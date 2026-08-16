@@ -3,6 +3,29 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-15: **Module-to-module imports + capturing-worker closures**.
+  Closes the two gaps that forced the threaded `http` to reach for raw
+  intrinsics. (1) The module resolver now re-exposes a *plain-imported* module's
+  symbols into the importing module's scope, so a stdlib/user module can
+  `import threads` like any user module — previously an import only recorded a
+  `share` entry when it carried an explicit `share(...)` qualifier, so the next
+  import hop silently dropped plain-imported symbols (a module couldn't even
+  use its own imports). Fixed in `src/module_registry.cpp` with a `carryShare`
+  that inherits the origin module's visibility (or the import's `share(...)`)
+  for every spliced declaration. (2) The thread runtime now *owns* a spawned
+  closure environment: `__vyb_thread_spawn` retains it and the trampoline
+  releases it once the body returns. Without this, a per-argument release in
+  the `threads` `thread_spawn` wrapper freed the env while a worker still
+  needed it, so concurrent capturing workers all observed the last capture (a
+  use-after-reuse corruption — the listen fd / connection fd captured by the
+  per-connection HTTP handlers). `http` now uses
+  `import threads::{thread_spawn, thread_detach}` instead of the intrinsic
+  calls. Regression test `test/modules/test_closure_capture.vyb` (two threads,
+  distinct captures), plus the threaded http suite, pass.
+  Commits: `fix(module): carry plain-imported symbol visibility across import
+  hops`, `fix(runtime): give spawned threads ownership of their closure env`,
+  and `refactor(http): import threads for per-connection workers`.
+
 - 2026-08-15: **Threaded HTTP + `thread_detach`**. Two coordinated pieces that
   finally make the `http` module concurrent. (1) `threads` gains
   `thread_detach(handle)`: marks a spawned thread fire-and-forget so its slot
@@ -15,14 +38,14 @@ Audit date: 2026-05-23
   its own detached thread (`http_serve_conn`: read head -> path -> response),
   so the server keeps accepting while earlier connections are handled. Closing
   the listen fd stops the loop. `http` calls the `vyb_thread_*` intrinsics
-  directly (as it does `__vyb_net_*`), because a stdlib module cannot yet
-  `import` a sibling module — the module resolver doesn't re-expose an imported
-  module's symbols into an importing module's scope (noted as an open gap). Both
-  wire through the existing `fn() -> Int` closure machinery, which already
-  handles captures (e.g. the listen fd / connection fd captured by the worker
-  closures). Tests: `thread_detach` semantics + slot-reclamation past the cap in
-  `test/modules/test_threads.vyb`; two concurrent clients served in
-  `test/modules/test_http_threaded.vyb`; full suite passes.
+  directly (as it does `__vyb_net_*`) only because a stdlib module could not
+  yet `import` a sibling — since resolved in the entry above, so `http` now
+  uses `import threads`. Both wire through the existing `fn() -> Int` closure
+  machinery, which handles captures (e.g. the listen fd / connection fd
+  captured by the worker closures). Tests: `thread_detach` semantics +
+  slot-reclamation past the cap in `test/modules/test_threads.vyb`; two
+  concurrent clients served in `test/modules/test_http_threaded.vyb`; full suite
+  passes.
   Commit: `feat(threads/http): thread_detach reaper + threaded http_serve`.
 
 - 2026-08-15: **`vyb bindgen` emits constant enums for C integer constants**.

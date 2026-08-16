@@ -389,9 +389,11 @@ with only the pthread ABI beneath). The thread-safety foundation above came firs
   (`mutex_new`/`lock`/
   `unlock`/`free`). A thread-entry trampoline unpacks a Vyb `fn` (a uniform
   closure `{ptr env, ptr fn}`) and runs it as `int64_t (*)(void*)` with its
-  hidden environment param. MVP is `fn() -> Int` (no captures → nothing to move
-  across the join boundary); the remaining shiny-level follow-ons are capturing
-  closures, `CondVar`, and `AtomicInt` (`load`/`store`/`add`/`cas`).
+  hidden environment param. Capturing closures work across the spawn boundary:
+  the runtime retains the closure env on spawn and releases it when the body
+  returns, so each worker sees its own capture (regression
+  `test/modules/test_closure_capture.vyb`). The remaining shiny-level follow-ons
+  are `CondVar` and `AtomicInt` (`load`/`store`/`add`/`cas`).
   Verified with overlapping sleeps, per-thread results, per-handle detach
   semantics, slot reclamation past the 256 cap, and a mutex round-trip
   (`test/modules/test_threads.vyb`).
@@ -401,8 +403,9 @@ with only the pthread ABI beneath). The thread-safety foundation above came firs
   concurrently on its own detached thread (`http_serve_conn` reads the head,
   extracts the path, and answers). The server keeps accepting while earlier
   connections are handled; closing the listen fd stops the loop. Uses the
-  `vyb_thread_*` pthread intrinsics directly (the same primitives `threads`
-  wraps, the `http` module stays self-contained like it is for sockets).
+  `threads` module's `thread_spawn` / `thread_detach` via a clean
+  `import threads::{...}` (the module resolver now re-exposes plain-imported
+  sibling symbols), keeping `http` free of raw pthread intrinsics.
   Covered by `test/modules/test_http_threaded.vyb`.
 
 ### 5. Sum Types / Enums (MEDIUM PRIORITY)
