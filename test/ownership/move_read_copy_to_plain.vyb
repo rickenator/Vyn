@@ -1,0 +1,9 @@
+// Test: Assigning/declaring a MY value into a plain (non-my) target is a read/copy, not a move
+// @expect: pass
+// @expect-return: 7
+main()<Int> -> {
+    x<my<Int>> = my(7)
+    a<Int> = x   // assignment copy: x stays valid
+    b<Int> = x   // declaration copy: x stays valid
+    return b
+}

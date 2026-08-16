@@ -789,9 +789,22 @@ ast::OwnershipKind SemanticAnalyzer::getOwnershipKind(SymbolInfo* sym) const {
     return sym->ownershipKind;
 }
 
+// True if a type node denotes a MY-owned wrapper (`my<T>`).
+static bool isMyOwnershipType(const ast::TypeNode* type) {
+    if (!type) return false;
+    std::string typeStr = type->toString();
+    return typeStr.rfind("my<", 0) == 0;
+}
+
 void SemanticAnalyzer::recordMove(const std::string& varName) {
     if (!moveScopes.empty()) {
         moveScopes.back()[varName].isMoved = true;
+    }
+}
+
+void SemanticAnalyzer::clearMove(const std::string& varName) {
+    if (!moveScopes.empty()) {
+        moveScopes.back()[varName].isMoved = false;
     }
 }
 
@@ -925,8 +938,10 @@ void SemanticAnalyzer::visit(ast::Identifier* node) {
     ast::TypeNode* readType = symbol->type ? unwrapPrimitiveOwnershipType(symbol->type) : nullptr;
     expressionTypes[node] = readType;
 
-    // Move tracking: reject use of MY-owned variables that have been moved from
-    if (hasOwnershipKindMY(symbol) && isMoved(node->name)) {
+    // Move tracking: reject use of MY-owned variables that have been moved from.
+    // An assignment LHS is exempt: writing a fresh value to a moved `my`
+    // variable revives it (the assignment visitor clears the moved flag).
+    if (hasOwnershipKindMY(symbol) && isMoved(node->name) && !inAssignmentLHS) {
         addError("Use after move: '" + node->name + "' has been moved and is no longer valid.", node);
         expressionTypes[node] = nullptr;
         return;
@@ -1499,12 +1514,19 @@ void SemanticAnalyzer::visit(ast::VariableDeclaration* node) {
             }
         }
 
-        // Move tracking: a variable declaration initialized from a MY-owned
-        // value transfers ownership out of the source (matching assignment).
-        if (auto* initIdent = dynamic_cast<ast::Identifier*>(node->init.get())) {
-            SymbolInfo* initSymbol = currentScope->lookup(initIdent->name);
-            if (initSymbol && hasOwnershipKindMY(initSymbol)) {
-                recordMove(initIdent->name);
+        // Move tracking: a declaration initialized from a MY-owned value
+        // transfers ownership out of the source only when the declared type is
+        // itself MY-owned. A plain non-`my` destination is an unwrapped
+        // read/copy that leaves the source valid.
+        if (node->typeNode && node->init) {
+            if (auto* initIdent = dynamic_cast<ast::Identifier*>(node->init.get())) {
+                SymbolInfo* initSymbol = currentScope->lookup(initIdent->name);
+                ast::TypeNode* destType = node->typeNode->type
+                    ? node->typeNode->type.get() : node->typeNode.get();
+                if (initSymbol && hasOwnershipKindMY(initSymbol) &&
+                    isMyOwnershipType(destType)) {
+                    recordMove(initIdent->name);
+                }
             }
         }
 
@@ -2424,13 +2446,18 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                     }
                 }
 
-            // Move tracking: mark MY-owned argument identifiers as moved when passed to function
-            for (auto& arg : node->arguments) {
-                if (auto* argIdent = dynamic_cast<ast::Identifier*>(arg.get())) {
+            // Move tracking: a MY-owned argument moves only into a MY-owned
+            // parameter; passing to a plain value parameter is an unwrapped
+            // read/copy that leaves the source valid.
+            for (size_t i = 0; i < node->arguments.size(); ++i) {
+                if (auto* argIdent = dynamic_cast<ast::Identifier*>(node->arguments[i].get())) {
                     SymbolInfo* argSymbol = currentScope->lookup(argIdent->name);
-                    if (argSymbol && hasOwnershipKindMY(argSymbol)) {
-                        recordMove(argIdent->name);
+                    if (!argSymbol || !hasOwnershipKindMY(argSymbol)) continue;
+                    bool paramOwns = false;
+                    if (i < functionType->parameterTypes.size() && functionType->parameterTypes[i]) {
+                        paramOwns = isMyOwnershipType(functionType->parameterTypes[i].get());
                     }
+                    if (paramOwns) recordMove(argIdent->name);
                 }
             }
                 return;
@@ -2446,13 +2473,19 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             expressionTypes[node] = returnType;
             node->type = std::shared_ptr<ast::TypeNode>(returnType->clone());
 
-            // Move tracking: mark MY-owned argument identifiers as moved when passed to function
-            for (auto& arg : node->arguments) {
-                if (auto* argIdent = dynamic_cast<ast::Identifier*>(arg.get())) {
+            // Move tracking: a MY-owned argument moves only into a MY-owned
+            // parameter; passing to a plain value parameter is an unwrapped
+            // read/copy that leaves the source valid.
+            ast::FunctionDeclaration* funcDecl = registryIt->second;
+            for (size_t i = 0; i < node->arguments.size(); ++i) {
+                if (auto* argIdent = dynamic_cast<ast::Identifier*>(node->arguments[i].get())) {
                     SymbolInfo* argSymbol = currentScope->lookup(argIdent->name);
-                    if (argSymbol && hasOwnershipKindMY(argSymbol)) {
-                        recordMove(argIdent->name);
+                    if (!argSymbol || !hasOwnershipKindMY(argSymbol)) continue;
+                    bool paramOwns = false;
+                    if (i < funcDecl->params.size() && funcDecl->params[i].typeNode) {
+                        paramOwns = isMyOwnershipType(funcDecl->params[i].typeNode.get());
                     }
+                    if (paramOwns) recordMove(argIdent->name);
                 }
             }
             return;
@@ -3937,7 +3970,13 @@ void SemanticAnalyzer::visit(ast::AssignmentExpression* node) {
         }
     }
 
+    // Visiting the LHS identifier of an assignment is a write (revive), not a
+    // read; suppress the use-after-move error for it so a moved `my` variable
+    // can be given a fresh value. The moved flag is cleared after a valid write.
+    bool savedInAssignmentLHS = inAssignmentLHS;
+    inAssignmentLHS = true;
     node->left->accept(*this);
+    inAssignmentLHS = savedInAssignmentLHS;
     node->right->accept(*this);
 
     // Mutable-capture detection: a lambda body that assigns to an identifier
@@ -4039,11 +4078,22 @@ void SemanticAnalyzer::visit(ast::AssignmentExpression* node) {
       node->type = std::shared_ptr<ast::TypeNode>(leftType->clone());
     }
 
-    // Move tracking: if RHS is a MY-owned identifier being assigned to LHS, mark RHS as moved
+    // Move tracking: writing a fresh value to a moved `my` LHS revives it, so
+    // clear its moved flag. Assigning a MY-owned RHS to an owning (`my`) LHS
+    // transfers ownership and moves the RHS; a plain (non-`my`) LHS is an
+    // unwrapped read/copy that leaves the source valid.
+    if (auto* lhsIdent = dynamic_cast<ast::Identifier*>(node->left.get())) {
+        SymbolInfo* lhsSymbol = currentScope->lookup(lhsIdent->name);
+        if (lhsSymbol && hasOwnershipKindMY(lhsSymbol)) {
+            clearMove(lhsIdent->name);
+        }
+    }
     if (auto* rhsIdent = dynamic_cast<ast::Identifier*>(node->right.get())) {
         if (auto* lhsIdent = dynamic_cast<ast::Identifier*>(node->left.get())) {
             SymbolInfo* rhsSymbol = currentScope->lookup(rhsIdent->name);
-            if (rhsSymbol && hasOwnershipKindMY(rhsSymbol)) {
+            SymbolInfo* lhsSymbol = currentScope->lookup(lhsIdent->name);
+            if (rhsSymbol && lhsSymbol &&
+                hasOwnershipKindMY(rhsSymbol) && hasOwnershipKindMY(lhsSymbol)) {
                 recordMove(rhsIdent->name);
             }
         }

@@ -1,8 +1,8 @@
-// Test: Valid MY ownership transfer - move is allowed, use-after-move is not
+// Test: Valid MY ownership transfer into an owning binding - move is allowed
 // @expect: pass
 // @expect-return: 42
 main()<Int> -> {
     x<my<Int>> = my(42)
-    y<Int> = x  // x is moved to y, y now owns the value
-    return y
+    y<my<Int>> = x  // ownership transfers from x to y
+    return y        // reading y yields the underlying value
 }

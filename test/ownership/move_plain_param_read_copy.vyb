@@ -1,0 +1,12 @@
+// Test: Passing a MY value to a plain (non-my) parameter is a read/copy, not a move
+// @expect: pass
+// @expect-return: 7
+take(v<Int>)<Int> -> {
+    return v
+}
+main()<Int> -> {
+    x<my<Int>> = my(7)
+    a<Int> = take(x)  // plain Int param: unwrapped read, x stays valid
+    b<Int> = x        // x is still usable
+    return b
+}

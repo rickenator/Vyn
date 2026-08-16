@@ -577,7 +577,11 @@ private:
 
     // Helper methods for move tracking
     void recordMove(const std::string& varName);
+    void clearMove(const std::string& varName);
     bool isMoved(const std::string& varName) const;
+    // True while visiting the LHS of an assignment, where a write to a moved
+    // `my` variable revives it rather than being a use-after-move.
+    bool inAssignmentLHS = false;
     bool hasOwnershipKindMY(SymbolInfo* sym) const;
     ast::OwnershipKind getOwnershipKind(SymbolInfo* sym) const;
 

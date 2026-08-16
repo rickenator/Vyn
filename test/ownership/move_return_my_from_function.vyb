@@ -1,0 +1,11 @@
+// Test: Returning a MY value from a function transfers ownership out and is allowed
+// @expect: pass
+// @expect-return: 5
+make()<my<Int>> -> {
+    x<my<Int>> = my(5)
+    return x
+}
+main()<Int> -> {
+    v<my<Int>> = make()
+    return v
+}

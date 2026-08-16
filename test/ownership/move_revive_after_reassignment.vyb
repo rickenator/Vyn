@@ -1,0 +1,10 @@
+// Test: A moved MY variable is revived by a fresh assignment
+// @expect: pass
+// @expect-return: 2
+main()<Int> -> {
+    x<my<Int>> = my(1)
+    y<my<Int>> = x   // x is moved to an owning binding
+    x = my(2)        // reassignment gives x fresh ownership (revives it)
+    z<Int> = x       // reading revived x is now valid
+    return z
+}
