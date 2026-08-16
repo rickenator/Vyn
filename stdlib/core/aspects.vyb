@@ -200,6 +200,8 @@ bind Hashable -> Float {
 share(all)
 aspect StringOps {
     split(self<String>, sep<String>)<Vec<String>> -> { }
+    # Index of the first occurrence of `needle`, or -1 when absent.
+    index_of(self<String>, needle<String>)<Int> -> { }
 }
 
 share(all)
@@ -233,5 +235,25 @@ bind StringOps -> String {
         }
         out.push(self.substring(start, n))
         return out
+    }
+    index_of(self<String>, needle<String>)<Int> -> {
+        n<Int> = self.len()
+        sn<Int> = needle.len()
+        if (sn == 0) { return 0 }
+        if (sn > n) { return -1 }
+        i<Int> = 0
+        while (i <= n - sn) {
+            j<Int> = 0
+            ok<Bool> = true
+            while (ok && j < sn) {
+                if (self.char_at(i + j) != needle.char_at(j)) {
+                    ok = false
+                }
+                j = j + 1
+            }
+            if (ok) { return i }
+            i = i + 1
+        }
+        return -1
     }
 }

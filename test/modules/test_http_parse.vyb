@@ -1,0 +1,39 @@
+// @test: http stdlib module request/response strings + String::index_of
+// @description: pure-Vyb deterministic checks of the http module's string
+//   helpers (request head, path extraction, response formatting) plus the new
+//   core String::index_of bind they rely on. No sockets involved here.
+// @category: modules, http, stdlib, string
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import http
+
+main()<Int> -> {
+    // String::index_of (first occurrence, -1 when absent, empty needle -> 0)
+    s<String> = "GET /hello HTTP/1.1"
+    if (s.index_of(" ") != 3) { return 1 }
+    if (s.index_of("zzz") != -1) { return 2 }
+    if (s.index_of("") != 0) { return 3 }
+
+    // http_request_path: "GET /a/b?x=1 HTTP/1.1" -> "/a/b?x=1"
+    h<String> = "GET /a/b?x=1 HTTP/1.1\r\nHost: t\r\n"
+    p<String> = http_request_path(h)
+    if (p != "/a/b?x=1") { return 4 }
+
+    // http_response: status line, Content-Length, body
+    b<String> = "hi"
+    resp<String> = http_response(200, b)
+    if (!resp.starts_with("HTTP/1.1 200 OK\r\n")) { return 5 }
+    if (resp.index_of("Content-Length: 2") < 0) { return 6 }
+    if (!resp.ends_with("hi")) { return 7 }
+
+    // http_request: method/path/host head
+    rq<String> = http_request("GET", "/", "localhost")
+    if (!rq.starts_with("GET / HTTP/1.0\r\n")) { return 8 }
+    if (rq.index_of("Host: localhost") < 0) { return 9 }
+
+    println("ok")
+    return 0
+}

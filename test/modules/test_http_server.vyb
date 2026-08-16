@@ -1,0 +1,57 @@
+// @test: pure-Vyb HTTP server end-to-end over loopback
+// @description: a real HTTP exchange driven in one process. A listening http
+//   server socket accepts a raw network client (the kernel queues the connect),
+//   reads + parses the client's GET head, answers with http_response, and the
+//   client verifies the status line and body. This proves the server path and
+//   response formatting; the http_get client convenience is covered for its
+//   request/response string handling in test_http_parse.
+// @category: modules, http, server, network, sockets, stdlib
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import http
+import network::{socket_open, socket_connect, socket_send, socket_recv,
+                 socket_close, AF_INET, SOCK_STREAM}
+
+main()<Int> -> {
+    srv<Int> = http_listen(0, 1)
+    if (srv < 0) { return 1 }
+    port<Int> = http_local_port(srv)
+    if (port <= 0) { return 2 }
+
+    cli<Int> = socket_open(AF_INET(), SOCK_STREAM(), 0)
+    if (cli < 0) { return 3 }
+    if (socket_connect(cli, "127.0.0.1", port) < 0) { return 4 }
+
+    conn<Int> = http_accept(srv)
+    if (conn < 0) { return 5 }
+
+    // Client sends a GET; the bytes are queued so the server recv won't block.
+    socket_send(cli, "GET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
+
+    head<String> = http_read_head(conn, 65536)
+    path<String> = http_request_path(head)
+    pk<String> = http_response(200, "hi-from-vyb")
+    http_send_all(conn, pk)
+    http_close(conn)
+
+    // Raw client reads the whole response until the server closes.
+    data<String> = ""
+    while (data.len() < 300) {
+        chunk<String> = socket_recv(cli, 256)
+        if (chunk.len() == 0) { break }
+        data = data.concat(chunk)
+    }
+    socket_close(cli)
+    http_close(srv)
+
+    if (path != "/hello") { return 6 }
+    if (!data.starts_with("HTTP/1.1 200 OK\r\n")) { return 7 }
+    if (data.index_of("Content-Length: 11") < 0) { return 8 }
+    if (data.index_of("hi-from-vyb") < 0) { return 9 }
+
+    println("ok")
+    return 0
+}

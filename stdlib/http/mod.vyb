@@ -1,0 +1,167 @@
+# http - a pure-Vyb HTTP/1.1 server and client over the runtime sockets.
+#
+# Everything here is written in Vyb on top of the `__vyb_net_*` intrinsics the
+# `network` module also wraps - no new FFI and no C code. It is minimal by
+# design but real: it parses request heads, builds well-formed responses, and
+# serves and fetches over TCP loopback/lan.
+#
+#   Server (building blocks):
+#     http_listen(port, backlog) -> fd    open + bind + listen (0 = ephemeral)
+#     http_local_port(fd) -> Int          the bound port (handy after a 0)
+#     http_accept(fd) -> conn             accept one pending connection
+#     http_read_head(conn, max) -> String read the head, up to + including CRLFCRLF
+#     http_request_path(head) -> String   "GET /x HTTP/1.1" -> "/x"
+#     http_send_all(conn, data) -> Int    send the whole string
+#     http_close(fd) -> Int               close a socket/connection
+#     http_response(status, body) -> String  a well-formed text/plain response
+#
+#   Client (convenience):
+#     http_request(method, path, host) -> String  a request head
+#     http_read_rest(conn, max) -> String         everything until the peer closes
+#     http_get(host, port, path) -> String        full GET round-trip -> body
+#
+# Concurrency note: Vyb is single-threaded and the sockets are blocking, so a
+# server can only answer a client once the kernel has queued its connect (the
+# accept returns immediately then). Building the server path against a client
+# that connects then waits works in one process (interleaved send/recv);
+# http_get does its whole connect/send/recv itself and so blocks until a
+# *living* peer responds - in a single process you exercise it against an
+# external/local server. A real event loop / async accept loop remains on the
+# roadmap.
+
+# Socket constants (AF_INET=2, SOCK_STREAM=1, IPPROTO_TCP=6), matching the
+# `network` module.
+share(all)
+http_af_inet()<Int> -> { return 2 }
+
+share(all)
+http_sock_stream()<Int> -> { return 1 }
+
+share(all)
+http_proto_tcp()<Int> -> { return 6 }
+
+# --- Server building blocks -------------------------------------------------
+
+# Open + bind + listen on `port` (use 0 to let the kernel pick one). Returns the
+# listening descriptor (>= 0) or -1 on failure.
+share(all)
+http_listen(port<Int>, backlog<Int>)<Int> -> {
+    fd<Int> = vyb_net_open(http_af_inet(), http_sock_stream(), http_proto_tcp())
+    if (fd < 0) { return -1 }
+    if (vyb_net_bind(fd, "0.0.0.0", port) < 0 || vyb_net_listen(fd, backlog) < 0) {
+        vyb_net_close(fd)
+        return -1
+    }
+    return fd
+}
+
+# The port a listening socket is bound to (read a 0 back after http_listen(0)).
+share(all)
+http_local_port(fd<Int>)<Int> -> {
+    return vyb_net_local_port(fd)
+}
+
+# Accept one pending connection; returns the connected descriptor (>= 0) or -1.
+share(all)
+http_accept(fd<Int>)<Int> -> {
+    return vyb_net_accept(fd)
+}
+
+# Read an HTTP head (everything up to and including the blank line) into a fresh
+# String, stopping once "\r\n\r\n" is seen or `max` bytes are read.
+share(all)
+http_read_head(conn<Int>, max<Int>)<String> -> {
+    buf<String> = ""
+    marker<String> = "\r\n\r\n"
+    while (buf.len() < max) {
+        chunk<String> = vyb_net_recv(conn, 256)
+        if (chunk.len() == 0) { break }
+        buf = buf.concat(chunk)
+        idx<Int> = buf.index_of(marker)
+        if (idx >= 0) { return buf.substring(0, idx + 4) }
+    }
+    return buf
+}
+
+# The request target from a head line, e.g. "GET /a/b?x=1 HTTP/1.1" -> "/a/b?x=1".
+# The method must be followed by a space; the path runs up to the next space.
+share(all)
+http_request_path(head<String>)<String> -> {
+    sp<Int> = head.index_of(" ")
+    if (sp < 0) { return "" }
+    a<Int> = sp + 1
+    rest<String> = head.substring(a)
+    e<Int> = rest.index_of(" ")
+    if (e < 0) { return rest }
+    return rest.substring(0, e)
+}
+
+# Send the whole of `data` on `fd` (loops over partial sends); returns bytes sent.
+share(all)
+http_send_all(fd<Int>, data<String>)<Int> -> {
+    total<Int> = 0
+    n<Int> = data.len()
+    while (total < n) {
+        sent<Int> = vyb_net_send(fd, data.substring(total))
+        if (sent <= 0) { return total }
+        total = total + sent
+    }
+    return total
+}
+
+# Close a socket or connection.
+share(all)
+http_close(fd<Int>)<Int> -> {
+    return vyb_net_close(fd)
+}
+
+# A well-formed HTTP/1.1 text/plain response with a Content-Length. A handful of
+# status codes get a reason phrase; anything else falls back to a generic one.
+share(all)
+http_response(status<Int>, body<String>)<String> -> {
+    reason<String> = "OK"
+    if (status == 404) { reason = "Not Found" }
+    if (status == 500) { reason = "Internal Server Error" }
+    tpl<String> = "HTTP/1.1 {} {}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n"
+    head<String> = tpl.format(status, reason, body.len())
+    return head.concat(body)
+}
+
+# --- Client convenience -----------------------------------------------------
+
+# Build a request head for `method` (e.g. "GET"), `path`, and `host`.
+share(all)
+http_request(method<String>, path<String>, host<String>)<String> -> {
+    tpl<String> = "{} {} HTTP/1.0\r\nHost: {}\r\nConnection: close\r\n\r\n"
+    return tpl.format(method, path, host)
+}
+
+# Read everything available on a connection until the peer closes (or `max`
+# bytes). Used after the head to collect a response/request body.
+share(all)
+http_read_rest(conn<Int>, max<Int>)<String> -> {
+    buf<String> = ""
+    while (buf.len() < max) {
+        chunk<String> = vyb_net_recv(conn, 1024)
+        if (chunk.len() == 0) { break }
+        buf = buf.concat(chunk)
+    }
+    return buf
+}
+
+# Full GET round-trip against `host`:`port` for `path`; returns the body (empty
+# on connection failure). Blocks until the peer responds.
+share(all)
+http_get(host<String>, port<Int>, path<String>)<String> -> {
+    fd<Int> = vyb_net_open(http_af_inet(), http_sock_stream(), http_proto_tcp())
+    if (fd < 0) { return "" }
+    if (vyb_net_connect(fd, host, port) < 0) {
+        vyb_net_close(fd)
+        return ""
+    }
+    http_send_all(fd, http_request("GET", path, host))
+    http_read_head(fd, 65536)
+    body<String> = http_read_rest(fd, 65536)
+    vyb_net_close(fd)
+    return body
+}

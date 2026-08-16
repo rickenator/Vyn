@@ -3,6 +3,29 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-15: **`http` stdlib module — a pure-Vyb HTTP/1.1 server + client**.
+  Everything in `stdlib/http/mod.vyb` (`import http`) is written in Vyb directly
+  on top of the `__vyb_net_*` socket intrinsics, with no new FFI or C code.
+  Server building blocks: `http_listen(port, backlog)`, `http_local_port`,
+  `http_accept`, `http_read_head(conn, max)` (reads through the `\r\n\r\n`
+  terminator), `http_request_path(head)` (extracts the target, e.g.
+  `"GET /a?x=1 HTTP/1.1" -> "/a?x=1"`), `http_send_all`, `http_close`, and a
+  well-formed `http_response(status, body)`. Client side: `http_request(method,
+  path, host)` head builder, `http_read_rest`, and the `http_get(host, port,
+  path)` round-trip that returns the body. Also added the idiomatic
+  `String::index_of(needle) -> Int` as a `StringOps` core bind (first occurrence
+  or `-1`) used to parse heads. One module-system finding: a module whose
+  functions call each other must be imported whole (`import http` rather than
+  `import http::{subset}`), because a subset import only registers the requested
+  names. Concurrency note: Vyb is single-threaded with blocking sockets, so an
+  in-process server answers a kernel-queued connect (interleaved send/recv, as
+  in the loopback server test), while the self-contained `http_get` must talk to
+  a living peer; a real event loop / async accept loop stays on the roadmap.
+  Covered by `test/modules/test_http_parse.vyb` (next to the `StringOps`
+  `index_of` + request/response string helpers) and
+  `test/modules/test_http_server.vyb` (loopback server end-to-end). Full
+  unit/module suite passes.
+
 - 2026-08-15: **`time` stdlib module (clocks + sleep)**. A thin `import time`
   wrapper over new `__vyb_time_*` runtime intrinsics in `runtime/vyb_runtime.c`
   (POSIX `clock_gettime`/`nanosleep`), following the `io`/`network` intrinsic
