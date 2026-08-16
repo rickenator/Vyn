@@ -373,6 +373,24 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                 // requested set emptied mid-splice.
                 const std::unordered_set<std::string> requestedForBinds = requestedNames;
 
+                // A carried declaration keeps the visibility it had in its origin
+                // module (e.g. a `share(all)` dependency symbol stays share(all))
+                // so the next import hop still carries it; an explicit `share(...)`
+                // on this import overrides that. Without this inheritance a plain
+                // import would record no entry in the importing module's
+                // sharesByName, and `declarationVisible` would silently drop the
+                // transitively-imported symbol on the following hop (a module
+                // couldn't even use its own imports).
+                auto carryShare = [&](const std::string& originName,
+                                      const std::string& localName) {
+                    auto originShare = importedRecord.sharesByName.find(originName);
+                    if (originShare != importedRecord.sharesByName.end()) {
+                        currentRecord.sharesByName[localName] = originShare->second;
+                    } else if (!importShare.empty()) {
+                        currentRecord.sharesByName[localName] = importShare;
+                    }
+                };
+
                 for (auto& importedStmt : importedRecord.module->body) {
                     if (isMainFunction(importedStmt)) {
                         throw std::runtime_error("Imported module must not define main(): " + importedRecord.sourcePath.string());
@@ -403,9 +421,7 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                                                      importPath.importerFile + ":" + std::to_string(importPath.line));
                         }
                         seenNames.insert(bindKey);
-                        if (!importShare.empty()) {
-                            currentRecord.sharesByName[bindKey] = importShare;
-                        }
+                        carryShare(bindKey, bindKey);
                         resolvedBody.push_back(std::move(importedStmt));
                         continue;
                     }
@@ -414,6 +430,7 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                     if (name.empty()) {
                         continue;
                     }
+                    const std::string originName = name;
 
                     if (!requestedNames.empty() && requestedNames.find(name) == requestedNames.end()) {
                         continue;
@@ -442,9 +459,7 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                     }
 
                     seenNames.insert(name);
-                    if (!importShare.empty()) {
-                        currentRecord.sharesByName[name] = importShare;
-                    }
+                    carryShare(originName, name);
                     resolvedBody.push_back(std::move(importedStmt));
                 }
 
