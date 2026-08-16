@@ -14,9 +14,9 @@ main()<Int> -> {
     weak<mild<Data>> = soft(shared)
 
     // Try to grab a strong reference
-    grabbed<our<Data>> = weak.grab()
+    grabbed<Option<our<Data>>> = weak.grab()
 
-    // grabbed should be non-nil (object still alive)
+    // grabbed should be Some (object still alive)
     // TODO: Once we have nil comparison, test this properly
     println("  grab() called successfully")
 
@@ -28,7 +28,7 @@ main()<Int> -> {
     shadow<mild<Data>> = soft(data1)
 
     // Create another strong reference via grab
-    data2<our<Data>> = shadow.grab()
+    data2<Option<our<Data>>> = shadow.grab()
 
     println("  Both strong references active")
     println("  (data1 and data2 both point to same object)")

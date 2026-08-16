@@ -40,29 +40,23 @@ struct Node {
 
 ## Key Methods
 
-### `grab() -> our<T>` (nullable placeholder until `Option<T>`)
+### `grab() -> Option<our<T>>`
 
-Attempts to upgrade the mild reference to a strong reference. The intended 1.0
-contract is to return `our<T>` when the target is live and an Option-like empty
-value when it has been released.
-
-Current implementation note: Vyb does not yet have a first-class `Option<T>` or
-nullable binding syntax. Today `grab()` returns an `our<T>` control-block handle
-when the target is live and a null `our<T>` placeholder when it has been
-released. Code should check `released()` before dereferencing a grabbed value.
-The intended 1.0 shape remains an Option-like result once sum types are
-available.
+Attempts to upgrade the mild reference to a strong reference. Returns
+`Some(our<T>)` (with `strong_count` incremented) while the target is live, and
+`None` once the object has been released. The failed-upgrade path is therefore
+type-safe and detectable with `match`/`select` (or the `.value` accessor) without
+dereferencing a dangling handle.
 
 ```vyb
 node<our<Node>> = get_node()
 shadow<mild<Node>> = soft(node)
 
-# Try to access the object using today's current-language convention
-if (!shadow.released()) {
-    strong<our<Node>> = shadow.grab()
-    println(strong.value)
-} else {
-    println("Node no longer exists")
+# Match on the upgrade result
+result<Option<our<Node>>> = shadow.grab()
+match (result) {
+    Some(strong) -> println(strong.value)
+    None -> println("Node no longer exists")
 }
 ```
 
@@ -176,15 +170,10 @@ Vyb now has a minimal real runtime model for `our<T>` / `mild<T>`:
   freed and the control block is marked released while weak handles remain.
 - Returning a local `our<T>` or `mild<T>` transfers that local handle to the
   caller instead of cleaning it up before return.
-
-Remaining limitations:
-
-- Failed `grab()` uses a null `our<T>` placeholder because `Option<T>` is not
-  implemented yet.
-- Full `our<T>` copy/assignment/parameter reference-count semantics are still
-  incomplete.
-- Full `my<T>` move semantics and a complete ownership transfer checker remain
-  future work.
+- `our<T>` copy/assignment/parameter semantics are complete: every storage
+  location holds its own strong ref, retained on shared copy and released on
+  scope exit / overwrite. Full `my<T>` move semantics and a complete ownership
+  transfer checker remain future work.
 - Control-block cleanup is minimal and focused on current scope/return paths.
 
 ### Control Block Structure

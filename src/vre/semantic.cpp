@@ -2890,7 +2890,12 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                         auto ourId = std::make_unique<ast::Identifier>(node->loc, "our");
                                         std::vector<ast::TypeNodePtr> ourArgs;
                                         ourArgs.push_back(innerType->clone());
-                                        auto resultType = new ast::TypeName(node->loc, std::move(ourId), std::move(ourArgs));
+                                        ast::TypeNodePtr ourType(new ast::TypeName(node->loc, std::move(ourId), std::move(ourArgs)));
+                                        // Option<our<T>>: Some(our<T>) while live, None when released.
+                                        auto optId = std::make_unique<ast::Identifier>(node->loc, "Option");
+                                        std::vector<ast::TypeNodePtr> optArgs;
+                                        optArgs.push_back(std::move(ourType));
+                                        auto resultType = new ast::TypeName(node->loc, std::move(optId), std::move(optArgs));
                                         expressionTypes[node] = retainType(resultType);
                                         node->type = std::shared_ptr<ast::TypeNode>(resultType->clone());
                                         VYB_CDBG << "DEBUG: mild<T>.grab() returns " << resultType->toString() << std::endl;
@@ -3180,7 +3185,12 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                 auto ourId = std::make_unique<ast::Identifier>(node->loc, "our");
                                 std::vector<ast::TypeNodePtr> ourArgs;
                                 ourArgs.push_back(innerType->clone());
-                                auto resultType = new ast::TypeName(node->loc, std::move(ourId), std::move(ourArgs));
+                                ast::TypeNodePtr ourType(new ast::TypeName(node->loc, std::move(ourId), std::move(ourArgs)));
+                                // Option<our<T>>: Some(our<T>) while live, None when released.
+                                auto optId = std::make_unique<ast::Identifier>(node->loc, "Option");
+                                std::vector<ast::TypeNodePtr> optArgs;
+                                optArgs.push_back(std::move(ourType));
+                                auto resultType = new ast::TypeName(node->loc, std::move(optId), std::move(optArgs));
                                 expressionTypes[node] = retainType(resultType);
                                 node->type = std::shared_ptr<ast::TypeNode>(resultType->clone());
                                 VYB_CDBG << "DEBUG: mild<T>.grab() returns " << resultType->toString() << std::endl;

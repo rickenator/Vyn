@@ -448,6 +448,7 @@ private:
     bool isVybStringStructType(llvm::Type* type); // `{ ptr, i64 }` Vyb String layout
     bool exprProducesOwnedStringTemp(vyb::ast::Expression* expr); // String expr yielding a fresh owned heap buffer
     bool exprIsStringTransfer(vyb::ast::Expression* expr); // String value whose single ref transfers on stow
+    bool exprIsOurTransfer(vyb::ast::Expression* expr);   // `our`/`grab`/fn-call value whose fresh strong ref transfers on stow
     // Deep-copy a Vec struct value (clones malloc'd data so caller and callee are independent).
     // Returns an updated Vec struct value with a freshly malloc'd data buffer.
     llvm::Value* generateVecDeepCopy(llvm::Value* vecStructValue, llvm::Type* elemType, llvm::Type* vecStructType);
@@ -468,6 +469,13 @@ private:
     void reclaimStructOwnedFieldsAt(llvm::Value* structPtr, const vyb::ast::TypeNode* astType,
                                     llvm::StructType* llvmTy, std::set<std::string>& visited);
 
+    bool isOurRefType(const vyb::ast::TypeNode* tn) const;   // `our<...>` wrapper type node
+    bool isMildRefType(const vyb::ast::TypeNode* tn) const;  // `mild<...>` wrapper type node
+
+    // Retain an `our`/`mild` refcount control block: bump the strong (our) or
+    // weak (mild) count on the shared block so a new storage location that will
+    // release on scope exit holds its own reference. `controlBlockPtr` may be null.
+    void retainOurControlBlock(llvm::Value* controlBlockPtr, const std::string& tag);
     // Release an `our`/`mild` refcount control block (shared by top-level
     // bindings and struct fields). `controlBlockPtr` may be null.
     void releaseOurControlBlock(llvm::Value* controlBlockPtr, const std::string& tag);

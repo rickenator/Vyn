@@ -18,8 +18,15 @@ main()<Int> -> {
     println("   Scope exited - object should be freed")
     println("")
 
-    println("2. Creating multiple our<T> references (future test)...")
-    println("   (Requires assignment/copy which isn't implemented yet)")
+    println("2. Creating multiple our<T> references...")
+    {
+        a<our<Node>> = our(Node { value: 42 })
+        b<our<Node>> = a   // shared copy retains its own strong ref
+        c<Int> = b.value
+        println(c)
+        println("   our<Node> shared via copy; both refs released at scope exit")
+    }
+    println("   Scope exited - no double-free, control block freed once")
     println("")
 
     println("✓ Test complete - if no segfault, cleanup worked!")

@@ -1290,10 +1290,28 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                             llvm::BasicBlock* objFreedBlock = llvm::BasicBlock::Create(*context, "grab_freed", function);
                             llvm::BasicBlock* grabContinue = llvm::BasicBlock::Create(*context, "grab_continue", function);
 
+                            // Build the return type Option<our<T>>. node->type is the
+                            // semantic Option<our<T>> type; its single generic arg is
+                            // the our<T> payload. Recover it, monomorphize the enum so
+                            // the Some/None tags and payload layout are available.
+                            ast::TypeName* grabRet = dynamic_cast<ast::TypeName*>(node->type.get());
+                            std::string mangledOption;
+                            llvm::Type* optionLLVMTy = nullptr;
+                            if (grabRet && grabRet->genericArgs.size() == 1) {
+                                ast::TypeNodePtr optArg = grabRet->genericArgs[0]->clone();
+                                std::vector<ast::TypeNodePtr> optArgs;
+                                optArgs.push_back(std::move(optArg));
+                                mangledOption = mangleGenericTypeName("Option", optArgs);
+                                if (!taggedEnumInfo.count(mangledOption)) {
+                                    monomorphizeEnum("Option", optArgs);
+                                }
+                                optionLLVMTy = taggedEnumInfo[mangledOption].llvmType;
+                            }
+
                             // Branch based on object_freed flag
                             builder->CreateCondBr(isFreed, objFreedBlock, objAliveBlock);
 
-                            // Object still alive: increment strong_count and return control block
+                            // Object still alive: increment strong_count and return Some(our<T>)
                             builder->SetInsertPoint(objAliveBlock);
 
                             // Get pointer to strong_count (field 0)
@@ -1313,23 +1331,23 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                                 llvm::AtomicOrdering::AcquireRelease
                             );
 
-                            VYB_CDBG << "DEBUG: mild<T>.grab() - incremented strong_count, returning our<T>" << std::endl;
+                            VYB_CDBG << "DEBUG: mild<T>.grab() - incremented strong_count, returning Some(our<T>)" << std::endl;
 
-                            // Return the control block as our<T>
-                            llvm::Value* ourPtr = controlBlockPtr;
+                            // Build Some(our<T>) carrying the control block handle.
+                            llvm::Value* someVal = buildTaggedEnumValue(mangledOption, "Some", {controlBlockPtr});
                             builder->CreateBr(grabContinue);
 
-                            // Object freed: return nil (null pointer)
+                            // Object freed: return None
                             builder->SetInsertPoint(objFreedBlock);
-                            VYB_CDBG << "DEBUG: mild<T>.grab() - object freed, returning nil" << std::endl;
-                            llvm::Value* nilPtr = llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0));
+                            VYB_CDBG << "DEBUG: mild<T>.grab() - object freed, returning None" << std::endl;
+                            llvm::Value* noneVal = buildTaggedEnumValue(mangledOption, "None", {});
                             builder->CreateBr(grabContinue);
 
-                            // Continue block: phi node to select result
+                            // Continue block: phi node to select the Option<our<T>> result
                             builder->SetInsertPoint(grabContinue);
-                            llvm::PHINode* resultPhi = builder->CreatePHI(llvm::PointerType::get(*context, 0), 2, "grab_result");
-                            resultPhi->addIncoming(ourPtr, objAliveBlock);
-                            resultPhi->addIncoming(nilPtr, objFreedBlock);
+                            llvm::PHINode* resultPhi = builder->CreatePHI(optionLLVMTy ? optionLLVMTy : llvm::PointerType::get(*context, 0), 2, "grab_result");
+                            resultPhi->addIncoming(someVal, objAliveBlock);
+                            resultPhi->addIncoming(noneVal, objFreedBlock);
 
                             m_currentLLVMValue = resultPhi;
                             return;
@@ -4041,6 +4059,23 @@ void LLVMCodegen::visit(vyb::ast::AssignmentExpression *node) {
         }
     }
 
+    // An `our<T>` binding (control-block backed struct) holds one strong ref and
+    // releases it on scope exit. Overwriting a fresh value must release the
+    // outgoing strong ref (or the replaced control block leaks), and a shared
+    // incoming value (an existing `our` read) must be retained (+1) so the new
+    // location owns its own reference. A transfer producer (`our(...)`,
+    // `.grab()`, or a function returning `our<T>`) needs no retain.
+    bool ourOverwrite = false;
+    llvm::Value* oldOurPtr = nullptr;
+    if (isAssignToVar && lhsTypeNode && destPointeeType && destPointeeType->isPointerTy() &&
+        isOurRefType(lhsTypeNode.get())) {
+        ourOverwrite = true;
+        oldOurPtr = builder->CreateLoad(destPointeeType, LHS, "assign.old_our");
+        if (!exprIsOurTransfer(node->right.get())) {
+            retainOurControlBlock(RHS, "assign.our");
+        }
+    }
+
     // Create the store instruction with proper alignment
     builder->CreateStore(RHS, LHS);
     writeThroughMutable(RHS);
@@ -4091,6 +4126,18 @@ void LLVMCodegen::visit(vyb::ast::AssignmentExpression *node) {
             reclaimOwnedStructAt(oldMyPtr, myPointeeAst, pois);
         }
         builder->CreateCall(getOrCreateFreeFunction(), {oldMyPtr});
+        builder->CreateBr(contBB);
+        builder->SetInsertPoint(contBB);
+    }
+    if (ourOverwrite && oldOurPtr) {
+        llvm::PointerType* rawPtrTy = llvm::PointerType::get(*context, 0);
+        llvm::Constant* nullPtr = llvm::ConstantPointerNull::get(rawPtrTy);
+        llvm::Value* isNotNull = builder->CreateICmpNE(oldOurPtr, nullPtr, "assign.our_not_null");
+        llvm::BasicBlock* freeBB = llvm::BasicBlock::Create(*context, "assign.our_free", currentFunction);
+        llvm::BasicBlock* contBB = llvm::BasicBlock::Create(*context, "assign.our_cont", currentFunction);
+        builder->CreateCondBr(isNotNull, freeBB, contBB);
+        builder->SetInsertPoint(freeBB);
+        releaseOurControlBlock(oldOurPtr, "assign.our");
         builder->CreateBr(contBB);
         builder->SetInsertPoint(contBB);
     }
@@ -6911,6 +6958,31 @@ bool LLVMCodegen::exprIsStringTransfer(vyb::ast::Expression* expr) {
     // extra retain. Everything else (variable reads, string literals, field or
     // element borrows) is shared and must be retained on stow.
     return exprProducesOwnedStringTemp(expr);
+}
+
+bool LLVMCodegen::exprIsOurTransfer(vyb::ast::Expression* expr) {
+    // A fresh `our<T>` owns a single strong reference that can be handed to a
+    // storage location without an extra retain. This covers the `our(...)`
+    // constructor, a `.grab()` upgrade (mild -> our, which already bumped the
+    // strong count), and any function call returning `our<T>` (whose transfer
+    // path hands over its single strong ref). A bare identifier or field read
+    // of an existing `our` value is shared and must be retained on stow.
+    if (!expr) return false;
+    auto* call = dynamic_cast<vyb::ast::CallExpression*>(expr);
+    if (!call) return false;
+    if (auto* id = dynamic_cast<vyb::ast::Identifier*>(call->callee.get())) {
+        if (id->name == "our") return true;
+    }
+    if (auto* member = dynamic_cast<vyb::ast::MemberExpression*>(call->callee.get())) {
+        if (auto* prop = dynamic_cast<vyb::ast::Identifier*>(member->property.get())) {
+            if (prop->name == "grab") return true;
+        }
+    }
+    if (call->type) {
+        std::string t = call->type->toString();
+        if (t.rfind("our<", 0) == 0) return true;
+    }
+    return false;
 }
 
 // Generic serialization helper (extracted from original code)

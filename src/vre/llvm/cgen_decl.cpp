@@ -408,6 +408,24 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
             }
         }
 
+        // An `our<T>` binding (control-block backed, i.e. non-primitive `T`)
+        // holds one strong reference and releases it on scope exit. The binding
+        // takes over a freshly-created strong ref from a transfer producer
+        // (`our(...)`, `grab()`, or a function returning `our<T>`); any other
+        // source (a copy of an existing `our` binding/field) is shared, so the
+        // new location retains (+1) so both releases stay in lock-step.
+        bool ourVar = ownership == ast::OwnershipKind::OUR && varType &&
+                      varType->isPointerTy() && node->typeNode &&
+                      isOurRefType(node->typeNode.get());
+        if (ourVar) {
+            if (!exprIsOurTransfer(node->init.get())) {
+                retainOurControlBlock(initialVal, node->id->name);
+                VYB_CDBG << "DEBUG: our<T> variable '" << node->id->name << "' retained a shared control block" << std::endl;
+            } else {
+                VYB_CDBG << "DEBUG: our<T> variable '" << node->id->name << "' took over a fresh control block" << std::endl;
+            }
+        }
+
         // Create debug information for the variable
         if (debugBuilder && !debugScopeStack.empty()) {
             std::string typeName = getTypeName(varType);
@@ -748,10 +766,25 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
                 VYB_CDBG << "DEBUG: Parameter '" << paramNames[i] << "' is a String - retained buffer" << std::endl;
             }
 
+            // An `our<T>` parameter (control-block backed, non-primitive `T`)
+            // takes a shared strong reference to the passed control block,
+            // balanced by the callee releasing it on scope exit (owned by the
+            // OUR cleanup branch). This makes the callee's ref independent of the
+            // argument and lets a returned `our` param transfer that ref out.
+            bool ourParam = paramTypes[i] && paramTypes[i]->isPointerTy() &&
+                node->params[i].typeNode && isOurRefType(node->params[i].typeNode.get());
+            if (ourParam) {
+                retainOurControlBlock(argVal, paramNames[i]);
+                VYB_CDBG << "DEBUG: Parameter '" << paramNames[i] << "' is our<T> - retained control block" << std::endl;
+            }
+
             // Register parameter for scope-based cleanup.
-            // Vec parameters now own their data (deep-copied above) so they need cleanup.
-            // Non-Vec parameters do not own heap data and are cleaned up by the caller.
-            registerVariable(paramNames[i], alloca, argVal, ast::OwnershipKind::MY, paramTypes[i], vecParam || closureParam || stringParam);
+            // Vec/closure/String/our parameters own a reference to release.
+            // Plain value parameters do not own heap data and are cleaned up by the caller.
+            ast::OwnershipKind paramOwnership = ast::OwnershipKind::MY;
+            if (ourParam) paramOwnership = ast::OwnershipKind::OUR;
+            registerVariable(paramNames[i], alloca, argVal, paramOwnership, paramTypes[i],
+                             vecParam || closureParam || stringParam || ourParam);
 
             // Create debug information for the parameter
             if (debugBuilder && !debugScopeStack.empty()) {

@@ -1,0 +1,17 @@
+// Test: a function returning our<T> hands its single strong reference to the
+// caller, who takes ownership without an extra retain.
+// @expect: pass
+// @expect-return: 5
+// @category: ownership, our, jit
+struct Node {
+    value<Int>
+}
+make()<our<Node>> -> {
+    x<our<Node>> = our(Node { value: 5 })
+    return x
+}
+main()<Int> -> {
+    b<our<Node>> = make()
+    c<Int> = b.value
+    return c
+}

@@ -1,0 +1,17 @@
+// Test: a by-value our<T> parameter holds its own strong reference; the callee
+// releasing it at scope exit does not invalidate the caller's binding.
+// @expect: pass
+// @expect-return: 7
+// @category: ownership, our, jit
+struct Node {
+    value<Int>
+}
+use_val(v<our<Node>>)<Int> -> {
+    return v.value
+}
+main()<Int> -> {
+    a<our<Node>> = our(Node { value: 7 })
+    r<Int> = use_val(a)
+    s<Int> = a.value   // a still valid after the call
+    return s
+}

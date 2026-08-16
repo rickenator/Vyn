@@ -1,0 +1,14 @@
+// Test: reassigning an our<T> slot releases the replaced control block instead
+// of leaking it; the shared source remains valid.
+// @expect: pass
+// @expect-return: 20
+// @category: ownership, our, jit
+struct Node {
+    value<Int>
+}
+main()<Int> -> {
+    a<our<Node>> = our(Node { value: 10 })
+    b<our<Node>> = our(Node { value: 20 })
+    b = a                 // overwrite b's old block, share a's
+    return a.value + b.value   // 20
+}

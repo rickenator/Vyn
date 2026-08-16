@@ -1,0 +1,16 @@
+// Test: our<T> copy via declaration and assignment shares a refcounted control
+// block; each binding releases its own strong ref so no double-free occurs.
+// @expect: pass
+// @expect-return: 42
+// @category: ownership, our, jit
+struct Node {
+    value<Int>
+}
+main()<Int> -> {
+    a<our<Node>> = our(Node { value: 42 })
+    b<our<Node>> = a   // declaration copy: retain
+    b = a              // assignment overwrite: release old, retain a
+    d<Int> = b.value
+    e<Int> = a.value   // a is still valid after the shared copy
+    return d
+}

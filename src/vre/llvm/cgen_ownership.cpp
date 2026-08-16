@@ -145,8 +145,12 @@ void LLVMCodegen::registerVariable(const std::string& name, llvm::Value* allocaI
 
     scopeStack.back().push_back(var);
 
-    // Handle reference counting for our<T>
-    if (ownership == ast::OwnershipKind::OUR) {
+    // Legacy per-name refcount bookkeeping applies only to the Vec-with-malloc
+    // path that predates the shared control block. Control-block `our<T>` refs
+    // (Node and friends) are released via releaseOurControlBlock instead; running
+    // this name-keyed path for them would collide across functions that reuse the
+    // same binding name (both emitting the same "_refcount" alloca pointer).
+    if (ownership == ast::OwnershipKind::OUR && var.isVecWithMallocData) {
         incrementRefCount(name);
     }
 }
@@ -592,6 +596,14 @@ const vyb::ast::TypeNode* LLVMCodegen::myPointeeOf(const vyb::ast::TypeNode* tn)
     return myTypeArg(tn);
 }
 
+bool LLVMCodegen::isOurRefType(const vyb::ast::TypeNode* tn) const {
+    return isRefTypeNode(tn, "our");
+}
+
+bool LLVMCodegen::isMildRefType(const vyb::ast::TypeNode* tn) const {
+    return isRefTypeNode(tn, "mild");
+}
+
 bool LLVMCodegen::structTypeHasOwnedFields(const vyb::ast::TypeNode* astType) const {
     std::vector<vyb::ast::TypeNodePtr> fields;
     if (!collectStructConcreteFieldTypes(astType, fields)) return false;
@@ -727,6 +739,41 @@ void LLVMCodegen::reclaimStructOwnedFieldsAt(llvm::Value* structPtr,
     if (!selfBase.empty()) visited.erase(selfBase);
 }
 
+
+// Bump the strong count of an `our<T>` control block so a newly-created shared
+// reference owns one more strong ref. A storage location that will release on
+// scope exit must retain on copy; a fresh transfer (`our(...)`, `grab()`, or a
+// function returning `our<T>`) already hands over its own strong ref and is not
+// retained. `controlBlockPtr` may be null.
+void LLVMCodegen::retainOurControlBlock(llvm::Value* controlBlockPtr, const std::string& tag) {
+    if (!controlBlockPtr || !builder || !currentFunction) return;
+    llvm::PointerType* rawPtr = llvm::PointerType::get(*context, 0);
+    llvm::Constant* nullPtr = llvm::ConstantPointerNull::get(rawPtr);
+
+    llvm::Value* isNull = builder->CreateICmpEQ(controlBlockPtr, nullPtr, tag + "_our_retain_null");
+    llvm::BasicBlock* doRetain = llvm::BasicBlock::Create(*context, tag + "_our_do_retain", currentFunction);
+    llvm::BasicBlock* continueBlock = llvm::BasicBlock::Create(*context, tag + "_our_retain_done", currentFunction);
+    builder->CreateCondBr(isNull, continueBlock, doRetain);
+
+    builder->SetInsertPoint(doRetain);
+
+    std::vector<llvm::Type*> cbFields = {
+        llvm::Type::getInt32Ty(*context),  // strong_count
+        llvm::Type::getInt32Ty(*context),  // weak_count
+        llvm::Type::getInt8Ty(*context),   // object_freed
+        rawPtr                             // object_ptr
+    };
+    llvm::StructType* controlBlockType = llvm::StructType::get(*context, cbFields, /*isPacked=*/false);
+
+    llvm::Value* strongCountPtr = builder->CreateStructGEP(controlBlockType, controlBlockPtr, 0, tag + "_our_strong_count_ptr");
+    builder->CreateAtomicRMW(
+        llvm::AtomicRMWInst::Add, strongCountPtr,
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 1),
+        llvm::MaybeAlign(), llvm::AtomicOrdering::AcquireRelease);
+    builder->CreateBr(continueBlock);
+
+    builder->SetInsertPoint(continueBlock);
+}
 
 // Decrement the strong count of an `our<T>` control block, freeing the shared
 // object when the count reaches zero, and freeing the control block itself once

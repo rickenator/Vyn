@@ -1,5 +1,6 @@
-// @test: mild grab released target is safe
-// @description: mild<T>.grab() on a released target returns the current null our<T> placeholder without extending lifetime
+// @test: mild grab released target upgrades to None
+// @description: mild<T>.grab() on a released target returns None (the failed-upgrade
+// path), safely detectable by match without dereferencing a null handle.
 // @category: ownership, mild
 // @expect: pass
 // @expect-return: 0
@@ -16,8 +17,12 @@ make_weak()<mild<Node>> -> {
 
 main()<Int> -> {
     weak<mild<Node>> = make_weak()
-    grabbed<our<Node>> = weak.grab()
-    if (weak.released()) {
+    grabbed<Option<our<Node>>> = weak.grab()
+    r<Int> = match(grabbed) {
+        Some(o) -> 0
+        None -> 1
+    }
+    if (r == 1 && weak.released()) {
         return 0
     }
     return 1
