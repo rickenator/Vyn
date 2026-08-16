@@ -535,13 +535,16 @@ with `pass` for multi-statement case bodies. Needs polishing:
   onto the loop, so concurrent timers complete in ~max rather than ~sum wall
   (`test/modules/test_async.vyb`). Tasks stay valid across main-thread awaits;
   `async_run_all` flushes + reclaims everything, with an atexit safety net.
-  **Vyb-level `async`/`await` syntax codegen — Stage 1 done**: a zero-argument
-  `async fn()<Future<Int>>` now compiles into a public launcher (returns the
-  Future struct by value, spawning the body as an event-loop fiber in a worker)
-  plus a hidden `fn`/worker `$__async_body`. `await` works from `main` (drives
-  the loop) and from inside a task (suspends the fiber). Remaining stages: non-`Int`
-  futures, parameterized async fns, `await`/multi-step futures, and a
-  **multi-threaded executor**. See `test/async/async_event_loop.vyb`.
+  **Vyb-level `async`/`await` syntax codegen — Stage 1/2 done**: an
+  `async fn(params...)<Future<Int>>` compiles into a public launcher (returns the
+  Future struct by value, spawning the body as an event-loop fiber) plus a hidden
+  worker `$__async_body`; parameterized calls snapshot scalar args into a closure
+  env via an `$__async_entry` trampoline. `await` works from `main` (drives the
+  loop) and from inside a task (suspends the fiber), including nested `await` of a
+  child task. Remaining stages: non-`Int` futures, owned/rich async parameter
+  types, `await`/multi-step value futures, and a **multi-threaded executor**. See
+  `test/async/async_event_loop.vyb`, `async_params.vyb`, and
+  `async_nested_await.vyb`.
 - [x] **`spawn` for concurrent tasks** — two storylines: the pthread `tasks`
   module (`t = task_spawn(fn() -> Int)`, `task_await`/`task_poll`/`task_free`)
   for real parallel workers, and the cooperative `asyncs` module above for

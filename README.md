@@ -444,12 +444,14 @@ count<Int> = get_csv().split(",").len()                   // number of fields
 ### ✅ **Async Programming & Debugging**
 
 Vyb parses and compiles `async` functions returning `Future<T>` and the `await`
-expression. Stage 1 wires this to the stdlib's cooperative event loop: a
-zero-argument `async fn()<Future<Int>>` starts as an event-loop fiber when
-called, and `await` drives the loop from `main` (or suspends a fiber when used
-inside a task). The future is returned by value as a real struct; the syntax and
-type plumbing below are stable and tested. Non-`Int` and parameterized async
-futures still use the legacy eager path (a follow-on stage).
+expression. Phase 1/2 wire this to the stdlib's cooperative event loop: an
+`async fn(params...)<Future<Int>>` starts as an event-loop fiber when called —
+its arguments are snapshotted into a closing environment — and `await` drives the
+loop from `main` or suspends a fiber when used inside a task (so a worker can
+`await` a child task). The future is returned by value as a real struct; the
+syntax and type plumbing below are stable and tested. Parameters may currently
+be primitive scalars; non-`Int` futures and owned/rich parameter types still use
+the legacy eager path (a follow-on stage).
 
 #### Async Function Syntax
 ```vyb
@@ -490,11 +492,15 @@ main()<Void> -> {
 - ✅ Async function parsing and validation
 - ✅ Future<T> type checking
 - ✅ await expression support (from `main` and inside tasks)
-- ✅ Real event-loop execution for zero-arg `Future<Int>` async tasks
+- ✅ Real event-loop execution for `Future<Int>` async tasks
+- ✅ Parameterized `Future<Int>` async tasks (scalar args captured in an env)
+- ✅ Nested `await` from inside a task (fiber suspension)
 - ✅ LLVM codegen with debug metadata
 
 **See also:** `test/async/async_event_loop.vyb` (two concurrent sleeps finish in
-~20ms, proving real concurrency) and the `asyncs` stdlib module section.
+~20ms, proving real concurrency), `test/async/async_params.vyb` (parameterized
+concurrency), `test/async/async_nested_await.vyb` (a task that awaits a child),
+and the `asyncs` stdlib module section.
 
 ### ✅ **Concurrency Modules (stdlib)**
 

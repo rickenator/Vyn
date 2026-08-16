@@ -1,0 +1,25 @@
+// Phase-2: an async worker can `await` a child task from inside the fiber. The
+// outer call spawns task `outer(4)`; its worker suspends awaiting `leaf(7)`, the
+// loop resumes the leaf, and the outer resumes to produce 7*100 = 700.
+// @env: VYB_STDLIB=stdlib
+// @expect: pass
+
+import asyncs::{async_sleep_ms}
+
+async leaf(x<Int>)<Future<Int>> -> {
+    async_sleep_ms(5)
+    return x + 1
+}
+
+async outer(base<Int>)<Future<Int>> -> {
+    v<Int> = await leaf(base)
+    return v * 100
+}
+
+main()<Int> -> {
+    f<Future<Int>> = outer(6)
+    v<Int> = await f
+    if (v != 700) { return 1 }
+    println("ok")
+    return 0
+}

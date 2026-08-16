@@ -1,0 +1,31 @@
+// Phase-2 real async: parameterized `async fn(params...)<Future<Int>>`. Calling
+// the async fn snapshots the args into a closure env, spawns an event-loop fiber,
+// and returns a Future<Int>; `await` drives (main) or suspends (fiber). Each task
+// sleeps 15ms so two of them must finish in ~15ms total, not ~30ms serial.
+// @env: VYB_STDLIB=stdlib
+// @expect: pass
+
+import asyncs::{async_sleep_ms}
+import time::{time_mono_millis}
+
+async mul2(x<Int>)<Future<Int>> -> {
+    async_sleep_ms(15)
+    return x * 2
+}
+
+async add(x<Int>, y<Int>)<Future<Int>> -> {
+    async_sleep_ms(15)
+    return x + y
+}
+
+main()<Int> -> {
+    t0<Int> = time_mono_millis()
+    f1<Future<Int>> = mul2(21)
+    f2<Future<Int>> = add(30, 2)
+    v1<Int> = await f1
+    v2<Int> = await f2
+    if (v1 != 42 || v2 != 32) { return 1 }
+    if (time_mono_millis() - t0 >= 30) { return 2 }
+    println("ok")
+    return 0
+}

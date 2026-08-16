@@ -540,11 +540,13 @@ private:
     /// launcher) share one canonical LLVM struct type instead of distinct ones.
     std::map<llvm::Type*, llvm::StructType*> futureStructCache;
     llvm::StructType* createFutureStructType(llvm::Type* resultType);
-    /// Stage-1 real async: a zero-argument `async fn()<Future<Int>>` runs its
-    /// body as a task on the cooperative event loop. Splits the declaration into
-    /// a public launcher (`fn` returns a Future, spawning the task) and a hidden
-    /// worker (`<fn>$__async_body` is a plain `fn() -> Int`) that runs the body.
-    void codegenAsyncZeroArgTask(vyb::ast::FunctionDeclaration* node);
+    /// Phase-1/2 real async: an `async fn(...)<Future<Int>>` runs its body as a
+    /// task on the cooperative event loop. Splits the declaration into a public
+    /// launcher (`fn(params...)` returns a Future, spawning the task with a
+    /// closure env snapshotting the args) and a hidden worker
+    /// (`<fn>$__async_body` is a plain `fn(params...) -> Int`) that runs the
+    /// body, dispatched from an `i64(void*)` entry trampoline that unpacks env.
+    void codegenAsyncTask(vyb::ast::FunctionDeclaration* node);
 
     // Ensure all core intrinsic functions are declared
     void ensureCoreIntrinsicFunctions();

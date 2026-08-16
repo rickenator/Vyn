@@ -20,7 +20,7 @@ using namespace vyb;
 // using namespace llvm; // Uncomment if desired for brevity
 
 // Forward declaration: helper used by the routing branch before its definition.
-static bool isZeroArgAsyncFutureInt(vyb::ast::FunctionDeclaration* node);
+static bool isAsyncFutureIntReturn(vyb::ast::FunctionDeclaration* node);
 
 // --- Declarations ---
 
@@ -541,13 +541,24 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
         return;
     }
 
-    // Stage-1 real async: a zero-argument `async fn()<Future<Int>>` runs its body
-    // as a task on the cooperative event loop (worker + launcher split). Top-level
-    // non-failable declarations only; everything else keeps the legacy eager path.
-    if (node->isAsync && !m_currentImplTypeNode && node->params.empty() &&
-        !node->canFail && isZeroArgAsyncFutureInt(node)) {
-        codegenAsyncZeroArgTask(node);
-        return;
+    // Phase-1/2 real async: an `async fn(params...)<Future<Int>>` whose args are
+    // all primitive scalars runs its body as a task on the cooperative event loop
+    // (worker + env-capture + launcher split). Everything else keeps the legacy
+    // eager path. Top-level non-failable declarations only.
+    if (node->isAsync && !m_currentImplTypeNode && !node->canFail &&
+        isAsyncFutureIntReturn(node)) {
+        bool paramsEnvSafe = true;
+        for (const auto& p : node->params) {
+            if (!p.typeNode) { paramsEnvSafe = false; break; }
+            llvm::Type* pt = codegenType(p.typeNode.get());
+            if (!pt || !(pt->isIntegerTy() || pt->isFloatTy() || pt->isDoubleTy())) {
+                paramsEnvSafe = false; break;
+            }
+        }
+        if (paramsEnvSafe) {
+            codegenAsyncTask(node);
+            return;
+        }
     }
 
     std::vector<llvm::Type*> paramTypes;
@@ -1544,8 +1555,8 @@ void LLVMCodegen::createFunctionForwardDeclaration(vyb::ast::FunctionDeclaration
     VYB_CDBG << "DEBUG: Successfully created forward declaration for function: " << node->id->name << std::endl;
 }
 
-static bool isZeroArgAsyncFutureInt(vyb::ast::FunctionDeclaration* node) {
-    if (!node || !node->isAsync || !node->params.empty() || !node->returnTypeNode)
+static bool isAsyncFutureIntReturn(vyb::ast::FunctionDeclaration* node) {
+    if (!node || !node->isAsync || !node->returnTypeNode)
         return false;
     auto isIntName = [](vyb::ast::TypeNode* tn) -> bool {
         if (auto* name = dynamic_cast<vyb::ast::TypeName*>(tn))
@@ -1560,21 +1571,32 @@ static bool isZeroArgAsyncFutureInt(vyb::ast::FunctionDeclaration* node) {
     return false;
 }
 
-void LLVMCodegen::codegenAsyncZeroArgTask(vyb::ast::FunctionDeclaration* node) {
+static std::vector<vyb::ast::FunctionParameter>
+cloneParams(const std::vector<vyb::ast::FunctionParameter>& src) {
+    std::vector<vyb::ast::FunctionParameter> out;
+    for (const auto& p : src) {
+        std::unique_ptr<vyb::ast::Identifier> name;
+        if (p.name) name = std::make_unique<vyb::ast::Identifier>(p.name->loc, p.name->name);
+        vyb::ast::TypeNodePtr tn = p.typeNode ? p.typeNode->clone() : nullptr;
+        out.emplace_back(std::move(name), std::move(tn), p.isMutable);
+    }
+    return out;
+}
+
+void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
     const std::string base = node->id->name;
     const std::string workerName = base + "$__async_body";
+    const std::string entryName = base + "$__async_entry";
 
-    // The worker is a plain `fn() -> Int` that runs the original body through the
-    // normal codegen path (parameter scope, trap/epilogue handling). The event-loop
-    // trampoline invokes it as `i64(i8*)` with a null environment, so the zero-arg
-    // worker simply ignores that (unused) argument - ABI-safe on the SysV targets.
-    auto workerRet = std::make_unique<ast::TypeName>(node->loc,
-        std::make_unique<ast::Identifier>(node->loc, "Int"));
-    std::vector<ast::FunctionParameter> noParams;
-    std::unique_ptr<ast::FunctionDeclaration> workerNode = std::make_unique<ast::FunctionDeclaration>(
+    // 1) Worker: a plain `fn(params...) -> Int` that runs the original body through
+    //    the normal codegen path (parameter scope, trap/epilogue handling).
+    std::vector<vyb::ast::FunctionParameter> workerParams = cloneParams(node->params);
+    auto workerRet = std::make_unique<vyb::ast::TypeName>(node->loc,
+        std::make_unique<vyb::ast::Identifier>(node->loc, "Int"));
+    std::unique_ptr<vyb::ast::FunctionDeclaration> workerNode = std::make_unique<vyb::ast::FunctionDeclaration>(
         node->loc,
-        std::make_unique<ast::Identifier>(node->loc, workerName),
-        std::move(noParams),
+        std::make_unique<vyb::ast::Identifier>(node->loc, workerName),
+        std::move(workerParams),
         std::move(node->body),
         /*isAsync=*/false,
         std::move(workerRet));
@@ -1589,39 +1611,96 @@ void LLVMCodegen::codegenAsyncZeroArgTask(vyb::ast::FunctionDeclaration* node) {
         return;
     }
 
-    // The launcher is a plain `fn() -> Future<Int>` ({Int*, i32 state, i64 task,
-    // i8* runtime_data}). It enqueues the worker on the cooperative event loop and
-    // hands back a Future whose `task_id` field lets `await` either drive the loop
-    // (main thread) or suspend the current fiber on completion.
+    // Param LLVM types/names shared by the env struct, entry, and launcher.
+    std::vector<llvm::Type*> paramTypes;
+    std::vector<std::string> paramNames;
+    for (const auto& p : node->params) {
+        if (!p.typeNode) { logError(node->loc, "async param missing type"); m_currentLLVMValue = nullptr; return; }
+        llvm::Type* pt = codegenType(p.typeNode.get());
+        if (!pt) { logError(p.name->loc, "could not type async param '" + p.name->name + "'"); m_currentLLVMValue = nullptr; return; }
+        paramTypes.push_back(pt);
+        paramNames.push_back(p.name ? p.name->name : "");
+    }
+    const size_t n = paramTypes.size();
+    llvm::Value* nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(int8PtrType));
+
+    // 2) Async-worker environment: a heap block `{ i64 refcount; ptr cap_dtor;
+    //    param0; param1; ... }` snapshotted by the launcher and passed to the
+    //    event-loop runtime (which retains it and reclaims it on task cleanup).
+    std::vector<llvm::Type*> envFields;
+    envFields.push_back(int64Type);   // index 0: refcount
+    envFields.push_back(int8PtrType); // index 1: cap_dtor (null for scalars)
+    for (auto* pt : paramTypes) envFields.push_back(pt);
+    llvm::StructType* envTy = llvm::StructType::create(*context, envFields, "async.env." + base);
+
+    // 3) Entry trampoline: `i64(i8*)` — the event loop invokes it as `fn -> Int`
+    //    with the env pointer; it unpacks the snapshot params and calls the worker.
+    llvm::FunctionType* entryTy = llvm::FunctionType::get(int64Type, {int8PtrType}, false);
+    if (llvm::Function* old = module->getFunction(entryName)) old->eraseFromParent();
+    llvm::Function* entry = llvm::Function::Create(entryTy, llvm::Function::InternalLinkage, entryName, module.get());
+    {
+        llvm::BasicBlock* ebb = llvm::BasicBlock::Create(*context, "entry", entry);
+        llvm::IRBuilder<> b(ebb);
+        llvm::Value* envCast = b.CreateBitCast(entry->getArg(0), envTy->getPointerTo(), "async.env.cast");
+        std::vector<llvm::Value*> args;
+        for (size_t i = 0; i < n; ++i) {
+            llvm::Value* fp = b.CreateStructGEP(envTy, envCast, i + 2, "async.env.p" + std::to_string(i));
+            args.push_back(b.CreateLoad(paramTypes[i], fp, "async.env.v" + std::to_string(i)));
+        }
+        llvm::Value* r = b.CreateCall(worker, args, "async.worker");
+        b.CreateRet(r);
+    }
+
+    // 4) Launcher: `fn(params...) -> Future<Int>` ({Int*, i32 state, i64 task,
+    //    i8* runtime_data}). It builds the env, spawns the task, and hands back a
+    //    Future whose `task_id` field lets `await` drive (main) / suspend (fiber).
     llvm::StructType* futureTy = createFutureStructType(int64Type);
-    llvm::FunctionType* launcherTy = llvm::FunctionType::get(futureTy, {}, false);
-    // A plain forward declaration for the base name is usually created by the
-    // forward-declaration pass (so earlier callers reference it). Reuse it when the
-    // signature matches; otherwise drop it and re-create with our intended type.
+    llvm::FunctionType* launcherTy = llvm::FunctionType::get(futureTy, paramTypes, false);
     llvm::Function* launcher = module->getFunction(base);
     if (launcher) {
-        if (launcher->getFunctionType() != launcherTy) {
-            launcher->eraseFromParent();
-            launcher = nullptr;
-        }
+        if (launcher->getFunctionType() != launcherTy) { launcher->eraseFromParent(); launcher = nullptr; }
     }
     if (!launcher) {
         launcher = llvm::Function::Create(launcherTy, llvm::Function::ExternalLinkage, base, module.get());
     }
     launcher->addFnAttr(llvm::Attribute::NoInline);
+    unsigned ai = 0;
+    for (auto& arg : launcher->args()) {
+        if (ai < paramNames.size()) arg.setName(paramNames[ai]);
+        ++ai;
+    }
 
-    llvm::BasicBlock* entry = llvm::BasicBlock::Create(*context, "entry", launcher);
-    llvm::IRBuilder<> b(entry);
+    llvm::BasicBlock* lbb = llvm::BasicBlock::Create(*context, "entry", launcher);
+    llvm::IRBuilder<> b(lbb);
+
+    llvm::Function* mallocFn = getOrCreateMallocFunction();
+    llvm::Function* releaseFn = getOrCreateClosureReleaseFunction();
+    llvm::DataLayout dl(module.get());
+    llvm::Value* envBytes = llvm::ConstantInt::get(int64Type, dl.getTypeAllocSize(envTy));
+    llvm::Value* raw = b.CreateCall(mallocFn, {envBytes}, "async.env.alloc");
+    llvm::Value* envPtr = b.CreateBitCast(raw, envTy->getPointerTo(), "async.env.ptr");
+
+    // Reference-count header starts at 1 (the launcher owns it). Spawn retains it
+    // for the runtime, and the launcher drops its own ref below.
+    llvm::Value* rcPtr = b.CreateStructGEP(envTy, envPtr, 0, "async.env.rc");
+    b.CreateStore(llvm::ConstantInt::get(int64Type, 1), rcPtr);
+    llvm::Value* dtorPtr = b.CreateStructGEP(envTy, envPtr, 1, "async.env.dtor");
+    b.CreateStore(nullPtr, dtorPtr);
+    for (size_t i = 0; i < n; ++i) {
+        llvm::Value* fp = b.CreateStructGEP(envTy, envPtr, i + 2, "async.env.sp" + std::to_string(i));
+        b.CreateStore(launcher->getArg(i), fp);
+    }
 
     llvm::Function* spawn = module->getFunction("__vyb_async_spawn");
     if (!spawn) {
         llvm::FunctionType* spawnTy = llvm::FunctionType::get(int64Type, {int8PtrType, int8PtrType}, false);
         spawn = llvm::Function::Create(spawnTy, llvm::Function::ExternalLinkage, "__vyb_async_spawn", module.get());
     }
-    llvm::Value* nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(int8PtrType));
-    llvm::Value* nullResult = llvm::ConstantPointerNull::get(llvm::PointerType::get(int64Type, 0));
-    llvm::Value* taskId = b.CreateCall(spawn, {nullPtr, b.CreateBitCast(worker, int8PtrType)}, "async.task");
+    llvm::Value* taskId = b.CreateCall(spawn,
+        {b.CreateBitCast(envPtr, int8PtrType), b.CreateBitCast(entry, int8PtrType)}, "async.task");
+    b.CreateCall(releaseFn, {b.CreateBitCast(envPtr, int8PtrType)}); // drop launcher ref
 
+    llvm::Value* nullResult = llvm::ConstantPointerNull::get(llvm::PointerType::get(int64Type, 0));
     llvm::Value* fut = llvm::UndefValue::get(futureTy);
     fut = b.CreateInsertValue(fut, nullResult, {0});
     fut = b.CreateInsertValue(fut, llvm::ConstantInt::get(int32Type, 0), {1});
