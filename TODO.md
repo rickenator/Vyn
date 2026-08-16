@@ -256,6 +256,20 @@ is the working audit for what needs to be implemented next.
   capture alloca carries the captured variable's AST type, so field access like
   `shared.n` / `mine.n` / `vr.n` compiles instead of erroring
   (`test/lambda/test_closure_owned_field_capture.vyb`).
+- [x] **Transferred `my<Struct>` capture ownership** — An immutable capture of a
+  standalone `my<Struct>` now *moves* the heap object into the closure env: the
+  enclosing binding's slot is nulled (so its scope-exit cleanup skips it) and the
+  env's generated per-layout cap_dtor reclaims the object's owned fields and
+  frees it when the env's last reference drops. This keeps the captured value
+  alive (and its owned fields reclaimed) even when a closure outlives the
+  enclosing scope or is returned (`test/lambda/test_closure_owned_struct_capture.vyb`).
+- [ ] **Returned-closure env release** — A closure handed back across a `return`
+  is stored in the caller without retaining its env, so the env refcount never
+  returns to 0 and the env block is never freed (`__vyb_closure_release` is only
+  reached at -1). Affects any returned capturing closure (even a plain-`Int`
+  capture), leaking the env (24B) and, for a transferred `my<Struct>`, its
+  payload too. Values are correct (no dangling reads) since the transfer-own fix;
+  the release side still needs balancing.
 
 ---
 

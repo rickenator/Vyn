@@ -442,6 +442,12 @@ private:
     void retainClosureValue(llvm::Value* closureVal);  // +1 on a copied closure value
     void releaseClosureValue(llvm::Value* closureVal); // -1 on a closure value
     void releaseClosureAlloca(llvm::Value* allocaInst); // load closure from an alloca, then -1
+    // Build the per-layout destructor for a closure capture environment that
+    // owns transferred `my<Struct>` payloads; reclaims each captured pointee's
+    // owned fields and frees the heap block. Returns the function (or null).
+    llvm::Function* generateClosureEnvDtor(
+        llvm::StructType* envTy, const std::string& tag,
+        const std::vector<std::pair<size_t, const vyb::ast::TypeNode*>>& ownedFields);
     void retainStringValue(llvm::Value* strVal);          // +1 on a copied String value
     void releaseStringValue(llvm::Value* strVal);         // -1 on a String value
     void releaseStringAlloca(llvm::Value* allocaInst);    // load a String from an alloca, then -1

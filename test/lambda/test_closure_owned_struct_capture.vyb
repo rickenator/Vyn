@@ -1,0 +1,36 @@
+// @test: closure capture of an owned my<Struct> with owned fields
+// @description: An immutable capture of a standalone `my<Struct>` (one whose
+//   struct owns fields like a String) transfers ownership of the heap object
+//   into the closure environment. The env's generated cap_dtor reclaims those
+//   owned fields and the object when the closure drops, so the value stays
+//   correct both in-scope and after the enclosing scope exits (a returned
+//   closure), instead of reading a dangling pointer.
+// @category: lambda, closure, capture, my, ownership, safety
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+struct Item {
+    text: String,
+    n: Int
+}
+
+main()<Int> -> {
+    # In-scope immutable capture of a standalone my<Struct> that owns a String.
+    obj<my<Item>> = my(Item { text = "hello", n = 5 })
+    readObj<fn(Int) -> Int> = |u<Int>| -> obj.text.length() + obj.n + u
+    if (readObj(0) != 10) { return 1 }
+
+    # Returning a closure that captured the my<Struct>: the env owns the payload,
+    # so the captured String field is still alive after the maker scope exits.
+    make<fn() -> fn(Int) -> Int> = || -> {
+        inner<my<Item>> = my(Item { text = "world", n = 9 })
+        return |u<Int>| -> inner.text.length() + u
+    }
+    f<fn(Int) -> Int> = make()
+    if (f(1) != 6) { return 3 }
+
+    println("ok")
+    return 0
+}

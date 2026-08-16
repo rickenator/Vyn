@@ -5921,7 +5921,15 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
     // write back through it; immutable captures snapshot the value.
     std::unordered_set<std::string> mutableSet(
         node->mutableCapturedVariables.begin(), node->mutableCapturedVariables.end());
-    struct Capture { std::string name; llvm::Type* ty; llvm::Value* outer; bool mutable_ = false; };
+    struct Capture {
+        std::string name;
+        llvm::Type* ty;
+        llvm::Value* outer;
+        bool mutable_ = false;
+        bool transfer_own = false;                     // immutable my<Struct>: move the heap payload into the closure
+        const vyb::ast::TypeNode* ownTarget = nullptr; // pointee AST type freed by the env's cap_dtor
+        size_t fieldIndex = 0;                         // env field index (0-based, excluding the refcount/dtor header)
+    };
     std::vector<Capture> captures;
     std::vector<llvm::Type*> envFieldTypes;
     for (const auto& nm : node->capturedVariables) {
@@ -5934,7 +5942,25 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
             ty = it->second->getType();
         }
         bool isMut = mutableSet.count(nm) != 0;
-        captures.push_back({nm, ty, it->second, isMut});
+        // A plain (non-mutable) capture of a standalone `my<Struct>` stores the
+        // heap object's pointer. Ownership must transfer into the closure env,
+        // otherwise a returned/authored closure outliving the enclosing scope
+        // reads a dangling pointer (the outer binding frees the object on scope
+        // exit). When detected, codegen nulls the outer slot after capturing
+        // (so its scope-exit cleanup skips it) and the env's cap_dtor frees the
+        // transferred payload when the last env reference is dropped.
+        bool transferOwn = false;
+        const vyb::ast::TypeNode* ownTarget = nullptr;
+        if (!isMut && ty && ty->isPointerTy()) {
+            auto astIt = valueTypeMap.find(it->second);
+            if (astIt != valueTypeMap.end() && astIt->second &&
+                isMyOwnedStructTypeNode(astIt->second.get())) {
+                ownTarget = myPointeeOf(astIt->second.get());
+                transferOwn = ownTarget != nullptr;
+            }
+        }
+        size_t fieldIx = envFieldTypes.size();
+        captures.push_back({nm, ty, it->second, isMut, transferOwn, ownTarget, fieldIx});
         // Mutable captures store a pointer to the outer variable; immutable
         // captures store the value itself.
         envFieldTypes.push_back(isMut ? it->second->getType() : ty);
@@ -6142,13 +6168,26 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
         llvm::Value* envCast = builder->CreateBitCast(raw, envStructType->getPointerTo(), "closure.env.ptr");
 
         // Reference-count header: refcount starts at 0 (each durable storage
-        // location that takes this closure value retains it). The cap_dtor slot
-        // stays null, so __vyb_closure_release frees the env directly when the
-        // last reference is dropped.
+        // location that takes this closure value retains it). When a capture
+        // transferred a standalone `my<Struct>` payload into the env, the
+        // cap_dtor slot is set to the generated per-layout destructor so
+        // __vyb_closure_release reclaims that payload before freeing the env;
+        // otherwise it stays null and the env is freed directly.
+        std::vector<std::pair<size_t, const vyb::ast::TypeNode*>> ownedFields;
+        for (const auto& cap : captures) {
+            if (cap.transfer_own && cap.ownTarget) {
+                ownedFields.emplace_back(cap.fieldIndex, cap.ownTarget);
+            }
+        }
+        llvm::Function* envDtorFn = generateClosureEnvDtor(envStructType, funcName, ownedFields);
+
         llvm::Value* refcountPtr = builder->CreateStructGEP(envStructType, envCast, 0, "closure.env.refcountptr");
         builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 0), refcountPtr, "closure.env.refcount");
         llvm::Value* dtorPtr = builder->CreateStructGEP(envStructType, envCast, 1, "closure.env.dtorptr");
-        builder->CreateStore(llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)), dtorPtr);
+        llvm::Value* dtorVal = envDtorFn
+            ? llvm::ConstantExpr::getBitCast(envDtorFn, llvm::PointerType::get(*context, 0))
+            : static_cast<llvm::Value*>(llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)));
+        builder->CreateStore(dtorVal, dtorPtr);
 
         for (size_t ci = 0; ci < captures.size(); ++ci) {
             llvm::Value* fieldPtr = builder->CreateStructGEP(envStructType, envCast, ci + 2, "closure.env.setptr");
@@ -6157,6 +6196,14 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
             } else {
                 llvm::Value* val = builder->CreateLoad(captures[ci].ty, captures[ci].outer, "closure.cap.val");
                 builder->CreateStore(val, fieldPtr);
+                if (captures[ci].transfer_own) {
+                    // Ownership of the standalone `my<Struct>` moves into the
+                    // closure env: null the outer slot so its scope-exit cleanup
+                    // (which would free the heap object) skips it. The env's
+                    // cap_dtor is now the sole owner and frees it on release.
+                    builder->CreateStore(llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)),
+                                         captures[ci].outer);
+                }
             }
         }
 

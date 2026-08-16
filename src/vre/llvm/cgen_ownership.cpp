@@ -1210,6 +1210,72 @@ void LLVMCodegen::releaseClosureAlloca(llvm::Value* allocaInst) {
     releaseClosureValue(closureVal);
 }
 
+// Build the per-layout destructor for a closure capture environment that owns
+// transferred standalone `my<Struct>` payloads. The runtime calls the returned
+// function with the env block when its last reference is dropped (the cap_dtor
+// slot at header offset 8). For each capture field that received a transferred
+// object pointer, we reclaim the pointed-to struct's owned fields (Vec/String/
+// my<T>/our/mild) then free the heap block, so the payload survives exactly as
+// long as the closure env that owns it. Returns null when there is nothing to
+// reclaim.
+llvm::Function* LLVMCodegen::generateClosureEnvDtor(
+        llvm::StructType* envTy, const std::string& tag,
+        const std::vector<std::pair<size_t, const vyb::ast::TypeNode*>>& ownedFields) {
+    if (!envTy || ownedFields.empty()) return nullptr;
+
+    llvm::PointerType* rawPtr = llvm::PointerType::get(*context, 0);
+    llvm::FunctionType* dtorTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*context), {rawPtr}, false);
+    std::string fnName = "closure.env.dtor." + tag;
+    if (llvm::Function* existing = module->getFunction(fnName)) return existing;
+
+    llvm::Function* dtor = llvm::Function::Create(
+        dtorTy, llvm::Function::InternalLinkage, fnName, module.get());
+    dtor->getArg(0)->setName("closure.env.raw");
+
+    llvm::Function* savedFunction = currentFunction;
+    llvm::BasicBlock* savedBlock = builder->GetInsertBlock();
+    currentFunction = dtor;
+    builder->SetInsertPoint(llvm::BasicBlock::Create(*context, "entry", dtor));
+
+    llvm::Value* envCast = builder->CreateBitCast(dtor->getArg(0), envTy->getPointerTo(), "env.dtor.ptr");
+    llvm::Constant* nullPtr = llvm::ConstantPointerNull::get(rawPtr);
+
+    for (const auto& entry : ownedFields) {
+        size_t ix = entry.first;
+        const vyb::ast::TypeNode* pointeeAst = entry.second;
+        if (ix + 2 >= envTy->getNumElements()) continue;
+        if (!pointeeAst) continue;
+        llvm::Value* fieldPtr = builder->CreateStructGEP(envTy, envCast, ix + 2, "env.dtor.item");
+        llvm::Value* heapPtr = builder->CreateLoad(rawPtr, fieldPtr, "env.dtor.item.ptr");
+        llvm::Value* isNull = builder->CreateICmpEQ(heapPtr, nullPtr, "env.dtor.item.null");
+        llvm::Type* pointeeLL = codegenType(const_cast<vyb::ast::TypeNode*>(pointeeAst));
+
+        llvm::BasicBlock* freeBB = llvm::BasicBlock::Create(*context, "env.dtor.free", currentFunction);
+        llvm::BasicBlock* contBB = llvm::BasicBlock::Create(*context, "env.dtor.cont", currentFunction);
+        builder->CreateCondBr(isNull, contBB, freeBB);
+        builder->SetInsertPoint(freeBB);
+        if (pointeeLL && llvm::isa<llvm::StructType>(pointeeLL)) {
+            std::set<std::string> visited;
+            reclaimStructOwnedFieldsAt(heapPtr, pointeeAst,
+                                       llvm::cast<llvm::StructType>(pointeeLL), visited);
+            builder->CreateCall(getOrCreateFreeFunction(), {heapPtr});
+        }
+        builder->CreateBr(contBB);
+        builder->SetInsertPoint(contBB);
+    }
+    // The runtime only frees the env block itself when the cap_dtor is null;
+    // when a per-layout destructor exists, __vyb_closure_release runs it and
+    // expects the destructor to free the env block after reclaiming payloads.
+    // (The env was allocated with malloc, so a plain free() completes it.)
+    builder->CreateCall(getOrCreateFreeFunction(), {dtor->getArg(0)});
+    builder->CreateRetVoid();
+
+    currentFunction = savedFunction;
+    builder->SetInsertPoint(savedBlock);
+    return dtor;
+}
+
 // ============================================================================
 // HEAP STRING REFERENCE COUNTING
 // ============================================================================
