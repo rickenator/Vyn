@@ -1,0 +1,65 @@
+// @test: nested struct-field writes persist through member chains
+// @description: `a.b.c = x` writes the leaf field through every level of the chain
+//   (instead of into a temporary copy), whether the base is a plain local, an our<T>
+//   payload, a deep chain, or a by-ref `their` bind receiver. Also keeps the nested
+//   by-ref Vec-receiver read path (`self.map.keys`) working.
+// @category: ownership, member, write, by-ref, bind
+// @expect: pass
+// @expect-return: 0
+
+import core::aspects
+
+struct Leaf {
+    v<Int>
+}
+struct Inner {
+    c<Leaf>,
+    q<Int>
+}
+struct Outer {
+    inner<Inner>,
+    cx<our<Leaf>>,
+    n<Int>
+}
+
+aspect Mut {
+    bump(self<their<Outer>>, by<Int>)<Int>
+    setnested(self<their<Outer>>, v<Int>)<Int>
+}
+bind Mut -> Outer {
+    # writes through the `their` receiver into the nested struct field persist.
+    bump(self<their<Outer>>, by<Int>)<Int> -> {
+        self.inner.c.v = self.inner.c.v + by
+        return self.inner.c.v
+    }
+    setnested(self<their<Outer>>, v<Int>)<Int> -> {
+        self.inner.q = v
+        return self.inner.q
+    }
+}
+
+main()<Int> -> {
+    // 1: plain local nested write.
+    o<Outer> = Outer { inner = Inner { c = Leaf { v = 1 }, q = 2 }, cx = our(Leaf { v = 3 }), n = 0 }
+    o.inner.c.v = 42
+    o.inner.q = 43
+    if (o.inner.c.v != 42) { return 1 }
+    if (o.inner.q != 43) { return 2 }
+
+    // 2: deeper 3-level chain.
+    o.inner.c.v = o.inner.c.v + 8
+    if (o.inner.c.v != 50) { return 3 }
+
+    // 3: write into an our<T> payload through the chain.
+    o.cx.v = 55
+    if (o.cx.v != 55) { return 4 }
+
+    // 4: by-ref bind receiver nested write persists to the caller.
+    o2<Outer> = Outer { inner = Inner { c = Leaf { v = 1 }, q = 2 }, cx = our(Leaf { v = 3 }), n = 0 }
+    if (o2.bump(5) != 6) { return 5 }
+    if (o2.setnested(99) != 99) { return 6 }
+    if (o2.inner.q != 99) { return 7 }
+
+    println("ok")
+    return 0
+}

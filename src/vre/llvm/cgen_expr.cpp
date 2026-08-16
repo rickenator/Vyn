@@ -5484,8 +5484,30 @@ void LLVMCodegen::visit(ast::MemberExpression* node) {
     }
 
     if (!objectValue) {
-        // Fall back to normal evaluation
-        m_isLHSOfAssignment = false;  // Object evaluation should load the value normally
+        // Fall back to normal evaluation. A nested member chain that is itself the
+        // LHS base (e.g. the `a.b` in `a.b.c = x`) must be evaluated in pointer/LHS
+        // mode so it yields the address of the nested struct field; loading it into
+        // a temporary would write `c` into the copy and silently drop the store.
+        // Only do this when the chain's immediate field holds a plain struct value.
+        // Ownership/pointer-typed fields (`their`/`our`/`my`/`mild`/`view`/`borrow`)
+        // must be LOADED to dereference the pointer slot even in an LHS chain (e.g.
+        // the `self.map` in a nested by-ref `self.map.keys` Vec receiver read).
+        bool keepPointerMode = m_isLHSOfAssignment &&
+                               dynamic_cast<ast::MemberExpression*>(node->object.get()) != nullptr;
+        if (keepPointerMode) {
+            if (auto* nm = dynamic_cast<ast::TypeName*>(node->object->type.get())) {
+                if (nm->identifier) {
+                    const std::string t = nm->identifier->name;
+                    if (t == "my" || t == "our" || t == "their" || t == "mild" ||
+                        t == "view" || t == "borrow") {
+                        keepPointerMode = false;
+                    }
+                }
+            }
+        }
+        if (!keepPointerMode) {
+            m_isLHSOfAssignment = false;  // Object evaluation should load the value normally
+        }
         node->object->accept(*this);
         m_isLHSOfAssignment = wasLHS;  // Restore LHS flag for field access
         objectValue = m_currentLLVMValue;
@@ -5742,6 +5764,12 @@ void LLVMCodegen::visit(ast::MemberExpression* node) {
         // Check if we're on the LHS of an assignment - in that case return the pointer
         if (m_isLHSOfAssignment) {
             m_currentLLVMValue = fieldPtr;
+            // Remember the field-pointer's AST type so a further member access on
+            // it (a nested chain like `a.b.c = x`) can resolve the struct type of
+            // the pointer object level by level without an alloca.
+            if (node->type) {
+                valueTypeMap[fieldPtr] = std::shared_ptr<vyb::ast::TypeNode>(node->type->clone());
+            }
         } else {
             // For reading, always load the value
             // Even for struct types (like String), we want the value, not a pointer to temporary storage
