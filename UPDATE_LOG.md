@@ -19,6 +19,25 @@ Audit date: 2026-05-23
   a local `view()`/`borrow()` reference, for `Int` and `String` elements. Covered by
   `test/modules/test_vec_inplace_byref.vyb`; full unit/module/ownership/aspect suites pass.
 
+- 2026-08-15: **`network` stdlib module (TCP/IP socket MVP)**. Ships the first
+  networking for Vyb as a thin stdlib wrapper (`stdlib/network/mod.vyb`,
+  `import network`) over new `__vyb_net_*` runtime intrinsics in
+  `runtime/vyb_runtime.c` (BSD sockets via `socket`/`bind`/`listen`/`accept`/
+  `connect`/`send`/`recv`/`getsockname`/`close`, with `inet_pton`/`htons`/
+  `ntohs` handled inside the runtime so the Vyb surface is string/pointer-free).
+  Vyb surface: `socket_open`/`socket_close`/`socket_bind`/`socket_listen`/
+  `socket_accept`/`socket_connect`/`socket_send`/`socket_recv`/`socket_local_port`/
+  `socket_error_code`/`socket_error_message` plus the `AF_INET`/`SOCK_STREAM`/
+  `IPPROTO_TCP` constants. Follows the `io` module's intrinsic pattern end to end:
+  Vyb-name `vyb_net_*` calls are recognized in semantic (typed Int/String) and
+  mapped to the exported `__vyb_net_*` symbols in codegen (String args/payloads
+  extract their `{ ptr, len }` data pointer; `recv` and the error message return a
+  registry-registered owned buffer so the Vyb String is reclaimed by normal
+  reference counting), with the symbols declared + registered in `src/main.cpp`.
+  Verified with a self-contained loopback echo (bind-to-ephemeral-port, local
+  port query, connect, accept, send/recv both directions) in
+  `test/modules/test_network_socket.vyb`. Full unit/module suites pass.
+
 - 2026-08-15: **Member-receiver aspect/bind dispatch + owned closure captures**.
   (a) **Member-expression receiver dispatch**. Codegen's aspect/bind dispatch previously
   required an identifier receiver; invoking a bound method on a non-identifier receiver —

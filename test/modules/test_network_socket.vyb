@@ -1,0 +1,44 @@
+// @test: network stdlib module TCP loopback echo
+// @description: the `network` module wraps the runtime's __vyb_net_* socket
+//   intrinsics: socket_open/bind/listen/accept/connect/send/recv/local_port/
+//   close over BSD sockets. A self-contained loopback echo proves both
+//   directions (client->server and server->client) without any external server.
+// @category: modules, network, sockets, stdlib, ffi, io
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import network::{socket_open, socket_bind, socket_listen, socket_accept,
+                 socket_connect, socket_send, socket_recv, socket_local_port,
+                 socket_close, socket_error_code, AF_INET, SOCK_STREAM}
+
+main()<Int> -> {
+    srv<Int> = socket_open(AF_INET(), SOCK_STREAM(), 0)
+    if (srv < 0) { return 1 }
+    if (socket_bind(srv, "127.0.0.1", 0) < 0) { return 2 }
+    if (socket_listen(srv, 1) < 0) { return 3 }
+    port<Int> = socket_local_port(srv)
+    if (port <= 0) { return 4 }
+
+    cli<Int> = socket_open(AF_INET(), SOCK_STREAM(), 0)
+    if (cli < 0) { return 5 }
+    if (socket_connect(cli, "127.0.0.1", port) < 0) { return 6 }
+    conn<Int> = socket_accept(srv)
+    if (conn < 0) { return 7 }
+
+    n<Int> = socket_send(cli, "hello")
+    if (n != 5) { return 8 }
+    rx<String> = socket_recv(conn, 64)
+    if (rx != "hello") { return 9 }
+
+    socket_send(conn, "hi")
+    ry<String> = socket_recv(cli, 64)
+    if (ry != "hi") { return 10 }
+
+    socket_close(conn)
+    socket_close(cli)
+    socket_close(srv)
+    println("ok")
+    return 0
+}

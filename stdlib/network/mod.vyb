@@ -1,0 +1,96 @@
+# network - TCP/IP socket basics over BSD sockets.
+#
+# Everything crosses the runtime's `__vyb_net_*` functions in
+# `runtime/vyb_runtime.c`; the Vyb surface stays allocation/pointer-free. IP
+# addresses are plain strings ("127.0.0.1"); pass "0.0.0.0" (or "") to bind any
+# interface. A port of `0` asks the kernel for an ephemeral port, which you can
+# read back with `socket_local_port()`.
+#
+# Usage (loopback echo):
+#   import network::{socket_open, socket_bind, socket_listen, socket_accept,
+#                    socket_connect, socket_send, socket_recv, socket_local_port,
+#                    socket_close, AF_INET, SOCK_STREAM}
+#   srv = socket_open(AF_INET(), SOCK_STREAM(), 0)
+#   socket_bind(srv, "127.0.0.1", 0)
+#   socket_listen(srv, 1)
+#   port = socket_local_port(srv)
+#   cli = socket_open(AF_INET(), SOCK_STREAM(), 0)
+#   socket_connect(cli, "127.0.0.1", port)
+#   conn = socket_accept(srv)
+#   socket_send(cli, "hello"); socket_recv(conn, 5)   // "hello"
+#
+# Diagnostics: `socket_error_code()` (0 = no error) and `socket_error_message()`
+# report the result of the last network operation.
+
+# Domain / socket-type constants (AF_INET=2, SOCK_STREAM=1, IPPROTO_TCP=6).
+share(all)
+AF_INET()<Int> -> { return 2 }
+
+share(all)
+SOCK_STREAM()<Int> -> { return 1 }
+
+share(all)
+IPPROTO_TCP()<Int> -> { return 6 }
+
+# Create a socket in the given domain/type/protocol; returns the descriptor
+# (>= 0) or -1 on failure (see socket_error_code()).
+share(all)
+socket_open(domain<Int>, st<Int>, pr<Int>)<Int> -> {
+    return vyb_net_open(domain, st, pr)
+}
+
+share(all)
+socket_close(fd<Int>)<Int> -> {
+    return vyb_net_close(fd)
+}
+
+# Bind `fd` to the given IP / port. Use "0.0.0.0" or "" to bind any interface.
+share(all)
+socket_bind(fd<Int>, ip<String>, port<Int>)<Int> -> {
+    return vyb_net_bind(fd, ip, port)
+}
+
+share(all)
+socket_listen(fd<Int>, backlog<Int>)<Int> -> {
+    return vyb_net_listen(fd, backlog)
+}
+
+# Accept a pending connection on a listening socket; returns the connected
+# descriptor (>= 0) or -1.
+share(all)
+socket_accept(fd<Int>)<Int> -> {
+    return vyb_net_accept(fd)
+}
+
+share(all)
+socket_connect(fd<Int>, ip<String>, port<Int>)<Int> -> {
+    return vyb_net_connect(fd, ip, port)
+}
+
+# Send the whole of `data` on `fd`; returns the number of bytes sent (or -1).
+share(all)
+socket_send(fd<Int>, data<String>)<Int> -> {
+    return vyb_net_send(fd, data)
+}
+
+# Receive up to `maxlen` bytes from `fd` as a fresh String.
+share(all)
+socket_recv(fd<Int>, maxlen<Int>)<String> -> {
+    return vyb_net_recv(fd, maxlen)
+}
+
+# The local port a socket is bound to (useful after binding port 0).
+share(all)
+socket_local_port(fd<Int>)<Int> -> {
+    return vyb_net_local_port(fd)
+}
+
+share(all)
+socket_error_code()<Int> -> {
+    return vyb_net_error_code()
+}
+
+share(all)
+socket_error_message()<String> -> {
+    return vyb_net_error_message()
+}

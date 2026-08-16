@@ -2589,6 +2589,145 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         }
     }
 
+    // Handle Network I/O intrinsics (network stdlib module). Mirrors the File I/O
+    // mapping: each Vyb-level call (`vyb_net_*`) resolves to an exported runtime
+    // symbol (`__vyb_net_*`) in `runtime/vyb_runtime.c`. IP addresses and payloads
+    // arrive as Vyb String structs { ptr, len } and their data pointer (and length
+    // for send) is extracted at the boundary. `recv` and the error message return
+    // an owned, registry-registered heap buffer so the Vyb String built over it is
+    // freed by normal reference-counted cleanup.
+    if (identCallee) {
+        const std::string& fname = identCallee->name;
+        std::string rtName;
+        if (fname == "vyb_net_open") rtName = "__vyb_net_open";
+        else if (fname == "vyb_net_close") rtName = "__vyb_net_close";
+        else if (fname == "vyb_net_bind") rtName = "__vyb_net_bind";
+        else if (fname == "vyb_net_listen") rtName = "__vyb_net_listen";
+        else if (fname == "vyb_net_accept") rtName = "__vyb_net_accept";
+        else if (fname == "vyb_net_connect") rtName = "__vyb_net_connect";
+        else if (fname == "vyb_net_send") rtName = "__vyb_net_send";
+        else if (fname == "vyb_net_recv") rtName = "__vyb_net_recv";
+        else if (fname == "vyb_net_local_port") rtName = "__vyb_net_local_port";
+        else if (fname == "vyb_net_error_code") rtName = "__vyb_net_error_code";
+        else if (fname == "vyb_net_error_message") rtName = "__vyb_net_error_message";
+        if (!rtName.empty()) {
+            auto getNetFn = [&](llvm::FunctionType* ft) -> llvm::Function* {
+                llvm::Function* f = module->getFunction(rtName);
+                if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, rtName, module.get());
+                return f;
+            };
+            auto toI64 = [&](llvm::Value* v) -> llvm::Value* {
+                if (!v) return v;
+                if (v->getType()->isIntegerTy(64)) return v;
+                if (v->getType()->isIntegerTy())
+                    return builder->CreateSExt(v, int64Type, "net.toi64");
+                return v;
+            };
+            auto toStrPtr = [&](llvm::Value* v) -> llvm::Value* {
+                if (v && v->getType()->isStructTy())
+                    return builder->CreateExtractValue(v, 0, "net.strptr");
+                return v;
+            };
+            auto strStructType = [&]() {
+                std::vector<llvm::Type*> f = {int8PtrType, int64Type};
+                return llvm::StructType::get(*context, f, false);
+            };
+
+            auto needArg = [&](size_t idx) -> llvm::Value* {
+                if (idx >= node->arguments.size()) { m_currentLLVMValue = nullptr; return nullptr; }
+                node->arguments[idx]->accept(*this);
+                return m_currentLLVMValue;
+            };
+            auto checkArity = [&](size_t n) -> bool {
+                if (node->arguments.size() != n) {
+                    logError(node->loc, rtName + " expects " + std::to_string(n) + " argument(s)");
+                    m_currentLLVMValue = nullptr;
+                    return false;
+                }
+                return true;
+            };
+
+            if (fname == "vyb_net_open") {
+                if (!checkArity(3)) return;
+                llvm::Value* d = needArg(0); llvm::Value* t = needArg(1); llvm::Value* pr = needArg(2);
+                if (!d || !t || !pr) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getNetFn(ft), {toI64(d), toI64(t), toI64(pr)}, "net.fd");
+                return;
+            } else if (fname == "vyb_net_close") {
+                if (!checkArity(1)) return;
+                llvm::Value* fd = needArg(0); if (!fd) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getNetFn(ft), {toI64(fd)}, "net.closed");
+                return;
+            } else if (fname == "vyb_net_bind" || fname == "vyb_net_connect") {
+                if (!checkArity(3)) return;
+                llvm::Value* fd = needArg(0); llvm::Value* ip = needArg(1); llvm::Value* port = needArg(2);
+                if (!fd || !ip || !port) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getNetFn(ft), {toI64(fd), toStrPtr(ip), toI64(port)},
+                    fname == "vyb_net_bind" ? "net.bound" : "net.connected");
+                return;
+            } else if (fname == "vyb_net_listen") {
+                if (!checkArity(2)) return;
+                llvm::Value* fd = needArg(0); llvm::Value* backlog = needArg(1);
+                if (!fd || !backlog) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getNetFn(ft), {toI64(fd), toI64(backlog)}, "net.listened");
+                return;
+            } else if (fname == "vyb_net_accept") {
+                if (!checkArity(1)) return;
+                llvm::Value* fd = needArg(0); if (!fd) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getNetFn(ft), {toI64(fd)}, "net.accepted");
+                return;
+            } else if (fname == "vyb_net_send") {
+                if (!checkArity(2)) return;
+                llvm::Value* fd = needArg(0); llvm::Value* data = needArg(1);
+                if (!fd || !data) return;
+                llvm::Value* dataPtr = toStrPtr(data);
+                llvm::Value* dataLen = llvm::ConstantInt::get(int64Type, 0);
+                if (data->getType()->isStructTy())
+                    dataLen = builder->CreateExtractValue(data, 1, "net.strlen");
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getNetFn(ft), {toI64(fd), dataPtr, dataLen}, "net.sent");
+                return;
+            } else if (fname == "vyb_net_recv") {
+                if (!checkArity(2)) return;
+                llvm::Value* fd = needArg(0); llvm::Value* maxlen = needArg(1);
+                if (!fd || !maxlen) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(strStructType(), {int64Type, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getNetFn(ft), {toI64(fd), toI64(maxlen)}, "net.recved");
+                return;
+            } else if (fname == "vyb_net_local_port") {
+                if (!checkArity(1)) return;
+                llvm::Value* fd = needArg(0); if (!fd) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getNetFn(ft), {toI64(fd)}, "net.port");
+                return;
+            } else if (fname == "vyb_net_error_code") {
+                if (!checkArity(0)) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {}, false);
+                m_currentLLVMValue = builder->CreateCall(getNetFn(ft), {}, "net.errcode");
+                return;
+            } else { // vyb_net_error_message
+                if (!checkArity(0)) return;
+                llvm::FunctionType* fmsg = llvm::FunctionType::get(int8PtrType, {}, false);
+                llvm::Value* msgPtr = builder->CreateCall(getNetFn(fmsg), {}, "net.errmsg");
+                llvm::FunctionType* strlenType = llvm::FunctionType::get(int64Type, {int8PtrType}, false);
+                llvm::Function* strlenFunc = module->getFunction("strlen");
+                if (!strlenFunc)
+                    strlenFunc = llvm::Function::Create(strlenType, llvm::Function::ExternalLinkage, "strlen", module.get());
+                llvm::Value* msgLen = builder->CreateCall(strlenFunc, {msgPtr}, "net.errlen");
+                llvm::Value* outStr = llvm::UndefValue::get(strStructType());
+                outStr = builder->CreateInsertValue(outStr, msgPtr, 0, "net.msg.data");
+                outStr = builder->CreateInsertValue(outStr, msgLen, 1, "net.msg.len");
+                m_currentLLVMValue = outStr;
+                return;
+            }
+        }
+    }
+
     // Handle serialization mode intrinsics: lit(), notype(), bare(), deserial()
     if (identCallee && identCallee->name == "lit" && node->arguments.size() >= 1) {
         // lit() intrinsic - convert value(s) to their raw string/JSON literal representation

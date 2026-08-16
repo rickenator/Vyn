@@ -1843,7 +1843,11 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "floor" || name == "ceil" || name == "round" || name == "min" || name == "max" ||
             name == "vyb_io_open" || name == "vyb_io_close" || name == "vyb_io_write" ||
             name == "vyb_io_read_all" || name == "vyb_io_error_code" ||
-            name == "vyb_io_error_message") {
+            name == "vyb_io_error_message" ||
+            name == "vyb_net_open" || name == "vyb_net_close" || name == "vyb_net_bind" ||
+            name == "vyb_net_listen" || name == "vyb_net_accept" || name == "vyb_net_connect" ||
+            name == "vyb_net_send" || name == "vyb_net_recv" || name == "vyb_net_local_port" ||
+            name == "vyb_net_error_code" || name == "vyb_net_error_message") {
             isIntrinsic = true;
         }
     }
@@ -2246,6 +2250,26 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 auto* resTy = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc,
                         fileIntFuncs.count(name) ? "Int" : "String"));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+
+            // Network I/O intrinsics (network stdlib module). All the socket
+            // helpers return an Int result/fd; the recv + error-message helpers
+            // return a String. Arity/diagnostic detail is left to codegen.
+            static const std::set<std::string> netIntFuncs = {
+                "vyb_net_open", "vyb_net_close", "vyb_net_bind", "vyb_net_listen",
+                "vyb_net_accept", "vyb_net_connect", "vyb_net_send",
+                "vyb_net_local_port", "vyb_net_error_code"
+            };
+            static const std::set<std::string> netStrFuncs = {
+                "vyb_net_recv", "vyb_net_error_message"
+            };
+            if (netIntFuncs.count(name) || netStrFuncs.count(name)) {
+                auto* resTy = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc,
+                        netIntFuncs.count(name) ? "Int" : "String"));
                 expressionTypes[node] = retainType(resTy);
                 node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
                 return;

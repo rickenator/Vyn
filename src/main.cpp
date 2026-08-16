@@ -104,6 +104,19 @@ extern "C" {
     int64_t __vyb_file_error_code(void);
     const char* __vyb_file_error_message(void);
 
+    // Network I/O runtime helpers (network stdlib module)
+    int64_t __vyb_net_open(int64_t domain, int64_t t, int64_t protocol);
+    int64_t __vyb_net_close(int64_t fd);
+    int64_t __vyb_net_bind(int64_t fd, const char* ip, int64_t port);
+    int64_t __vyb_net_listen(int64_t fd, int64_t backlog);
+    int64_t __vyb_net_accept(int64_t fd);
+    int64_t __vyb_net_connect(int64_t fd, const char* ip, int64_t port);
+    int64_t __vyb_net_send(int64_t fd, const char* data, int64_t len);
+    vyb_file_str __vyb_net_recv(int64_t fd, int64_t maxlen);
+    int64_t __vyb_net_local_port(int64_t fd);
+    int64_t __vyb_net_error_code(void);
+    const char* __vyb_net_error_message(void);
+
     // JSON serialization for complex types
     char* __vyb_complex_to_json(void* instance, const char* type_name);
     void* __vyb_complex_from_json(const char* json_str, const char* type_name);
@@ -910,6 +923,28 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_file_error_code), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_file_error_message")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_file_error_message), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_net_open")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_open), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_net_close")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_close), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_net_bind")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_bind), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_net_listen")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_listen), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_net_accept")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_accept), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_net_connect")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_connect), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_net_send")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_send), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_net_recv")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_recv), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_net_local_port")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_local_port), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_net_error_code")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_error_code), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_net_error_message")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_error_message), llvm::JITSymbolFlags::Exported);
 
         // Register JSON serialization functions
         runtimeSymbols[mangle("__vyb_complex_to_json")] = llvm::orc::ExecutorSymbolDef(

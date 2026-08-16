@@ -36,7 +36,7 @@ is the working audit for what needs to be implemented next.
 | Lambda/closure codegen | ~70% | Capture-by-value closure env structs shipped; move/mutable/`our` capture planned |
 | Module system (`import`/`smuggle`/`bundle`) | ~70% | Local/module-path resolution, aliases, bundle/share visibility done; stdlib modules/package integration pending |
 | FFI (`extern "C"`) | ~35% | Extern blocks, C aliases, freedom-gated JIT calls done; repr(C), variadics, linker flow pending |
-| Standard library | ~55% | Vec, String, HashMap/HashSet, BTreeMap, File I/O, Math done; network I/O needed |
+| Standard library | ~60% | Vec, String, HashMap/HashSet, BTreeMap, File I/O, Math, TCP socket I/O done; async/higher-level networking pending |
 | Introspection (`typeof`/`typename`) | ~75% | Downcasting, type assertions |
 | Auto-serialization | ~80% | Edge cases remain |
 | Pattern matching | ~60% | Destructuring, guards, enum variants |
@@ -280,8 +280,8 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
   - [x] Foundation scaffold landed: `stdlib/core/`, `stdlib/io/`, `stdlib/collections/`, top-level/core preludes, transitional `core::option` bridge, and placeholder `core::result`
   - [ ] Expand with full module contents (`math`, collections, io, iterator/core aspects)
     - [x] `core::math` — composition helpers (`clamp`, `is_close`) layered over the global math intrinsics, explicitly imported via `import core::math` (`test/modules/stdlib_core_math.vyb`)
-    - [x] `collections` — `HashMap<K,V>` / `HashSet<K>` shipped (`import collections`, by-ref bind methods, auto-growing hash-bucket `Hashable` key lookup; `test/modules/test_collections_hashmap.vyb`, `test/modules/test_collections_growth.vyb`), plus the `VecOps` view/ordering helpers, the unconstrained `VecHigherOps` `map`/`filter`/`reduce`/`iter` combinators, and the generic `VecIter<T>` iterator (`v.iter()`, bound to `Iterator`, `test/modules/test_vec_iter.vyb`); network I/O still pending
-    - [x] `io` — File I/O shipped (`import io`): `File { fd, path }`, `open` + `open_read`/`open_write`/`open_append`, `close`, `write_str`, `read_all`, `error_code`/`error_message`, and `FILE_*` mode helpers over the runtime `__vyb_file_*` intrinsics (`test/modules/test_file_io.vyb`); network I/O still pending
+    - [x] `collections` — `HashMap<K,V>` / `HashSet<K>` shipped (`import collections`, by-ref bind methods, auto-growing hash-bucket `Hashable` key lookup; `test/modules/test_collections_hashmap.vyb`, `test/modules/test_collections_growth.vyb`), plus the `VecOps` view/ordering helpers, the unconstrained `VecHigherOps` `map`/`filter`/`reduce`/`iter` combinators, and the generic `VecIter<T>` iterator (`v.iter()`, bound to `Iterator`, `test/modules/test_vec_iter.vyb`)
+    - [x] `io` — File I/O shipped (`import io`): `File { fd, path }`, `open` + `open_read`/`open_write`/`open_append`, `close`, `write_str`, `read_all`, `error_code`/`error_message`, and `FILE_*` mode helpers over the runtime `__vyb_file_*` intrinsics (`test/modules/test_file_io.vyb`)
     - [x] `core::iter` — the `Iterator` aspect protocol (`type Item` + `next(self<their<Self>>)<Option<Self::Item>>`, explicitly imported via `import core::iter` — kept out of the auto-imported `core::aspects` so the ~6 associated-type tests that define their own local `Iterator` don't clash). Consumable via explicit `.next()` / `match` loops (`test/modules/test_iterator_protocol.vyb`) and via `for (item in <iter-expr>)` for any non-identifier iterable expression (`test/modules/test_for_iter.vyb`); the desugar is parse-time (type-blind) and keys off a non-identifier iterable so the existing Vec index-based identifier path and range path are untouched.
   - [x] Auto-import of `core::*` (opt-out with directive) — the core contracts module (`core::aspects`, with its pre-wired primitive binds) is auto-imported into every non-stdlib module unless it already imports the contracts, locally redefines them, or opts out with a `no_core()` directive. This makes `x.display()`, `a.equals(b)`, `a.compare(b)`, and `a.clone()` available on built-in scalars with no import. The transitional prelude helpers (`OptionInt`, `prelude_ok`) remain explicit-import-only.
 
@@ -689,7 +689,11 @@ For Vyb to be considered production-ready at 1.0, **all of the following must be
 
 ### Post-1.0 Roadmap
 - [ ] Channels + actors (design doc first!)
-- [ ] Networking + Sockets (see section below)
+- [x] **Network/socket MVP** — synchronous TCP/IP sockets shipped via the `network`
+  stdlib module (`socket_open/bind/listen/accept/connect/send/recv/local_port/close`,
+  `AF_INET`/`SOCK_STREAM`/`IPPROTO_TCP`; loopback echo
+  `test/modules/test_network_socket.vyb`) over `__vyb_net_*` runtime intrinsics.
+  Higher-level (async, streams, UDP, TLS) networking remains post-1.0 (section below).
 - [ ] Self-hosting compiler (Vyb written in Vyb)
 - [ ] Macros / metaprogramming
 - [ ] Package registry
@@ -703,9 +707,10 @@ For Vyb to be considered production-ready at 1.0, **all of the following must be
 
 ## Networking and Sockets
 
-Networking is a post-1.0 feature that **depends entirely on FFI being complete first**.
-Raw sockets are POSIX system calls (`socket`, `connect`, `bind`, `recv`, `send`), so Vyb
-networking is FFI + a thin standard-library wrapper — not a language feature per se.
+A synchronous TCP/IP socket MVP is now shipped as a thin standard-library wrapper over
+the runtime's `__vyb_net_*` intrinsics (`import network`; `test/modules/test_network_socket.vyb`),
+which themselves rely on POSIX sockets via FFI. The notes below cover the future,
+higher-level async/streaming/UDP/TLS networking layers.
 
 ### Design Approach (Vyb-native)
 

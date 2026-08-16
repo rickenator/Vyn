@@ -11,6 +11,9 @@
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #if defined(__GNUC__) || defined(__clang__)
 #define VYB_WEAK __attribute__((weak))
@@ -388,6 +391,118 @@ VYB_WEAK int64_t __vyb_file_error_code(void) {
 // freed when its last reference is dropped.
 VYB_WEAK char* __vyb_file_error_message(void) {
     const char* m = (vyb_file_err == 0) ? "no error" : strerror(vyb_file_err);
+    char* copy = strdup(m);
+    if (copy) __vyb_string_register(copy);
+    return copy;
+}
+
+// ============================================================================
+// NETWORK I/O (network stdlib module) - thin facades over BSD sockets.
+// IP addresses cross as strings ("127.0.0.1"); the runtime handles address and
+// port byte order internally, so the Vyb surface stays allocation/pointer-free.
+// ============================================================================
+
+static int vyb_net_err = 0;
+
+static int vyb_net_fill_addr(const char* ip, int64_t port, struct sockaddr_in* out) {
+    memset(out, 0, sizeof(*out));
+    out->sin_family = AF_INET;
+    if (!ip || !*ip) {
+        out->sin_addr.s_addr = htonl(INADDR_ANY);
+    } else if (inet_pton(AF_INET, ip, &out->sin_addr) != 1) {
+        return -1;
+    }
+    out->sin_port = htons((uint16_t)port);
+    return 0;
+}
+
+VYB_WEAK int64_t __vyb_net_open(int64_t domain, int64_t t, int64_t protocol) {
+    int fd = socket((int)domain, (int)t, (int)protocol);
+    vyb_net_err = (fd < 0) ? errno : 0;
+    return (int64_t)fd;
+}
+
+VYB_WEAK int64_t __vyb_net_close(int64_t fd) {
+    int r = close((int)fd);
+    vyb_net_err = (r < 0) ? errno : 0;
+    return (int64_t)r;
+}
+
+VYB_WEAK int64_t __vyb_net_bind(int64_t fd, const char* ip, int64_t port) {
+    struct sockaddr_in addr;
+    if (vyb_net_fill_addr(ip, port, &addr) != 0) { vyb_net_err = EINVAL; return -1; }
+    int r = bind((int)fd, (struct sockaddr*)&addr, (socklen_t)sizeof(addr));
+    vyb_net_err = (r < 0) ? errno : 0;
+    return (int64_t)r;
+}
+
+VYB_WEAK int64_t __vyb_net_listen(int64_t fd, int64_t backlog) {
+    int r = listen((int)fd, (int)backlog);
+    vyb_net_err = (r < 0) ? errno : 0;
+    return (int64_t)r;
+}
+
+VYB_WEAK int64_t __vyb_net_accept(int64_t fd) {
+    struct sockaddr_in addr;
+    socklen_t len = (socklen_t)sizeof(addr);
+    int c = accept((int)fd, (struct sockaddr*)&addr, &len);
+    vyb_net_err = (c < 0) ? errno : 0;
+    return (int64_t)c;
+}
+
+VYB_WEAK int64_t __vyb_net_connect(int64_t fd, const char* ip, int64_t port) {
+    struct sockaddr_in addr;
+    if (vyb_net_fill_addr(ip, port, &addr) != 0) { vyb_net_err = EINVAL; return -1; }
+    int r = connect((int)fd, (struct sockaddr*)&addr, (socklen_t)sizeof(addr));
+    vyb_net_err = (r < 0) ? errno : 0;
+    return (int64_t)r;
+}
+
+VYB_WEAK int64_t __vyb_net_send(int64_t fd, const char* data, int64_t len) {
+    ssize_t n = send((int)fd, data, (size_t)len, 0);
+    vyb_net_err = (n < 0) ? errno : 0;
+    return (int64_t)n;
+}
+
+// Receive up to `maxlen` bytes into a fresh, registry-registered buffer. Returns
+// { ptr, len }; ptr is NULL (len 0) on error or EOF.
+VYB_WEAK vyb_file_str __vyb_net_recv(int64_t fd, int64_t maxlen) {
+    vyb_file_str r = { NULL, 0 };
+    if (maxlen <= 0) maxlen = 4096;
+    char* buf = (char*)malloc((size_t)maxlen);
+    if (!buf) { vyb_net_err = errno; return r; }
+    ssize_t n = recv((int)fd, buf, (size_t)maxlen, 0);
+    if (n < 0) { vyb_net_err = errno; free(buf); return r; }
+    // Owned heap buffer: its first holder is the Vyb String built over it, so
+    // register it (refcount 1) and let the String's release free it.
+    __vyb_string_register(buf);
+    r.ptr = buf;
+    r.len = (int64_t)n;
+    vyb_net_err = 0;
+    return r;
+}
+
+// The port a listening socket is actually bound to (0 passed to bind ->
+// ephemeral). Returns -1 on error.
+VYB_WEAK int64_t __vyb_net_local_port(int64_t fd) {
+    struct sockaddr_in addr;
+    socklen_t len = (socklen_t)sizeof(addr);
+    if (getsockname((int)fd, (struct sockaddr*)&addr, &len) != 0) {
+        vyb_net_err = errno;
+        return -1;
+    }
+    vyb_net_err = 0;
+    return (int64_t)ntohs(addr.sin_port);
+}
+
+VYB_WEAK int64_t __vyb_net_error_code(void) {
+    return (int64_t)vyb_net_err;
+}
+
+// Human-readable message for the last network-op error. Returns an owned heap
+// copy (registered with the string registry).
+VYB_WEAK char* __vyb_net_error_message(void) {
+    const char* m = (vyb_net_err == 0) ? "no error" : strerror(vyb_net_err);
     char* copy = strdup(m);
     if (copy) __vyb_string_register(copy);
     return copy;
