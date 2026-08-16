@@ -6648,30 +6648,35 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
             // Restore scope
             namedValues = std::move(oldNamedValues);
 
-            // Branch to ensure/continue after handling and record exit block
-            // PHASE 6.3: Free heap-allocated errors ONLY if block hasn't terminated
-            // (if block terminated with return, error cleanup already happened in return statement)
-            if (!builder->GetInsertBlock()->getTerminator()) {
-                // Free heap-allocated errors before branching
-                // Only free if error is a pointer (struct type with type ID header)
-                // Integer errors are passed by value and don't need cleanup
-                llvm::Function* freeErrFn = module->getFunction("__vyb_runtime_free_error");
-                if (!freeErrFn) {
-                    llvm::Type* i8PtrTy = llvm::PointerType::get(*context, 0);
-                    llvm::FunctionType* freeErrTy = llvm::FunctionType::get(
-                        llvm::Type::getVoidTy(*context),
-                        {i8PtrTy},
-                        false
-                    );
-                    freeErrFn = llvm::Function::Create(
-                        freeErrTy,
-                        llvm::Function::ExternalLinkage,
-                        "__vyb_runtime_free_error",
-                        module.get()
-                    );
-                }
-                builder->CreateCall(freeErrFn, {errorPtr});
+            // PHASE 6.3: Free the heap-allocated caught error on EVERY handler exit
+            // path. Previously the free was only emitted when the handler ended
+            // without a terminator; a handler ending in `return` never reclaimed the
+            // caught error, leaking it. Pinning the insert point just before the
+            // terminator covers that path too.
+            llvm::Function* freeErrFn = module->getFunction("__vyb_runtime_free_error");
+            if (!freeErrFn) {
+                llvm::Type* i8PtrTy = llvm::PointerType::get(*context, 0);
+                llvm::FunctionType* freeErrTy = llvm::FunctionType::get(
+                    llvm::Type::getVoidTy(*context),
+                    {i8PtrTy},
+                    false
+                );
+                freeErrFn = llvm::Function::Create(
+                    freeErrTy,
+                    llvm::Function::ExternalLinkage,
+                    "__vyb_runtime_free_error",
+                    module.get()
+                );
+            }
+            if (llvm::Instruction* term = builder->GetInsertBlock()->getTerminator()) {
+                // Handler ended in `return`: free the error before the terminator.
+                builder->SetInsertPoint(term);
+            }
+            builder->CreateCall(freeErrFn, {errorPtr});
 
+            // Branch to ensure/continue after handling and record exit block.
+            // Skipped when the handler terminated via `return` (no merge needed).
+            if (!builder->GetInsertBlock()->getTerminator()) {
                 // Store handler result in alloca for merge point
                 if (clauseResult) {
                     storeIntoResultSlot(clauseResult, blockResultAlloca, node->loc);
