@@ -3674,6 +3674,14 @@ void SemanticAnalyzer::visit(ast::MemberExpression* node) {
 
         // Enum variant access: EnumName::VariantName
         if (enumTypeNames.count(typeName)) {
+            // Constant-enum member: `Sock::AF_INET` is a compile-time Int constant.
+            if (constEnumValues.count(typeName + "::" + methodName)) {
+                auto* intTy = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "Int"));
+                node->type = std::shared_ptr<ast::TypeNode>(intTy->clone());
+                expressionTypes[node] = retainType(intTy);
+                return;
+            }
             auto enumPayIt = enumVariantPayloadTypes.find(typeName);
             if (enumPayIt != enumVariantPayloadTypes.end()) {
                 // Tagged-union enum: a unit variant used as a value has the enum type.
@@ -5952,8 +5960,28 @@ void SemanticAnalyzer::visit(ast::EnumDeclaration* node) {
     if (node->variants.empty()) return;
 
     bool hasData = false;
+    bool anyValue = false, allValue = true;
     for (const auto& v : node->variants) {
-        if (v && !v->associatedTypes.empty()) { hasData = true; break; }
+        if (!v) continue;
+        if (!v->associatedTypes.empty()) hasData = true;
+        if (v->hasValue) anyValue = true; else allValue = false;
+    }
+
+    // Constant enum: every variant declared with `= <int>` yields a scoped,
+    // compile-time Int constant (`Sock::AF_INET` == 2), not a nominal enum value.
+    if (anyValue) {
+        if (hasData || !node->genericParams.empty()) {
+            addError("Constant '=' enum values are only supported on a plain, non-generic enum.", node);
+            return;
+        }
+        if (!allValue) {
+            addError("Mixed enum variants: every variant must carry a '=' value (or none may).", node);
+            return;
+        }
+        for (const auto& v : node->variants) {
+            if (v && v->name) constEnumValues[enumName + "::" + v->name->name] = v->value;
+        }
+        return;
     }
     if (!hasData) {
         // C-like enums are now first-class typed values: every variant is a unit

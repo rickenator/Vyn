@@ -9,12 +9,12 @@
 # Usage (loopback echo):
 #   import network::{socket_open, socket_bind, socket_listen, socket_accept,
 #                    socket_connect, socket_send, socket_recv, socket_local_port,
-#                    socket_close, AF_INET, SOCK_STREAM}
-#   srv = socket_open(AF_INET(), SOCK_STREAM(), 0)
+#                    socket_close, Socket}
+#   srv = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, 0)
 #   socket_bind(srv, "127.0.0.1", 0)
 #   socket_listen(srv, 1)
 #   port = socket_local_port(srv)
-#   cli = socket_open(AF_INET(), SOCK_STREAM(), 0)
+#   cli = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, 0)
 #   socket_connect(cli, "127.0.0.1", port)
 #   conn = socket_accept(srv)
 #   socket_send(cli, "hello"); socket_recv(conn, 5)   // "hello"
@@ -22,15 +22,15 @@
 # Diagnostics: `socket_error_code()` (0 = no error) and `socket_error_message()`
 # report the result of the last network operation.
 
-# Domain / socket-type constants (AF_INET=2, SOCK_STREAM=1, IPPROTO_TCP=6).
+# Domain / socket-type constants. A constant enum: each member is a compile-time
+# Int (scoped under `Socket`), so they flow straight into the Int params of the
+# socket helpers without a call.
 share(all)
-AF_INET()<Int> -> { return 2 }
-
-share(all)
-SOCK_STREAM()<Int> -> { return 1 }
-
-share(all)
-IPPROTO_TCP()<Int> -> { return 6 }
+enum Socket {
+    AF_INET = 2
+    SOCK_STREAM = 1
+    IPPROTO_TCP = 6
+}
 
 # Create a socket in the given domain/type/protocol; returns the descriptor
 # (>= 0) or -1 on failure (see socket_error_code()).

@@ -1359,6 +1359,9 @@ std::string EnumVariant::toString() const {
         }
         str += ")";
     }
+    if (hasValue) {
+        str += " = " + std::to_string(value);
+    }
     return str;
 }
 

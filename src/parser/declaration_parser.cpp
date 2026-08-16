@@ -3,6 +3,7 @@
 #include "vyb/parser/parser.hpp"
 #include "vyb/parser/ast.hpp"
 #include <stdexcept> // For std::runtime_error
+#include <cstdlib>   // For std::strtoll
 #include <vector>
 #include <memory>
 #include <string> // Required for std::to_string
@@ -1641,7 +1642,25 @@ std::unique_ptr<ast::EnumVariant> DeclarationParser::parse_enum_variant() {
         }
         this->expect(vyb::TokenType::RPAREN);
     }
-    return std::make_unique<ast::EnumVariant>(loc, std::move(name), std::move(associated_types));
+
+    // Constant enum: `AF_INET = 2`. The value must be an integer literal so the
+    // variant doubles as a compile-time Int constant.
+    int64_t value = 0;
+    bool hasValue = false;
+    if (this->match(vyb::TokenType::EQ)) {
+        bool neg = this->match(vyb::TokenType::MINUS).has_value();
+        if (this->peek().type != vyb::TokenType::INT_LITERAL) {
+            throw std::runtime_error("Expected integer value after '=' in enum variant at " + location_to_string(this->current_location()));
+        }
+        value = std::strtoll(this->consume().lexeme.c_str(), nullptr, 0);
+        if (neg) value = -value;
+        hasValue = true;
+    }
+
+    auto variant = std::make_unique<ast::EnumVariant>(loc, std::move(name), std::move(associated_types));
+    variant->value = value;
+    variant->hasValue = hasValue;
+    return variant;
 }
 
 // Helper method to determine if we're in a function declaration context

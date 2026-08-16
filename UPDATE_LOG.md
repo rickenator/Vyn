@@ -3,6 +3,27 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-15: **Constant enums (`Enum::Member` as scoped Int constants)**. A
+  C-like enum whose variants carry explicit `= <int>` values (`enum Socket {
+  AF_INET = 2, SOCK_STREAM = 1, IPPROTO_TCP = 6 }`) now yields a namespace of
+  compile-time `Int` constants: `Socket::AF_INET` is `Int` 2 and flows straight
+  into `Int` parameters and arithmetic — no call, no cast. This replaces the
+  `AF_INET()<Int> { return 2 }` constant-function idiom (the shape `vyb bindgen`
+  emits for C `#define`/enum constants) that required a call at every use site.
+  Two language changes, isolated and backward compatible: (1) the parser accepts
+  `= <int>` on enum variants (stored on `EnumVariant`); (2) an all-`=`-valued,
+  plain, non-generic no-payload enum is treated as a constant enum — semantic
+  types its member references as `Int` (and records them in `constEnumValues`)
+  instead of the nominal enum type, and codegen stores the explicit i64 value in
+  `enumVariantValues` rather than auto-sequencing positional tags. Value-less
+  C-like enums (e.g. `enum Direction { East, West }`) are unchanged (nominal
+  typed values), and mixed/partial `=` variants or `=` + data/generics are
+  rejected. `network` now ships the `Socket` const enum (`Socket::AF_INET` ...)
+  and `http` ships `HttpSock` (kept local+distinctly-named because a subset
+  `import network::{Socket}` doesn't splice from within a module, and defining
+  a shared `Socket` in both would collide); the network/http tests read cleanly.
+  Covered by `test/enum/test_const_enum.vyb`; full suite passes.
+
 - 2026-08-15: **`threads` stdlib module (pthread-backed, MVP)**. First real
   multithreading for Vyb: `import threads` runs a `fn() -> Int` closure on a
   fresh POSIX thread. `thread_spawn(work)` unpacks the closure (a uniform

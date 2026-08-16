@@ -401,6 +401,15 @@ expressive APIs. **Vyb-natural approach:** enums should integrate with the aspec
 and pattern matching, not be a separate OOP mechanism.
 
 - [x] **Enum declaration syntax** — `enum Direction { North, South, East, West }` — variants are distinct typed values of the enum type (`Direction::North`), rendered `Direction::North`, with `match`/`select` dispatch and exhaustiveness
+- [x] **Constant enums** — `enum Socket { AF_INET = 2, ... }` — a C-like enum
+  whose variants carry explicit `= <int>` values becomes a scoped namespace of
+  compile-time `Int` constants: `Socket::AF_INET` is `Int` 2 and flows straight
+  into `Int` parameters/arithmetic (no call, no cast). Value-less C-like enums
+  keep their existing nominal typed-value behavior. Replaces the clumsy
+  `AF_INET()<Int> { return 2 }` constant-function idiom in `network` (the new
+  `Socket` const enum) and `http` (`HttpSock`); parser (`= value` on variants),
+  semantic (members typed `Int`), and codegen (explicit i64 value) only —
+  `test/enum/test_const_enum.vyb`.
 - [x] **Enum variants with data** — `enum Shape { Circle(Float), Rect(Float, Float) }` and generic `enum Box<T> { Value(T), Empty }`: a value-semantics `{ i64 tag, [N x i8] data }` representation is built in codegen, monomorphized per concrete type for generic enums (`Box<Int>::Value(x)` with explicit type args)
 - [x] **Pattern matching on enums (match/select)** — In `match`, enum variant patterns (`Circle(r) ->`) dispatch on the runtime tag and bind payload fields; unit variants match bare (`Unit ->`), and a match must be exhaustive. `select` mirrors this, dispatching on variants and enforcing exhaustiveness the same way.
 - [x] **Enum methods via `bind`** — `bind Drawable -> Shape { ... }` — an aspect `bind` can target a user-defined enum (concrete or generic, e.g. `bind Render -> Box<Int>`), and the built-in generic enums `Option<T>` / `Result<T,E>`; methods dispatch on the concrete variant with substituted payloads

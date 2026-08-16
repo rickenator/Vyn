@@ -1263,6 +1263,8 @@ class EnumVariant : public Node { // Not a Declaration itself, but a component
 public:
     std::unique_ptr<Identifier> name;
     std::vector<TypeNodePtr> associatedTypes; // e.g., Option::Some(T) -> T is an associated type
+    int64_t value = 0;   // explicit constant value (`A = 4`) for constant enums
+    bool hasValue = false; // true when the variant was declared with `= <int>`
 
     EnumVariant(SourceLocation loc, std::unique_ptr<Identifier> name, std::vector<TypeNodePtr> associatedTypes = {});
     ~EnumVariant() override = default;

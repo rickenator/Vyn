@@ -29,16 +29,16 @@
 # external/local server. A real event loop / async accept loop remains on the
 # roadmap.
 
-# Socket constants (AF_INET=2, SOCK_STREAM=1, IPPROTO_TCP=6), matching the
-# `network` module.
+# Underlying socket domain/type/protocol constants (same values as `network`'s
+# `Socket`). Kept local with a distinct name so importing both `network` and
+# `http` into one program doesn't collide, while `http`'s public API only
+# carries `Int`s.
 share(all)
-http_af_inet()<Int> -> { return 2 }
-
-share(all)
-http_sock_stream()<Int> -> { return 1 }
-
-share(all)
-http_proto_tcp()<Int> -> { return 6 }
+enum HttpSock {
+    AF_INET = 2
+    SOCK_STREAM = 1
+    IPPROTO_TCP = 6
+}
 
 # --- Server building blocks -------------------------------------------------
 
@@ -46,7 +46,7 @@ http_proto_tcp()<Int> -> { return 6 }
 # listening descriptor (>= 0) or -1 on failure.
 share(all)
 http_listen(port<Int>, backlog<Int>)<Int> -> {
-    fd<Int> = vyb_net_open(http_af_inet(), http_sock_stream(), http_proto_tcp())
+    fd<Int> = vyb_net_open(HttpSock::AF_INET, HttpSock::SOCK_STREAM, HttpSock::IPPROTO_TCP)
     if (fd < 0) { return -1 }
     if (vyb_net_bind(fd, "0.0.0.0", port) < 0 || vyb_net_listen(fd, backlog) < 0) {
         vyb_net_close(fd)
@@ -153,7 +153,7 @@ http_read_rest(conn<Int>, max<Int>)<String> -> {
 # on connection failure). Blocks until the peer responds.
 share(all)
 http_get(host<String>, port<Int>, path<String>)<String> -> {
-    fd<Int> = vyb_net_open(http_af_inet(), http_sock_stream(), http_proto_tcp())
+    fd<Int> = vyb_net_open(HttpSock::AF_INET, HttpSock::SOCK_STREAM, HttpSock::IPPROTO_TCP)
     if (fd < 0) { return "" }
     if (vyb_net_connect(fd, host, port) < 0) {
         vyb_net_close(fd)

@@ -13,7 +13,7 @@
 
 import http
 import network::{socket_open, socket_connect, socket_send, socket_recv,
-                 socket_close, AF_INET, SOCK_STREAM}
+                 socket_close, Socket}
 
 main()<Int> -> {
     srv<Int> = http_listen(0, 1)
@@ -21,7 +21,7 @@ main()<Int> -> {
     port<Int> = http_local_port(srv)
     if (port <= 0) { return 2 }
 
-    cli<Int> = socket_open(AF_INET(), SOCK_STREAM(), 0)
+    cli<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, 0)
     if (cli < 0) { return 3 }
     if (socket_connect(cli, "127.0.0.1", port) < 0) { return 4 }
 

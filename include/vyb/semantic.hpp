@@ -511,6 +511,11 @@ private:
     // Enum type names declared in this module (for identifier and member-expression resolution)
     std::unordered_set<std::string> enumTypeNames;
 
+    // Constant enums (`enum Sock { AF_INET = 2, ... }`): each variant is a
+    // compile-time Int constant instead of a nominal enum value. name::variant ->
+    // value.
+    std::unordered_map<std::string, int64_t> constEnumValues;
+
     // Payload types for data-carrying (tagged-union) enum variants:
     // enumName -> variantName -> payload TypeNodes (empty vector = unit variant).
     std::unordered_map<std::string, std::unordered_map<std::string, std::vector<ast::TypeNodePtr>>> enumVariantPayloadTypes;

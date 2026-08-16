@@ -1231,6 +1231,25 @@ void LLVMCodegen::visit(vyb::ast::EnumDeclaration* node) {
 
     if (!hasData || !node->genericParams.empty()) {
         if (!hasData && node->genericParams.empty()) {
+            // Constant enum (`enum Sock { AF_INET = 2, ... }`): each variant is a
+            // compile-time Int constant (scoped under the enum name), not a nominal
+            // enum value, so it can flow straight into `Int` parameters.
+            bool anyValue = false, allValue = true;
+            for (const auto& v : node->variants) {
+                if (!v) continue;
+                if (v->hasValue) anyValue = true; else allValue = false;
+            }
+            if (anyValue) {
+                if (!allValue) { m_currentLLVMValue = nullptr; return; } // rejected in semantic
+                for (const auto& variantNode : node->variants) {
+                    if (!variantNode || !variantNode->name) continue;
+                    enumVariantValues[enumName + "::" + variantNode->name->name] =
+                        llvm::ConstantInt::get(int64Type, static_cast<int64_t>(variantNode->value), /*isSigned=*/true);
+                }
+                m_currentLLVMValue = nullptr;
+                return;
+            }
+
             // C-like enum → first-class typed value backed by a single i64 tag
             // (isScalar). This keeps `Enum` values distinct nominal types while
             // dropping them into the same register/ABI slot a C integer-backed enum

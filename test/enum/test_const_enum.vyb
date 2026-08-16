@@ -1,0 +1,36 @@
+// @test: constant enums - explicit-value C-like enums as scoped Int constants
+// @description: an enum whose variants carry `= <int>` values is a "constant
+//   enum": each member (Enum::Member) is a compile-time Int constant, so it
+//   flows straight into Int parameters and arithmetic — no calls, no casts.
+//   Value-less C-like enums keep their existing nominal typed-value behavior.
+// @category: enums, constants, types, syntax
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+
+enum Sock {
+    AF_INET = 2
+    SOCK_STREAM = 1
+    IPPROTO_TCP = 6
+}
+enum Plain { Red, Green }
+
+main()<Int> -> {
+    // Constant-enum members are plain Int values.
+    if (Sock::AF_INET != 2) { return 1 }
+    if (Sock::SOCK_STREAM != 1) { return 2 }
+    if (Sock::IPPROTO_TCP != 6) { return 3 }
+
+    // They participate in arithmetic and flow into Int params.
+    sum<Int> = Sock::AF_INET + Sock::IPPROTO_TCP
+    if (sum != 8) { return 4 }
+    domain<Int> = Sock::AF_INET
+    if (domain != 2) { return 5 }
+
+    // Value-less C-like enums are unchanged: a nominal typed value.
+    r<Plain> = Plain::Green
+    if (r == Plain::Red) { return 6 }
+
+    println("ok")
+    return 0
+}
