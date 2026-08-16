@@ -26,12 +26,14 @@
 #
 # Threading: `http_serve` runs the accept loop on a worker thread and serves
 # each accepted connection on its own detached thread, so the server keeps
-# accepting while connections are handled concurrently. It uses the
-# `vyb_thread_*` pthread intrinsics directly (the same primitives the `threads`
-# module wraps), keeping `http` self-contained like it is for sockets. The
-# sockets remain blocking, so an accept only returns once the kernel has queued
-# a connect. `http_get` blocks until a *living* peer responds, so exercise it
-# against an external/local server.
+# accepting while connections are handled concurrently (via the `threads`
+# module's `thread_spawn` / `thread_detach`). The sockets remain blocking, so
+# an accept only returns once the kernel has queued a connect. `http_get`
+# blocks until a *living* peer responds, so exercise it against an
+# external/local server.
+
+# Concurrent worker threads come from the `threads` module.
+import threads::{thread_spawn, thread_detach}
 
 # Underlying socket domain/type/protocol constants (same values as `network`'s
 # `Socket`). Kept local with a distinct name so importing both `network` and
@@ -175,7 +177,7 @@ http_get(host<String>, port<Int>, path<String>)<String> -> {
 # closing. Runs concurrently with the rest of the server.
 share(all)
 http_serve_conn(conn<Int>)<Int> -> {
-    h<Int> = vyb_thread_spawn(|| -> {
+    h<Int> = thread_spawn(|| -> {
         head<String> = http_read_head(conn, 65536)
         path<String> = http_request_path(head)
         pk<String> = http_response(200, "hi from vyb: " + path)
@@ -183,7 +185,7 @@ http_serve_conn(conn<Int>)<Int> -> {
         http_close(conn)
         return 0
     })
-    if (h >= 0) { vyb_thread_detach(h) }
+    if (h >= 0) { thread_detach(h) }
     return 0
 }
 
@@ -198,7 +200,7 @@ share(all)
 http_serve(port<Int>, backlog<Int>)<Int> -> {
     fd<Int> = http_listen(port, backlog)
     if (fd < 0) { return -1 }
-    thr<Int> = vyb_thread_spawn(|| -> {
+    thr<Int> = thread_spawn(|| -> {
         while (true) {
             c<Int> = http_accept(fd)
             if (c < 0) { return 0 }
@@ -210,6 +212,6 @@ http_serve(port<Int>, backlog<Int>)<Int> -> {
         http_close(fd)
         return -1
     }
-    vyb_thread_detach(thr)
+    thread_detach(thr)
     return fd
 }
