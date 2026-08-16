@@ -3,6 +3,14 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-15: **`io` open-mode flags converted to a constant enum**. The six
+  constant-functions `FILE_READ()`/`FILE_WRITE()`/... (the bindgen-style
+  `X()<Int> { return N }` shape) are replaced by a `FileFlag` constant enum in
+  `stdlib/io/mod.vyb`: `FileFlag::READ` is an `Int` and combines with `|`
+  (`FileFlag::WRITE | FileFlag::CREATE | FileFlag::TRUNC`). `open_read` /
+  `open_write` / `open_append` read cleanly. `test/modules/test_file_io.vyb`
+  passes unchanged.
+
 - 2026-08-15: **Constant enums (`Enum::Member` as scoped Int constants)**. A
   C-like enum whose variants carry explicit `= <int>` values (`enum Socket {
   AF_INET = 2, SOCK_STREAM = 1, IPPROTO_TCP = 6 }`) now yields a namespace of

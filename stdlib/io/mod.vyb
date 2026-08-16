@@ -8,32 +8,25 @@
 #
 # Usage:
 #   import io::{open_write, write_str, close, open_read, read_all}
-#   f<File> = open_write("data.txt")     # FILE_WRITE | FILE_CREATE | FILE_TRUNC
+#   f<File> = open_write("data.txt")     # FileFlag::WRITE | CREATE | TRUNC
 #   write_str(f, "hello"); close(f)
-#   r<File> = open_read("data.txt")      # FILE_READ
+#   r<File> = open_read("data.txt")
 #   println(read_all(r)); close(r)
 #
 # Diagnostic surface: `error_code()` (0 = no error) and `error_message()` report
 # the result of the last file operation.
 
-# Open-mode helper flags (portable bitmask understood by the runtime helper).
+# Open-mode helper flags (a portable bitmask understood by the runtime helper).
+# A constant enum: `FileFlag::READ` is an `Int` and combines with `|`.
 share(all)
-FILE_READ()<Int> -> { return 1 }
-
-share(all)
-FILE_WRITE()<Int> -> { return 2 }
-
-share(all)
-FILE_RDWR()<Int> -> { return 4 }
-
-share(all)
-FILE_CREATE()<Int> -> { return 128 }
-
-share(all)
-FILE_TRUNC()<Int> -> { return 512 }
-
-share(all)
-FILE_APPEND()<Int> -> { return 1024 }
+enum FileFlag {
+    READ = 1
+    WRITE = 2
+    RDWR = 4
+    CREATE = 128
+    TRUNC = 512
+    APPEND = 1024
+}
 
 # An open file. `fd` is -1 when the last open failed; `path` records the target.
 share(all)
@@ -42,7 +35,7 @@ struct File {
     path<String>
 }
 
-# Open (or create) `path` with the given `FILE_*` flags. Returns the `File`; test
+# Open (or create) `path` with the given `FileFlag` flags. Returns the `File`; test
 # `fd >= 0` (or `error_code()`) to detect failure.
 share(all)
 open(path<String>, flags<Int>)<File> -> {
@@ -52,19 +45,19 @@ open(path<String>, flags<Int>)<File> -> {
 # Convenience: open an existing file for reading.
 share(all)
 open_read(path<String>)<File> -> {
-    return open(path, FILE_READ())
+    return open(path, FileFlag::READ)
 }
 
 # Convenience: create/truncate a file for writing.
 share(all)
 open_write(path<String>)<File> -> {
-    return open(path, FILE_WRITE() | FILE_CREATE() | FILE_TRUNC())
+    return open(path, FileFlag::WRITE | FileFlag::CREATE | FileFlag::TRUNC)
 }
 
 # Convenience: open for appending, creating the file if absent.
 share(all)
 open_append(path<String>)<File> -> {
-    return open(path, FILE_APPEND() | FILE_CREATE())
+    return open(path, FileFlag::APPEND | FileFlag::CREATE)
 }
 
 # Close an open file. Returns 0 on success, -1 on failure.
