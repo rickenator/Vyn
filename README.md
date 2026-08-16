@@ -8,7 +8,7 @@
 
 ## 1. Introduction
 
-Welcome to the Vyb Programming Guide. This guide walks you through writing, building, and extending Vyb programs, from your first "Hello, Vyb!" to deep dives into the Vyb language internals and runtime. **Version 0.5.4** (freedom-1.0 series, in development) delivers a robust systems programming language with an LLVM backend, native code compilation to standalone executables, a sized type system, pattern matching with `match` and `select` expressions, comprehensive control flow including `defer`, `break`/`continue`, resizable `Vec<T>` collections, string methods, a math library, runtime type introspection (`typeof`/`typename`), unified name-first function syntax, compile-time monomorphized generics, aspect/bind polymorphism, a `fail`/`trap` error system, C-like enums, and comprehensive auto-serialization capabilities.
+Welcome to the Vyb programming language. This overview walks you through what Vyb is and the thinking behind it. Vyb is a systems language built on a simple conviction: you should not have to choose between safety and power. Strong type safety and explicit ownership give your code discipline and predictability, while low-level escape hatches keep raw, machine-near control within reach when you need it. Code runs as fast native executables or through a JIT, so performance stays predictable from first prototype to final program. The syntax is readable and name-first, the abstractions are zero-cost, and the language aims to stay out of your way as your ambitions grow. The rest of this guide shows how those ideas take shape through feature summaries and examples.
 
 ### 1.1 Purpose & Audience
 
@@ -26,7 +26,7 @@ Here's a comparison of Vyb against several modern systems languages, showing key
 
 | Language | Templates / Generics               | Memory Model                                                       | Concurrency                            | Syntax Style                      | Unique Feature                                     | Comment                                                      |
 | -------- | ---------------------------------- | ------------------------------------------------------------------ | -------------------------------------- | --------------------------------- | -------------------------------------------------- | ------------------------------------------------------------ |
-| **Vyb**  | Monomorphized generics everywhere | Ownership types (`my`/`our`/`mild`/`their`), reference counting | Async/await, planned actors, threads, channels | Name-first syntax `name(params)<Type> ->`, aspect/bind polymorphism | `select` expressions, `defer`, `freedom` blocks, `fail`/`trap` error system | Combines zero-cost generics with readable ownership semantics |
+| **Vyb**  | Monomorphized generics everywhere | Ownership types (`my`/`our`/`mild`/`their`), reference counting | Async/await | Name-first syntax `name(params)<Type> ->`, aspect/bind polymorphism | `select` expressions, `defer`, `freedom` blocks, `fail`/`trap` error system | Combines zero-cost generics with readable ownership semantics |
 | **Rust** | Monomorphized generics             | Ownership/borrow checker; optional `Arc`/`Rc`                      | `async`/`await`, threads, channels     | C-style braces, macros            | Zero-cost abstractions; strong compile-time safety | No global GC; all memory safety enforced at compile time     |
 | **D**    | Runtime & compile-time templates   | GC by default; `@nogc` for manual alloc/free                       | `std.concurrency` fibers, threads      | C-style; mixins                   | Compile-time function execution (CTFE)             | Blend of high-level features with systems control            |
 | **C++**  | Templates & concepts (20+)         | Manual `new`/`delete`; smart pointers (`unique_ptr`, `shared_ptr`) | Threads, coroutines (`co_await`)       | C-style braces                    | Metaprogramming via templates & concepts           | Extensive ecosystem; highest portability                     |
@@ -47,10 +47,10 @@ Vyb is a statically typed, compiled systems language targeting native code via L
 * **`fail`/`trap` Error System**: Typed error propagation with zero-cost success path; no try/catch/finally.
 * **`defer` Statement**: LIFO scope-exit cleanup without RAII ceremony.
 * **Monomorphized Generics**: Zero-cost generics with aspect bounds (`<T<Display>>`).
-* **Concurrency Built In**: Async/await today; actors, channels, and typed streams planned.
+* **Concurrency**: `async`/`await` and `Future<T>`.
 * **Native Compilation**: Full JIT (LLVM ORC), AOT (object files), and executable generation pipeline.
 
-**Current Version:** 0.5.4 (freedom-1.0 series, in development) 🚀 **AOT COMPILATION + CROSS-PLATFORM SUPPORT**
+**Current Version:** 0.5.4 (freedom-1.0 series) 🚀 **AOT COMPILATION + CROSS-PLATFORM SUPPORT**
 
 ## Quick Start
 
@@ -92,11 +92,11 @@ echo 'main()<Int,String> -> { return 42, "Hello!" }' > tuple.vyb
 build/vyb tuple.vyb  # Outputs: [42, "Hello!"]
 ```
 
-### Compilation to Native Code (v0.4.3+)
+### Compilation to Native Code
 
 Vyb provides a complete compilation pipeline from source to standalone executables:
 
-#### Building Standalone Executables (NEW in v0.4.4!)
+#### Building Standalone Executables
 
 ```bash
 # Build executable (simplest form)
@@ -130,7 +130,7 @@ ldd myapp
 #   libm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x00007f...)
 ```
 
-#### Compiling to Object Files (v0.4.3)
+#### Compiling to Object Files
 
 ```bash
 # Compile to object file (default -O2 optimization)
@@ -176,21 +176,17 @@ Supports 20+ architectures out of the box:
 - **XCore** (XMOS processors)
 
 **Complete Compilation Features:**
-- ✅ **Executable Generation** (v0.4.4): Full build pipeline with `--build` flag
-- ✅ **Runtime Library** (v0.4.4): Automatic compilation and linking of Vyb runtime
-- ✅ **System Linker Integration** (v0.4.4): Platform-aware linker selection (lld, ld, ld64)
-- ✅ **Dynamic Linking** (v0.4.4): Links against system libc and libm
-- ✅ **Static Linking** (v0.4.4): Optional `--static` flag for standalone binaries
-- ✅ **Object File Emission** (v0.4.3): AOT compilation to .o files
-- ✅ **Optimization Levels** (v0.4.3): -O0 through -O3 with LLVM optimizations
-- ✅ **Cross-Compilation** (v0.4.3): 20+ target architectures
-- ✅ **Debug Information** (v0.4.3): Full DWARF debug metadata
-- 🔜 **Optimization Pipeline** (v0.5.2): Advanced LLVM passes, LTO
-- 🔜 **Multi-File Compilation**: Link multiple .vyb files together
-- 🔜 **Dynamic Libraries**: Shared object (.so/.dylib) generation
-- 🔜 **Package Building**: Full project management with dependency resolution
+- ✅ **Executable Generation**: Full build pipeline with `--build` flag
+- ✅ **Runtime Library**: Automatic compilation and linking of Vyb runtime
+- ✅ **System Linker Integration**: Platform-aware linker selection (lld, ld, ld64)
+- ✅ **Dynamic Linking**: Links against system libc and libm
+- ✅ **Static Linking**: Optional `--static` flag for standalone binaries
+- ✅ **Object File Emission**: AOT compilation to .o files
+- ✅ **Optimization Levels**: -O0 through -O3 with LLVM optimizations
+- ✅ **Cross-Compilation**: 20+ target architectures
+- ✅ **Debug Information**: Full DWARF debug metadata
 
-**See:** `doc/MODULE_FFI_BINARY_ROADMAP.md` for the complete compilation roadmap
+**See:** `doc/MODULE_FFI_BINARY_ROADMAP.md` for the compilation pipeline
 
 ### 1.3 Key Concepts & Terminology
 
@@ -208,7 +204,7 @@ Supports 20+ architectures out of the box:
     *   `soft(expr)`: Creates a mild reference `mild<T>` from `our<T>`.
 *   **`freedom` Blocks**: Sections of code marked `freedom { ... }` where raw pointers (`loc<T>`) can be used and some compiler guarantees are relaxed. Within these blocks, operations like `at(ptr)` for dereferencing and `from<loc<T>>()` for pointer conversion are available.
 
-### 1.4 Import vs Smuggle - Vyb's Unique Module System (v0.5.0)
+### 1.4 Import vs Smuggle - Vyb's Unique Module System
 
 Vyb introduces a distinctive approach to module imports with two keywords that serve different security and trust models:
 
@@ -267,7 +263,7 @@ This unique `import`/`smuggle` distinction makes Vyb's module system both secure
 
 ## In This Release
 
-Vyb **v0.5.4** (freedom-1.0 series, in development) is a mature systems programming language with **native executable generation** and a broad core feature set. It remains under active development toward the 1.0 milestone; see `doc/FEATURE_STATUS.md` for the current feature matrix.
+Vyb **v0.5.4** (freedom-1.0 series) is a mature systems programming language with **native executable generation** and a broad core feature set.
 
 ### ✅ **Recent Milestones**
 These features were completed in the current release cycle and are fully tested:
@@ -334,7 +330,7 @@ These features were completed in the current release cycle and are fully tested:
   pi<Float const> = 3.14159
   ```
 
-### ✅ **Binary Executable Generation (NEW in v0.4.4!)**
+### ✅ **Binary Executable Generation **
 - **Full Compilation Pipeline**: Complete source → object → executable workflow
 - **Build Command**: `vyb program.vyb --build myapp` creates standalone executables
 - **Runtime Library**: Automatic compilation and linking of Vyb runtime (vyb_runtime.c)
@@ -345,7 +341,7 @@ These features were completed in the current release cycle and are fully tested:
 - **Production Ready**: Deploy native executables without any runtime dependencies
 - **Cross-Platform**: Linux and macOS support with proper platform detection
 
-### ✅ **JSON Serialization & Deserialization (NEW in v0.4.4!)**
+### ✅ **JSON Serialization & Deserialization **
 - **Runtime Type Metadata**: Complete type registration system with field introspection
 - **Automatic Serialization**: `.to_string()` method on structs generates JSON
 - **JSON Deserialization**: `T::from_string(json)` creates instances from JSON strings
@@ -355,7 +351,7 @@ These features were completed in the current release cycle and are fully tested:
 - **Zero Boilerplate**: No manual serialization code needed
 - **Test Suite**: Comprehensive tests in `test/json/` directory
 
-### ✅ **Native Code Compilation (v0.4.3)**
+### ✅ **Native Code Compilation**
 - **Object File Emission**: Compile to .o files with `--compile/-c` flag
 - **Optimization Levels**: -O0 (none), -O1 (basic), -O2 (default), -O3 (aggressive)
 - **Cross-Compilation**: Supports 20+ target architectures out of the box
@@ -406,6 +402,8 @@ Comprehensive string manipulation built into the `String` type:
 | `.to_lower()` | Lowercase copy | `s.to_lower()` → `String` |
 | `.substring(start, len)` | Slice | `s.substring(0, 5)` → `String` |
 | `.char_at(i)` | ASCII code at index | `s.char_at(1)` → `Int` |
+| `.trim()` / `.strip()` | Strip surrounding whitespace | `s.trim()` → `String` |
+| `.replace(old, new)` | Replace all occurrences | `s.replace("a", "b")` → `String` |
 | `.split(sep)` | Split into `Vec<String>` of its parts | `s.split(",")` → `Vec<String>` |
 | `.format(args...)` | Substitute `{}` placeholders in sequence | `s.format(42)` → `String` |
 | `String::from_bytes(ptr, len)` | Construct from bytes | `String::from_bytes(p, n)` |
@@ -446,9 +444,8 @@ count<Int> = get_csv().split(",").len()                   // number of fields
 ### ✅ **Async Programming & Debugging**
 
 Vyb parses and compiles `async` functions returning `Future<T>` and the `await`
-expression. On the current runtime, `await` resolves its future synchronously;
-true concurrency (an event loop, `spawn`, channels) is a roadmap target. The
-syntax and type plumbing below are stable and tested:
+expression. On the current runtime, `await` resolves its future synchronously.
+The syntax and type plumbing below are stable and tested:
 
 #### Async Function Syntax
 ```vyb
@@ -483,17 +480,15 @@ main()<Void> -> {
 }
 ```
 
-**See:** `test/async/async_simple.vyb` for a working example. A real event loop,
-true concurrency, `spawn`, and typed channels remain on the roadmap.
+**See:** `test/async/async_simple.vyb` for a working example.
 
 **Implementation Status:**
 - ✅ Async function parsing and validation
 - ✅ Future<T> type checking
 - ✅ await expression support
 - ✅ LLVM codegen with debug metadata
-- 🔜 Real event loop / concurrent scheduling (roadmap)
 
-### ✅ **Introspection System (v0.4.2)**
+### ✅ **Introspection System**
 
 Vyb features **runtime type introspection** for self-aware programs:
 
@@ -526,10 +521,6 @@ if (typeof(x) != typeof(y)) {
     println("different types")
 }
 
-// Foundation for advanced features (planned):
-// - Wildcard trap: trap (e<?>) -> { if typeof(e) == typeof<IOError>() ... }
-// - Type-safe downcasting: value as TargetType
-// - Generic serialization based on runtime type
 ```
 
 **Implementation Status:**
@@ -542,7 +533,7 @@ if (typeof(x) != typeof(y)) {
 
 **See:** `test/introspection/` for working examples and `doc/INTROSPECTION_DESIGN.md` for design philosophy
 
-### ✅ **Aspect System (v0.4.2)**
+### ✅ **Aspect System**
 
 **Philosophy:** Vyb uses **aspects + structs** instead of classes and inheritance. This provides polymorphism, code reuse, and composition without the complexity and pitfalls of OOP class hierarchies. See `doc/TRAIT_SYSTEM_DESIGN.md` for detailed design and rationale.
 
@@ -707,7 +698,7 @@ show_all<T<Display>>(item<T>)<Void> -> {
 
 ### ✅ **Canonical Ownership Syntax**
 
-Vyb v0.4.2 features **unified canonical syntax** for ownership and borrowing operations:
+Vyb features **unified canonical syntax** for ownership and borrowing operations:
 
 #### **Type Annotations**
 ```vyb
@@ -758,7 +749,7 @@ python3 migrate_syntax.py --migrate --directory . --backup --report
 
 #### Weak References with mild<T>
 
-Vyb v0.4.4 introduces **`mild<T>`** - weak references that solve circular reference problems without preventing cleanup:
+Vyb introduces **`mild<T>`** - weak references that solve circular reference problems without preventing cleanup:
 
 **Why mild<T>?**
 - **Break Cycles**: Tree nodes with parent pointers, doubly-linked lists
@@ -845,7 +836,7 @@ functions work directly (`printf("%s", s)` accepts a Vyb `String`). See
 
 ## Language Overview
 
-Vyb (freedom-1.0 series) is a mature, actively developed systems programming language with name-first syntax, a sized type system (Int8–Int64, UInt8–UInt64, Float32/Float64, Char, Rune, Bytes), compile-time monomorphized generics, aspect/bind polymorphism, pattern matching, `Vec<T>`, and comprehensive collection support. The core language is stable and well tested; Vyb sits roughly midway to its 1.0 milestone (see `doc/FEATURE_STATUS.md` and `TODO.md`).
+Vyb (freedom-1.0 series) is a mature, actively developed systems programming language with name-first syntax, a sized type system (Int8–Int64, UInt8–UInt64, Float32/Float64, Char, Rune, Bytes), compile-time monomorphized generics, aspect/bind polymorphism, pattern matching, `Vec<T>`, and comprehensive collection support. The core language is stable and well tested.
 
 ### Language Features Showcase
 
@@ -1225,8 +1216,10 @@ utils = { git = "https://..." }    # External Git repository
 local_tools = { path = "../tools" } # Local development dependency
 ```
 
-**Planned Bundle & Sharing System:**
-Fine-grained visibility control with bundles:
+**Bundle & Sharing System:**
+Fine-grained visibility control with bundles (`bundle(...)` and `share(...)`
+directives; see `test/modules/import_bundle_allowed.vyb` and
+`test/modules/import_private_rejected.vyb`):
 
 ```vyb
 # Declare module bundles
@@ -1520,7 +1513,7 @@ invalid_patterns(x<Int>)<String> -> {
 
 **Comparison Pattern Rules:**
 - **Evaluation Order**: Patterns tested top-to-bottom, first-match-wins
-- **Type Safety**: Works with `Int`, `Float` types (more types planned)
+- **Type Safety**: Works with `Int` and `Float` types
 - **Compile-Time Errors**: Unreachable patterns detected and rejected
 - **Wildcard Position**: `?` must be last pattern or compiler ERROR
 - **No Gaps Required**: `>= 90`, `>= 80`, `>= 70` is valid (evaluates top-to-bottom)
@@ -1584,12 +1577,11 @@ main()<Int> -> {
 - **Complex Types**: Works with primitives, Strings, Vec, and custom types
 - **Auto-wrapping**: Single values automatically wrapped when returning to tuple type
 - **LLVM Structs**: Compiled to efficient anonymous struct types
-
-**Current Limitations** (planned for future releases):
-- No tuple element access (`.0`, `.1`, etc.)
-- No tuple variables (only return values)
-- No tuple destructuring
-- No tuple serialization output (compiles but values not printed)
+- **Element access**: Bracket indexing (`tuple[0]`, `tuple[1]`, …) with `.len()`
+- **Tuple variables**: Stored in typed variables, built from literals `(a, b, c)`
+  (single-element `(v,)`), and passed to functions
+- **Serialization**: A tuple returned from `main()` serializes to a JSON array
+  (`[1, "a", true]`)
 
 ## String Theory
 
@@ -1762,12 +1754,6 @@ validate_email(email<String>)<Bool> -> {
         return false  # No @ symbol
     }
 
-    # Check @ is not first or last
-    at_pos<Int> = email.find("@")  # (planned method)
-    if (at_pos == 0 || at_pos == email.len() - 1) {
-        return false
-    }
-
     return true
 }
 ```
@@ -1838,19 +1824,7 @@ c_str<*i8> = name.to_bytes()  # Get raw pointer
 # strstr(haystack, needle)
 ```
 
-### Future Enhancements
-
-**Planned Methods**
-- `find(substring: String) -> Int` - Get index of first occurrence
-- `parse_int() -> Option<Int>` - Parse string to integer
-
-**Advanced Features**
-- **UTF-8 support**: Unicode-aware operations (length, indexing, case)
-- **Small string optimization**: Inline strings ≤15 bytes (no heap allocation)
-- **String interning**: Share identical string data
-- **Rope data structure**: Efficient concatenation for large strings
-- **Copy-on-write**: Share data until modification
-
+### Concatenation & Chaining
 
 ```vyb
 # Simple things are simple
@@ -1860,15 +1834,15 @@ msg<String> = "Hello" + " " + "World"
 advanced<String> = data
     .to_lower()
     .substring(0, 100)
-    .replace("old", "new")  # (planned)
-    .trim()                 # (planned)
+    .replace("old", "new")
+    .trim()
 ```
 
 **String Theory Achievement Unlocked:** You now understand Vyb Strings better than most physicists understand actual string theory! 🎻✨
 
 ## Error Handling with trap/fail/ensure
 
-Vyb v0.4.2 features an **explicit error handling system** that combines the clarity of exceptions with the safety of Result types. The `trap`/`fail`/`ensure` trio provides compile-time error tracking with zero runtime overhead for the happy path.
+Vyb features an **explicit error handling system** that combines the clarity of exceptions with the safety of Result types. The `trap`/`fail`/`ensure` trio provides compile-time error tracking with zero runtime overhead for the happy path.
 
 ### The Philosophy
 
@@ -2085,7 +2059,7 @@ Exit Code: 1
 **Safety Guarantees:**
 - No silent failures
 - No undefined behavior
-- Clear error location (planned: stack traces)
+- Clear error location (stack-trace capture in error structs)
 - Graceful termination
 
 ### Struct Errors with Context
@@ -2141,7 +2115,7 @@ Validation failed:
 The `ensure` keyword provides cleanup/finally semantics, guaranteeing code runs whether the block succeeds or fails:
 
 ```vyb
-# Implemented in v0.4.2
+# The ensure block runs on both success and failure paths
 process_file(path<String>)<String> -> {
     file<File> = open_file(path)
 
@@ -2352,7 +2326,7 @@ fail 503  # What does this mean?
 
 ### Current Implementation Status
 
-**✅ In This Release (v0.4.2):**
+**✅ In This Release:**
 - fail statements with primitives (Int, Float, String)
 - fail statements with custom struct types
 - Error heap allocation with type ID + value storage
@@ -2364,16 +2338,9 @@ fail 503  # What does this mean?
 - Untrapped error runtime handler with formatted output
 - Complete LLVM codegen for all error operations
 - `ensure` keyword for cleanup/finally blocks
-- Stack trace capture in error structs (v0.5.1)
+- Stack trace capture in error structs
 - Wildcard trap handlers `} trap (e<?>) -> { ... }`
 - Type introspection (`typeof`, `as`) for discriminating multi-type traps
-
-**🔜 Planned Enhancements:**
-
-- Error context chaining (wrap errors with additional context)
-- Custom error formatting with Display aspect
-- Error metrics and telemetry hooks
-
 
 ### Example: Complete Error Handling
 
@@ -2643,7 +2610,7 @@ main()<Result> -> {
 
 ## JSON Serialization & Deserialization
 
-Vyb v0.4.4 includes a **complete JSON serialization system** with bidirectional conversion between structs and JSON:
+Vyb includes a **complete JSON serialization system** with bidirectional conversion between structs and JSON:
 
 ### Automatic Serialization
 
@@ -2728,33 +2695,9 @@ freedom {
 }
 ```
 
-## Future Roadmap
-
-Vyb (freedom-1.0 series) compiles through JIT, AOT object files, and native executables via LLVM. The items below track what shipped in recent milestones and what still stands on the path to 1.0.
-
-### 🔜 **Near-Term Priorities (v0.5)**
-1. ✅ **FFI / `extern "C"`** (landed): `extern "C"` blocks, C type aliases, `#[repr(C)]` struct layout, freedom-gated JIT calls, native `--link` support, variadic C functions, and the `vyb bindgen` MVP (`vyb bindgen some.h`). A libclang full-preprocessor backend (`vyb bindgen some.h --full`) lands `#include` expansion, conditional evaluation, and expression/function-like `#define` macros. See `doc/FFI_DESIGN.md`.
-2. ✅ **Module System** (landed): `import`/`smuggle`/`bundle`/`share`, module-path resolution, and stdlib auto-discovery. See `doc/bundles_and_sharing.md`.
-3. ✅ **Lambda/Closure Codegen** (landed): lambdas lower to a uniform closure value (`struct { env, fn }`); free variables are captured into a heap-allocated environment. Beyond by-value capture, all capture forms are implemented: **mutable** captures write back to the outer variable through its address (plain and compound assignment), **move** (`my<T>`) captures transfer ownership into the closure (use-after-move diagnostics), and **`our<T>`** captures bump the shared value's strong count. Capturing closures work standalone, returned from functions, and as `fn` arguments to the Vec `map`/`filter`/`reduce` combinators. `|x<Int>| -> x * 2`.
-4. ✅ **Error Propagation Phases 2-5** (landed): `fail` propagation through call stacks and wildcard `trap (e<?>)`.
-5. ✅ **Enum / Sum Types**: C-like enums (`enum Direction { North, South, East, West }`) and data-carrying tagged unions (`enum Shape { Circle(Float), Rect(Float, Float) }`) are implemented. C-like enums are first-class typed values (render as `Direction::East`) backed by a scalar `i64` tag, so an extern parameter typed `Direction` interoperates with a C integer-backed enum; every enum value also exposes its positional variant tag via `.tag`; `match`/`select` dispatch on variants with exhaustiveness enforcement.
-6. ✅ **`Option<T>` and `Result<T,E>`**: Built-in sum types built on enums (`Some(T)`/`None`, `Ok(T)`/`Err(E)`) with match/select dispatch and exhaustiveness; transitional `core::option::OptionInt` bridge retained for source-compat.
-
-### 📋 **Long-Term Goals**
-- **Ownership Runtime Enforcement**: `their`/`mild` borrow handles and `our` reference counting ship; full `my<T>` move/use-after-move tracking is the remaining gap
-- ~~**Iterator Aspect**~~ — landed: `core::iter::Iterator` with `type Item; next(self)<Option<Item>>`; `for (x in iterable)` desugars onto it (incl. a step param)
-- ~~**Associated Types**~~ — landed: aspects declare `type Item`, resolved through generic binds at the call site
-- **Enhanced Async/Await**: Real event loop, `spawn`, typed channels, async lambdas
-- **Self-Hosting**: Vyb compiler written in Vyb
-- **Package Manager**: `vyb.toml`, `vyb build`, dependency resolution
-- **Language Server (LSP)**: Completion, go-to-definition, diagnostics in editors
-- **REPL**: `vyb repl` backed by ORC JIT
-
-**Current Status**: All core language features work end-to-end. See `TODO.md` for the high-level 1.0 plan and `UPDATE_LOG.md` for the current source-biased implementation audit.
-
 ## Testing & Development Tools
 
-Vyb v0.4.2 includes a **modern, comprehensive testing infrastructure** designed for efficient development and quality assurance:
+Vyb includes a **modern, comprehensive testing infrastructure** designed for efficient development and quality assurance:
 
 ### 🧪 **Modern Test Harness**
 
@@ -2881,10 +2824,10 @@ See `doc/` directory for detailed design documents and RFCs.
 - ✅ **Dual Parameter Syntax**: Both `var<Type> name` and `Type name` forms working seamlessly
 - ✅ **Member Access**: Object field access (`obj.field`) and array indexing (`arr[index]`)
 - ✅ **Auto-serialization**: Complex return types with smart JSON-like output
-- ✅ **Async/Await**: `async` functions with `Future<T>` types and `await` (synchronous resolution today; a real event loop is planned)
+- ✅ **Async/Await**: `async` functions with `Future<T>` types and `await` (synchronous resolution today)
 - ✅ **Debug Infrastructure**: Full LLVM debug metadata for source-level debugging
 
-**Language Status**: Vyb (freedom-1.0 series, tracked as v0.5.x) is an actively developed systems programming language with unified canonical syntax, a sized type system (Int8–Int64, UInt8–UInt64, Float32/Float64, Char, Rune, Bytes), compile-time monomorphized generics, aspect/bind polymorphism, a `fail`/`trap` error system, JIT/AOT/native codegen, and a modern test harness. The core language is stable and well tested; development continues toward the 1.0 milestone — see `doc/FEATURE_STATUS.md` for the current feature matrix.
+**Language Status**: Vyb (freedom-1.0 series, tracked as v0.5.x) is an actively developed systems programming language with unified canonical syntax, a sized type system (Int8–Int64, UInt8–UInt64, Float32/Float64, Char, Rune, Bytes), compile-time monomorphized generics, aspect/bind polymorphism, a `fail`/`trap` error system, JIT/AOT/native codegen, and a modern test harness. The core language is stable and well tested; see `doc/FEATURE_STATUS.md` for the current feature matrix.
 
 ## Getting Help
 
@@ -2899,7 +2842,7 @@ See `doc/` directory for detailed design documents and RFCs.
 
 ### A. EBNF Grammar
 
-Vyb's syntax is defined by a comprehensive EBNF grammar reflecting v0.4.2 capabilities:
+Vyb's syntax is defined by the following canonical EBNF grammar:
 
 ```ebnf
 // Conventions:
@@ -3192,7 +3135,7 @@ Tree representation of source code structure produced by the parser.
 Compile-time analysis ensuring references don't outlive the data they point to.
 
 **Bundle**
-Planned namespace grouping for fine-grained module visibility control.
+Module visibility grouping via `bundle(...)` / `share(...)` directives.
 
 **Import**
 Secure module inclusion from verified, signed sources.
@@ -3231,4 +3174,4 @@ Copyright 2026 Aniviza LLC. Licensed under the
 
 ---
 
-*Vyb (freedom-1.0 series): A mature systems programming language with a comprehensive sized type system, unified name-first syntax, pattern matching, compile-time monomorphized generics, resizable collections, an aspect/bind polymorphism system, and a unique import/smuggle module system — actively developed toward the 1.0 milestone.*
+*Vyb (freedom-1.0 series): A mature systems programming language with a comprehensive sized type system, unified name-first syntax, pattern matching, compile-time monomorphized generics, resizable collections, an aspect/bind polymorphism system, and a unique import/smuggle module system.*
