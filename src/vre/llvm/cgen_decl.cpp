@@ -20,7 +20,7 @@ using namespace vyb;
 // using namespace llvm; // Uncomment if desired for brevity
 
 // Forward declaration: helper used by the routing branch before its definition.
-enum class AsyncResultKind { None, Int, String, Void };
+enum class AsyncResultKind { None, Int, String, Void, Float, Bool };
 static AsyncResultKind asyncFutureResultKind(vyb::ast::FunctionDeclaration* node);
 
 // --- Declarations ---
@@ -1575,6 +1575,8 @@ static AsyncResultKind asyncFutureResultKind(vyb::ast::FunctionDeclaration* node
     if (n == "Int") return AsyncResultKind::Int;
     if (n == "String") return AsyncResultKind::String;
     if (n == "Void") return AsyncResultKind::Void;
+    if (n == "Float") return AsyncResultKind::Float;
+    if (n == "Bool") return AsyncResultKind::Bool;
     return AsyncResultKind::None;
 }
 
@@ -1597,7 +1599,9 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
     const AsyncResultKind kind = asyncFutureResultKind(node);
     const std::string& resultName =
         (kind == AsyncResultKind::String) ? "String"
-        : (kind == AsyncResultKind::Void) ? "Void" : "Int";
+        : (kind == AsyncResultKind::Void) ? "Void"
+        : (kind == AsyncResultKind::Float) ? "Float"
+        : (kind == AsyncResultKind::Bool) ? "Bool" : "Int";
 
     // 1) Worker: a plain `fn(params...) -> <Result>` that runs the original body
     //    through the normal codegen path (parameter scope, trap/epilogue handling,
@@ -1668,6 +1672,12 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
             b.CreateRet(llvm::ConstantInt::get(int64Type, 0));
         } else if (kind == AsyncResultKind::Int) {
             b.CreateRet(b.CreateCall(worker, args, "async.worker"));
+        } else if (kind == AsyncResultKind::Bool) {
+            llvm::Value* bv = b.CreateCall(worker, args, "async.worker");
+            b.CreateRet(b.CreateZExt(bv, int64Type, "async.worker.zext"));
+        } else if (kind == AsyncResultKind::Float) {
+            llvm::Value* fv = b.CreateCall(worker, args, "async.worker");
+            b.CreateRet(b.CreateBitCast(fv, int64Type, "async.worker.bitcast"));
         } else { // String
             llvm::Value* sv = b.CreateCall(worker, args, "async.worker");
             llvm::DataLayout dl(module.get());

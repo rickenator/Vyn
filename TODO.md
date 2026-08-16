@@ -554,10 +554,15 @@ with `pass` for multi-statement case bodies. Needs polishing:
   the bare `await f` statement form. **The multi-threaded executor is done** (Stage
   4): workers idle on condition variables with the min timer deadline, wake each
   other when they enqueue work, and a main-thread await blocks on a condvar until
-  the worker delivers. Remaining stages: Float/Bool futures, owned/rich async
-  parameter types, and `await`/multi-step value futures. See
+  the worker delivers. **`Float`/`Bool` futures done** (Stage 5): a `Float` result
+  is passed as its f64 bit pattern and a `Bool` as 0/1 in the int64 task slot and
+  decoded by `await` (bitcast / zero-extend+truncate), covering both the main await
+  and the fiber-suspend (nested `await` from inside a task) paths
+  (`test/async/async_float_bool.vyb`). Remaining stages: owned/rich async parameter
+  types and `await`/multi-step value futures. See
   `test/async/async_event_loop.vyb`, `async_params.vyb`, `async_nested_await.vyb`,
-  `async_string.vyb`, `async_void.vyb`, and `async_multicore.vyb`.
+  `async_string.vyb`, `async_void.vyb`, `async_multicore.vyb`, and
+  `async_float_bool.vyb`.
 - [x] **`spawn` for concurrent tasks** — two storylines: the pthread `tasks`
   module (`t = task_spawn(fn() -> Int)`, `task_await`/`task_poll`/`task_free`)
   for real parallel workers, and the cooperative `asyncs` module above for

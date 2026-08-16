@@ -444,16 +444,17 @@ count<Int> = get_csv().split(",").len()                   // number of fields
 ### ✅ **Async Programming & Debugging**
 
 Vyb parses and compiles `async` functions returning `Future<T>` and the `await`
-expression. An `async fn(params...)<Future<T>>` (T = `Int`, `String`, or `Void`)
-starts a task on the stdlib's **multi-threaded executor** when called — its scalar
-arguments are snapshotted into a closing environment, and a `String` result
-travels back as a heap slot that `await` hands to the consumer as an owned
-transfer. `await` parks the caller until the task completes (from `main`) or
+expression. An `async fn(params...)<Future<T>>` (T = `Int`, `Float`, `Bool`, `String`, or
+`Void`) starts a task on the stdlib's **multi-threaded executor** when called —
+its scalar arguments are snapshotted into a closing environment, and a `String`
+result travels back as a heap slot that `await` hands to the consumer as an owned
+transfer (a `Float` travels as its bit pattern and a `Bool` as 0/1 in the task's
+result slot). `await` parks the caller until the task completes (from `main`) or
 suspends the current fiber (so a worker can `await` a child task), including as a
 bare statement (`await f`) for `Future<Void>`. The future is returned by value as
-a real struct; the syntax and type plumbing below are stable and tested.
-`Float`/`Bool` futures and owned/rich parameter types still use the legacy eager
-path (a follow-on stage).
+a real struct; the syntax and type plumbing below are stable and tested. Owned/rich
+async parameter types (non-scalar params) still use the legacy eager path (a
+follow-on stage).
 
 #### Async Function Syntax
 ```vyb
@@ -495,6 +496,7 @@ main()<Void> -> {
 - ✅ Future<T> type checking
 - ✅ await expression support (from `main` and inside tasks)
 - ✅ Real event-loop execution for `Future<Int>` / `Future<String>` / `Future<Void>`
+- ✅ `Future<Float>` / `Future<Bool>` primitives (Int-slot bitcast / zero-extend + truncate)
 - ✅ Multi-threaded executor (a thread pool, one scheduler per CPU worker, fibers pinned to their worker)
 - ✅ Parameterized `Future<Int>` async tasks (scalar args captured in an env)
 - ✅ Nested `await` from inside a task (fiber suspension)
@@ -506,7 +508,9 @@ main()<Void> -> {
 concurrency), `test/async/async_nested_await.vyb` (a task that awaits a child),
 `test/async/async_string.vyb` / `async_void.vyb` (non-`Int` futures),
 `test/async/async_multicore.vyb` (four CPU-bound tasks finish in parallel across
-the pool, ~120ms not ~480ms), and the `asyncs` stdlib module section.
+the pool, ~120ms not ~480ms), `test/async/async_float_bool.vyb` (`Float`/`Bool`
+futures, including awaited from inside a task), and the `asyncs` stdlib module
+section.
 
 ### ✅ **Concurrency Modules (stdlib)**
 

@@ -1,0 +1,47 @@
+// Stage-5 real async: Float and Bool futures. The worker's result is encoded
+// into the int64 task slot (Float = the f64 bit pattern via bitcast, Bool = 0/1
+// via zero-extend) and decoded by `await` (bitcast back / truncate).
+// @env: VYB_STDLIB=stdlib
+// @expect: pass
+
+import asyncs::{async_sleep_ms}
+
+async scale(x<Float>, k<Float>)<Future<Float>> -> {
+    async_sleep_ms(5)
+    return x * k
+}
+
+async positive(x<Float>)<Future<Bool>> -> {
+    async_sleep_ms(5)
+    return x > 0
+}
+
+
+// Await Float + Bool futures from inside a task (fiber-suspend path).
+async nested_mixed()<Future<Int>> -> {
+    inner<Float> = await scale(2.0, 3.0)    // 6.0
+    if (inner != 6.0) { return 1 }
+    good<Bool> = await positive(1.0)
+    if (!good) { return 2 }
+    return 0
+}
+
+main()<Int> -> {
+    f<Future<Float>> = scale(6.25, 4.0)   // 25.0, exact in binary
+    r<Float> = await f
+    if (r != 25.0) { return 1 }
+
+    t<Future<Bool>> = positive(-3.0)
+    b<Bool> = await t
+    if (b) { return 2 }
+
+    u<Future<Bool>> = positive(42.0)
+    b2<Bool> = await u
+    if (!b2) { return 3 }
+
+    n<Int> = await nested_mixed()           // fiber-suspend awaits of Float/Bool
+    if (n != 0) { return 4 }
+
+    println("ok")
+    return 0
+}

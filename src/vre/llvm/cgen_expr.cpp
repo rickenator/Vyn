@@ -7582,6 +7582,12 @@ void LLVMCodegen::visit(ast::AwaitExpression* node) {
             if (resultTy->isIntegerTy(64)) {
                 // Int future: the value itself.
                 m_currentLLVMValue = rawResult;
+            } else if (resultTy->isIntegerTy(1)) {
+                // Bool future: the i64 slot holds 0/1; truncate back to i1.
+                m_currentLLVMValue = builder->CreateTrunc(rawResult, resultTy, "await.bool");
+            } else if (resultTy->isDoubleTy()) {
+                // Float future: the i64 slot holds the f64 bit pattern; bitcast back.
+                m_currentLLVMValue = builder->CreateBitCast(rawResult, resultTy, "await.float");
             } else if (isVybStringStructType(resultTy)) {
                 // String future: rawResult is a pointer to a heap slot holding the
                 // String; load it and reclaim the slot (but not the buffer, which
