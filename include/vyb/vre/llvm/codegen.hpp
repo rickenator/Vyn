@@ -60,6 +60,7 @@ struct LoopContext {
     llvm::BasicBlock *loopBody;   // Block for the loop body
     llvm::BasicBlock *loopUpdate; // Block for the loop increment/update
     llvm::BasicBlock *loopExit;   // Block after the loop
+    std::string label;            // loop label ("" = none) for labeled break/continue
 };
 
 // Helper struct to manage value-yielding contexts (select expressions and
@@ -564,7 +565,7 @@ private:
     llvm::Value* generateRTTIObject(const std::string& typeName, int typeId); // typeId for distinguishing types
 
     // Loop handling
-    void pushLoop(llvm::BasicBlock* header, llvm::BasicBlock* body, llvm::BasicBlock* update, llvm::BasicBlock* exit);
+    void pushLoop(llvm::BasicBlock* header, llvm::BasicBlock* body, llvm::BasicBlock* update, llvm::BasicBlock* exit, const std::string& label = "");
     void popLoop();
 
     // Struct field access

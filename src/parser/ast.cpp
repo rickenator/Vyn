@@ -606,7 +606,7 @@ void IfStatement::accept(Visitor& visitor) {
 
 // --- ForStatement ---
 ForStatement::ForStatement(SourceLocation loc, NodePtr i, ExprPtr t, ExprPtr u, StmtPtr b)
-    : Statement(loc), init(std::move(i)), test(std::move(t)), update(std::move(u)), body(std::move(b)) {}
+    : Statement(loc), init(std::move(i)), test(std::move(t)), update(std::move(u)), body(std::move(b)), label() {}
 
 ForStatement::~ForStatement() = default;
 
@@ -630,7 +630,7 @@ std::string ForStatement::toString() const {
         initStr = ""; // No initializer part
     }
 
-    return "for (" + initStr + "; " +
+    return (label.empty() ? "" : label + ": ") + "for (" + initStr + "; " +
            (test ? test->toString() : "") + "; " +
            (update ? update->toString() : "") + ") " +
            (body ? body->toString() : "{}");
@@ -642,7 +642,7 @@ void ForStatement::accept(Visitor& visitor) {
 
 // --- WhileStatement ---
 WhileStatement::WhileStatement(SourceLocation loc, ExprPtr t, StmtPtr b)
-    : Statement(loc), test(std::move(t)), body(std::move(b)) {}
+    : Statement(loc), test(std::move(t)), body(std::move(b)), label() {}
 
 WhileStatement::~WhileStatement() = default;
 
@@ -651,7 +651,7 @@ NodeType WhileStatement::getType() const {
 }
 
 std::string WhileStatement::toString() const {
-    return "while (" + (test ? test->toString() : "nullptr") + ") " +
+    return (label.empty() ? "" : label + ": ") + "while (" + (test ? test->toString() : "nullptr") + ") " +
            (body ? body->toString() : "{}");
 }
 
@@ -697,7 +697,7 @@ void PassStatement::accept(Visitor& visitor) {
 
 // --- BreakStatement ---
 BreakStatement::BreakStatement(SourceLocation loc)
-    : Statement(loc) {}
+    : Statement(loc), label() {}
 
 BreakStatement::~BreakStatement() = default;
 
@@ -706,7 +706,7 @@ NodeType BreakStatement::getType() const {
 }
 
 std::string BreakStatement::toString() const {
-    return "break;";
+    return label.empty() ? "break;" : "break " + label + ";";
 }
 
 void BreakStatement::accept(Visitor& visitor) {
@@ -715,7 +715,7 @@ void BreakStatement::accept(Visitor& visitor) {
 
 // --- ContinueStatement ---
 ContinueStatement::ContinueStatement(SourceLocation loc)
-    : Statement(loc) {}
+    : Statement(loc), label() {}
 
 ContinueStatement::~ContinueStatement() = default;
 
@@ -724,7 +724,7 @@ NodeType ContinueStatement::getType() const {
 }
 
 std::string ContinueStatement::toString() const {
-    return "continue;";
+    return label.empty() ? "continue;" : "continue " + label + ";";
 }
 
 void ContinueStatement::accept(Visitor& visitor) {

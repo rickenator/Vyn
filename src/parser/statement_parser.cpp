@@ -40,6 +40,25 @@ vyb::ast::StmtPtr StatementParser::parse() {
         this->match(vyb::TokenType::SEMICOLON);
         return nullptr; // ignore throw statement in AST
     }
+    // Labeled loop: `label: for (...) ...` / `label: while (...) ...`. Detect
+    // IDENTIFIER ':' followed by a loop keyword before general parsing.
+    if (this->peek().type == vyb::TokenType::IDENTIFIER &&
+        this->peekNext().type == vyb::TokenType::COLON) {
+        const vyb::token::Token& after_colon = this->peekAhead(2);
+        if (after_colon.type == vyb::TokenType::KEYWORD_FOR ||
+            after_colon.type == vyb::TokenType::KEYWORD_WHILE) {
+            std::string label = this->consume().lexeme;   // label
+            this->expect(vyb::TokenType::COLON, "Expected ':' after loop label"); // ':'
+            if (after_colon.type == vyb::TokenType::KEYWORD_FOR) {
+                auto loop = this->parse_for();
+                loop->label = label;
+                return loop;
+            }
+            auto loop = this->parse_while();
+            loop->label = label;
+            return loop;
+        }
+    }
     vyb::token::Token current_token = this->peek();
     switch (current_token.type) {
         case vyb::TokenType::KEYWORD_MUT:
@@ -1540,19 +1559,35 @@ vyb::ast::StmtPtr StatementParser::parse_match() {
 std::unique_ptr<vyb::ast::BreakStatement> StatementParser::parse_break() {
     SourceLocation break_loc = expect(vyb::TokenType::KEYWORD_BREAK, "Expected 'break'").location;
 
+    // Optional target label: `break outer`
+    std::string label;
+    if (peek().type == vyb::TokenType::IDENTIFIER) {
+        label = consume().lexeme;
+    }
+
     // Optional semicolon
     match(vyb::TokenType::SEMICOLON);
 
-    return std::make_unique<vyb::ast::BreakStatement>(break_loc);
+    auto node = std::make_unique<vyb::ast::BreakStatement>(break_loc);
+    node->label = label;
+    return node;
 }
 
 std::unique_ptr<vyb::ast::ContinueStatement> StatementParser::parse_continue() {
     SourceLocation continue_loc = expect(vyb::TokenType::KEYWORD_CONTINUE, "Expected 'continue'").location;
 
+    // Optional target label: `continue outer`
+    std::string label;
+    if (peek().type == vyb::TokenType::IDENTIFIER) {
+        label = consume().lexeme;
+    }
+
     // Optional semicolon
     match(vyb::TokenType::SEMICOLON);
 
-    return std::make_unique<vyb::ast::ContinueStatement>(continue_loc);
+    auto node = std::make_unique<vyb::ast::ContinueStatement>(continue_loc);
+    node->label = label;
+    return node;
 }
 
 // Parses an freedom block: 'freedom { ... }'

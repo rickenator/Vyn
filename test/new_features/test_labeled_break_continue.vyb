@@ -1,0 +1,53 @@
+// @test: Labeled break and continue
+// @description: `label: for/while` marks a loop; `break label` exits and
+//   `continue label` re-enters (update/header of) that specific enclosing loop.
+//   Verified: a labeled break escapes a nested pair (inner j==1 cuts straight
+//   out of outer), a labeled continue skips the rest of the inner body and goes
+//   to the next outer iteration, and a labeled while break stops exactly at the
+//   target value. Unlabeled break/continue (innermost) still work unchanged.
+// @category: control_flow
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+
+main()<Int> -> {
+    # Labeled break escapes the outer loop on the first inner iteration.
+    sum<Int> = 0
+    outer: for (i in 0..3) {
+        for (j in 0..3) {
+            if (j == 1) { break outer }
+            sum = sum + 1
+        }
+    }
+    if (sum != 1) { return 1 }
+
+    # Labeled continue: only j==0 runs per outer iteration (j==1 continues outer).
+    count<Int> = 0
+    outer2: for (i in 0..2) {
+        for (j in 0..2) {
+            if (j == 1) { continue outer2 }
+            count = count + 1
+        }
+    }
+    if (count != 3) { return 2 }
+
+    # Labeled break on a while loop targets the exact value.
+    k<Int> = 0
+    outer3: while (true) {
+        k = k + 1
+        if (k == 4) { break outer3 }
+    }
+    if (k != 4) { return 3 }
+
+    # Regression: unlabeled break/continue still target the innermost loop.
+    m<Int> = 0
+    for (i in 0..9) {
+        if (i == 5) { break }
+        if (i % 2 == 1) { continue }
+        m = m + i
+    }
+    if (m != 6) { return 4 }   # 0 + 2 + 4 = 6
+
+    println("ok")
+    return 0
+}

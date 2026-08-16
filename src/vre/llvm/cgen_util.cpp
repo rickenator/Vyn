@@ -329,8 +329,8 @@ llvm::AllocaInst* LLVMCodegen::createEntryBlockAlloca(llvm::Type* type, const st
     return alloca;
 }
 
-void LLVMCodegen::pushLoop(llvm::BasicBlock* header, llvm::BasicBlock* body, llvm::BasicBlock* update, llvm::BasicBlock* exit) {
-    loopStack.push_back({header, body, update, exit});
+void LLVMCodegen::pushLoop(llvm::BasicBlock* header, llvm::BasicBlock* body, llvm::BasicBlock* update, llvm::BasicBlock* exit, const std::string& label) {
+    loopStack.push_back({header, body, update, exit, label});
 }
 
 void LLVMCodegen::popLoop() {

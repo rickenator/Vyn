@@ -518,7 +518,12 @@ with `pass` for multi-statement case bodies. Needs polishing:
 ### 9. Advanced Control Flow (LOWER PRIORITY)
 - [x] **`defer` statement** — `defer cleanup()` runs on scope exit (LIFO order, function-level)
 - [x] **`ensure` statement** — `ensure condition else fail<Error>(...)` (post-condition) — desugars to `if (cond) {} else { handling }`; handling may be a block, a single statement (`return -1`), or `fail<T>(...)`
-- [ ] **Labeled `break`/`continue`** — Break from outer loops by label
+- [x] **Labeled `break`/`continue`** — `label: for/while` marks a loop; `break
+  label` exits and `continue label` re-enters that specific enclosing loop,
+  while unlabeled `break`/`continue` still target the innermost loop. Parser
+  (`IDENTIFIER :` before a loop), AST (`For`/`While` carry `label`;
+  `Break`/`Continue` carry an optional target), and codegen resolves the target
+  against the loop stack (`test/new_features/test_labeled_break_continue.vyb`).
 
 ### 10. Async System — Completion (LOWER PRIORITY)
 - [x] **Real event loop / executor (single-threaded, cooperative)** — the `asyncs`

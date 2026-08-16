@@ -89,6 +89,8 @@ namespace vyb { // Changed Vyb to vyb
         void skip_comments_and_newlines();
         const vyb::token::Token& peek() const;
         const vyb::token::Token& peekNext() const;
+        /// k-th non-comment/newline token after the current one (k=0 == peek()).
+        const vyb::token::Token& peekAhead(size_t k) const;
         const vyb::token::Token& previous_token() const;
         void put_back_token();
         vyb::token::Token consume();

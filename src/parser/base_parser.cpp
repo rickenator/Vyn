@@ -78,6 +78,27 @@ namespace vyb {
         return tokens_[temp_pos];
     }
 
+    const vyb::token::Token& BaseParser::peekAhead(size_t k) const {
+        size_t temp_pos = pos_;
+        size_t seen = 0;
+        while (temp_pos < tokens_.size()) {
+            const vyb::token::Token& tk = tokens_[temp_pos];
+            if (tk.type == vyb::TokenType::COMMENT || tk.type == vyb::TokenType::NEWLINE) {
+                temp_pos++;
+                continue;
+            }
+            if (seen == k) {
+                return tk;
+            }
+            seen++;
+            temp_pos++;
+        }
+        if (tokens_.empty()) {
+            throw std::runtime_error("PeekAhead called on empty token stream from file: " + current_file_path_);
+        }
+        return tokens_.back();
+    }
+
     vyb::token::Token BaseParser::consume() {
         skip_comments_and_newlines();
         if (pos_ >= tokens_.size()) {

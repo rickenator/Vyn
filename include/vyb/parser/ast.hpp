@@ -791,6 +791,7 @@ public:
     ExprPtr test;   // Expression or nullptr
     ExprPtr update; // Expression or nullptr
     StmtPtr body;
+    std::string label; // optional loop label ("" = none) for labeled break/continue
 
     ForStatement(SourceLocation loc, NodePtr init, ExprPtr test, ExprPtr update, StmtPtr body);
     virtual ~ForStatement();
@@ -803,6 +804,7 @@ class WhileStatement : public Statement {
 public:
     ExprPtr test;
     StmtPtr body;
+    std::string label; // optional loop label ("" = none) for labeled break/continue
 
     WhileStatement(SourceLocation loc, ExprPtr test, StmtPtr body);
     virtual ~WhileStatement();
@@ -838,6 +840,7 @@ public:
 // --- BreakStatement ---
 class BreakStatement : public Statement {
 public:
+    std::string label; // optional target label ("" = innermost loop)
     BreakStatement(SourceLocation loc);
     virtual ~BreakStatement();
     NodeType getType() const override;
@@ -848,6 +851,7 @@ public:
 // --- ContinueStatement ---
 class ContinueStatement : public Statement {
 public:
+    std::string label; // optional target label ("" = innermost loop)
     ContinueStatement(SourceLocation loc);
     virtual ~ContinueStatement();
     NodeType getType() const override;

@@ -369,7 +369,7 @@ These features were completed in the current release cycle and are fully tested:
 - **Vec Iteration**: `for (item in vec)` loops with inferred element type and `break`/`continue`
 - **Fixed Arrays**: `[T; N]` with indexing
 - **Structs**: `struct Point { x<Int>, y<Int> }` with field access (`p.x`, `p.y`)
-- **Control Flow**: `if/else`, `while/for` loops, `match` statements, `break/continue`
+- **Control Flow**: `if/else`, `while/for` loops, `match` statements, `break`/`continue` (including labeled: `outer: for ... break outer`)
 - **`defer` statement**: `defer expr` — LIFO scope-exit execution for cleanup
 - **Select Expressions**: `select(expr) -> { pattern -> result }` — pattern matching that returns a value; `pass` keyword for multi-statement arms
 - **Arithmetic**: Full binary operators (`+`, `-`, `*`, `/`, `==`, `!=`, `<`, `>`, etc.)

@@ -892,7 +892,7 @@ void LLVMCodegen::visit(vyb::ast::WhileStatement* node) {
     builder->SetInsertPoint(loopBodyBB);
     // The LoopContext struct in codegen.hpp is {llvm::BasicBlock *loopHeader, *loopBody, *loopUpdate, *loopExit;}
     // For a 'while' loop, the 'update' block is effectively the header where the condition is re-evaluated.
-    pushLoop(loopHeaderBB, loopBodyBB, loopHeaderBB /*update is header for while*/, loopExitBB);
+    pushLoop(loopHeaderBB, loopBodyBB, loopHeaderBB /*update is header for while*/, loopExitBB, node->label);
     node->body->accept(*this); // Generate loop body
     popLoop(); // Pop loop context
 
@@ -950,7 +950,20 @@ void LLVMCodegen::visit(vyb::ast::BreakStatement* node) {
         m_currentLLVMValue = nullptr;
         return;
     }
-    LoopContext& currentLoop = loopStack.back();
+    // With a label, break the matching enclosing loop; otherwise the innermost.
+    LoopContext* target = &loopStack.back();
+    if (!node->label.empty()) {
+        target = nullptr;
+        for (auto it = loopStack.rbegin(); it != loopStack.rend(); ++it) {
+            if (it->label == node->label) { target = &(*it); break; }
+        }
+        if (!target) {
+            logError(node->loc, "Unknown loop label '" + node->label + "' for break.");
+            m_currentLLVMValue = nullptr;
+            return;
+        }
+    }
+    LoopContext& currentLoop = *target;
     // Member name is loopExit based on struct LoopContext definition in codegen.hpp
     if (!currentLoop.loopExit) {
          logError(node->loc, "Invalid loop context: exit block is null for break.");
@@ -971,7 +984,20 @@ void LLVMCodegen::visit(vyb::ast::ContinueStatement* node) {
         m_currentLLVMValue = nullptr;
         return;
     }
-    LoopContext& currentLoop = loopStack.back();
+    // With a label, continue the matching enclosing loop; otherwise the innermost.
+    LoopContext* target = &loopStack.back();
+    if (!node->label.empty()) {
+        target = nullptr;
+        for (auto it = loopStack.rbegin(); it != loopStack.rend(); ++it) {
+            if (it->label == node->label) { target = &(*it); break; }
+        }
+        if (!target) {
+            logError(node->loc, "Unknown loop label '" + node->label + "' for continue.");
+            m_currentLLVMValue = nullptr;
+            return;
+        }
+    }
+    LoopContext& currentLoop = *target;
     // Member name is loopUpdate based on struct LoopContext definition in codegen.hpp
      if (!currentLoop.loopUpdate) {
          logError(node->loc, "Invalid loop context: update/header block is null for continue.");
@@ -1033,7 +1059,7 @@ void LLVMCodegen::visit(vyb::ast::ForStatement* node) {
 
     // Body block
     builder->SetInsertPoint(bodyBB);
-    pushLoop(condBB, bodyBB, updateBB, exitBB);
+    pushLoop(condBB, bodyBB, updateBB, exitBB, node->label);
     node->body->accept(*this); // Generate loop body
     popLoop();
     if (!builder->GetInsertBlock()->getTerminator()) { // If body doesn't end with break/return
