@@ -1391,7 +1391,8 @@ vyb::ast::StmtPtr StatementParser::parse_await() {
     } else if (peek().type == vyb::TokenType::NEWLINE ||
                IsAtEnd() ||
                peek().type == vyb::TokenType::RBRACE ||
-               peek().type == vyb::TokenType::DEDENT) {
+               peek().type == vyb::TokenType::DEDENT ||
+               is_statement_start(peek().type)) {
         // Optional semicolon: fine.
     } else {
         throw error(peek(), "Expected semicolon or newline after await statement.");

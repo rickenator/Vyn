@@ -348,6 +348,20 @@ void LLVMCodegen::visit(vyb::ast::UnaryExpression *node) {
                 m_currentLLVMValue = nullptr;
             }
             break;
+        case vyb::TokenType::KEYWORD_AWAIT: {
+            // `await expr` as a bare statement (parser wraps it as a UnaryExpression
+            // with an AWAIT token). Delegate to the await-expression path so the
+            // event loop is actually driven. A String result is discarded here and
+            // must release its single owned reference (the slot was already freed
+            // inside the await path).
+            auto awaitExpr = std::make_unique<ast::AwaitExpression>(node->loc,
+                std::move(node->operand));
+            visit(awaitExpr.get());
+            if (m_currentLLVMValue && isVybStringStructType(m_currentLLVMValue->getType())) {
+                releaseStringValue(m_currentLLVMValue);
+            }
+            break;
+        }
         default:
             logError(node->loc, "Unsupported unary operator.");
             m_currentLLVMValue = nullptr;
@@ -7535,21 +7549,62 @@ void LLVMCodegen::visit(ast::AwaitExpression* node) {
         return;
     }
 
-    // Stage-1 real async: if the operand is a four-field Future struct
+    // Real async: if the operand is a four-field Future struct
     // ({T* result, i32 state, i64 task_id, i8* runtime_data}), await it on the
     // cooperative event loop. The single __vyb_async_await intrinsic both drives
     // the loop from the main thread and suspends from inside a fiber, so this
-    // works both in `main` and in other tasks.
+    // works both in `main` and in other tasks. The Future<T> result type is
+    // recovered from the canonical Future-struct cache (keyed by result type):
+    //   Int    -> __vyb_async_await returns the value directly.
+    //   String -> it returns a pointer to a heap slot holding the {ptr,len};
+    //             load the String and reclaim the slot (the value is handed to
+    //             the consumer as an owned transfer, see exprIsStringTransfer).
+    //   Void   -> await for completion; no value is produced.
     if (futureValue->getType()->isStructTy()) {
         llvm::StructType* st = llvm::dyn_cast<llvm::StructType>(futureValue->getType());
         if (st && st->getNumElements() == 4 && st->getElementType(2)->isIntegerTy(64)) {
+            llvm::Type* resultTy = nullptr;
+            for (const auto& kv : futureStructCache) {
+                if (kv.second == st) { resultTy = kv.first; break; }
+            }
             llvm::Function* awaitFn = module->getFunction("__vyb_async_await");
             if (!awaitFn) {
                 llvm::FunctionType* at = llvm::FunctionType::get(int64Type, {int64Type}, false);
                 awaitFn = llvm::Function::Create(at, llvm::Function::ExternalLinkage, "__vyb_async_await", module.get());
             }
             llvm::Value* taskId = builder->CreateExtractValue(futureValue, 2, "future.task");
-            m_currentLLVMValue = builder->CreateCall(awaitFn, {taskId}, "await.result");
+            llvm::Value* rawResult = builder->CreateCall(awaitFn, {taskId}, "await.result");
+            if (!resultTy) {
+                logError(node->loc, "await on a future with an unknown result layout");
+                m_currentLLVMValue = nullptr;
+                return;
+            }
+            if (resultTy->isIntegerTy(64)) {
+                // Int future: the value itself.
+                m_currentLLVMValue = rawResult;
+            } else if (isVybStringStructType(resultTy)) {
+                // String future: rawResult is a pointer to a heap slot holding the
+                // String; load it and reclaim the slot (but not the buffer, which
+                // is handed to the consumer as a single owned reference).
+                llvm::Value* slot = builder->CreateIntToPtr(rawResult, resultTy->getPointerTo(), "await.slot");
+                llvm::Value* strVal = builder->CreateLoad(resultTy, slot, "await.string");
+                builder->CreateCall(getOrCreateFreeFunction(),
+                                    {builder->CreateBitCast(slot, int8PtrType)});
+                if (node->type) node->type = nullptr;
+                node->type = std::make_shared<ast::TypeName>(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "String"));
+                m_currentLLVMValue = strVal;
+            } else if (resultTy->isVoidTy()) {
+                // Void future: wait for the task's side effects only.
+                if (node->type) node->type = nullptr;
+                node->type = std::make_shared<ast::TypeName>(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "Void"));
+                m_currentLLVMValue = nullptr;
+            } else {
+                logError(node->loc, "await on a Future whose result type is not yet supported on the event loop");
+                m_currentLLVMValue = nullptr;
+                return;
+            }
             return;
         }
     }
@@ -7768,6 +7823,16 @@ bool LLVMCodegen::exprProducesOwnedStringTemp(vyb::ast::Expression* expr) {
             if (t.empty()) t = call->type->toString();
             return t == "String" || t == "string";
         }
+    }
+
+    // `await` of a String future is a fresh owned transfer: the async worker
+    // created a new buffer and the slot hand-off transfers it. visit(AwaitExpression)
+    // records the String result type on this node so its consumer (a binding or a
+    // print/scan temp) takes the single owned reference without an extra retain.
+    if (dynamic_cast<ast::AwaitExpression*>(expr) && expr->type) {
+        std::string t = resolveTypeAliasToBaseName(expr->type.get());
+        if (t.empty()) t = expr->type->toString();
+        return t == "String" || t == "string";
     }
 
     return false;

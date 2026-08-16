@@ -1,0 +1,19 @@
+// Phase-3 real async: `async fn()<Future<Void>>`. The task's side effects run
+// on the event loop; `await f` (bare await statement) drives the loop from main
+// until the Void task completes. Also asserts the bare-await parser path.
+// @env: VYB_STDLIB=stdlib
+// @expect: pass
+
+import asyncs::{async_sleep_ms}
+
+async ping()<Future<Void>> -> {
+    async_sleep_ms(5)
+    println("ping")
+}
+
+main()<Int> -> {
+    f<Future<Void>> = ping()
+    await f
+    println("ok")
+    return 0
+}

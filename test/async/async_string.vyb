@@ -1,0 +1,30 @@
+// Phase-3 real async: `async fn(...)<Future<String>>`. The worker's String
+// result travels back as a pointer to a heap slot; `await` loads it (handed to
+// the consumer as an owned transfer) and reclaims the slot. Verifies a fresh
+// tracked buffer (n.to_string()), plus nested awaits inside a worker fiber.
+// @env: VYB_STDLIB=stdlib
+// @expect: pass
+
+import asyncs::{async_sleep_ms}
+
+async label(n<Int>)<Future<String>> -> {
+    async_sleep_ms(5)
+    return n.to_string()
+}
+
+// Await a String future from inside a task (fiber-suspend path).
+async nested_string()<Future<Int>> -> {
+    t<String> = await label(7)
+    if (t != "7") { return 1 }
+    return 0
+}
+
+main()<Int> -> {
+    f<Future<String>> = label(42)
+    s<String> = await f
+    if (s != "42") { return 1 }
+    n<Int> = await nested_string()
+    if (n != 0) { return 2 }
+    println("ok")
+    return 0
+}

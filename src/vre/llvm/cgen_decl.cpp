@@ -20,7 +20,8 @@ using namespace vyb;
 // using namespace llvm; // Uncomment if desired for brevity
 
 // Forward declaration: helper used by the routing branch before its definition.
-static bool isAsyncFutureIntReturn(vyb::ast::FunctionDeclaration* node);
+enum class AsyncResultKind { None, Int, String, Void };
+static AsyncResultKind asyncFutureResultKind(vyb::ast::FunctionDeclaration* node);
 
 // --- Declarations ---
 
@@ -541,12 +542,12 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
         return;
     }
 
-    // Phase-1/2 real async: an `async fn(params...)<Future<Int>>` whose args are
-    // all primitive scalars runs its body as a task on the cooperative event loop
-    // (worker + env-capture + launcher split). Everything else keeps the legacy
-    // eager path. Top-level non-failable declarations only.
+    // Phase-1..3 real async: an `async fn(params...)<Future<T>>` (T = Int, String,
+    // or Void) whose args are all primitive scalars runs its body as a task on the
+    // cooperative event loop (worker + env-capture + launcher split). Everything
+    // else keeps the legacy eager path. Top-level non-failable declarations only.
     if (node->isAsync && !m_currentImplTypeNode && !node->canFail &&
-        isAsyncFutureIntReturn(node)) {
+        asyncFutureResultKind(node) != AsyncResultKind::None) {
         bool paramsEnvSafe = true;
         for (const auto& p : node->params) {
             if (!p.typeNode) { paramsEnvSafe = false; break; }
@@ -1555,20 +1556,26 @@ void LLVMCodegen::createFunctionForwardDeclaration(vyb::ast::FunctionDeclaration
     VYB_CDBG << "DEBUG: Successfully created forward declaration for function: " << node->id->name << std::endl;
 }
 
-static bool isAsyncFutureIntReturn(vyb::ast::FunctionDeclaration* node) {
-    if (!node || !node->isAsync || !node->returnTypeNode)
-        return false;
-    auto isIntName = [](vyb::ast::TypeNode* tn) -> bool {
-        if (auto* name = dynamic_cast<vyb::ast::TypeName*>(tn))
-            if (name->identifier) return name->identifier->name == "Int";
-        return false;
-    };
-    if (auto* ft = dynamic_cast<vyb::ast::FutureType*>(node->returnTypeNode.get()))
-        return ft->resultType && isIntName(ft->resultType.get());
-    if (auto* tn = dynamic_cast<vyb::ast::TypeName*>(node->returnTypeNode.get()))
+static AsyncResultKind asyncFutureResultKind(vyb::ast::FunctionDeclaration* node) {
+    if (!node || !node->isAsync || !node->returnTypeNode) return AsyncResultKind::None;
+    vyb::ast::TypeNode* inner = nullptr;
+    if (auto* ft = dynamic_cast<vyb::ast::FutureType*>(node->returnTypeNode.get())) {
+        inner = ft->resultType.get();
+    } else if (auto* tn = dynamic_cast<vyb::ast::TypeName*>(node->returnTypeNode.get())) {
         if (tn->identifier && tn->identifier->name == "Future" && tn->genericArgs.size() == 1)
-            return isIntName(tn->genericArgs[0].get());
-    return false;
+            inner = tn->genericArgs[0].get();
+    }
+    if (!inner) return AsyncResultKind::None;
+    auto name = [](vyb::ast::TypeNode* t) -> std::string {
+        if (auto* tn = dynamic_cast<vyb::ast::TypeName*>(t))
+            if (tn->identifier) return tn->identifier->name;
+        return "";
+    };
+    const std::string n = name(inner);
+    if (n == "Int") return AsyncResultKind::Int;
+    if (n == "String") return AsyncResultKind::String;
+    if (n == "Void") return AsyncResultKind::Void;
+    return AsyncResultKind::None;
 }
 
 static std::vector<vyb::ast::FunctionParameter>
@@ -1587,12 +1594,17 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
     const std::string base = node->id->name;
     const std::string workerName = base + "$__async_body";
     const std::string entryName = base + "$__async_entry";
+    const AsyncResultKind kind = asyncFutureResultKind(node);
+    const std::string& resultName =
+        (kind == AsyncResultKind::String) ? "String"
+        : (kind == AsyncResultKind::Void) ? "Void" : "Int";
 
-    // 1) Worker: a plain `fn(params...) -> Int` that runs the original body through
-    //    the normal codegen path (parameter scope, trap/epilogue handling).
+    // 1) Worker: a plain `fn(params...) -> <Result>` that runs the original body
+    //    through the normal codegen path (parameter scope, trap/epilogue handling,
+    //    and the correct result-return/ownership semantics for the result type).
     std::vector<vyb::ast::FunctionParameter> workerParams = cloneParams(node->params);
     auto workerRet = std::make_unique<vyb::ast::TypeName>(node->loc,
-        std::make_unique<vyb::ast::Identifier>(node->loc, "Int"));
+        std::make_unique<vyb::ast::Identifier>(node->loc, resultName));
     std::unique_ptr<vyb::ast::FunctionDeclaration> workerNode = std::make_unique<vyb::ast::FunctionDeclaration>(
         node->loc,
         std::make_unique<vyb::ast::Identifier>(node->loc, workerName),
@@ -1634,7 +1646,11 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
     llvm::StructType* envTy = llvm::StructType::create(*context, envFields, "async.env." + base);
 
     // 3) Entry trampoline: `i64(i8*)` — the event loop invokes it as `fn -> Int`
-    //    with the env pointer; it unpacks the snapshot params and calls the worker.
+    //    with the env pointer. It unpacks the snapshot params, runs the worker,
+    //    and encodes the result into the int64 slot the runtime returns:
+    //      Int    -> the value itself
+    //      String -> a pointer to a heap slot holding the {ptr,len} String
+    //      Void   -> 0
     llvm::FunctionType* entryTy = llvm::FunctionType::get(int64Type, {int8PtrType}, false);
     if (llvm::Function* old = module->getFunction(entryName)) old->eraseFromParent();
     llvm::Function* entry = llvm::Function::Create(entryTy, llvm::Function::InternalLinkage, entryName, module.get());
@@ -1647,14 +1663,26 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
             llvm::Value* fp = b.CreateStructGEP(envTy, envCast, i + 2, "async.env.p" + std::to_string(i));
             args.push_back(b.CreateLoad(paramTypes[i], fp, "async.env.v" + std::to_string(i)));
         }
-        llvm::Value* r = b.CreateCall(worker, args, "async.worker");
-        b.CreateRet(r);
+        if (kind == AsyncResultKind::Void) {
+            b.CreateCall(worker, args);
+            b.CreateRet(llvm::ConstantInt::get(int64Type, 0));
+        } else if (kind == AsyncResultKind::Int) {
+            b.CreateRet(b.CreateCall(worker, args, "async.worker"));
+        } else { // String
+            llvm::Value* sv = b.CreateCall(worker, args, "async.worker");
+            llvm::DataLayout dl(module.get());
+            llvm::Value* slotBytes = llvm::ConstantInt::get(int64Type, dl.getTypeAllocSize(worker->getReturnType()));
+            llvm::Value* raw = b.CreateCall(getOrCreateMallocFunction(), {slotBytes}, "async.reslslot");
+            llvm::Value* slot = b.CreateBitCast(raw, worker->getReturnType()->getPointerTo(), "async.resslot.ptr");
+            b.CreateStore(sv, slot);
+            b.CreateRet(b.CreatePtrToInt(slot, int64Type, "async.resslot.i64"));
+        }
     }
 
-    // 4) Launcher: `fn(params...) -> Future<Int>` ({Int*, i32 state, i64 task,
+    // 4) Launcher: `fn(params...) -> Future<T>` ({T*, i32 state, i64 task,
     //    i8* runtime_data}). It builds the env, spawns the task, and hands back a
     //    Future whose `task_id` field lets `await` drive (main) / suspend (fiber).
-    llvm::StructType* futureTy = createFutureStructType(int64Type);
+    llvm::StructType* futureTy = createFutureStructType(worker->getReturnType());
     llvm::FunctionType* launcherTy = llvm::FunctionType::get(futureTy, paramTypes, false);
     llvm::Function* launcher = module->getFunction(base);
     if (launcher) {
@@ -1677,11 +1705,9 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
     llvm::Function* releaseFn = getOrCreateClosureReleaseFunction();
     llvm::DataLayout dl(module.get());
     llvm::Value* envBytes = llvm::ConstantInt::get(int64Type, dl.getTypeAllocSize(envTy));
-    llvm::Value* raw = b.CreateCall(mallocFn, {envBytes}, "async.env.alloc");
-    llvm::Value* envPtr = b.CreateBitCast(raw, envTy->getPointerTo(), "async.env.ptr");
+    llvm::Value* rawEnv = b.CreateCall(mallocFn, {envBytes}, "async.env.alloc");
+    llvm::Value* envPtr = b.CreateBitCast(rawEnv, envTy->getPointerTo(), "async.env.ptr");
 
-    // Reference-count header starts at 1 (the launcher owns it). Spawn retains it
-    // for the runtime, and the launcher drops its own ref below.
     llvm::Value* rcPtr = b.CreateStructGEP(envTy, envPtr, 0, "async.env.rc");
     b.CreateStore(llvm::ConstantInt::get(int64Type, 1), rcPtr);
     llvm::Value* dtorPtr = b.CreateStructGEP(envTy, envPtr, 1, "async.env.dtor");
@@ -1700,7 +1726,7 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
         {b.CreateBitCast(envPtr, int8PtrType), b.CreateBitCast(entry, int8PtrType)}, "async.task");
     b.CreateCall(releaseFn, {b.CreateBitCast(envPtr, int8PtrType)}); // drop launcher ref
 
-    llvm::Value* nullResult = llvm::ConstantPointerNull::get(llvm::PointerType::get(int64Type, 0));
+    llvm::Value* nullResult = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(futureTy->getElementType(0)));
     llvm::Value* fut = llvm::UndefValue::get(futureTy);
     fut = b.CreateInsertValue(fut, nullResult, {0});
     fut = b.CreateInsertValue(fut, llvm::ConstantInt::get(int32Type, 0), {1});
