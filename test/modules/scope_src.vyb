@@ -1,0 +1,11 @@
+// @test: Scope source helper
+// @description: Helper module whose declarations must not leak through an
+//               unrelated module's plain import
+// @category: modules
+// @expect: pass
+// @parse-only: true
+
+share(all)
+src_value()<Int> -> {
+    return 11
+}

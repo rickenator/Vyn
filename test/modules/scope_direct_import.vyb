@@ -1,0 +1,13 @@
+// @test: Direct import of the dependency resolves
+// @description: importing scope_src alongside scope_lib makes src_value usable
+// @category: modules
+// @expect: pass
+// @expect-output: 23
+
+import scope_lib
+import scope_src
+
+main()<Int> -> {
+    println_int(lib_value() + src_value())
+    return 0
+}

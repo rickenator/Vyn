@@ -1,0 +1,13 @@
+// @test: Scope library helper
+// @description: Helper module that imports scope_src but exports only its own
+//               declaration; src_value stays a private dependency
+// @category: modules
+// @expect: pass
+// @parse-only: true
+
+import scope_src
+
+share(all)
+lib_value()<Int> -> {
+    return src_value() + 1
+}

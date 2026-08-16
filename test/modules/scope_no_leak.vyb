@@ -1,0 +1,13 @@
+// @test: Import does not leak private dependencies
+// @description: importing scope_lib exposes only lib_value; the transitive
+//               dependency src_value must not resolve
+// @category: modules
+// @expect: fail
+// @expect-error: Undefined identifier: src_value
+// @tags: modules, visibility
+
+import scope_lib
+
+main()<Int> -> {
+    return lib_value() + src_value()
+}
