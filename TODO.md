@@ -304,8 +304,36 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
 - [x] **`view(expr)` semantic (lexical phase)** — Creates `their<T>` view and participates in borrow conflict checks
 - [x] **`borrow(expr)` semantic (lexical phase)** — Creates mutable `their<T>` and participates in borrow conflict checks
 - [x] **`soft(expr)` semantic** — Creates `mild<T>` from `our<T>`; enforced
+- [x] **Thread-safe runtime refcounts** — The two refcount paths outside the
+  (already-atomic) `our<T>` control block are now atomic. The heap-String
+  registry in `runtime/vyb_runtime.c` keeps `refs` as an atomic `int64_t` with
+  lock-free retain/release RMWs, and a small pthread mutex serializes slot
+  claiming in `register()` plus the slot reset on last release; the legacy
+  per-name `Vec-With-malloc` refcounts emitted in `cgen_ownership.cpp`
+  (`incrementRefCount`/`decrementRefCount`) now use LLVM `AtomicRMW` instead of
+  plain load/add/sub/store. No behavior change single-threaded; foundation for
+  the pthread-backed `threads` module.
 
 ### 4. Standard Library Expansion (HIGH PRIORITY)
+
+## Threading and Concurrency (now a primary issue)
+
+Vyb is single-threaded today. After the `http` module, the decision is that full
+multithreading is a primary goal, implemented with **pthreads underneath** and a
+thin, ergonomic Vyb-facing module (not raw C-shape; a C-shaped surface is exactly
+the "weeds" to avoid — abstraction to pure-Vyb ergonomics is built in up front,
+with only the pthread ABI beneath). The thread-safety foundation above came first.
+
+- [ ] **`threads` stdlib module (pthread-backed)** — `import threads`:
+  `thread_spawn(fn()<Int>)<Thread>` + `thread_join(t)<Int>` returning the
+  closure result (+ `thread_detach`), a `Mutex` (`new`/`lock`/`unlock`), and
+  later `CondVar` and `AtomicInt` (`load`/`store`/`add`/`cas`). Requires a
+  thread-entry trampoline: a Vyb `fn` is a uniform closure `{ptr env, ptr fn}`,
+  so the runtime entry must unpack it and run the closure on the pthread. Safe
+  MVP is `fn()<Int>` (no captures → no env to move across the join boundary);
+  capturing closures are a later follow-on.
+- [ ] **Wire `http_accept` onto a worker thread** — the payoff: a server can
+  accept one connection while earlier connections are handled concurrently.
 - [x] **`Option<T>`** — `Some(value)` / `None` for nullable values; built-in generic enum (transitional `core::option::OptionInt` bridge retained for source-compat)
 - [x] **`Result<T, E>`** — `Ok(value)` / `Err(error)` for fallible operations; built-in generic enum (`core::result` placeholder module retained for source-compat)
 - [x] **Core aspects** — `Display`, `Debug`, `Clone`, `Equatable`, `Comparable`, `Hashable` — the `core::aspects` stdlib module declares all six contracts with `Comparable : Equatable`, re-exported via `core::prelude`/prelude, and they are bindable to both structs and primitive scalar targets with unqualified dispatch and generic bounds. Binds now carry across module imports (visibility via `share`, dedup by `(target, aspect)`), so `core::aspects` ships pre-wired `Display`/`Clone`/`Equatable`/`Comparable`/`Hashable` impls for `Int`, `Float`, `Bool`, and `String` that take effect on `import core::aspects` / `import core::prelude` (`test/aspect/test_core_aspects_bindings.vyb`, `test_bind_primitive_target.vyb`, `test_core_aspects_primitive_impls.vyb`). Auto-import of `core::*` remains under Module System Phase 1.6.

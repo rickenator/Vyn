@@ -8,6 +8,8 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdatomic.h>
+#include <pthread.h>
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -38,8 +40,13 @@
 // The table has a large fixed capacity — fine for desktop/lifetime-of-program
 // use; swap in a dynamic table when scaling memory-heavy workloads later.
 #define VYB_STR_REG_CAP 262144
-typedef struct { void* p; int64_t refs; } vyb_str_ref;
+typedef struct { _Atomic(void*) p; _Atomic(int64_t) refs; } vyb_str_ref;
 static vyb_str_ref vyb_str_reg[VYB_STR_REG_CAP] = {0};
+
+// Serializes slot claiming in register() and the slot reset after the last
+// release. retain()/release() of a live, already-registered buffer are lock-free
+// (atomic RMW on `refs`); the mutex only guards publishing/retiring a slot.
+static pthread_mutex_t vyb_str_reg_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static vyb_str_ref* vyb_str_lookup_slot(void* p) {
     if (!p) return NULL;
@@ -47,23 +54,31 @@ static vyb_str_ref* vyb_str_lookup_slot(void* p) {
     h &= VYB_STR_REG_CAP - 1;
     for (size_t i = 0; i < VYB_STR_REG_CAP; ++i) {
         size_t idx = (h + i) & (VYB_STR_REG_CAP - 1);
-        if (vyb_str_reg[idx].p == NULL || vyb_str_reg[idx].p == p) return &vyb_str_reg[idx];
+        void* slotP = atomic_load_explicit(&vyb_str_reg[idx].p, memory_order_acquire);
+        if (slotP == NULL || slotP == p) return &vyb_str_reg[idx];
     }
     return NULL; // table full — buffer becomes invisible to reference counting
 }
 
 // Register a just-created heap buffer with an initial reference count of 1.
 VYB_WEAK void __vyb_string_register(void* p) {
+    if (!p) return;
+    pthread_mutex_lock(&vyb_str_reg_lock);
     vyb_str_ref* s = vyb_str_lookup_slot(p);
-    if (!s) return;
-    if (s->p == NULL) { s->p = p; s->refs = 1; }
+    if (s && atomic_load_explicit(&s->p, memory_order_relaxed) == NULL) {
+        // Publish refs(1) before the pointer so a concurrent retain that sees the
+        // pointer also sees the initialized refcount (release/acquire pairing).
+        atomic_store_explicit(&s->refs, 1, memory_order_relaxed);
+        atomic_store_explicit(&s->p, p, memory_order_release);
+    }
+    pthread_mutex_unlock(&vyb_str_reg_lock);
 }
 
 // Take one reference on a buffer (untracked = literal/foreign -> no-op).
 VYB_WEAK void* __vyb_string_retain(void* p) {
     vyb_str_ref* s = vyb_str_lookup_slot(p);
-    if (!s || s->p == NULL) return p;
-    s->refs++;
+    if (!s || atomic_load_explicit(&s->p, memory_order_acquire) == NULL) return p;
+    atomic_fetch_add_explicit(&s->refs, 1, memory_order_relaxed);
     return p;
 }
 
@@ -71,11 +86,16 @@ VYB_WEAK void* __vyb_string_retain(void* p) {
 VYB_WEAK void __vyb_string_release(void* p) {
     if (!p) return;
     vyb_str_ref* s = vyb_str_lookup_slot(p);
-    if (!s || s->p == NULL) return;
-    if (--s->refs <= 0) {
-        s->p = NULL;
-        s->refs = 0;
+    if (!s || atomic_load_explicit(&s->p, memory_order_acquire) == NULL) return;
+    int64_t old = atomic_fetch_sub_explicit(&s->refs, 1, memory_order_acq_rel);
+    if (old == 1) {
+        // Last reference: retire the slot under the register lock so a concurrent
+        // register can't claim a slot that reset() is about to wipe.
+        pthread_mutex_lock(&vyb_str_reg_lock);
         free(p);
+        atomic_store_explicit(&s->refs, 0, memory_order_relaxed);
+        atomic_store_explicit(&s->p, NULL, memory_order_relaxed);
+        pthread_mutex_unlock(&vyb_str_reg_lock);
     }
 }
 

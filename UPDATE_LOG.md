@@ -3,6 +3,21 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-15: **Thread-safe runtime refcounts (threading foundation)**. With
+  full multithreading now a primary goal (pthread-backed `threads` module is
+  next), the two refcount paths outside the already-atomic `our<T>` control
+  block are made atomic. In `runtime/vyb_runtime.c` the heap-String registry
+  store `refs` as an atomic `int64_t` with lock-free `retain`/`release` RMWs,
+  and a `pthread_mutex_t` serializes slot claiming in `__vyb_string_register`
+  plus the slot reset on last release (refs(1) is published before the entry
+  pointer so a concurrent retain that sees the pointer also sees the init
+  refcount). In `src/vre/llvm/cgen_ownership.cpp` the legacy per-name
+  `Vec-With-malloc` refcounts (`incrementRefCount`/`decrementRefCount`) now emit
+  LLVM `AtomicRMW` (Add/Sub, AcquireRelease) instead of plain load/add/sub/store,
+  with a zero-check on the pre-decrement value. No behavior change
+  single-threaded; full suite passes. This is the correctness ground the
+  pthread-backed `threads` stdlib module builds on next.
+
 - 2026-08-15: **`http` stdlib module — a pure-Vyb HTTP/1.1 server + client**.
   Everything in `stdlib/http/mod.vyb` (`import http`) is written in Vyb directly
   on top of the `__vyb_net_*` socket intrinsics, with no new FFI or C code.

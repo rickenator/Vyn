@@ -313,9 +313,11 @@ void LLVMCodegen::incrementRefCount(const std::string& name) {
         refCounts[name] = 1;
     } else {
         // Increment existing refcount
-        llvm::Value* currentCount = builder->CreateLoad(llvm::Type::getInt32Ty(*context), it->second, name + "_refcount_load");
-        llvm::Value* newCount = builder->CreateAdd(currentCount, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 1));
-        builder->CreateStore(newCount, it->second);
+        // Atomic so a Vec shared across threads counts references without a race.
+        builder->CreateAtomicRMW(
+            llvm::AtomicRMWInst::Add, it->second,
+            llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 1),
+            llvm::MaybeAlign(), llvm::AtomicOrdering::AcquireRelease);
         refCounts[name]++;
     }
 }
@@ -329,13 +331,15 @@ void LLVMCodegen::decrementRefCount(const std::string& name) {
         return;
     }
 
-    // Load current refcount
-    llvm::Value* currentCount = builder->CreateLoad(llvm::Type::getInt32Ty(*context), it->second, name + "_refcount_load");
-    llvm::Value* newCount = builder->CreateSub(currentCount, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 1));
-    builder->CreateStore(newCount, it->second);
+    // Atomic decrement; the RMW returns the pre-decrement value, so a result of 1
+    // means this was the last reference (count just became 0).
+    llvm::AtomicRMWInst* oldCount = builder->CreateAtomicRMW(
+        llvm::AtomicRMWInst::Sub, it->second,
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 1),
+        llvm::MaybeAlign(), llvm::AtomicOrdering::AcquireRelease);
 
     // Check if refcount reached zero
-    llvm::Value* isZero = builder->CreateICmpEQ(newCount, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 0));
+    llvm::Value* isZero = builder->CreateICmpEQ(oldCount, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 1));
 
     llvm::BasicBlock* cleanupBlock = llvm::BasicBlock::Create(*context, name + "_refcount_cleanup", currentFunction);
     llvm::BasicBlock* continueBlock = llvm::BasicBlock::Create(*context, name + "_refcount_continue", currentFunction);
