@@ -539,6 +539,24 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
             }
         }
 
+        // A `mild<T>` binding (weak reference) takes over a fresh weak ref from
+        // `soft(...)`; a copy of an existing `mild` value (or a struct field) is
+        // shared, so the new location must retain (+weak) so the release on scope
+        // exit stays balanced with its own ref.
+        bool mildVar = ownership == ast::OwnershipKind::MILD && varType &&
+                       varType->isPointerTy() && node->typeNode &&
+                       isMildRefType(node->typeNode.get());
+        if (mildVar) {
+            if (!exprIsMildTransfer(node->init.get())) {
+                retainMildControlBlock(initialVal, node->id->name);
+                VYB_CDBG << "DEBUG: mild<T> variable '" << node->id->name
+                          << "' retained a shared weak reference" << std::endl;
+            } else {
+                VYB_CDBG << "DEBUG: mild<T> variable '" << node->id->name
+                          << "' took over a fresh weak reference" << std::endl;
+            }
+        }
+
         // An enum binding with an `our<T>` payload owns a strong count that scope
         // exit will release. A fresh transfer (grab(), a function returning the
         // enum, or Some(our(...))) already supplied that ref; a borrowed copy

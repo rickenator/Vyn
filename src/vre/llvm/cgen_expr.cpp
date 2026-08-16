@@ -5022,6 +5022,22 @@ void LLVMCodegen::visit(vyb::ast::AssignmentExpression *node) {
         }
     }
 
+    // A `mild<T>` binding (weak reference) being overwritten must drop its old weak
+    // ref, or the replaced control block can never be freed once its strong owner
+    // drops (the orphaned weak ref keeps it alive). `soft(...)` hands over a fresh
+    // weak ref needing no retain; a copy of an existing `mild` shares one and is
+    // retained (+weak) to balance its own scope-exit release.
+    bool mildOverwrite = false;
+    llvm::Value* oldMildPtr = nullptr;
+    if (isAssignToVar && lhsTypeNode && destPointeeType && destPointeeType->isPointerTy() &&
+        isMildRefType(lhsTypeNode.get())) {
+        mildOverwrite = true;
+        oldMildPtr = builder->CreateLoad(destPointeeType, LHS, "assign.old_mild");
+        if (!exprIsMildTransfer(node->right.get())) {
+            retainMildControlBlock(RHS, "assign.mild");
+        }
+    }
+
     // Create the store instruction with proper alignment
     builder->CreateStore(RHS, LHS);
     writeThroughMutable(RHS);
@@ -5092,6 +5108,9 @@ void LLVMCodegen::visit(vyb::ast::AssignmentExpression *node) {
         releaseOurControlBlock(oldOurPtr, "assign.our", pointeeAst, pointeeLlvm);
         builder->CreateBr(contBB);
         builder->SetInsertPoint(contBB);
+    }
+    if (mildOverwrite && oldMildPtr) {
+        releaseMildControlBlock(oldMildPtr, "assign.mild");
     }
 
     // A `my<Struct>` move-assignment of an owning binding to another owning
@@ -8175,6 +8194,20 @@ bool LLVMCodegen::exprIsOurTransfer(vyb::ast::Expression* expr) {
     if (call->type) {
         std::string t = call->type->toString();
         if (t.rfind("our<", 0) == 0) return true;
+    }
+    return false;
+}
+
+bool LLVMCodegen::exprIsMildTransfer(vyb::ast::Expression* expr) {
+    // `soft(...)` hands over a fresh weak reference that a storage location can
+    // take without an extra retain; a bare read of an existing `mild` value is a
+    // shared copy and must be retained (+weak) on stow to balance the release on
+    // scope exit.
+    if (!expr) return false;
+    auto* call = dynamic_cast<vyb::ast::CallExpression*>(expr);
+    if (!call) return false;
+    if (auto* id = dynamic_cast<vyb::ast::Identifier*>(call->callee.get())) {
+        if (id->name == "soft") return true;
     }
     return false;
 }

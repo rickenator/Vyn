@@ -1,0 +1,35 @@
+// @test: overwriting a mild<T> binding releases its old weak reference
+// @description: Reassigning a `mild<Node>` binding to a fresh `soft(...)` must drop
+//   the outgoing weak ref on the old control block. Without the release the replaced
+//   control block stays alive via its orphaned weak ref once its strong owner drops
+//   (leak), and the new weak reference still upgrades to the new owner.
+// @category: ownership, mild, weak, memory
+// @expect: pass
+// @expect-return: 0
+
+struct Node {
+    value<Int>
+}
+
+make(v<Int>)<our<Node>> -> {
+    return our(Node { value = v })
+}
+
+main()<Int> -> {
+    s<our<Node>> = make(1)
+    t<our<Node>> = make(2)
+
+    a<mild<Node>> = soft(s)
+    a = soft(t)
+
+    if (a.released()) {
+        return 1
+    }
+    g<Option<our<Node>>> = a.grab()
+    if (g.value.value != 2) {
+        return 2
+    }
+
+    println("ok")
+    return 0
+}

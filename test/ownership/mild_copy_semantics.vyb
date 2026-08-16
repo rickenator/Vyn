@@ -1,0 +1,37 @@
+// @test: copying a mild<T> value takes its own weak reference
+// @description: Copying an existing `mild<Node>` into a new binding shares the same
+//   control block. The copy must retain (+weak) so its own scope-exit release stays in
+//   lock-step; otherwise the weak count drifts negative and the shared control block is
+//   never freed (leak). Both copies stay usable and can still `grab()` the live owner.
+// @category: ownership, mild, weak, memory, copy
+// @expect: pass
+// @expect-return: 0
+
+struct Node {
+    value<Int>
+}
+
+make(v<Int>)<our<Node>> -> {
+    return our(Node { value = v })
+}
+
+main()<Int> -> {
+    s<our<Node>> = make(1)
+    a<mild<Node>> = soft(s)
+    b<mild<Node>> = a
+
+    if (a.released()) {
+        return 1
+    }
+    if (b.released()) {
+        return 2
+    }
+
+    g<Option<our<Node>>> = b.grab()
+    if (g.value.value != 1) {
+        return 3
+    }
+
+    println("ok")
+    return 0
+}
