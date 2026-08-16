@@ -16,6 +16,318 @@ namespace fs = std::filesystem;
 
 namespace {
 
+// Collects every identifier name reachable from an AST subtree. Used to build the
+// dependency closure for subset imports (`import m::{foo}`): a requested
+// declaration may transitively call/name sibling module-level declarations that
+// must be spliced into the importer alongside it. The collector over-collects
+// (it records bound names and locals too), which is safe: the resolver only
+// promotes a collected name to a dependency if it matches a module-level
+// declaration in the origin module, and an extra module-level name is at worst
+// carried (never exported).
+class FreeIdentifierCollector : public ast::Visitor {
+public:
+    std::unordered_set<std::string> names;
+
+private:
+    void exprs(const std::vector<ast::ExprPtr>& v) { for (const auto& e : v) if (e) e->accept(*this); }
+    void stmts(const std::vector<ast::StmtPtr>& v) { for (const auto& s : v) if (s) s->accept(*this); }
+    void expr(const ast::ExprPtr& e) { if (e) e->accept(*this); }
+    void stmt(const ast::StmtPtr& s) { if (s) s->accept(*this); }
+    void ty(const ast::TypeNodePtr& t) { if (t) t->accept(*this); }
+    void tys(const std::vector<ast::TypeNodePtr>& v) { for (const auto& t : v) if (t) t->accept(*this); }
+
+public:
+    // Literals
+    void visit(ast::Identifier* node) override { if (node) names.insert(node->name); }
+    void visit(ast::IntegerLiteral*) override {}
+    void visit(ast::FloatLiteral*) override {}
+    void visit(ast::StringLiteral*) override {}
+    void visit(ast::BooleanLiteral*) override {}
+    void visit(ast::NilLiteral*) override {}
+    void visit(ast::ObjectLiteral* node) override {
+        if (!node) return;
+        if (node->typePath) node->typePath->accept(*this);
+        for (const auto& prop : node->properties) {
+            if (prop.key) prop.key->accept(*this);
+            expr(prop.value);
+        }
+    }
+
+    // Expressions
+    void visit(ast::UnaryExpression* node) override { if (node) expr(node->operand); }
+    void visit(ast::BinaryExpression* node) override {
+        if (!node) return;
+        expr(node->left); expr(node->right);
+    }
+    void visit(ast::CallExpression* node) override {
+        if (!node) return;
+        expr(node->callee);
+        exprs(node->arguments);
+        tys(node->explicitTypeArgs);
+    }
+    void visit(ast::MemberExpression* node) override {
+        if (!node) return;
+        expr(node->object); expr(node->property);
+    }
+    void visit(ast::AssignmentExpression* node) override {
+        if (!node) return;
+        expr(node->left); expr(node->right);
+    }
+    void visit(ast::ArrayLiteral* node) override { if (node) exprs(node->elements); }
+    void visit(ast::BorrowExpression* node) override { if (node) expr(node->expression); }
+    void visit(ast::PointerDerefExpression* node) override { if (node) expr(node->pointer); }
+    void visit(ast::AddrOfExpression* node) override { if (node) expr(node->getLocation()); }
+    void visit(ast::FromIntToLocExpression* node) override {
+        if (!node) return;
+        expr(node->getAddressExpression());
+        ty(node->getTargetType());
+    }
+    void visit(ast::ArrayElementExpression* node) override {
+        if (!node) return;
+        expr(node->array); expr(node->index);
+    }
+    void visit(ast::LocationExpression* node) override { if (node) expr(node->expression); }
+    void visit(ast::ListComprehension* node) override {
+        if (!node) return;
+        expr(node->elementExpr);
+        if (node->loopVariable) node->loopVariable->accept(*this);
+        expr(node->iterableExpr);
+        expr(node->conditionExpr);
+    }
+    void visit(ast::IfExpression* node) override {
+        if (!node) return;
+        expr(node->condition); expr(node->thenBranch); expr(node->elseBranch);
+    }
+    void visit(ast::ConstructionExpression* node) override {
+        if (!node) return;
+        ty(node->constructedType);
+        exprs(node->arguments);
+    }
+    void visit(ast::ArrayInitializationExpression* node) override {
+        if (!node) return;
+        ty(node->elementType);
+        expr(node->sizeExpression);
+    }
+    void visit(ast::GenericInstantiationExpression* node) override {
+        if (!node) return;
+        expr(node->baseExpression);
+        tys(node->genericArguments);
+    }
+    void visit(ast::LogicalExpression* node) override {
+        if (!node) return;
+        expr(node->left); expr(node->right);
+    }
+    void visit(ast::ConditionalExpression* node) override {
+        if (!node) return;
+        expr(node->condition); expr(node->thenExpr); expr(node->elseExpr);
+    }
+    void visit(ast::SequenceExpression* node) override { if (node) exprs(node->expressions); }
+    void visit(ast::FunctionExpression* node) override {
+        if (!node) return;
+        for (const auto& param : node->params) ty(param.typeNode);
+        expr(node->body);
+    }
+    void visit(ast::ThisExpression*) override {}
+    void visit(ast::SuperExpression*) override {}
+    void visit(ast::AwaitExpression* node) override { if (node) expr(node->expr); }
+    void visit(ast::RangeExpression* node) override {
+        if (!node) return;
+        expr(node->start); expr(node->end); expr(node->step);
+    }
+    void visit(ast::BlockExpression* node) override {
+        if (!node) return;
+        if (node->block) node->block->accept(*this);
+        for (const auto& tc : node->trapClauses) if (tc) tc->accept(*this);
+        if (node->ensureClause) node->ensureClause->accept(*this);
+    }
+    void visit(ast::SelectExpression* node) override {
+        if (!node) return;
+        expr(node->expr);
+        for (const auto& c : node->cases) { expr(c.first); expr(c.second); }
+    }
+    void visit(ast::ComparisonPattern* node) override { if (node) expr(node->value); }
+    void visit(ast::StructPattern* node) override {
+        if (!node) return;
+        ty(node->typeName);
+        for (const auto& b : node->bindings) if (b) b->accept(*this);
+    }
+    void visit(ast::TypeofExpression* node) override {
+        if (!node) return;
+        expr(node->operand);
+        ty(node->typeArg);
+    }
+    void visit(ast::TypenameExpression* node) override { if (node) expr(node->operand); }
+    void visit(ast::AsExpression* node) override {
+        if (!node) return;
+        expr(node->operand);
+        ty(node->targetType);
+    }
+
+    // Statements
+    void visit(ast::BlockStatement* node) override { if (node) stmts(node->body); }
+    void visit(ast::ExpressionStatement* node) override { if (node) expr(node->expression); }
+    void visit(ast::IfStatement* node) override {
+        if (!node) return;
+        expr(node->test);
+        stmt(node->consequent);
+        stmt(node->alternate);
+    }
+    void visit(ast::ForStatement* node) override {
+        if (!node) return;
+        if (node->init) node->init->accept(*this);
+        expr(node->test);
+        expr(node->update);
+        stmt(node->body);
+    }
+    void visit(ast::WhileStatement* node) override {
+        if (!node) return;
+        expr(node->test);
+        stmt(node->body);
+    }
+    void visit(ast::ReturnStatement* node) override { if (node) expr(node->argument); }
+    void visit(ast::PassStatement* node) override { if (node) expr(node->argument); }
+    void visit(ast::BreakStatement*) override {}
+    void visit(ast::ContinueStatement*) override {}
+    void visit(ast::TryStatement* node) override {
+        if (!node) return;
+        if (node->tryBlock) node->tryBlock->accept(*this);
+        if (node->catchBlock) node->catchBlock->accept(*this);
+        if (node->finallyBlock) node->finallyBlock->accept(*this);
+    }
+    void visit(ast::UnsafeStatement* node) override { if (node && node->block) node->block->accept(*this); }
+    void visit(ast::EmptyStatement*) override {}
+    void visit(ast::ExternStatement* node) override {
+        if (!node) return;
+        ty(node->returnType);
+        for (const auto& param : node->parameters) ty(param.typeNode);
+    }
+    void visit(ast::ThrowStatement* node) override { if (node) expr(node->expr); }
+    void visit(ast::MatchStatement* node) override {
+        if (!node) return;
+        expr(node->expr);
+        for (const auto& c : node->cases) { expr(c.first); expr(c.second); }
+        for (const auto& g : node->guards) expr(g);
+    }
+    void visit(ast::MatchExpression* node) override { if (node && node->match) node->match->accept(*this); }
+    void visit(ast::YieldStatement* node) override { if (node) expr(node->expression); }
+    void visit(ast::YieldReturnStatement* node) override { if (node) expr(node->expression); }
+    void visit(ast::AssertStatement* node) override {
+        if (!node) return;
+        expr(node->condition);
+        expr(node->message);
+    }
+    void visit(ast::FailStatement* node) override {
+        if (!node) return;
+        expr(node->error);
+        ty(node->errorType);
+    }
+    void visit(ast::TrapClause* node) override {
+        if (!node) return;
+        ty(node->errorType);
+        tys(node->errorTypes);
+        stmt(node->handler);
+    }
+    void visit(ast::EnsureClause* node) override { if (node) stmt(node->cleanupBlock); }
+    void visit(ast::RethrowStatement* node) override { if (node) expr(node->transformedError); }
+    void visit(ast::PanicStatement* node) override { if (node) expr(node->message); }
+    void visit(ast::ExitStatement* node) override { if (node) expr(node->code); }
+    void visit(ast::DeferStatement* node) override { if (node) stmt(node->statement); }
+    void visit(ast::TupleDestructureAssignment* node) override {
+        if (!node) return;
+        for (const auto& id : node->identifiers) if (id) id->accept(*this);
+        expr(node->expression);
+    }
+
+    // Declarations
+    void visit(ast::VariableDeclaration* node) override {
+        if (!node) return;
+        ty(node->typeNode);
+        if (node->init) node->init->accept(*this);
+    }
+    void visit(ast::FunctionDeclaration* node) override {
+        if (!node) return;
+        for (const auto& param : node->params) ty(param.typeNode);
+        for (const auto& gp : node->genericParams) if (gp) gp->accept(*this);
+        ty(node->returnTypeNode);
+        if (node->body) node->body->accept(*this);
+    }
+    void visit(ast::TypeAliasDeclaration* node) override { if (node) ty(node->typeNode); }
+    void visit(ast::ImportDeclaration*) override {}
+    void visit(ast::StructDeclaration* node) override {
+        if (!node) return;
+        for (const auto& gp : node->genericParams) if (gp) gp->accept(*this);
+        for (const auto& f : node->fields) if (f) f->accept(*this);
+        for (const auto& ctor : node->constructors) if (ctor) ctor->accept(*this);
+    }
+    void visit(ast::ClassDeclaration* node) override {
+        if (!node) return;
+        for (const auto& gp : node->genericParams) if (gp) gp->accept(*this);
+        for (const auto& m : node->members) if (m) m->accept(*this);
+    }
+    void visit(ast::FieldDeclaration* node) override {
+        if (!node) return;
+        ty(node->typeNode);
+        expr(node->initializer);
+    }
+    void visit(ast::BindDeclaration* node) override {
+        if (!node) return;
+        for (const auto& gp : node->genericParams) if (gp) gp->accept(*this);
+        ty(node->traitType);
+        ty(node->selfType);
+        for (const auto& ab : node->associatedTypeBindings) ty(ab.valueType);
+        for (const auto& m : node->methods) if (m) m->accept(*this);
+    }
+    void visit(ast::EnumDeclaration* node) override {
+        if (!node) return;
+        for (const auto& gp : node->genericParams) if (gp) gp->accept(*this);
+        for (const auto& v : node->variants) if (v) v->accept(*this);
+    }
+    void visit(ast::EnumVariant* node) override { if (node) tys(node->associatedTypes); }
+    void visit(ast::GenericParameter* node) override { if (node) tys(node->bounds); }
+    void visit(ast::TemplateDeclaration* node) override {
+        if (!node) return;
+        for (const auto& gp : node->genericParams) if (gp) gp->accept(*this);
+        if (node->body) node->body->accept(*this);
+    }
+    void visit(ast::AspectDeclaration* node) override {
+        if (!node) return;
+        for (const auto& gp : node->genericParams) if (gp) gp->accept(*this);
+        for (const auto& st : node->superTypes) if (st) st->accept(*this);
+        for (const auto& at : node->associatedTypes) if (at) at->accept(*this);
+        tys(node->associatedTypeDefaults);
+        for (const auto& constraints : node->associatedTypeConstraints) tys(constraints);
+        for (const auto& m : node->methods) if (m) m->accept(*this);
+    }
+    void visit(ast::NamespaceDeclaration* node) override {
+        if (!node) return;
+        for (const auto& m : node->members) if (m) m->accept(*this);
+    }
+    void visit(ast::Module* node) override { if (node) stmts(node->body); }
+
+    // Types
+    void visit(ast::TypeNode*) override {}
+    void visit(ast::TypeName* node) override {
+        if (!node) return;
+        if (node->identifier) node->identifier->accept(*this);
+        tys(node->genericArgs);
+    }
+    void visit(ast::PointerType* node) override { if (node) ty(node->pointeeType); }
+    void visit(ast::ArrayType* node) override {
+        if (!node) return;
+        ty(node->elementType);
+        expr(node->sizeExpression);
+    }
+    void visit(ast::VecType* node) override { if (node) ty(node->elementType); }
+    void visit(ast::FutureType* node) override { if (node) ty(node->resultType); }
+    void visit(ast::FunctionType* node) override {
+        if (!node) return;
+        tys(node->parameterTypes);
+        ty(node->returnType);
+    }
+    void visit(ast::OptionalType* node) override { if (node) ty(node->containedType); }
+    void visit(ast::TupleTypeNode* node) override { if (node) tys(node->memberTypes); }
+};
+
 std::string trimCopy(const std::string& text) {
     size_t start = 0;
     while (start < text.size() && std::isspace(static_cast<unsigned char>(text[start]))) {
@@ -384,6 +696,50 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                     requestedRenames[importedName] = specifier.localName ? specifier.localName->name : importedName;
                 }
 
+                // Subset-import dependency closure: when a specific name (e.g.
+                // `foo`) is requested, any module-level sibling it transitively
+                // references (e.g. `bar`) must also be carried so the carried
+                // declaration can be compiled inside this module. Only names
+                // that are *visible* where the origin sees them are promoted
+                // (mirrors whole-module import), so a private helper cannot be
+                // dragged in accidentally. The closure is computed over the
+                // origin's already-resolved body, which includes anything the
+                // origin itself imported, so imports-of-imports are carried too.
+                bool closureComputed = false;
+                std::unordered_set<std::string> carryNames = requestedNames;
+                if (!requestedNames.empty() && importedRecord.module && !importedRecord.emitted) {
+                    std::unordered_map<std::string, ast::Node*> declByName;
+                    std::unordered_set<std::string> moduleDeclNames;
+                    for (const auto& decl : importedRecord.module->body) {
+                        if (!decl) continue;
+                        if (dynamic_cast<ast::BindDeclaration*>(decl.get())) continue;
+                        if (dynamic_cast<ast::ImportDeclaration*>(decl.get())) continue;
+                        std::string n = declarationName(decl);
+                        if (n.empty()) continue;
+                        moduleDeclNames.insert(n);
+                        declByName.emplace(n, decl.get());
+                    }
+                    FreeIdentifierCollector collector;
+                    std::vector<std::string> pending(carryNames.begin(), carryNames.end());
+                    std::unordered_set<std::string> walked;
+                    while (!pending.empty()) {
+                        const std::string n = pending.back();
+                        pending.pop_back();
+                        if (!walked.insert(n).second) continue;
+                        auto it = declByName.find(n);
+                        if (it == declByName.end()) continue;
+                        collector.names.clear();
+                        it->second->accept(collector);
+                        for (const auto& ref : collector.names) {
+                            if (moduleDeclNames.count(ref) &&
+                                carryNames.insert(ref).second) {
+                                pending.push_back(ref);
+                            }
+                        }
+                    }
+                    closureComputed = true;
+                }
+
                 // Grants: a plain `import` exposes only the origin module's
                 // *genuine* exports to this module's resolvable scope (a leaked
                 // transitive dependency of the origin is not available here);
@@ -408,6 +764,18 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                                 scope.insert(pair.second);
                                 if (!importShare.empty() && !isSmuggle) {
                                     exports_[currentKey].insert(pair.second);
+                                }
+                            }
+                        }
+                        // Dependency siblings spliced in alongside a requested
+                        // name are resolvable in this module's code but are never
+                        // added to its export set (they only leak to a *consumer*
+                        // of this module when an export actually references them).
+                        if (closureComputed) {
+                            for (const auto& depName : carryNames) {
+                                if (!requestedNames.count(depName) &&
+                                    importedExports.count(depName)) {
+                                    scope.insert(depName);
                                 }
                             }
                         }
@@ -482,7 +850,7 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                     }
                     const std::string originName = name;
 
-                    if (!requestedNames.empty() && requestedNames.find(name) == requestedNames.end()) {
+                    if (!requestedNames.empty() && carryNames.find(name) == carryNames.end()) {
                         continue;
                     }
 

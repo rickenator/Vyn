@@ -1,0 +1,13 @@
+// @test: Subset imports transitively carry sibling dependencies
+// @description: import helper::{top_fn as answer} also carries mid_val and base_val
+// @category: modules
+// @expect: pass
+// @expect-output: 10
+// @tags: modules, import-subset-deps
+
+import import_deps_helper::{top_fn as answer}
+
+main()<Int> -> {
+    println_int(answer())
+    return 0
+}

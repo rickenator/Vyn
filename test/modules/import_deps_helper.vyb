@@ -1,0 +1,15 @@
+// @test: Subset-import dependency helper
+// @description: Module whose public functions call sibling helper functions
+// @category: modules
+// @expect: pass
+// @parse-only: true
+// @tags: modules, import-subset-deps
+
+share(all)
+base_val()<Int> -> { return 7 }
+
+share(all)
+mid_val()<Int> -> { return base_val() + 1 }
+
+share(all)
+top_fn()<Int> -> { return mid_val() + 2 }
