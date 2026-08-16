@@ -1,0 +1,18 @@
+// @test: Global runtime initialization from other globals
+// @description: a global whose value derives from another global (or an
+//               expression) is initialized at startup, not left as a pointer
+// @category: basic, global
+// @expect: pass
+// @expect-output: 105
+// @expect-return: 210
+
+BASE<Int> = 100
+SUM<Int> = BASE + 5
+PROD<Int> = SUM * 2
+
+main()<Int> -> {
+    println_int(BASE)
+    println_int(SUM)
+    println_int(PROD)
+    return PROD
+}
