@@ -17,6 +17,16 @@ typedef enum Color {
     COLOR_BLUE
 } Color;
 
+/* A bitmask mode enum with explicit values */
+typedef enum Mode {
+    MODE_EXACT = 1,
+    MODE_FAST = 2,
+    MODE_PREFETCH = 4
+} Mode;
+
+/* Max item count constant */
+#define MAX_ITEMS 16
+
 /* A 2D point */
 typedef struct Point {
     int x;

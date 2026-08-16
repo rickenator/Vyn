@@ -3,6 +3,25 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-15: **`vyb bindgen` emits constant enums for C integer constants**.
+  Object-like integer `#define` macros (e.g. `MAX_BUFSIZE 4096`) and C enums
+  whose variants all carry explicit `= <int>` values (e.g. `MODE_EXACT = 1`)
+  are now emitted as single-variant / explicit-value constant enums
+  (`enum MAX_BUFSIZE { MAX_BUFSIZE = 4096 }`, used as `MAX_BUFSIZE::MAX_BUFSIZE`;
+  `enum Mode { MODE_EXACT = 1, ... }`) instead of the `X()<Int> { return N }`
+  constant-function shape, and instead of dropping explicit enum values. This
+  matches the constant-enum language feature (the `AF_INET()<Int>` shape the
+  compiler now avoids). Both backends updated: the lightweight parser
+  (`src/bindgen.cpp`, `vyb bindgen <header.h>`) and the libclang full-preprocessor
+  backend (`src/bindgen_libclang.cpp`, `--full`). Value-less C-like enums stay
+  nominal and unchanged; partially-valued enums emit positionally with a
+  warning. String/Float object-like macros remain shared constant functions
+  (constant-enum members are Int-only). Fixtures/consumers updated
+  (`test/bindgen/{preproc,libsample,full_preproc,test_*bindings}.vyb`,
+  `libsample.h` now carries an explicit-value `Mode` enum + `MAX_ITEMS` macro);
+  bindgen + enum suites pass.
+  Commit: `feat(bindgen): emit C integer constants as Vyb constant enums`.
+
 - 2026-08-15: **`io` open-mode flags converted to a constant enum**. The six
   constant-functions `FILE_READ()`/`FILE_WRITE()`/... (the bindgen-style
   `X()<Int> { return N }` shape) are replaced by a `FileFlag` constant enum in

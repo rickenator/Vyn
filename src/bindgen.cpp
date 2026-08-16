@@ -132,7 +132,8 @@ private:
     struct ConstDecl { std::string name; std::string type; std::string value; };
     std::vector<ConstDecl> consts_;                                // `#define` constants
     std::map<std::string, std::vector<std::pair<std::string, std::string>>> structs_;
-    std::map<std::string, std::vector<std::string>> enums_;
+    struct EnumVariant { std::string name; bool hasValue = false; std::string value; };
+    std::map<std::string, std::vector<EnumVariant>> enums_;
     std::vector<std::string> declOrder_;                           // emitted type names, declaration order
     std::set<std::string> emittedTypes_;
 
@@ -211,10 +212,12 @@ private:
     }
 
     // Walks the raw (un-stripped) source and turns `#define NAME <literal>`
-    // object-like macros into shared constant functions. Other preprocessor
-    // lines (`#include`, conditionals, `#pragma`, ...) are ignored; function-like
-    // and multi-line macros are skipped with a warning (expression bodies and a
-    // real preprocessor are libclang territory).
+    // object-like macros into bindings. Integer `#define`s become constant
+    // enums (`enum NAME { NAME = value }`); String/Float `#define`s stay shared
+    // constant functions (constant-enum members are Int-only). Other
+    // preprocessor lines (`#include`, conditionals, `#pragma`, ...) are
+    // ignored; function-like and multi-line macros are skipped with a warning
+    // (expression bodies and a real preprocessor are libclang territory).
     void extractDefineMacros(const std::string& src) {
         size_t i = 0, n = src.size();
         bool atLineStart = true;
@@ -338,9 +341,18 @@ private:
         if (consts_.empty()) return;
         for (const auto& c : consts_) {
             os << "share(all)\n";
-            os << c.name << "()<" << c.type << "> -> {\n";
-            os << "    return " << c.value << "\n";
-            os << "}\n\n";
+            if (c.type == "CInt" || c.type == "Int") {
+                // Integer constant: a single-variant constant enum. The member
+                // is a compile-time Int constant (`NAME::NAME`) rather than a
+                // needless `NAME()` call.
+                os << "enum " << c.name << " {\n";
+                os << "    " << c.name << " = " << c.value << "\n";
+                os << "}\n\n";
+            } else {
+                os << c.name << "()<" << c.type << "> -> {\n";
+                os << "    return " << c.value << "\n";
+                os << "}\n\n";
+            }
         }
     }
 
@@ -586,18 +598,27 @@ private:
         }
         if (!isTypedef && !atPunct("{")) { skipSemicolon(); return; }
 
-        std::vector<std::string> variants;
-        bool sawInit = false;
+        std::vector<EnumVariant> variants;
+        bool anyValue = false, allValue = true;
         advance(); // {
         while (cur().kind != Kind::Eof && !atPunct("}")) {
             if (isIdent(cur())) {
-                std::string v = cur().text;
+                EnumVariant ev;
+                ev.name = cur().text;
                 advance();
                 if (atPunct("=")) {
-                    sawInit = true;
+                    advance(); // =
+                    std::string sign;
+                    if (atPunct("-") || atPunct("+")) { sign = cur().text; advance(); }
+                    if (cur().kind == Kind::Number) {
+                        ev.hasValue = true;
+                        ev.value = sign + cur().text;
+                        advance();
+                    }
                     while (!atPunct(",") && !atPunct("}") && cur().kind != Kind::Eof) advance();
                 }
-                variants.push_back(v);
+                anyValue |= ev.hasValue; allValue &= ev.hasValue;
+                variants.push_back(std::move(ev));
             } else {
                 advance();
             }
@@ -614,7 +635,8 @@ private:
             skipSemicolon();
             return;
         }
-        if (sawInit) warnings_.push_back("enum '" + finalName + "' has explicit values; Vyb enums are sequential from 0");
+        if (anyValue && !allValue)
+            warnings_.push_back("enum '" + finalName + "' has partial explicit values; emitting positionally as a nominal enum");
         if (emittedTypes_.insert(finalName).second) declOrder_.push_back(finalName);
         enums_[finalName] = variants;
         if (isTypedef) aliases_[finalName] = finalName;
@@ -700,10 +722,15 @@ private:
                 }
                 os << "}\n\n";
             } else if (enums_.count(name)) {
+                const auto& vars = enums_[name];
+                bool anyValue = false, allValue = true;
+                for (const auto& ev : vars) { if (ev.hasValue) anyValue = true; else allValue = false; }
+                bool constEnum = anyValue && allValue;
                 os << "share(all)\nenum " << name << " { ";
-                for (size_t k = 0; k < enums_[name].size(); ++k) {
+                for (size_t k = 0; k < vars.size(); ++k) {
                     if (k) os << ", ";
-                    os << enums_[name][k];
+                    os << vars[k].name;
+                    if (constEnum) os << " = " << vars[k].value;
                 }
                 os << " }\n\n";
             }

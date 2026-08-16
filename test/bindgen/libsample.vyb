@@ -3,14 +3,23 @@
 // @test: Generated libsample bindings (fixture)
 // @parse-only: true
 
+
 share(all)
 enum Color { COLOR_RED, COLOR_GREEN, COLOR_BLUE }
+
+share(all)
+enum Mode { MODE_EXACT = 1, MODE_FAST = 2, MODE_PREFETCH = 4 }
 
 share(all)
 #[repr(C)]
 struct Point {
     x<CInt>,
     y<CInt>,
+}
+
+share(all)
+enum MAX_ITEMS {
+    MAX_ITEMS = 16
 }
 
 share(all)

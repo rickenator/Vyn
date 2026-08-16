@@ -4,8 +4,8 @@
 // @parse-only: true
 
 share(all)
-MAX_BUFSIZE()<CInt> -> {
-    return 4096
+enum MAX_BUFSIZE {
+    MAX_BUFSIZE = 4096
 }
 
 share(all)
@@ -19,17 +19,16 @@ SCALE_FACTOR()<Float> -> {
 }
 
 share(all)
-FLAG_ENABLED()<CInt> -> {
-    return 1
+enum FLAG_ENABLED {
+    FLAG_ENABLED = 1
 }
 
 share(all)
-MASK()<CInt> -> {
-    return 0xff00
+enum MASK {
+    MASK = 0xff00
 }
 
 share(all)
-TWEAK()<CInt> -> {
-    return -2
+enum TWEAK {
+    TWEAK = -2
 }
-

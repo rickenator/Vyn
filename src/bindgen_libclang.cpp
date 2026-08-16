@@ -207,6 +207,11 @@ private:
 
 struct Field { std::string name; std::string type; };
 struct Param { std::string name; std::string type; };
+struct EnumVariantG {
+    std::string name;
+    bool hasValue = false;      // declared with `= <int>`
+    long long value = 0;        // explicit value (when hasValue)
+};
 struct UnionMember {
     std::string name;   // may be empty for an anonymous union member
     std::string type;   // mapped Vyb type (validated as mappable)
@@ -267,22 +272,21 @@ public:
 
     void emitEnumNamed(CXCursor enumCur, const std::string& name) {
         if (!emitted_.insert(name).second) { warn("skipping duplicate enum '" + name + "'"); return; }
-        std::vector<std::string> variants;
-        bool explicitValues = false;
+        std::vector<EnumVariantG> variants;
         enumCtx_ = &variants;
-        enumExplicit_ = &explicitValues;
         clang_visitChildren(enumCur, &enumVisitor, this);
         enumCtx_ = nullptr;
-        enumExplicit_ = nullptr;
-        if (explicitValues) {
-            warn("skipping enum '" + name + "': has explicit values; Vyb enums are sequential from 0");
-            return;
-        }
         std::ostringstream os;
+        bool any = false, all = true;
+        for (const auto& v : variants) { if (v.hasValue) any = true; else all = false; }
+        bool constEnum = any && all;
+        if (any && !all)
+            warn("enum '" + name + "' has partial explicit values; emitting positionally as a nominal enum");
         os << "share(all)\nenum " << name << " { ";
         for (size_t i = 0; i < variants.size(); ++i) {
             if (i) os << ", ";
-            os << variants[i];
+            os << variants[i].name;
+            if (constEnum) os << " = " << variants[i].value;
         }
         os << " }\n\n";
         chunks_.push_back(os.str());
@@ -628,8 +632,15 @@ public:
                         const std::string& type) {
         emitted_.insert(name);
         std::ostringstream os;
-        os << "share(all)\n" << name << "()<" << type << "> -> {\n    return " << text
-           << "\n}\n\n";
+        if (type == "CInt" || type == "Int") {
+            // Integer constant: a single-variant constant enum; the member is a
+            // compile-time Int constant (`NAME::NAME`), not a `NAME()` call.
+            os << "share(all)\nenum " << name << " {\n    " << name << " = " << text
+               << "\n}\n\n";
+        } else {
+            os << "share(all)\n" << name << "()<" << type << "> -> {\n    return " << text
+               << "\n}\n\n";
+        }
         chunks_.push_back(os.str());
     }
 
@@ -831,8 +842,15 @@ public:
     enum CXChildVisitResult enumConstant(CXCursor c, CXCursor p) {
         (void)p;
         if (c.kind != CXCursor_EnumConstantDecl) return CXChildVisit_Continue;
-        if (enumExplicit_ && hasExplicitValue(c)) *enumExplicit_ = true;
-        if (enumCtx_) enumCtx_->push_back(curSpell(c));
+        if (enumCtx_) {
+            EnumVariantG ev;
+            ev.name = curSpell(c);
+            if (hasExplicitValue(c)) {
+                ev.hasValue = true;
+                ev.value = clang_getEnumConstantDeclValue(c);
+            }
+            enumCtx_->push_back(std::move(ev));
+        }
         return CXChildVisit_Continue;
     }
 
@@ -877,8 +895,7 @@ public:
     std::vector<Field>* structCtx_ = nullptr;
     bool* structBitfield_ = nullptr;
     bool* structUnsupported_ = nullptr;
-    std::vector<std::string>* enumCtx_ = nullptr;
-    bool* enumExplicit_ = nullptr;
+    std::vector<EnumVariantG>* enumCtx_ = nullptr;
     std::vector<UnionMember>* unionCtx_ = nullptr;
     bool* unionUnsupported_ = nullptr;
 };

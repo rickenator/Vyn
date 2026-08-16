@@ -1,5 +1,5 @@
 // @test: vyb bindgen #define constants
-// @description: object-like `#define` macros (numbers, hex, strings, floats) bind as shared constant functions and are usable from an importing module
+// @description: object-like `#define` macros (numbers, hex, strings, floats) bind as constant enums (integers) or shared constant functions (strings/floats) and are usable from an importing module
 // @category: ffi, bindgen
 // @expect: pass
 // @expect-output: max= 4096
@@ -9,10 +9,10 @@
 import preproc
 
 main()<Int> -> {
-    println("max=", MAX_BUFSIZE())
+    println("max=", MAX_BUFSIZE::MAX_BUFSIZE)
     println("name=", DEFAULT_NAME())
     println("scale=", SCALE_FACTOR())
-    println("mask=", MASK())
-    println("tweak=", TWEAK())
+    println("mask=", MASK::MASK)
+    println("tweak=", TWEAK::TWEAK)
     return 0
 }

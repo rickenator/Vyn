@@ -4,18 +4,18 @@
 
 
 share(all)
-COUNT()<CInt> -> {
-    return 4
+enum COUNT {
+    COUNT = 4
 }
 
 share(all)
-WIDE()<CInt> -> {
-    return 8
+enum WIDE {
+    WIDE = 8
 }
 
 share(all)
-LIMIT_HI()<CInt> -> {
-    return 0xFF00
+enum LIMIT_HI {
+    LIMIT_HI = 0xFF00
 }
 
 share(all)
@@ -64,8 +64,8 @@ STATUS()<String> -> {
 }
 
 share(all)
-BIG_ENOUGH()<CInt> -> {
-    return 1
+enum BIG_ENOUGH {
+    BIG_ENOUGH = 1
 }
 
 share(all)
