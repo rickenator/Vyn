@@ -125,12 +125,10 @@ struct ModuleScopeGate {
     mutable std::string currentOwner;
 
     // A module-owned top-level symbol is resolvable only from code owned by a
-    // module that scopes it. Local variables and builtins pass through
-    // unchecked, so a local that shadows a module name is never hidden.
+    // module that scopes it. Invoked only for symbols found in the global
+    // (root) scope, so function-local variables are never gated and may safely
+    // shadow a module name.
     bool hides(const SymbolInfo& sym, const std::string& name) const {
-        if (sym.kind == SymbolInfo::Kind::Variable) {
-            return false;
-        }
         auto it = ownerByName.find(name);
         if (it == ownerByName.end()) {
             return false;
@@ -139,10 +137,11 @@ struct ModuleScopeGate {
             return false;
         }
         auto es = effectiveScope.find(currentOwner);
-        if (es == effectiveScope.end()) {
-            return true;
+        bool hidden = es == effectiveScope.end();
+        if (!hidden) {
+            hidden = es->second.find(name) == es->second.end();
         }
-        return es->second.find(name) == es->second.end();
+        return hidden;
     }
 };
 
@@ -168,8 +167,11 @@ public:
         auto it = table.find(name);
         if (it != table.end()) {
             SymbolInfo* found = &it->second;
-            if (scopeGate && scopeGate->hides(*found, name)) {
-                return parent ? parent->lookup(name) : nullptr;
+            // Module-scope gating applies only to top-level symbols in the
+            // global scope; function-local variables always resolve, so a local
+            // may shadow a module name without being hidden.
+            if (!parent && scopeGate && scopeGate->hides(*found, name)) {
+                return nullptr;  // hidden top-level symbol: no global scope parent
             }
             return found;
         }
@@ -523,6 +525,7 @@ private:
     Driver& driver_;
     SymbolTable* currentScope;
     ModuleScopeGate scopeGate_;
+    std::string defaultOwner_;  // entry/root module key, used for unnamed top-level code
     std::vector<std::string> ownerStack_;
     std::vector<std::string> errors;
     std::unordered_map<ast::Node*, ast::TypeNode*> expressionTypes;

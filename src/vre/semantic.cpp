@@ -34,6 +34,36 @@ static bool isBuiltinVecMethodName(const std::string& methodName) {
            methodName == "get_vec";
 }
 
+// Name a top-level declaration (mirrors ModuleRegistry::declarationName) so
+// module-body statements can be attributed to the module that owns them.
+static std::string topLevelDeclarationName(const ast::StmtPtr& stmt) {
+    if (auto* fn = dynamic_cast<ast::FunctionDeclaration*>(stmt.get())) {
+        return fn->id ? fn->id->name : "";
+    }
+    if (auto* var = dynamic_cast<ast::VariableDeclaration*>(stmt.get())) {
+        return var->id ? var->id->name : "";
+    }
+    if (auto* alias = dynamic_cast<ast::TypeAliasDeclaration*>(stmt.get())) {
+        return alias->name ? alias->name->name : "";
+    }
+    if (auto* st = dynamic_cast<ast::StructDeclaration*>(stmt.get())) {
+        return st->name ? st->name->name : "";
+    }
+    if (auto* en = dynamic_cast<ast::EnumDeclaration*>(stmt.get())) {
+        return en->name ? en->name->name : "";
+    }
+    if (auto* aspect = dynamic_cast<ast::AspectDeclaration*>(stmt.get())) {
+        return aspect->name ? aspect->name->name : "";
+    }
+    if (auto* cls = dynamic_cast<ast::ClassDeclaration*>(stmt.get())) {
+        return cls->name ? cls->name->name : "";
+    }
+    if (auto* ns = dynamic_cast<ast::NamespaceDeclaration*>(stmt.get())) {
+        return ns->name ? ns->name->name : "";
+    }
+    return "";
+}
+
 static bool isBuiltinVecType(ast::TypeNode* typeNode) {
     if (dynamic_cast<ast::VecType*>(typeNode)) {
         return true;
@@ -594,7 +624,12 @@ void SemanticAnalyzer::setModuleScoping(
     const std::unordered_map<std::string, std::unordered_set<std::string>>& effectiveScope) {
     scopeGate_.ownerByName = ownerByName;
     scopeGate_.effectiveScope = effectiveScope;
-    scopeGate_.currentOwner.clear();
+    defaultOwner_ = "";
+    auto rootIt = ownerByName.find("main");
+    if (rootIt != ownerByName.end()) {
+        defaultOwner_ = rootIt->second;
+    }
+    scopeGate_.currentOwner = defaultOwner_;
 }
 
 void SemanticAnalyzer::analyze(ast::Module* root) {
@@ -1045,9 +1080,28 @@ void SemanticAnalyzer::visit(ast::Module* node) {
         }
     }
 
-    // Visit all declarations (this detects explicit fail statements)
+    // Visit all declarations (this detects explicit fail statements). Top-level
+    // non-function code resolves against the owning module's scope so a global
+    // initializer/expression in the entry file cannot name another module's
+    // private dependency; function declarations manage their own owner.
     for (auto& item : node->body) {
-        if (item) item->accept(*this);
+        if (!item) continue;
+        if (dynamic_cast<ast::FunctionDeclaration*>(item.get())) {
+            item->accept(*this);
+            continue;
+        }
+        std::string owner = defaultOwner_;
+        if (std::string name = topLevelDeclarationName(item); !name.empty()) {
+            auto ownerIt = scopeGate_.ownerByName.find(name);
+            if (ownerIt != scopeGate_.ownerByName.end()) {
+                owner = ownerIt->second;
+            }
+        }
+        ownerStack_.push_back(scopeGate_.currentOwner);
+        scopeGate_.currentOwner = owner;
+        item->accept(*this);
+        scopeGate_.currentOwner = ownerStack_.back();
+        ownerStack_.pop_back();
     }
 
     // Second pass: Propagate failability transitively
