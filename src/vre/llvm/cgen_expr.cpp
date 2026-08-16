@@ -5094,6 +5094,31 @@ void LLVMCodegen::visit(vyb::ast::AssignmentExpression *node) {
         builder->SetInsertPoint(contBB);
     }
 
+    // A `my<Struct>` move-assignment of an owning binding to another owning
+    // binding (`dest = src`) leaves the source slot holding the same heap
+    // pointer after the store, so both would reclaim it on scope exit (double
+    // free). When the source is a local owner, null its slot so ownership
+    // transfers to the target. A self-assignment (src == dest) is excluded, and
+    // a borrowed `my` parameter (not an owner) is left untouched.
+    if (myOverwrite && identLeft && node->right) {
+        if (auto* rhsIdent = dynamic_cast<ast::Identifier*>(node->right.get())) {
+            const ScopeVariable* srcVar = nullptr;
+            for (auto sit = scopeStack.rbegin(); sit != scopeStack.rend() && !srcVar; ++sit) {
+                for (const auto& sv : *sit) {
+                    if (sv.name == rhsIdent->name) { srcVar = &sv; break; }
+                }
+            }
+            if (srcVar && srcVar->ownership == ast::OwnershipKind::MY &&
+                srcVar->needsCleanup && srcVar->allocaInst != LHS) {
+                llvm::PointerType* rawPtr = llvm::PointerType::get(*context, 0);
+                builder->CreateStore(llvm::ConstantPointerNull::get(rawPtr),
+                                     srcVar->allocaInst, "move_assign.null_src");
+                VYB_CDBG << "DEBUG: my<Struct> move assign '" << rhsIdent->name
+                          << "' -> '" << identLeft->name << "': nulled source slot" << std::endl;
+            }
+        }
+    }
+
     // If we're assigning to a member of a struct, we need to preserve type information
     if (auto memberExpr = dynamic_cast<ast::MemberExpression*>(node->left.get())) {
         if (memberExpr->object->type) {

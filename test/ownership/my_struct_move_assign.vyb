@@ -1,0 +1,40 @@
+// @test: my<Struct> move-assignment transfers the heap allocation
+// @description: `y<my<Node>> = x` moves ownership out of the local `x`. At runtime
+//   the source slot still held the heap pointer after the store, so without
+//   invalidation both bindings reclaimed the same block on scope exit (double
+//   free). Nulling the moved-from slot keeps exactly one owner per allocation,
+//   including through a chained move `c = b`.
+// @category: ownership, my, move, memory, struct
+// @expect: pass
+// @expect-return: 0
+
+struct Node {
+    value<Int>,
+    label<String>
+}
+
+main()<Int> -> {
+    // 1: direct move between two locally-owned my<Struct> bindings.
+    x<my<Node>> = my(Node { value = 1, label = "x" })
+    y<my<Node>> = x
+    if (y.value != 1) {
+        return 1
+    }
+
+    // 2: a second chained move transfers the same allocation onward once.
+    c<my<Node>> = y
+    if (c.value != 1) {
+        return 2
+    }
+
+    // 3: pure assignment of an existing binding is also a move (source nulled).
+    d<my<Node>> = my(Node { value = 4, label = "d" })
+    e<my<Node>> = my(Node { value = 5, label = "e" })
+    e = d
+    if (e.value != 4) {
+        return 3
+    }
+
+    println("ok")
+    return 0
+}

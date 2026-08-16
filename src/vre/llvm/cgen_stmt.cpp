@@ -589,12 +589,29 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                         // this path is emitted.
                         for (auto& scopeVars : scopeStack) {
                             for (auto& var : scopeVars) {
+                                // A standalone `my<Struct>` binding stores the heap pointer
+                                // directly (its LLVM type is a pointer, so the
+                                // owned-field scan in scopeVarIsOwnedStruct never
+                                // matches it). Returning such a binding hands the
+                                // allocated object to the caller, so suppress its
+                                // scope-exit reclaim too.
+                                bool myStructTransfer = false;
+                                if (transferNames.count(var.name) &&
+                                    var.ownership == ast::OwnershipKind::MY &&
+                                    var.type && var.type->isPointerTy()) {
+                                    auto astIt = valueTypeMap.find(var.allocaInst);
+                                    if (astIt != valueTypeMap.end() && astIt->second &&
+                                        isMyOwnedStructTypeNode(astIt->second.get())) {
+                                        myStructTransfer = true;
+                                    }
+                                }
                                 bool transfersOwnership =
                                     transferNames.count(var.name) &&
                                     (var.isVecWithMallocData ||
                                      scopeVarIsOwnedStruct(var) ||
                                      var.ownership == ast::OwnershipKind::OUR ||
-                                     var.ownership == ast::OwnershipKind::MILD);
+                                     var.ownership == ast::OwnershipKind::MILD) ||
+                                    myStructTransfer;
                                 if (transfersOwnership) {
                                     savedFlags.push_back({var.allocaInst, var.needsCleanup,
                                                           var.isVecWithMallocData, var.isOwnedStruct});

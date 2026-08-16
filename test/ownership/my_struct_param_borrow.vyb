@@ -1,0 +1,38 @@
+// @test: my<Struct> parameter is a runtime borrow
+// @description: A `my<Node>` parameter borrows the caller-owned allocation (the callee
+//   does not reclaim it). Moving from a borrowed parameter into a local must not make
+//   that local a second owner; it borrows too, leaving the caller's owner to free once.
+// @category: ownership, my, move, memory, struct, parameter
+// @expect: pass
+// @expect-return: 0
+
+struct Node {
+    value<Int>,
+    label<String>
+}
+
+read_only(n<my<Node>>)<Int> -> {
+    return n.value
+}
+
+relocate(a<my<Node>>)<Int> -> {
+    b<my<Node>> = a
+    return b.value
+}
+
+main()<Int> -> {
+    // 1: plain borrow read of a my<Struct> parameter (caller frees at scope exit).
+    a<my<Node>> = my(Node { value = 1, label = "a" })
+    if (read_only(a) != 1) {
+        return 1
+    }
+
+    // 2: the callee moves the borrowed parameter into a local and reads it.
+    x<my<Node>> = my(Node { value = 11, label = "x" })
+    if (relocate(x) != 11) {
+        return 2
+    }
+
+    println("ok")
+    return 0
+}

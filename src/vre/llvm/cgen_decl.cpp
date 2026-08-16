@@ -442,6 +442,42 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
                       << "' is an enum with an our payload - needs cleanup" << std::endl;
         }
 
+        // A `my<Struct>` binding initialized from another `my<Struct>` binding is
+        // a true ownership move. At runtime the source slot still holds the heap
+        // pointer after the init has stored it, so without invalidation both
+        // bindings would reclaim the same allocation on scope exit (double free).
+        // Transfer the pointer by nulling the source slot when the source is a
+        // local owner. When the source is a borrowed `my` parameter (the callee
+        // does not own the payload), the new binding must NOT reclaim it either:
+        // it borrows like the parameter, leaving the caller's owner to free once.
+        if (node->init && node->typeNode && isMyOwnedStructTypeNode(node->typeNode.get())) {
+            if (auto* initIdent = dynamic_cast<ast::Identifier*>(node->init.get())) {
+                const ScopeVariable* srcVar = nullptr;
+                for (auto sit = scopeStack.rbegin(); sit != scopeStack.rend() && !srcVar; ++sit) {
+                    for (const auto& sv : *sit) {
+                        if (sv.name == initIdent->name) { srcVar = &sv; break; }
+                    }
+                }
+                if (srcVar && srcVar->ownership == ast::OwnershipKind::MY &&
+                    srcVar->allocaInst != alloca) {
+                    if (srcVar->needsCleanup) {
+                        // Local owner: null the source so ownership transfers cleanly.
+                        llvm::PointerType* rawPtr = llvm::PointerType::get(*context, 0);
+                        builder->CreateStore(llvm::ConstantPointerNull::get(rawPtr),
+                                             srcVar->allocaInst, "move.null_src");
+                        VYB_CDBG << "DEBUG: my<Struct> move '" << initIdent->name
+                                  << "' -> '" << node->id->name << "': nulled source slot" << std::endl;
+                    } else {
+                        // Borrowed parameter: the new binding borrows too (no free).
+                        needsCleanup = false;
+                        VYB_CDBG << "DEBUG: my<Struct> init '" << node->id->name
+                                  << "' from borrow param '" << initIdent->name
+                                  << "': new binding borrows" << std::endl;
+                    }
+                }
+            }
+        }
+
         // Register variable for scope-based cleanup
         registerVariable(node->id->name, alloca, initialVal, ownership, varType, needsCleanup);
 

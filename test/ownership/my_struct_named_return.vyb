@@ -1,0 +1,41 @@
+// @test: named my<Struct> return transfers ownership to the caller
+// @description: Returning a named `my<Struct>` local hands the heap allocation to the
+//   caller; the binding's scope-exit reclaim must be suppressed so it is freed once
+//   (by the caller). Also verifies that reassigning the binding to a fresh `my{...}`
+//   frees the old allocation and keeps the new one alive.
+// @category: ownership, my, move, memory, struct
+// @expect: pass
+// @expect-return: 0
+
+struct Node {
+    value<Int>,
+    label<String>
+}
+
+take_back()<my<Node>> -> {
+    r<my<Node>> = my(Node { value = 12, label = "r" })
+    return r
+}
+
+make_revived()<my<Node>> -> {
+    w<my<Node>> = my(Node { value = 4, label = "w1" })
+    w = my(Node { value = 5, label = "w2" })
+    return w
+}
+
+main()<Int> -> {
+    // 1: transfer a named my<Struct> local out to the caller.
+    z<my<Node>> = take_back()
+    if (z.value != 12) {
+        return 1
+    }
+
+    // 2: reassign inside the callee (old freed, new survives), then transfer.
+    v<my<Node>> = make_revived()
+    if (v.value != 5) {
+        return 2
+    }
+
+    println("ok")
+    return 0
+}
