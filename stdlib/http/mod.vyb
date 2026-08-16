@@ -1,9 +1,10 @@
 # http - a pure-Vyb HTTP/1.1 server and client over the runtime sockets.
 #
-# Everything here is written in Vyb on top of the `__vyb_net_*` intrinsics the
-# `network` module also wraps - no new FFI and no C code. It is minimal by
-# design but real: it parses request heads, builds well-formed responses, and
-# serves and fetches over TCP loopback/lan.
+# Everything here is written in Vyb on top of the `network` module - http uses
+# sockets but its own public surface stays just `http_*` functions carrying
+# `Int`s/Strings. No new FFI and no C code. It is minimal by design but real: it parses request
+# heads, builds well-formed responses, and serves and fetches over TCP
+# loopback/lan.
 #
 #   Server (building blocks):
 #     http_listen(port, backlog) -> fd    open + bind + listen (0 = ephemeral)
@@ -32,19 +33,13 @@
 # blocks until a *living* peer responds, so exercise it against an
 # external/local server.
 
-# Concurrent worker threads come from the `threads` module.
+# Underlying socket plumbing comes from the `network` module, and per-connection
+# worker threads from the `threads` module. http itself only exposes `http_*`
+# functions over `Int`/`String`.
+import network::{socket_open, socket_bind, socket_listen, socket_accept,
+                  socket_connect, socket_recv, socket_send, socket_local_port,
+                  socket_close, Socket}
 import threads::{thread_spawn, thread_detach}
-
-# Underlying socket domain/type/protocol constants (same values as `network`'s
-# `Socket`). Kept local with a distinct name so importing both `network` and
-# `http` into one program doesn't collide, while `http`'s public API only
-# carries `Int`s.
-share(all)
-enum HttpSock {
-    AF_INET = 2
-    SOCK_STREAM = 1
-    IPPROTO_TCP = 6
-}
 
 # --- Server building blocks -------------------------------------------------
 
@@ -52,10 +47,10 @@ enum HttpSock {
 # listening descriptor (>= 0) or -1 on failure.
 share(all)
 http_listen(port<Int>, backlog<Int>)<Int> -> {
-    fd<Int> = vyb_net_open(HttpSock::AF_INET, HttpSock::SOCK_STREAM, HttpSock::IPPROTO_TCP)
+    fd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
     if (fd < 0) { return -1 }
-    if (vyb_net_bind(fd, "0.0.0.0", port) < 0 || vyb_net_listen(fd, backlog) < 0) {
-        vyb_net_close(fd)
+    if (socket_bind(fd, "0.0.0.0", port) < 0 || socket_listen(fd, backlog) < 0) {
+        socket_close(fd)
         return -1
     }
     return fd
@@ -64,13 +59,13 @@ http_listen(port<Int>, backlog<Int>)<Int> -> {
 # The port a listening socket is bound to (read a 0 back after http_listen(0)).
 share(all)
 http_local_port(fd<Int>)<Int> -> {
-    return vyb_net_local_port(fd)
+    return socket_local_port(fd)
 }
 
 # Accept one pending connection; returns the connected descriptor (>= 0) or -1.
 share(all)
 http_accept(fd<Int>)<Int> -> {
-    return vyb_net_accept(fd)
+    return socket_accept(fd)
 }
 
 # Read an HTTP head (everything up to and including the blank line) into a fresh
@@ -80,7 +75,7 @@ http_read_head(conn<Int>, max<Int>)<String> -> {
     buf<String> = ""
     marker<String> = "\r\n\r\n"
     while (buf.len() < max) {
-        chunk<String> = vyb_net_recv(conn, 256)
+        chunk<String> = socket_recv(conn, 256)
         if (chunk.len() == 0) { break }
         buf = buf.concat(chunk)
         idx<Int> = buf.index_of(marker)
@@ -108,7 +103,7 @@ http_send_all(fd<Int>, data<String>)<Int> -> {
     total<Int> = 0
     n<Int> = data.len()
     while (total < n) {
-        sent<Int> = vyb_net_send(fd, data.substring(total))
+        sent<Int> = socket_send(fd, data.substring(total))
         if (sent <= 0) { return total }
         total = total + sent
     }
@@ -118,7 +113,7 @@ http_send_all(fd<Int>, data<String>)<Int> -> {
 # Close a socket or connection.
 share(all)
 http_close(fd<Int>)<Int> -> {
-    return vyb_net_close(fd)
+    return socket_close(fd)
 }
 
 # A well-formed HTTP/1.1 text/plain response with a Content-Length. A handful of
@@ -148,7 +143,7 @@ share(all)
 http_read_rest(conn<Int>, max<Int>)<String> -> {
     buf<String> = ""
     while (buf.len() < max) {
-        chunk<String> = vyb_net_recv(conn, 1024)
+        chunk<String> = socket_recv(conn, 1024)
         if (chunk.len() == 0) { break }
         buf = buf.concat(chunk)
     }
@@ -159,16 +154,16 @@ http_read_rest(conn<Int>, max<Int>)<String> -> {
 # on connection failure). Blocks until the peer responds.
 share(all)
 http_get(host<String>, port<Int>, path<String>)<String> -> {
-    fd<Int> = vyb_net_open(HttpSock::AF_INET, HttpSock::SOCK_STREAM, HttpSock::IPPROTO_TCP)
+    fd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
     if (fd < 0) { return "" }
-    if (vyb_net_connect(fd, host, port) < 0) {
-        vyb_net_close(fd)
+    if (socket_connect(fd, host, port) < 0) {
+        socket_close(fd)
         return ""
     }
     http_send_all(fd, http_request("GET", path, host))
     http_read_head(fd, 65536)
     body<String> = http_read_rest(fd, 65536)
-    vyb_net_close(fd)
+    socket_close(fd)
     return body
 }
 
