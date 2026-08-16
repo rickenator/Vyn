@@ -326,8 +326,13 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
   `their<Vec<T>>` receivers now enable the in-place forms `sort_in_place`
   (VecOps), `map_in_place` / `retain` / `reverse_in_place` (VecHigherOps),
   so the built-in Vec mutating primitives (`len`/`get`/`set`/`pop`) resolve
-  through the ownership wrapper in both semantic and codegen. Remaining: full
-  closure capture (env struct). `.contains()` is now correct.
+  through the ownership wrapper in both semantic and codegen. The aspect-bound
+  in-place forms now dispatch on a by-ref `their<Vec<T>>` view too (function/borrow
+  parameter or a local `view()`/`borrow()` reference, `Int`/`String` elements;
+  `test/modules/test_vec_inplace_byref.vyb`) — codegen passes the wrapper's stored
+  `Vec*` pointer to the by-ref self. Remaining: full closure capture (env struct);
+  aspect/bind dispatch on *member-expression* receivers (e.g. `h.c.bump()`) is still
+  a separate pre-existing codegen gap. `.contains()` is now correct.
 - [x] **`Vec<T>` constructor idiom** — `Vec::new()` / `Vec::new(size)` replaced by a vybish constructor call: `Vec()` (empty growable) and `Vec(n)` (preallocate `n` elements/capacity), element type inferred from the annotation. `Vec::new()` stays as a back-compat alias.
 
 ### 5. Sum Types / Enums (MEDIUM PRIORITY)

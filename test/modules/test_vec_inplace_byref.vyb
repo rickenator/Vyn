@@ -1,0 +1,56 @@
+// @test: by-ref their<Vec<T>> in-place VecOps/VecHigherOps methods
+// @description: the in-place collection methods (sort_in_place, retain,
+//   map_in_place, reverse_in_place) dispatch through a by-ref their<Vec<T>>
+//   view, not just an owned receiver: a function/borrow parameter or a local
+//   view()/borrow() reference. The unwrapped Vec<T> bind target resolves
+//   (semantic) and the receiver's stored Vec* pointer is passed to the by-ref
+//   self parameter (codegen), so mutations reach the caller's backing Vec.
+// @category: modules, collections, vec, ownership, their, bind
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import collections
+
+sort_ref(v<their<Vec<Int>>>)<Void> -> { v.sort_in_place() }
+retain_ref(v<their<Vec<Int>>>, f<fn(Int) -> Bool>)<Int> -> { return v.retain(f) }
+map_ref(v<their<Vec<Int>>>, f<fn(Int) -> Int>)<Void> -> { v.map_in_place(f) }
+rev_ref(v<their<Vec<Int>>>)<Void> -> { v.reverse_in_place() }
+strsort(v<their<Vec<String>>>)<Void> -> { v.sort_in_place() }
+lenref(v<their<Vec<Int>>>)<Int> -> { return v.len() }
+
+main()<Int> -> {
+    w<Vec<Int>> = Vec()
+    w.push(3); w.push(9); w.push(5); w.push(1)
+    sort_ref(borrow(w))
+    if (!(w.get(0) == 1 && w.get(3) == 9)) { return 1 }
+
+    r<Int> = retain_ref(borrow(w), |n<Int>| -> n >= 2)
+    if (!(r == 3 && w.len() == 3)) { return 2 }
+
+    map_ref(borrow(w), |n<Int>| -> n * 10)
+    if (!(w.get(0) == 30)) { return 3 }
+
+    rev_ref(borrow(w))
+    if (!(w.get(0) == 90 && w.last() == 30)) { return 4 }
+
+    # local view()/borrow() reference to a Vec
+    vw<Vec<Int>> = Vec()
+    vw.push(2); vw.push(1)
+    vwref<their<Vec<Int>>> = view(vw)
+    vwref.sort_in_place()
+    if (!(vw.get(0) == 1 && vw.last() == 2)) { return 5 }
+
+    # String element type through a their<Vec<String>> reference
+    sw<Vec<String>> = Vec()
+    sw.push("b"); sw.push("a")
+    strsort(borrow(sw))
+    if (!(sw.get(0) == "a" && sw.get(1) == "b")) { return 6 }
+
+    # built-in Vec primitives still resolve through the same wrapper
+    if (!(lenref(borrow(w)) == 3)) { return 7 }
+
+    println("ok")
+    return 0
+}

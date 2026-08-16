@@ -2912,6 +2912,34 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                 }
                             }
 
+                            // Ownership-wrapped Vec receiver (their<Vec<T>>, my<Vec<T>>,
+                            // view<Vec<T>>, our<Vec<T>>, borrow): a by-ref view calling an
+                            // aspect/bind method bound to the Vec (VecOps/VecHigherOps:
+                            // sort_in_place, retain, map_in_place, reverse_in_place) should
+                            // resolve against the unwrapped inner Vec type, not the wrapper.
+                            if (typeName->identifier &&
+                                (typeName->identifier->name == "their" ||
+                                 typeName->identifier->name == "my" ||
+                                 typeName->identifier->name == "our" ||
+                                 typeName->identifier->name == "view" ||
+                                 typeName->identifier->name == "borrow") &&
+                                typeName->genericArgs.size() == 1) {
+                                ast::TypeNode* inner = typeName->genericArgs[0].get();
+                                bool innerIsVec = dynamic_cast<ast::VecType*>(inner) != nullptr;
+                                if (!innerIsVec) {
+                                    if (auto innerTN = dynamic_cast<ast::TypeName*>(inner)) {
+                                        innerIsVec = innerTN->identifier && innerTN->identifier->name == "Vec";
+                                    }
+                                }
+                                if (innerIsVec) {
+                                    // Built-in Vec primitives are dispatched on the wrapper by
+                                    // the receiver block below (unwrap + handleVecMethodCall).
+                                    if (resolveAspectMethodForTypeString(inner->toString())) {
+                                        return;
+                                    }
+                                }
+                            }
+
                             if (resolveAspectMethodForTypeString(typeNameStr)) {
                                 return;
                             }
@@ -3269,6 +3297,26 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                         std::string typeNameStr = typeName->toString(); // Use full type string with generic args
                         std::string methodName = methodIdent->name;
 
+                        // Ownership-wrapped Vec field/call (their<Vec<T>> / my<Vec<T>> /
+                        // view<Vec<T>> / our<Vec<T>> / borrow): dispatch aspect/bind
+                        // methods bound to the Vec (VecOps/VecHigherOps in-place forms)
+                        // against the unwrapped inner Vec type, since no aspect is bound
+                        // to the wrapper itself. Built-in Vec primitives are already
+                        // handled above via handleVecMethodCallOnMember.
+                        std::string dispatchTypeStr = typeNameStr;
+                        if (dispatchTypeStr.find('<') != std::string::npos) {
+                            std::string kw = dispatchTypeStr.substr(0, dispatchTypeStr.find('<'));
+                            if (kw == "their" || kw == "my" || kw == "our" || kw == "view" || kw == "borrow") {
+                                size_t lt = dispatchTypeStr.find('<');
+                                size_t gt = dispatchTypeStr.rfind('>');
+                                if (gt != std::string::npos && gt > lt + 1) {
+                                    std::string inner = dispatchTypeStr.substr(lt + 1, gt - lt - 1);
+                                    bool innerIsVec = inner == "Vec" || inner.rfind("Vec<", 0) == 0;
+                                    if (innerIsVec) dispatchTypeStr = inner;
+                                }
+                            }
+                        }
+
                         // Built-in String methods reached through a non-identifier receiver
                         // (literal, computed expression, member access root). Mirrors the
                         // identifier-receiver String handling above.
@@ -3306,7 +3354,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                         }
 
                         // Look for concrete trait implementations for this type
-                        auto typeImplsIt = traitImpls.find(typeNameStr);
+                        auto typeImplsIt = traitImpls.find(dispatchTypeStr);
                         if (typeImplsIt != traitImpls.end()) {
                             // Check each trait this type implements
                             for (const auto& traitEntry : typeImplsIt->second) {
@@ -3322,7 +3370,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                             node->type = std::shared_ptr<ast::TypeNode>(method->returnTypeNode->clone());
                                         }
 
-                                        VYB_CDBG << "DEBUG: Resolved trait method call: " << typeNameStr
+                                        VYB_CDBG << "DEBUG: Resolved trait method call: " << dispatchTypeStr
                                                   << "." << methodName << " from trait " << traitName << std::endl;
                                         return;
                                     }
@@ -3330,12 +3378,12 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                             }
                         }
 
-                        // Also check generic trait impls - check if typeNameStr matches any pattern
+                        // Also check generic trait impls - check if dispatchTypeStr matches any pattern
                         for (const auto& typeEntry : genericTraitImpls) {
                             const std::string& pattern = typeEntry.first; // e.g., "Box<T>"
 
-                            // Check if typeNameStr matches pattern (e.g., Box<Int> matches Box<T>)
-                            if (matchesPattern(typeNameStr, pattern)) {
+                            // Check if dispatchTypeStr matches pattern (e.g., Box<Int> matches Box<T>)
+                            if (matchesPattern(dispatchTypeStr, pattern)) {
                                 for (const auto& traitEntry : typeEntry.second) {
                                     const std::string& traitName = traitEntry.first;
                                     const GenericImplInfo* implInfo = traitEntry.second.get();
@@ -3346,7 +3394,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                                 if (method->returnTypeNode) {
                                                     VYB_CDBG << "DEBUG: Generic trait method " << methodName
                                                               << " return type before substitution: " << method->returnTypeNode->toString() << std::endl;
-                                                    ast::TypeNode* actualReturnType = substituteSelfType(method->returnTypeNode.get(), typeNameStr);
+                                                    ast::TypeNode* actualReturnType = substituteSelfType(method->returnTypeNode.get(), dispatchTypeStr);
                                                     VYB_CDBG << "DEBUG: After Self substitution: " << actualReturnType->toString() << std::endl;
                                                     expressionTypes[node] = retainType(actualReturnType);
                                                     node->type = std::shared_ptr<ast::TypeNode>(actualReturnType->clone());

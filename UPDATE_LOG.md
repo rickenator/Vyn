@@ -3,6 +3,25 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-15: **By-ref `their<Vec<T>>` aspect/bind in-place dispatch**. The in-place
+  collection methods (`sort_in_place`, `retain`, `map_in_place`, `reverse_in_place`,
+  from the `VecOps` / `VecHigherOps` binds in `stdlib/collections`) now dispatch through
+  a by-ref `their<Vec<T>>` view, not just an owned receiver. Root cause was two-fold:
+  (1) semantic unwrapped an ownership-wrapped Vec receiver to dispatch built-in Vec
+  primitives only, so an aspect/bind method on `vr<their<Vec<Int>>>` fell through; the
+  identifier-receiver path now tries `resolveAspectMethodForTypeString` on the unwrapped
+  inner `Vec<Int>` type, and the member-expression path dispatches trait impls against a
+  normalized unwrapped type string. (2) codegen's aspect dispatch used the wrapper
+  (`their<Vec<Int>>`) as the monomorphize/mangle key and passed the receiver's alloca
+  address; it now normalizes to the inner Vec type and passes the stored `Vec*` pointer
+  (loaded from the wrapper alloca) to the by-ref `self<their<Vec<T>>>` parameter, so
+  mutations reach the caller's backing Vec. Works through a function/borrow parameter and
+  a local `view()`/`borrow()` reference, for `Int` and `String` elements. Covered by
+  `test/modules/test_vec_inplace_byref.vyb`; full unit/module/ownership/aspect suites pass.
+  Known separate (pre-existing) gap: codegen still lacks aspect/bind dispatch for
+  *member-expression* receivers generally (e.g. `h.c.bump()` on a plain struct field, or
+  `self.data.sort_in_place()` through a nested field), independent of any ownership wrapper.
+
 - 2026-08-15: **`BTreeMap<K,V>` ordered map**. Added to `stdlib/collections/mod.vyb` a
   `Comparable`-keyed ordered map bound as `BTreeMapOps`: keys live in a `keys` vector kept
   sorted ascending with a parallel `vals` vector, so `get` / `contains_key` binary search

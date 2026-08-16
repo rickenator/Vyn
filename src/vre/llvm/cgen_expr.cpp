@@ -1481,6 +1481,32 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                     VYB_CDBG << "DEBUG: Checking aspect method call: " << callDebug
                               << " on type " << concreteType << std::endl;
 
+                    // Ownership-wrapped Vec receiver (their<Vec<T>>, my<Vec<T>>,
+                    // view<Vec<T>>, our<Vec<T>>, borrow): an aspect/bind method bound
+                    // to the Vec (VecOps/VecHigherOps in-place forms) is monomorphized
+                    // for the *unwrapped* inner Vec type. Normalize concreteType to the
+                    // inner Vec so the bind/mangle/monomorphize lookups succeed, and
+                    // remember that the receiver's alloca holds a Vec* view so we pass
+                    // the loaded pointer (not the alloca address) to the by-ref self.
+                    bool ownershipWrappedVec = false;
+                    bool isOwnershipKw = concreteType.rfind("their<", 0) == 0 ||
+                                         concreteType.rfind("my<", 0) == 0 ||
+                                         concreteType.rfind("our<", 0) == 0 ||
+                                         concreteType.rfind("view<", 0) == 0 ||
+                                         concreteType.rfind("borrow<", 0) == 0;
+                    if (isOwnershipKw && !isQualifiedAspectCall) {
+                        size_t lt = concreteType.find('<');
+                        size_t gt = concreteType.rfind('>');
+                        if (lt != std::string::npos && gt != std::string::npos && gt > lt) {
+                            std::string inner = concreteType.substr(lt + 1, gt - lt - 1);
+                            bool innerIsVec = inner == "Vec" || inner.rfind("Vec<", 0) == 0;
+                            if (innerIsVec) {
+                                concreteType = inner;
+                                ownershipWrappedVec = true;
+                            }
+                        }
+                    }
+
                     // Collect the candidate aspect(s) that provide this method for
                     // the concrete type. Qualified calls only consider the explicit
                     // aspect; unqualified calls consider every bound aspect.
@@ -1566,6 +1592,17 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                         std::vector<llvm::Value*> argValues;
                         if (isQualifiedAspectCall) {
                             argValues.push_back(receiverValue);
+                        } else if (ownershipWrappedVec && receiverAlloca) {
+                            // The wrapper alloca holds a single Vec* view; load it and
+                            // pass that pointer, which is what a by-ref
+                            // `self<their<Vec<T>>>` parameter expects.
+                            if (auto at = llvm::dyn_cast<llvm::AllocaInst>(receiverAlloca)) {
+                                argValues.push_back(builder->CreateLoad(
+                                    at->getAllocatedType(), receiverAlloca,
+                                    objIdent->name + ".view.load"));
+                            } else {
+                                argValues.push_back(receiverAlloca);
+                            }
                         } else if (selfIsByRef && receiverAlloca) {
                             argValues.push_back(receiverAlloca);
                         } else if (auto allocaType = llvm::dyn_cast<llvm::AllocaInst>(receiverAlloca)) {
