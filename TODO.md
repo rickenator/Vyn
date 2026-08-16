@@ -558,11 +558,16 @@ with `pass` for multi-statement case bodies. Needs polishing:
   is passed as its f64 bit pattern and a `Bool` as 0/1 in the int64 task slot and
   decoded by `await` (bitcast / zero-extend+truncate), covering both the main await
   and the fiber-suspend (nested `await` from inside a task) paths
-  (`test/async/async_float_bool.vyb`). Remaining stages: owned/rich async parameter
-  types and `await`/multi-step value futures. See
+  (`test/async/async_float_bool.vyb`). **`String` async params done** (Stage 6): a
+  `String` argument is snapshotted into the task env with the buffer retained (+1)
+  and released by the env's per-layout dtor on cleanup, so it safely outlives the
+  caller's scope while the worker runs on the pool (two-String envs and nested
+  `await` of a String param both covered by `test/async/async_string_param.vyb`,
+  valgrind-clean with no leaks). Remaining stages: richer owned params (Vec /
+  struct / `our<T>`) and `await`/multi-step value futures. See
   `test/async/async_event_loop.vyb`, `async_params.vyb`, `async_nested_await.vyb`,
-  `async_string.vyb`, `async_void.vyb`, `async_multicore.vyb`, and
-  `async_float_bool.vyb`.
+  `async_string.vyb`, `async_void.vyb`, `async_multicore.vyb`,
+  `async_float_bool.vyb`, and `async_string_param.vyb`.
 - [x] **`spawn` for concurrent tasks** — two storylines: the pthread `tasks`
   module (`t = task_spawn(fn() -> Int)`, `task_await`/`task_poll`/`task_free`)
   for real parallel workers, and the cooperative `asyncs` module above for

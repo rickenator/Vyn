@@ -452,9 +452,11 @@ transfer (a `Float` travels as its bit pattern and a `Bool` as 0/1 in the task's
 result slot). `await` parks the caller until the task completes (from `main`) or
 suspends the current fiber (so a worker can `await` a child task), including as a
 bare statement (`await f`) for `Future<Void>`. The future is returned by value as
-a real struct; the syntax and type plumbing below are stable and tested. Owned/rich
-async parameter types (non-scalar params) still use the legacy eager path (a
-follow-on stage).
+a real struct; the syntax and type plumbing below are stable and tested. `String`
+parameters are snapshotted into the task env with the buffer retained (+1) and
+released by the env's per-layout dtor on cleanup, so they safely outlive the
+caller's scope while the worker runs. Other owned/rich parameter types (Vec,
+structs, `our<T>`, closures) still use the legacy eager path (a follow-on stage).
 
 #### Async Function Syntax
 ```vyb
@@ -497,6 +499,7 @@ main()<Void> -> {
 - ✅ await expression support (from `main` and inside tasks)
 - ✅ Real event-loop execution for `Future<Int>` / `Future<String>` / `Future<Void>`
 - ✅ `Future<Float>` / `Future<Bool>` primitives (Int-slot bitcast / zero-extend + truncate)
+- ✅ `String` async parameters (env snapshot + retain, released by the env dtor)
 - ✅ Multi-threaded executor (a thread pool, one scheduler per CPU worker, fibers pinned to their worker)
 - ✅ Parameterized `Future<Int>` async tasks (scalar args captured in an env)
 - ✅ Nested `await` from inside a task (fiber suspension)
@@ -509,8 +512,8 @@ concurrency), `test/async/async_nested_await.vyb` (a task that awaits a child),
 `test/async/async_string.vyb` / `async_void.vyb` (non-`Int` futures),
 `test/async/async_multicore.vyb` (four CPU-bound tasks finish in parallel across
 the pool, ~120ms not ~480ms), `test/async/async_float_bool.vyb` (`Float`/`Bool`
-futures, including awaited from inside a task), and the `asyncs` stdlib module
-section.
+futures, including awaited from inside a task), `test/async/async_string_param.vyb`
+(`String` params retained in the env), and the `asyncs` stdlib module section.
 
 ### ✅ **Concurrency Modules (stdlib)**
 

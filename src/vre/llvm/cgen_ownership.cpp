@@ -1276,6 +1276,52 @@ llvm::Function* LLVMCodegen::generateClosureEnvDtor(
     return dtor;
 }
 
+// Build the per-layout destructor for an async-task environment that holds
+// inline `String` param fields (`{ i64 refcount; ptr cap_dtor; param0; ... }`).
+// The runtime calls it once the last env reference is dropped (the cap_dtor slot
+// at header offset 8): each String field's buffer reference is released, then the
+// heap block is freed. The worker and launcher hold their own references, so this
+// must only drop the env's retained copies. Returns null when there is nothing to
+// reclaim.
+llvm::Function* LLVMCodegen::generateAsyncEnvDtor(
+        llvm::StructType* envTy, const std::string& tag,
+        const std::vector<size_t>& stringFieldIx) {
+    if (!envTy || stringFieldIx.empty()) return nullptr;
+
+    llvm::PointerType* rawPtr = llvm::PointerType::get(*context, 0);
+    llvm::FunctionType* dtorTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*context), {rawPtr}, false);
+    std::string fnName = "async.env.dtor." + tag;
+    if (llvm::Function* existing = module->getFunction(fnName)) return existing;
+
+    llvm::Function* dtor = llvm::Function::Create(
+        dtorTy, llvm::Function::InternalLinkage, fnName, module.get());
+    dtor->getArg(0)->setName("async.env.raw");
+
+    llvm::Function* savedFunction = currentFunction;
+    llvm::BasicBlock* savedBlock = builder->GetInsertBlock();
+    currentFunction = dtor;
+    builder->SetInsertPoint(llvm::BasicBlock::Create(*context, "entry", dtor));
+
+    llvm::Value* envCast = builder->CreateBitCast(dtor->getArg(0), envTy->getPointerTo(),
+                                                  "async.env.dtor.ptr");
+    for (size_t ix : stringFieldIx) {
+        if (ix + 2 >= envTy->getNumElements()) continue;
+        llvm::Type* strTy = envTy->getElementType(ix + 2);
+        if (!isVybStringStructType(strTy)) continue;
+        llvm::Value* fieldPtr = builder->CreateStructGEP(envTy, envCast, ix + 2,
+                                                         "async.env.dtor.str");
+        llvm::Value* strVal = builder->CreateLoad(strTy, fieldPtr, "async.env.dtor.strval");
+        releaseStringValue(strVal);
+    }
+    builder->CreateCall(getOrCreateFreeFunction(), {dtor->getArg(0)});
+    builder->CreateRetVoid();
+
+    currentFunction = savedFunction;
+    builder->SetInsertPoint(savedBlock);
+    return dtor;
+}
+
 // ============================================================================
 // HEAP STRING REFERENCE COUNTING
 // ============================================================================

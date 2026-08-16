@@ -542,17 +542,19 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
         return;
     }
 
-    // Phase-1..3 real async: an `async fn(params...)<Future<T>>` (T = Int, String,
-    // or Void) whose args are all primitive scalars runs its body as a task on the
-    // cooperative event loop (worker + env-capture + launcher split). Everything
-    // else keeps the legacy eager path. Top-level non-failable declarations only.
+    // Stage-1..5 real async: an `async fn(params...)<Future<T>>` (T = Int, Float,
+    // Bool, String, or Void) whose args are all primitive scalars or `String`s
+    // runs its body as a task on the multi-threaded executor (worker + env-capture
+    // + launcher split). Everything else keeps the legacy eager path. Top-level
+    // non-failable declarations only.
     if (node->isAsync && !m_currentImplTypeNode && !node->canFail &&
         asyncFutureResultKind(node) != AsyncResultKind::None) {
         bool paramsEnvSafe = true;
         for (const auto& p : node->params) {
             if (!p.typeNode) { paramsEnvSafe = false; break; }
             llvm::Type* pt = codegenType(p.typeNode.get());
-            if (!pt || !(pt->isIntegerTy() || pt->isFloatTy() || pt->isDoubleTy())) {
+            if (!pt || !(pt->isIntegerTy() || pt->isFloatTy() || pt->isDoubleTy() ||
+                         isVybStringStructType(pt))) {
                 paramsEnvSafe = false; break;
             }
         }
@@ -1640,6 +1642,13 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
     const size_t n = paramTypes.size();
     llvm::Value* nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(int8PtrType));
 
+    // Param indices whose LLVM type is a Vyb String. A String param is snapshotted
+    // into the env as an inline {ptr,len} value whose buffer the env retains (+1),
+    // balanced by the env's per-layout dtor releasing it on task cleanup.
+    std::vector<size_t> stringParamIx;
+    for (size_t i = 0; i < n; ++i)
+        if (paramTypes[i] && isVybStringStructType(paramTypes[i])) stringParamIx.push_back(i);
+
     // 2) Async-worker environment: a heap block `{ i64 refcount; ptr cap_dtor;
     //    param0; param1; ... }` snapshotted by the launcher and passed to the
     //    event-loop runtime (which retains it and reclaims it on task cleanup).
@@ -1721,10 +1730,23 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
     llvm::Value* rcPtr = b.CreateStructGEP(envTy, envPtr, 0, "async.env.rc");
     b.CreateStore(llvm::ConstantInt::get(int64Type, 1), rcPtr);
     llvm::Value* dtorPtr = b.CreateStructGEP(envTy, envPtr, 1, "async.env.dtor");
-    b.CreateStore(nullPtr, dtorPtr);
+    if (!stringParamIx.empty()) {
+        llvm::Function* envDtor = generateAsyncEnvDtor(envTy, base, stringParamIx);
+        b.CreateStore(envDtor
+                          ? llvm::ConstantExpr::getBitCast(envDtor, int8PtrType)
+                          : static_cast<llvm::Value*>(nullPtr),
+                      dtorPtr);
+    } else {
+        b.CreateStore(nullPtr, dtorPtr);
+    }
     for (size_t i = 0; i < n; ++i) {
         llvm::Value* fp = b.CreateStructGEP(envTy, envPtr, i + 2, "async.env.sp" + std::to_string(i));
-        b.CreateStore(launcher->getArg(i), fp);
+        llvm::Value* av = launcher->getArg(i);
+        if (paramTypes[i] && isVybStringStructType(paramTypes[i])) {
+            llvm::Value* data = b.CreateExtractValue(av, 0, "async.env.str.data");
+            b.CreateCall(getOrCreateVybStringRetainFunction(), {data}, "async.env.str.retain");
+        }
+        b.CreateStore(av, fp);
     }
 
     llvm::Function* spawn = module->getFunction("__vyb_async_spawn");

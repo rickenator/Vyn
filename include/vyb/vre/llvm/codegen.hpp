@@ -449,6 +449,12 @@ private:
     llvm::Function* generateClosureEnvDtor(
         llvm::StructType* envTy, const std::string& tag,
         const std::vector<std::pair<size_t, const vyb::ast::TypeNode*>>& ownedFields);
+    // Build the per-layout destructor for an async-task environment that holds
+    // inline `String` param fields: release each one's buffer reference, then
+    // free the heap block. Returns the function (or null).
+    llvm::Function* generateAsyncEnvDtor(
+        llvm::StructType* envTy, const std::string& tag,
+        const std::vector<size_t>& stringFieldIx);
     void retainStringValue(llvm::Value* strVal);          // +1 on a copied String value
     void releaseStringValue(llvm::Value* strVal);         // -1 on a String value
     void releaseStringAlloca(llvm::Value* allocaInst);    // load a String from an alloca, then -1

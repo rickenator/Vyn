@@ -1,0 +1,57 @@
+// Stage-6 real async: owned/rich `String` param values passed into an async
+// task's environment. The launcher snapshots the String into the env and retains
+// its buffer (+1); the env's per-layout dtor releases it on task cleanup, so the
+// buffer safely outlives the caller's scope while the worker runs on the pool.
+// @env: VYB_STDLIB=stdlib
+// @expect: pass
+
+import asyncs::{async_sleep_ms}
+
+async shout(s<String>)<Future<String>> -> {
+    async_sleep_ms(5)
+    return s + "!"
+}
+
+async measure(s<String>)<Future<Int>> -> {
+    async_sleep_ms(5)
+    return s.len()
+}
+
+
+// Two String params snapshotted into one env.
+async join(a<String>, b<String>)<Future<String>> -> {
+    return a + " " + b
+}
+
+// String param used across a nested await (fiber-suspend path).
+async outer_string(s<String>)<Future<Int>> -> {
+    t<String> = await shout(s)
+    if (t != s + "!") { return 1 }
+    return 0
+}
+
+
+main()<Int> -> {
+    // A heap-built String (tracked buffer) exercises the env's retain/release.
+    part<String> = "hello"
+    h<String> = part + " world"
+
+    f1<Future<String>> = shout(h)
+    r<String> = await f1
+    if (r != "hello world!") { return 1 }
+
+    f2<Future<Int>> = measure("four")          // literal param, len = 4
+    n<Int> = await f2
+    if (n != 4) { return 2 }
+
+    j<Future<String>> = join("alpha", "beta")
+    v<String> = await j
+    if (v != "alpha beta") { return 3 }
+
+    o<Future<Int>> = outer_string(h)         // nested await of a String param
+    ores<Int> = await o
+    if (ores != 0) { return 4 }
+
+    println("ok")
+    return 0
+}
