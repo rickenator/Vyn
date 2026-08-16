@@ -573,12 +573,17 @@ with `pass` for multi-statement case bodies. Needs polishing:
   dtor releases it on cleanup, so the shared object outlives the caller's scope
   and the caller's binding stays valid afterwards; passing the `our<T>` on to a
   child task via nested await is covered by `test/async/async_our_param.vyb`,
-  valgrind-clean. Remaining stages: richer owned params (structs, closures) and
-  `await`/multi-step value futures. See
+  valgrind-clean. **Richer await chains done** (Stage 9): the semantic analyzer now
+  types an `await` expression as the awaited `Future<T>`'s inner `T`, so `await`
+  results compose as values anywhere an expression does — as a method receiver,
+  inside arithmetic (e.g. `await mk(2) + await mk(3)`), as a nested call argument
+  (`sv(await mk(5))`), as a comparison, and on a bound future awaited later
+  (`test/async/async_await_chains.vyb`). Remaining stages: richer owned params
+  (structs, closures). See
   `test/async/async_event_loop.vyb`, `async_params.vyb`, `async_nested_await.vyb`,
   `async_string.vyb`, `async_void.vyb`, `async_multicore.vyb`,
-  `async_float_bool.vyb`, `async_string_param.vyb`, `async_vec_param.vyb`, and
-  `async_our_param.vyb`.
+  `async_float_bool.vyb`, `async_string_param.vyb`, `async_vec_param.vyb`,
+  `async_our_param.vyb`, and `async_await_chains.vyb`.
 - [x] **`spawn` for concurrent tasks** — two storylines: the pthread `tasks`
   module (`t = task_spawn(fn() -> Int)`, `task_await`/`task_poll`/`task_free`)
   for real parallel workers, and the cooperative `asyncs` module above for

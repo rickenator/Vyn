@@ -1,0 +1,44 @@
+// Stage-9 real async: richer await chains. An `await` expression's type resolves
+// to the awaited `Future<T>`'s T, so it composes as a value in arbitrary
+// expression positions — as a method receiver, inside arithmetic, as a nested
+// call argument, and on a bound future awaited later.
+// @env: VYB_STDLIB=stdlib
+// @expect: pass
+
+import asyncs::{async_sleep_ms}
+
+async sv(x<Int>)<Future<String>> -> {
+    async_sleep_ms(2)
+    return x.to_string()
+}
+
+async mk(x<Int>)<Future<Int>> -> {
+    async_sleep_ms(2)
+    return x * 2
+}
+
+main()<Int> -> {
+    // await result used directly as a String method receiver
+    a<String> = (await sv(7)).to_upper()
+    if (a != "7") { return 1 }
+
+    // two awaits in a single arithmetic expression
+    b<Int> = await mk(2) + await mk(3)        // 4 + 6
+    if (b != 10) { return 2 }
+
+    // await inside a call argument, outer await result chained as a receiver
+    c<String> = (await sv(await mk(5))).to_upper()   // 5*2=10 -> "10"
+    if (c != "10") { return 3 }
+
+    // await a bound future later, then chain as a receiver
+    f<Future<String>> = sv(3)
+    d<String> = (await f).to_upper()
+    if (d != "3") { return 4 }
+
+    // await result in a Bool/arithmetic comparison
+    e<Bool> = (await mk(4)) == 8
+    if (!e) { return 5 }
+
+    println("ok")
+    return 0
+}

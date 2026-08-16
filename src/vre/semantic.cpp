@@ -4871,7 +4871,32 @@ void SemanticAnalyzer::visit(ast::FunctionExpression* node) {
 }
 void SemanticAnalyzer::visit(ast::ThisExpression* node) {}
 void SemanticAnalyzer::visit(ast::SuperExpression* node) {}
-void SemanticAnalyzer::visit(ast::AwaitExpression* node) {}
+void SemanticAnalyzer::visit(ast::AwaitExpression* node) {
+    // The result of `await <Future<T>>` has type T. Resolve the operand's type so
+    // the awaited value can be used as an expression (member receivers, call
+    // arguments, arithmetic, etc.) and type-checked against its consumers.
+    if (!node || !node->expr) return;
+    node->expr->accept(*this);
+
+    ast::TypeNode* operandTy = nullptr;
+    auto it = expressionTypes.find(node->expr.get());
+    if (it != expressionTypes.end()) operandTy = it->second;
+    else if (node->expr->type) operandTy = node->expr->type.get();
+
+    ast::TypeNode* inner = nullptr;
+    if (auto* ft = dynamic_cast<ast::FutureType*>(operandTy)) {
+        inner = ft->resultType.get();
+    } else if (auto* tn = dynamic_cast<ast::TypeName*>(operandTy)) {
+        if (tn->identifier && tn->identifier->name == "Future" && tn->genericArgs.size() == 1)
+            inner = tn->genericArgs[0].get();
+    }
+    if (inner) {
+        node->type = std::shared_ptr<ast::TypeNode>(inner->clone());
+        expressionTypes[node] = node->type.get();
+    } else {
+        expressionTypes[node] = nullptr;
+    }
+}
 
 void SemanticAnalyzer::visit(ast::RangeExpression* node) {
     if (node->start) {

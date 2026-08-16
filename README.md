@@ -505,6 +505,7 @@ main()<Void> -> {
 - ✅ `String` async parameters (env snapshot + retain, released by the env dtor)
 - ✅ `Vec<T>` async parameters (env deep-copy; dtor reclaims storage + String elements)
 - ✅ `our<T>` async parameters (env shared-control-block retain + release)
+- ✅ Richer await chains (`await` result usable as a receiver, call arg, arithmetic operand, comparison; nested `await` in an argument)
 - ✅ Multi-threaded executor (a thread pool, one scheduler per CPU worker, fibers pinned to their worker)
 - ✅ Parameterized `Future<Int>` async tasks (scalar args captured in an env)
 - ✅ Nested `await` from inside a task (fiber suspension)
@@ -520,8 +521,9 @@ the pool, ~120ms not ~480ms), `test/async/async_float_bool.vyb` (`Float`/`Bool`
 futures, including awaited from inside a task), `test/async/async_string_param.vyb`
 (`String` params retained in the env), `test/async/async_vec_param.vyb` (`Vec<T>`
 params deep-copied, incl. nested await + mixed envs), `test/async/async_our_param.vyb`
-(`our<T>` params retained across tasks, caller ref stays valid), and the `asyncs`
-stdlib module section.
+(`our<T>` params retained across tasks, caller ref stays valid),
+`test/async/async_await_chains.vyb` (await results composed in expressions), and
+the `asyncs` stdlib module section.
 
 ### ✅ **Concurrency Modules (stdlib)**
 
