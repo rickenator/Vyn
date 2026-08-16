@@ -400,6 +400,9 @@ extern "C" char* __vyb_serialize_to_json(void* obj, const char* type_name) {
     // Return a heap-allocated copy of the string
     char* result = (char*)malloc(jsonStr.length() + 1);
     if (result) strcpy(result, jsonStr.c_str());
+    // Register so the runtime's refcount teardown (__vyb_string_free/release)
+    // reclaims this serialization buffer instead of leaking it.
+    if (result) __vyb_string_register(result);
     return result;
 }
 
