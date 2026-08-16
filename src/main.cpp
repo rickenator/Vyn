@@ -153,6 +153,12 @@ extern "C" {
     int64_t __vyb_chan_try(int64_t ch);
     int64_t __vyb_chan_len(int64_t ch);
     int64_t __vyb_chan_free(int64_t ch);
+    // Tasks (tasks stdlib module): a detached pthread running a closure whose
+    // result is delivered to a private capacity-1 channel. handle == chan.
+    int64_t __vyb_task_spawn(void* env, void* fn);
+    int64_t __vyb_task_await(int64_t task);
+    int64_t __vyb_task_poll(int64_t task);
+    int64_t __vyb_task_free(int64_t task);
 
     // JSON serialization for complex types
     char* __vyb_complex_to_json(void* instance, const char* type_name);
@@ -1059,6 +1065,14 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_chan_len), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_chan_free")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_chan_free), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_task_spawn")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_task_spawn), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_task_await")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_task_await), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_task_poll")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_task_poll), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_task_free")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_task_free), llvm::JITSymbolFlags::Exported);
 
         // Register JSON serialization functions
         runtimeSymbols[mangle("__vyb_complex_to_json")] = llvm::orc::ExecutorSymbolDef(

@@ -4,7 +4,6 @@
 #include "vyb/vre/llvm/codegen.hpp"
 #include "vyb/parser/ast.hpp"
 #include "vyb/parser/source_location.hpp" // For vyb::SourceLocation
-#include "vyb/runtime/async_runtime.hpp" // For async runtime integration
 
 // LLVM Headers
 #include "llvm/ADT/APFloat.h"

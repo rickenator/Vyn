@@ -1935,7 +1935,9 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_atomic_cas" || name == "vyb_atomic_free" ||
             name == "vyb_chan_new" || name == "vyb_chan_send" ||
             name == "vyb_chan_recv" || name == "vyb_chan_try" ||
-            name == "vyb_chan_len" || name == "vyb_chan_free") {
+            name == "vyb_chan_len" || name == "vyb_chan_free" ||
+            name == "vyb_task_spawn" || name == "vyb_task_await" ||
+            name == "vyb_task_poll" || name == "vyb_task_free") {
             isIntrinsic = true;
         }
     }
@@ -2387,7 +2389,9 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 name == "vyb_atomic_cas" || name == "vyb_atomic_free" ||
                 name == "vyb_chan_new" || name == "vyb_chan_send" ||
                 name == "vyb_chan_recv" || name == "vyb_chan_try" ||
-                name == "vyb_chan_len" || name == "vyb_chan_free") {
+                name == "vyb_chan_len" || name == "vyb_chan_free" ||
+                name == "vyb_task_spawn" || name == "vyb_task_await" ||
+                name == "vyb_task_poll" || name == "vyb_task_free") {
                 auto* resTy = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "Int"));
                 expressionTypes[node] = retainType(resTy);

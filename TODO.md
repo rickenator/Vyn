@@ -434,6 +434,16 @@ with only the pthread ABI beneath). The thread-safety foundation above came firs
   channel with an order-insensitive blocking recv-sum, plus bounded capacity and
   poll behavior). String payloads and a true generic `chan<T>` type remain
   planned.
+- [x] **Task spawn/await/poll (`tasks` module)** — policy-clean concurrency on
+  the external pthread runtime: `task_spawn(fn() -> Int)` runs the closure on a
+  detached worker whose result is delivered to a private capacity-1 channel; the
+  handle *is* that channel, so `task_await` is a blocking recv, `task_poll` a
+  non-blocking try (-1 until ready; also `-1` as a genuine result — and note a
+  successful `await` empties the channel so a later `poll` reports -1), and
+  `task_free` reclaims the handle. Fire-and-forget, no join/RAII obligation
+  (`test/modules/test_tasks.vyb`). The pre-existing stub `AsyncRuntime`
+  (`async_runtime.hpp/cpp` + `cgen_async.cpp`) was retired so concurrency lives
+  on the external pthread runtime rather than a dead C++ executor.
 - [x] **Threaded HTTP server (`http_serve`)** — the payoff of a worker-thread
   accept loop: `http_serve(port, backlog)` binds+listens, starts a detached
   worker running the accept loop, and serves each accepted connection
@@ -507,7 +517,10 @@ with `pass` for multi-statement case bodies. Needs polishing:
 
 ### 10. Async System — Completion (LOWER PRIORITY)
 - [ ] **Real event loop / executor** — Single-threaded and multi-threaded runtimes
-- [ ] **`spawn` for concurrent tasks** — `task<Future<T>> = spawn compute()`
+- [x] **`spawn` for concurrent tasks** — via the `tasks` module:
+  `t = task_spawn(fn() -> Int)` returns a future-style handle (a private channel)
+  that `await`/`poll`/`free` close over; a declarative `task<Future<T>> = spawn
+  compute()` syntax and a real event-loop executor remain future work.
 - [ ] **Typed channels** — `chan<T>` for message passing between tasks (planned)
 - [ ] **Actors** — Lightweight isolated concurrency units (planned)
 - [ ] **`select` over channels** — Wait on multiple channels (Vyb-natural extension)

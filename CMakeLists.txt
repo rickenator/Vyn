@@ -122,7 +122,6 @@ set(VRE_SOURCES
     src/vre/llvm/cgen_function.cpp
     src/vre/llvm/cgen_semantics.cpp
     src/vre/llvm/cgen_ownership.cpp
-    src/vre/llvm/cgen_async.cpp
     src/vre/llvm/cgen_async_impl.cpp
     src/vre/llvm/cgen_stack_trace.cpp
 )
@@ -139,7 +138,6 @@ set(VRE_HEADERS
 
 # Runtime sources
 set(RUNTIME_SOURCES
-    src/runtime/async_runtime.cpp
     src/runtime/error_handling.cpp
     runtime/vyb_runtime.c
     runtime/vyb_type_metadata.c
@@ -147,7 +145,6 @@ set(RUNTIME_SOURCES
 
 # Runtime headers
 set(RUNTIME_HEADERS
-    include/vyb/runtime/async_runtime.hpp
     include/vyb/runtime/error_handling.hpp
 )
 

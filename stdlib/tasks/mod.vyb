@@ -1,0 +1,52 @@
+# tasks - spawn self-contained unit-of-work and await its result.
+#
+# Unlike the threads module, a task is "fire-and-forget": task_spawn starts the
+# closure on a detached pthread and immediately returns a task handle. The task
+# delivers its result to a private capacity-1 channel (the handle *is* that
+# channel), so the caller decides when to wait:
+#
+#   task_await(t)  blocks until the value arrives and returns it.
+#   task_poll(t)   returns the value if it is ready, else -1 (non-blocking).
+#   task_free(t)   reclaims the task handle; returns 0 or -1.
+#
+# Because the worker is detached there is no join/RAII obligation — simply await
+# or poll once the result is needed, then free the handle. Note that task_poll
+# returns -1 both while a task is still running *and* as a legitimate result
+# value of -1, and that after a successful task_await the private channel is
+# empty, so a subsequent task_poll reports -1 (the value was already dequeued).
+#
+# Usage:
+#   import tasks
+#   t = task_spawn(|| -> 40 + 2)
+#   v = task_await(t)    // 42
+#   task_free(t)         // 0
+#
+#   t2 = task_spawn(|| -> 99)
+#   while (task_poll(t2) == -1) { }   // spin until ready (see header caveat)
+#   v2 = task_poll(t2)
+#   task_free(t2)
+
+# Start `work` on a detached task thread; returns a task handle (>= 1) or 0/ -1
+# on failure. The closure must be a plain `fn() -> Int`.
+share(all)
+task_spawn(work<fn() -> Int>)<Int> -> {
+    return vyb_task_spawn(work)
+}
+
+# Block until `task` finishes; returns its closure result (-1 if invalid).
+share(all)
+task_await(h<Int>)<Int> -> {
+    return vyb_task_await(h)
+}
+
+# Non-blocking check: returns the result if ready, else -1 (see header note).
+share(all)
+task_poll(h<Int>)<Int> -> {
+    return vyb_task_poll(h)
+}
+
+# Reclaim the task handle; returns 0 or -1.
+share(all)
+task_free(h<Int>)<Int> -> {
+    return vyb_task_free(h)
+}

@@ -1,0 +1,44 @@
+// @test: tasks stdlib module - spawn/await/poll detached work
+// @description: `import tasks` gives a future-style unit of work on the external
+//   pthread runtime. task_spawn starts a `fn() -> Int` closure on a detached
+//   thread and returns a handle that is a private capacity-1 channel; the worker
+//   pushes its result then exits. task_await blocks for the result; task_poll is
+//   a non-blocking try (-1 until ready); task_free reclaims the handle. Verified:
+//   simple spawn/await returns 42, two concurrent tasks sum correctly, poll on a
+//   still-running task reports -1 then await delivers the value and a later poll
+//   reports -1 (value already dequeued), and handles free cleanly.
+// @category: modules, threads, tasks, concurrency, stdlib
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import tasks
+import time::{sleep_ms}
+
+main()<Int> -> {
+    # Simple spawn/await: detached worker computes 42.
+    t1<Int> = task_spawn(|| -> 40 + 2)
+    if (t1 == 0) { return 1 }
+    if (task_await(t1) != 42) { return 2 }
+    if (task_free(t1) != 0) { return 3 }
+
+    # Two concurrent tasks; results arrive independently and sum.
+    a<Int> = task_spawn(|| -> 30)
+    b<Int> = task_spawn(|| -> 12)
+    if (a == 0 || b == 0) { return 4 }
+    if (task_await(a) + task_await(b) != 42) { return 5 }
+    if (task_free(a) != 0 || task_free(b) != 0) { return 6 }
+
+    # Poll while the worker is sleeping: not ready (-1), then await delivers it,
+    # then poll after the value was dequeued reports -1 again.
+    slow<Int> = task_spawn(|| -> { sleep_ms(50); return 7 })
+    if (slow == 0) { return 7 }
+    if (task_poll(slow) != -1) { return 8 }
+    if (task_await(slow) != 7) { return 9 }
+    if (task_poll(slow) != -1) { return 10 }
+    if (task_free(slow) != 0) { return 11 }
+
+    println("ok")
+    return 0
+}

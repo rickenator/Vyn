@@ -2805,6 +2805,39 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             }
             m_currentLLVMValue = builder->CreateCall(f, {envPtr, fnPtr}, "thr.handle");
             return;
+        } else if (fname == "vyb_task_spawn") {
+            // Tasks (tasks stdlib module): same closure { env, fn } unpack as
+            // thread_spawn, but the task delivers its result to a private
+            // capacity-1 channel; the returned handle is that channel.
+            if (node->arguments.size() != 1) {
+                logError(node->loc, "vyb_task_spawn expects 1 argument (fn() -> Int)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this);
+            llvm::Value* cl = m_currentLLVMValue;
+            if (!cl) return;
+            llvm::StructType* closureTy = getClosureStructType();
+            llvm::Value* envPtr = nullptr;
+            llvm::Value* fnPtr = nullptr;
+            if (cl->getType()->isStructTy()) {
+                envPtr = builder->CreateExtractValue(cl, 0, "task.env");
+                fnPtr = builder->CreateExtractValue(cl, 1, "task.fn");
+            } else if (cl->getType()->isPointerTy()) {
+                llvm::Value* closureVal = builder->CreateLoad(closureTy, cl, "task.closure");
+                envPtr = builder->CreateExtractValue(closureVal, 0, "task.env");
+                fnPtr = builder->CreateExtractValue(closureVal, 1, "task.fn");
+            } else {
+                logError(node->loc, "vyb_task_spawn argument is not a fn() closure");
+                m_currentLLVMValue = nullptr; return;
+            }
+            llvm::Function* f = module->getFunction("__vyb_task_spawn");
+            if (!f) {
+                llvm::FunctionType* ft = llvm::FunctionType::get(
+                    int64Type, {llvm::PointerType::get(*context, 0), llvm::PointerType::get(*context, 0)}, false);
+                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_task_spawn", module.get());
+            }
+            m_currentLLVMValue = builder->CreateCall(f, {envPtr, fnPtr}, "task.handle");
+            return;
         } else if (fname == "vyb_thread_join" || fname == "vyb_thread_detach" ||
                    fname == "vyb_mutex_lock" || fname == "vyb_mutex_unlock" ||
                    fname == "vyb_mutex_free") {
@@ -2915,6 +2948,15 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             return;
         } else if (fname == "vyb_chan_send") {
             emitHandleIntrinsic("__vyb_chan_send", 2);  // (chan, value) -> 1/0
+            return;
+        } else if (fname == "vyb_task_await") {
+            emitHandleIntrinsic("__vyb_task_await", 1);  // blocking recv
+            return;
+        } else if (fname == "vyb_task_poll") {
+            emitHandleIntrinsic("__vyb_task_poll", 1);   // non-blocking try
+            return;
+        } else if (fname == "vyb_task_free") {
+            emitHandleIntrinsic("__vyb_task_free", 1);
             return;
         }
     }

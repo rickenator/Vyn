@@ -911,3 +911,67 @@ VYB_WEAK int64_t __vyb_chan_free(int64_t ch) {
     free(c);
     return 0;
 }
+
+// A "task" is a fire-and-forget unit of work that delivers one Int result to a
+// Future-style channel. __vyb_task_spawn runs a Vyb `fn() -> Int` closure (as
+// { env, fn }) on a detached pthread; when the closure returns, its result is
+// pushed into a private bounded channel (capacity 1). The task handle IS that
+// channel, so:
+//   - __vyb_task_await == a blocking recv (waits for the result),
+//   - __vyb_task_poll == a non-blocking try (-1 until the result is ready),
+//   - __vyb_task_free reclaims the handle (call after await/poll so the worker
+//     has already left the channel alone).
+typedef struct {
+    void* env;
+    void* fn;
+    int64_t chan;
+} vyb_task;
+
+static void* vyb_task_trampoline(void* arg) {
+    vyb_task* t = (vyb_task*)arg;
+    int64_t (*f)(void*) = (int64_t (*)(void*))t->fn;
+    int64_t r = f(t->env);
+    __vyb_chan_send(t->chan, r);
+    if (t->env) __vyb_closure_release(t->env);
+    free(t);
+    return NULL;
+}
+
+VYB_WEAK int64_t __vyb_task_spawn(void* env, void* fn) {
+    if (!fn) return 0;
+    int64_t chan = __vyb_chan_new(1);
+    if (!chan) return 0;
+    vyb_task* t = (vyb_task*)malloc(sizeof(vyb_task));
+    if (!t) { __vyb_chan_free(chan); return 0; }
+    t->env = env; t->fn = fn; t->chan = chan;
+    if (env) __vyb_closure_retain(env);
+    pthread_t tid;
+    if (pthread_create(&tid, NULL, vyb_task_trampoline, t) != 0) {
+        if (env) __vyb_closure_release(env);
+        free(t);
+        __vyb_chan_free(chan);
+        return 0;
+    }
+    pthread_detach(tid);
+    return chan;
+}
+
+// Block until the task's result is delivered and return it (-1 on a bad handle).
+VYB_WEAK int64_t __vyb_task_await(int64_t task) {
+    if (!task) return -1;
+    return __vyb_chan_recv(task);
+}
+
+// Non-blocking: return the result if ready, or -1 while the task is still
+// running (indistinguishable from a genuine -1 result).
+VYB_WEAK int64_t __vyb_task_poll(int64_t task) {
+    if (!task) return -1;
+    return __vyb_chan_try(task);
+}
+
+// Reclaim the task handle (its result channel). Call only after the worker has
+// delivered its result (await/poll), otherwise the worker may still touch it.
+VYB_WEAK int64_t __vyb_task_free(int64_t task) {
+    if (!task) return -1;
+    return __vyb_chan_free(task);
+}
