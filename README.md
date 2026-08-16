@@ -488,6 +488,40 @@ main()<Void> -> {
 - ✅ await expression support
 - ✅ LLVM codegen with debug metadata
 
+### ✅ **Concurrency Modules (stdlib)**
+
+The standard library ships a layered concurrency story, all built on the external
+pthread runtime (no raw C ABI in user code):
+
+- **`channels`** — thread-safe message passing. `chan_new`/`chan_bounded(n)` give
+  Int channels; `chan_send`/`chan_recv`/`chan_try`/`chan_len`/`chan_free` pass
+  values across threads. `chan_select(handles<Vec<Int>>)` waits on many channels
+  at once and returns the index of the first ready one. String-payload channels
+  (`strchan_new`/`send`/`recv`/`try`) retain the string on send and transfer the
+  reference on recv.
+- **`threads`** — pthread-backed `thread_spawn`/`thread_join`/`thread_detach`,
+  `mutex_*`, `cond_*`, and lock-free `atomic_*`.
+- **`tasks`** — fire-and-forget workers on a detached pthread: `task_spawn` runs a
+  `fn() -> Int`, `task_await` blocks on its result, `task_poll` checks
+  non-blockingly, `task_free` reclaims it.
+- **`asyncs`** — a **cooperative event loop** with stackful fibers. Each
+  `async_spawn(work<fn() -> Int>)` runs on its own stack and can suspend
+  *mid-body* with `async_sleep_ms` (a timer, not a thread sleep), `async_yield`
+  (round-robin), or `async_await` (wait on another task) — so concurrent timers
+  complete in ~max rather than ~sum wall time, with no state-machine transform.
+
+```vyb
+import asyncs
+h1 = async_spawn(|| -> { async_sleep_ms(20); return 10 })
+h2 = async_spawn(|| -> { async_sleep_ms(20); return 32 })
+v1 = async_await(h1)   // 10, ~20ms total for both
+v2 = async_await(h2)   // 32
+async_run_all()        // flush + reclaim
+```
+
+Replaces the old C++ `AsyncRuntime` executor that has been retired; concurrency
+now lives on the external pthread runtime and this cooperative executor.
+
 ### ✅ **Introspection System**
 
 Vyb features **runtime type introspection** for self-aware programs:

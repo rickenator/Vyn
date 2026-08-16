@@ -1,0 +1,47 @@
+// @test: channels stdlib module - select over multiple channels
+// @description: `import channels` adds chan_select(handles<Vec<Int>>), which
+//   blocks until at least one listed channel has a value (or is closed) and
+//   returns its index WITHOUT consuming — the caller then chan_recvs it. Here
+//   two producer threads feed two channels on staggered timings, and select
+//   reports the earlier (b) channel first, then the later (a) channel. Covered:
+//   right-index selection on a live channel set.
+// @category: modules, channels, select, concurrency, stdlib
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import channels
+import threads
+import time::{sleep_ms}
+
+main()<Int> -> {
+    a<Int> = chan_new()
+    b<Int> = chan_new()
+    if (a == 0 || b == 0) { return 1 }
+
+    # b arrives ~5ms, a ~40ms, so select must report index 1 first.
+    w<Int> = thread_spawn(|| -> { sleep_ms(40); chan_send(a, 100); return 0 })
+    w2<Int> = thread_spawn(|| -> { sleep_ms(5); chan_send(b, 200); return 0 })
+    if (w < 0 || w2 < 0) { return 2 }
+
+    hs<Vec<Int>> = Vec<Int>()
+    hs.push(a)
+    hs.push(b)
+    if (hs.len() != 2) { return 3 }
+
+    i1<Int> = chan_select(hs)
+    if (i1 != 1) { return 4 }
+    if (chan_recv(b) != 200) { return 5 }
+
+    i2<Int> = chan_select(hs)
+    if (i2 != 0) { return 6 }
+    if (chan_recv(a) != 100) { return 7 }
+
+    if (thread_join(w) != 0 || thread_join(w2) != 0) { return 8 }
+
+    chan_free(a)
+    chan_free(b)
+    println("ok")
+    return 0
+}

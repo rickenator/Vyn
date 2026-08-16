@@ -1937,7 +1937,14 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_chan_recv" || name == "vyb_chan_try" ||
             name == "vyb_chan_len" || name == "vyb_chan_free" ||
             name == "vyb_task_spawn" || name == "vyb_task_await" ||
-            name == "vyb_task_poll" || name == "vyb_task_free") {
+            name == "vyb_task_poll" || name == "vyb_task_free" ||
+            name == "vyb_chan_select" ||
+            name == "vyb_async_spawn" || name == "vyb_async_run_all" ||
+            name == "vyb_async_await" || name == "vyb_async_poll" ||
+            name == "vyb_async_yield" || name == "vyb_async_sleep_ms" ||
+            name == "vyb_strchan_new" || name == "vyb_strchan_send" ||
+            name == "vyb_strchan_recv" || name == "vyb_strchan_try" ||
+            name == "vyb_strchan_len" || name == "vyb_strchan_free") {
             isIntrinsic = true;
         }
     }
@@ -2364,6 +2371,18 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
                 return;
             }
+            // String channels (channels stdlib module): the handle/len helpers
+            // return Int; recv/try hand back a String payload.
+            static const std::set<std::string> strchanStrFuncs = {
+                "vyb_strchan_recv", "vyb_strchan_try"
+            };
+            if (name == "vyb_strchan_recv" || name == "vyb_strchan_try") {
+                auto* resTy = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "String"));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
 
             // Time intrinsics (time stdlib module): all return Int.
             if (name == "vyb_time_epoch_secs" || name == "vyb_time_epoch_millis" ||
@@ -2391,7 +2410,13 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 name == "vyb_chan_recv" || name == "vyb_chan_try" ||
                 name == "vyb_chan_len" || name == "vyb_chan_free" ||
                 name == "vyb_task_spawn" || name == "vyb_task_await" ||
-                name == "vyb_task_poll" || name == "vyb_task_free") {
+                name == "vyb_task_poll" || name == "vyb_task_free" ||
+                name == "vyb_chan_select" ||
+                name == "vyb_async_spawn" || name == "vyb_async_run_all" ||
+                name == "vyb_async_await" || name == "vyb_async_poll" ||
+                name == "vyb_async_yield" || name == "vyb_async_sleep_ms" ||
+                name == "vyb_strchan_new" || name == "vyb_strchan_send" ||
+                name == "vyb_strchan_len" || name == "vyb_strchan_free") {
                 auto* resTy = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "Int"));
                 expressionTypes[node] = retainType(resTy);

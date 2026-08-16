@@ -65,3 +65,64 @@ share(all)
 chan_free(ch<Int>)<Int> -> {
     return vyb_chan_free(ch)
 }
+
+# Block until at least one of the channels in `handles` has a value (or is
+# closed), then return its index without consuming it ("select"). Follow up with
+# chan_recv(handles[i]) to dequeue. A closed channel is reported as ready so you
+# can observe closure via a -1 recv. Returns -1 on an empty/bad handle Vec.
+share(all)
+chan_select(handles<Vec<Int>>)<Int> -> {
+    return vyb_chan_select(handles)
+}
+
+# --- String channels ---------------------------------------------------------
+# A String channel carries Vyb String payloads over the same pthread ring-buffer
+# model. On send the data pointer is retained so the channel owns a reference
+# that outlives the sender's own string; on recv/try that reference transfers to
+# the caller (dropped on the usual String teardown). A String channel stays on
+# the string API (do not mix with the Int chan ops), and strchan_free should be
+# called after the channel is drained. strchan_try returns an empty string ""
+# when nothing is buffered.
+
+# A fresh unbounded String channel (0 on allocation failure).
+share(all)
+strchan_new()<Int> -> {
+    return vyb_strchan_new(0)
+}
+
+# A bounded String channel holding at most `cap` strings (0 on failure).
+share(all)
+strchan_bounded(cap<Int>)<Int> -> {
+    return vyb_strchan_new(cap)
+}
+
+# Enqueue `s` (non-blocking); retains it under the hood. 1 on success, 0 if
+# closed or a bounded channel is full.
+share(all)
+strchan_send(ch<Int>, s<String>)<Int> -> {
+    return vyb_strchan_send(ch, s)
+}
+
+# Dequeue a String, blocking until one is available (or closed -> "").
+share(all)
+strchan_recv(ch<Int>)<String> -> {
+    return vyb_strchan_recv(ch)
+}
+
+# Non-blocking dequeue; returns a buffered String or "" if none is ready.
+share(all)
+strchan_try(ch<Int>)<String> -> {
+    return vyb_strchan_try(ch)
+}
+
+# Number of Strings currently buffered (-1 on an invalid handle).
+share(all)
+strchan_len(ch<Int>)<Int> -> {
+    return vyb_strchan_len(ch)
+}
+
+# Reclaim and free `ch` (call after draining so no reference leaks); 0 or -1.
+share(all)
+strchan_free(ch<Int>)<Int> -> {
+    return vyb_strchan_free(ch)
+}

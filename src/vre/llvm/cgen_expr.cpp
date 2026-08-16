@@ -2838,6 +2838,38 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             }
             m_currentLLVMValue = builder->CreateCall(f, {envPtr, fnPtr}, "task.handle");
             return;
+        } else if (fname == "vyb_async_spawn") {
+            // Async (async stdlib module): enqueue a `fn() -> Int` closure as an
+            // event-loop fiber. Same { env, fn } unpack as task_spawn.
+            if (node->arguments.size() != 1) {
+                logError(node->loc, "vyb_async_spawn expects 1 argument (fn() -> Int)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this);
+            llvm::Value* cl = m_currentLLVMValue;
+            if (!cl) return;
+            llvm::StructType* closureTy = getClosureStructType();
+            llvm::Value* envPtr = nullptr;
+            llvm::Value* fnPtr = nullptr;
+            if (cl->getType()->isStructTy()) {
+                envPtr = builder->CreateExtractValue(cl, 0, "async.env");
+                fnPtr = builder->CreateExtractValue(cl, 1, "async.fn");
+            } else if (cl->getType()->isPointerTy()) {
+                llvm::Value* closureVal = builder->CreateLoad(closureTy, cl, "async.closure");
+                envPtr = builder->CreateExtractValue(closureVal, 0, "async.env");
+                fnPtr = builder->CreateExtractValue(closureVal, 1, "async.fn");
+            } else {
+                logError(node->loc, "vyb_async_spawn argument is not a fn() closure");
+                m_currentLLVMValue = nullptr; return;
+            }
+            llvm::Function* f = module->getFunction("__vyb_async_spawn");
+            if (!f) {
+                llvm::FunctionType* ft = llvm::FunctionType::get(
+                    int64Type, {llvm::PointerType::get(*context, 0), llvm::PointerType::get(*context, 0)}, false);
+                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_async_spawn", module.get());
+            }
+            m_currentLLVMValue = builder->CreateCall(f, {envPtr, fnPtr}, "async.handle");
+            return;
         } else if (fname == "vyb_thread_join" || fname == "vyb_thread_detach" ||
                    fname == "vyb_mutex_lock" || fname == "vyb_mutex_unlock" ||
                    fname == "vyb_mutex_free") {
@@ -2949,6 +2981,103 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         } else if (fname == "vyb_chan_send") {
             emitHandleIntrinsic("__vyb_chan_send", 2);  // (chan, value) -> 1/0
             return;
+        } else if (fname == "vyb_chan_select") {
+            // `chan_select(handles<Vec<Int>>)` blocks until one of the listed
+            // channels is ready and returns its index (without consuming).
+            if (node->arguments.size() != 1) {
+                logError(node->loc, "vyb_chan_select expects 1 argument (Vec<Int> of handles)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this);
+            llvm::Value* vec = m_currentLLVMValue;
+            if (!vec) return;
+            llvm::Value* dataPtr = nullptr;
+            llvm::Value* sizeVal = nullptr;
+            if (vec->getType()->isStructTy()) {
+                dataPtr = builder->CreateExtractValue(vec, 0, "sel.data");
+                sizeVal = builder->CreateExtractValue(vec, 1, "sel.size");
+            } else {
+                logError(node->loc, "vyb_chan_select expects a Vec<Int> of channel handles");
+                m_currentLLVMValue = nullptr; return;
+            }
+            dataPtr = builder->CreateBitCast(dataPtr, llvm::PointerType::get(*context, 0), "sel.dataptr");
+            llvm::Function* f = module->getFunction("__vyb_chan_select");
+            if (!f) {
+                llvm::FunctionType* ft = llvm::FunctionType::get(
+                    int64Type, {llvm::PointerType::get(*context, 0), int64Type}, false);
+                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_chan_select", module.get());
+            }
+            m_currentLLVMValue = builder->CreateCall(f, {dataPtr, sizeVal}, "sel.idx");
+            return;
+        } else if (fname == "vyb_strchan_new") {
+            emitHandleIntrinsic("__vyb_strchan_new", 1);   // capacity (0 = unbounded)
+            return;
+        } else if (fname == "vyb_strchan_send") {
+            // `strchan_send(ch, s<String>)`: retain the string data ptr, store
+            // { ptr, len } in the channel. Lowers to (int64, i8*, i64).
+            if (node->arguments.size() != 2) {
+                logError(node->loc, "vyb_strchan_send expects 2 arguments (ch, string)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this); llvm::Value* ch = m_currentLLVMValue;
+            node->arguments[1]->accept(*this); llvm::Value* s = m_currentLLVMValue;
+            if (!ch || !s) return;
+            llvm::Value* ch64 = ch;
+            if (ch64->getType()->isIntegerTy() && !ch64->getType()->isIntegerTy(64))
+                ch64 = builder->CreateSExt(ch64, int64Type, "strchan.toi64");
+            llvm::Value* dataPtr = s;
+            llvm::Value* dataLen = llvm::ConstantInt::get(int64Type, 0);
+            if (s->getType()->isStructTy()) {
+                dataPtr = builder->CreateExtractValue(s, 0, "strchan.strptr");
+                dataLen = builder->CreateExtractValue(s, 1, "strchan.strlen");
+            }
+            llvm::FunctionType* ft = llvm::FunctionType::get(
+                int64Type, {int64Type, int8PtrType, int64Type}, false);
+            llvm::Function* f = module->getFunction("__vyb_strchan_send");
+            if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_strchan_send", module.get());
+            m_currentLLVMValue = builder->CreateCall(f, {ch64, dataPtr, dataLen}, "strchan.sent");
+            return;
+        } else if (fname == "vyb_strchan_recv") {
+            // Blocking recv returning a String { ptr, len } that the caller owns.
+            if (node->arguments.size() != 1) {
+                logError(node->loc, "vyb_strchan_recv expects 1 argument (ch)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this); llvm::Value* ch = m_currentLLVMValue;
+            if (!ch) return;
+            llvm::Value* ch64 = ch;
+            if (ch64->getType()->isIntegerTy() && !ch64->getType()->isIntegerTy(64))
+                ch64 = builder->CreateSExt(ch64, int64Type, "strchan.toi64");
+            std::vector<llvm::Type*> strFields = {int8PtrType, int64Type};
+            llvm::StructType* strStructType = llvm::StructType::get(*context, strFields, false);
+            llvm::FunctionType* ft = llvm::FunctionType::get(strStructType, {int64Type}, false);
+            llvm::Function* f = module->getFunction("__vyb_strchan_recv");
+            if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_strchan_recv", module.get());
+            m_currentLLVMValue = builder->CreateCall(f, {ch64}, "strchan.recved");
+            return;
+        } else if (fname == "vyb_strchan_try") {
+            if (node->arguments.size() != 1) {
+                logError(node->loc, "vyb_strchan_try expects 1 argument (ch)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this); llvm::Value* ch = m_currentLLVMValue;
+            if (!ch) return;
+            llvm::Value* ch64 = ch;
+            if (ch64->getType()->isIntegerTy() && !ch64->getType()->isIntegerTy(64))
+                ch64 = builder->CreateSExt(ch64, int64Type, "strchan.toi64");
+            std::vector<llvm::Type*> strFields = {int8PtrType, int64Type};
+            llvm::StructType* strStructType = llvm::StructType::get(*context, strFields, false);
+            llvm::FunctionType* ft = llvm::FunctionType::get(strStructType, {int64Type}, false);
+            llvm::Function* f = module->getFunction("__vyb_strchan_try");
+            if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_strchan_try", module.get());
+            m_currentLLVMValue = builder->CreateCall(f, {ch64}, "strchan.tryed");
+            return;
+        } else if (fname == "vyb_strchan_len") {
+            emitHandleIntrinsic("__vyb_strchan_len", 1);
+            return;
+        } else if (fname == "vyb_strchan_free") {
+            emitHandleIntrinsic("__vyb_strchan_free", 1);
+            return;
         } else if (fname == "vyb_task_await") {
             emitHandleIntrinsic("__vyb_task_await", 1);  // blocking recv
             return;
@@ -2957,6 +3086,21 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             return;
         } else if (fname == "vyb_task_free") {
             emitHandleIntrinsic("__vyb_task_free", 1);
+            return;
+        } else if (fname == "vyb_async_run_all") {
+            emitHandleIntrinsic("__vyb_async_run_all", 0);
+            return;
+        } else if (fname == "vyb_async_await") {
+            emitHandleIntrinsic("__vyb_async_await", 1);
+            return;
+        } else if (fname == "vyb_async_poll") {
+            emitHandleIntrinsic("__vyb_async_poll", 1);
+            return;
+        } else if (fname == "vyb_async_yield") {
+            emitHandleIntrinsic("__vyb_async_yield", 0);
+            return;
+        } else if (fname == "vyb_async_sleep_ms") {
+            emitHandleIntrinsic("__vyb_async_sleep_ms", 1);
             return;
         }
     }

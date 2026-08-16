@@ -1,0 +1,47 @@
+// @test: asyncs stdlib module - cooperative event loop with stackful fibers
+// @description: `import asyncs` runs fn() -> Int closures on a single-threaded
+//   cooperative event loop, each on its own stack (a ucontext fiber), with
+//   coalescing suspendable intrinsics: async_sleep_ms (a timer, not a thread
+//   sleep), async_yield (round-robin), and async_await (block until a task
+//   completes). Because the fibers are stackful, a fn() can suspend mid-body
+//   without a state-machine transform. Verified: five simultaneous 20ms sleeps
+//   complete in ~20ms total (serial would be ~100ms), a task can spawn+await a
+//   child (nested await -> 42), poll reports -1 while a task is still sleeping
+//   then resolves, and async_run_all reclaims everything.
+// @category: modules, asyncs, event-loop, concurrency, stdlib
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import asyncs
+import time::{time_mono_millis}
+
+main()<Int> -> {
+    # Five 20ms timers must complete in ~20ms total (serial would be ~100ms).
+    t0<Int> = time_mono_millis()
+    h1<Int> = async_spawn(|| -> { async_sleep_ms(20); return 10 })
+    h2<Int> = async_spawn(|| -> { async_sleep_ms(20); return 20 })
+    h3<Int> = async_spawn(|| -> { async_sleep_ms(20); return 30 })
+    h4<Int> = async_spawn(|| -> { async_sleep_ms(20); return 40 })
+    h5<Int> = async_spawn(|| -> { async_sleep_ms(20); return 50 })
+    if (h1 == 0 || h2 == 0 || h3 == 0 || h4 == 0 || h5 == 0) { return 1 }
+    if (async_await(h1) + async_await(h2) + async_await(h3) + async_await(h4) + async_await(h5) != 150) { return 2 }
+    elapsed<Int> = time_mono_millis() - t0
+    if (elapsed >= 60) { return 3 }   # ~20ms parallel, far under 100ms serial
+
+    # Nested await: a parent task spawns and awaits a child.
+    p<Int> = async_spawn(|| -> { c<Int> = async_spawn(|| -> 40 + 2); return async_await(c) })
+    if (p == 0) { return 5 }
+    if (async_await(p) != 42) { return 6 }
+
+    # Poll: a sleeping task reports -1 until its timer fires, then resolves.
+    s<Int> = async_spawn(|| -> { async_sleep_ms(20); return 99 })
+    if (s == 0) { return 7 }
+    if (async_poll(s) != -1) { return 8 }
+    if (async_await(s) != 99) { return 9 }
+
+    if (async_run_all() != 0) { return 10 }
+    println("ok")
+    return 0
+}

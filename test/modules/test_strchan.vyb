@@ -1,0 +1,47 @@
+// @test: channels stdlib module - String-payload channels
+// @description: `import channels` gives strchan_new/send/recv/try/free for Vyb
+//   String payloads over the same pthread ring-buffer model. On send the data
+//   pointer is retained so the string outlives the sender; recv/try transfer
+//   that reference to the caller. Verified: a producer thread enqueues a String
+//   the consumer blocks on recv for and reads back intact, strchan_try reports
+//   empty ("") when nothing is buffered, a bounded String channel respects its
+//   capacity, and the handle frees cleanly.
+// @category: modules, channels, strings, concurrency, stdlib
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import channels
+import threads
+import time::{sleep_ms}
+
+main()<Int> -> {
+    # Blocking recv of a String delivered by a worker thread.
+    sc<Int> = strchan_new()
+    if (sc == 0) { return 1 }
+    if (strchan_len(sc) != 0) { return 2 }
+    if (strchan_try(sc) != "") { return 3 }
+
+    w<Int> = thread_spawn(|| -> { sleep_ms(5); strchan_send(sc, "hello from worker"); return 0 })
+    if (w < 0) { return 4 }
+    if (strchan_recv(sc) != "hello from worker") { return 5 }
+    if (thread_join(w) != 0) { return 6 }
+
+    # Bounded String channel: full send returns 0, order preserved.
+    bs<Int> = strchan_bounded(2)
+    if (bs == 0) { return 7 }
+    if (strchan_send(bs, "one") != 1) { return 8 }
+    if (strchan_send(bs, "two") != 1) { return 9 }
+    if (strchan_send(bs, "three") != 0) { return 10 }   # full
+    if (strchan_len(bs) != 2) { return 11 }
+    if (strchan_recv(bs) != "one") { return 12 }
+    if (strchan_recv(bs) != "two") { return 13 }
+    if (strchan_len(bs) != 0) { return 14 }
+
+    if (strchan_free(sc) != 0) { return 15 }
+    if (strchan_free(bs) != 0) { return 16 }
+
+    println("ok")
+    return 0
+}

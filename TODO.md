@@ -432,8 +432,13 @@ with only the pthread ABI beneath). The thread-safety foundation above came firs
   surface in the `threads`-module style (`import channels`;
   `test/modules/test_channels.vyb` — producer threads into a shared unbounded
   channel with an order-insensitive blocking recv-sum, plus bounded capacity and
-  poll behavior). String payloads and a true generic `chan<T>` type remain
-  planned.
+  poll behavior). Also gained **`chan_select(handles<Vec<Int>>)`** — blocks until
+  one of the listed channels has a value (or is closed) and returns its index
+  without consuming (a ~1ms polling first-cut; `test/modules/test_chan_select.vyb`),
+  and **String-payload channels** (`strchan_new/send/recv/try/len/free`) that
+  retain the string on send and transfer that reference on recv/try, with no
+  buffer dangling unless a bounded channel is freed while still buffered
+  (`test/modules/test_strchan.vyb`). A true generic `chan<T>` type remains planned.
 - [x] **Task spawn/await/poll (`tasks` module)** — policy-clean concurrency on
   the external pthread runtime: `task_spawn(fn() -> Int)` runs the closure on a
   detached worker whose result is delivered to a private capacity-1 channel; the
@@ -516,14 +521,26 @@ with `pass` for multi-statement case bodies. Needs polishing:
 - [ ] **Labeled `break`/`continue`** — Break from outer loops by label
 
 ### 10. Async System — Completion (LOWER PRIORITY)
-- [ ] **Real event loop / executor** — Single-threaded and multi-threaded runtimes
-- [x] **`spawn` for concurrent tasks** — via the `tasks` module:
-  `t = task_spawn(fn() -> Int)` returns a future-style handle (a private channel)
-  that `await`/`poll`/`free` close over; a declarative `task<Future<T>> = spawn
-  compute()` syntax and a real event-loop executor remain future work.
+- [x] **Real event loop / executor (single-threaded, cooperative)** — the `asyncs`
+  module runs `fn() -> Int` closures as **stackful fibers** (ucontext), each on
+  its own 1 MiB stack, driven by a FIFO ready queue + a sorted timer heap. Because
+  the fibers are stackful, a fn() can suspend **mid-body** without a state-machine
+  transform: `async_sleep_ms` (a timer, not a thread sleep), `async_yield`
+  (round-robin), and `async_await` (block until a task completes) all reschedule
+  onto the loop, so concurrent timers complete in ~max rather than ~sum wall
+  (`test/modules/test_async.vyb`). Tasks stay valid across main-thread awaits;
+  `async_run_all` flushes + reclaims everything, with an atexit safety net.
+  A **multi-threaded executor** and Vyb-level `async`/`await` syntax codegen
+  remain future work.
+- [x] **`spawn` for concurrent tasks** — two storylines: the pthread `tasks`
+  module (`t = task_spawn(fn() -> Int)`, `task_await`/`task_poll`/`task_free`)
+  for real parallel workers, and the cooperative `asyncs` module above for
+  non-blocking, event-loop concurrency.
 - [ ] **Typed channels** — `chan<T>` for message passing between tasks (planned)
 - [ ] **Actors** — Lightweight isolated concurrency units (planned)
-- [ ] **`select` over channels** — Wait on multiple channels (Vyb-natural extension)
+- [x] **`select` over channels** — `chan_select(handles<Vec<Int>>)` waits on many
+  channels at once and returns the ready index (Vyb-natural extension; blocks
+  with ~1ms wakeup, does not consume).
 - [ ] **Async lambdas** — `async |x| -> await process(x)`
 - [ ] **`async for`** — Iterate over async streams
 

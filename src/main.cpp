@@ -153,12 +153,31 @@ extern "C" {
     int64_t __vyb_chan_try(int64_t ch);
     int64_t __vyb_chan_len(int64_t ch);
     int64_t __vyb_chan_free(int64_t ch);
+    int64_t __vyb_chan_select(int64_t* handles, int64_t n);
+    // String channels (channels stdlib module): a pthread ring buffer carrying
+    // Vyb String payloads; recv/try transfer a retained reference to the caller.
+    int64_t __vyb_strchan_new(int64_t capacity);
+    int64_t __vyb_strchan_send(int64_t ch, const char* ptr, int64_t len);
+    vyb_file_str __vyb_strchan_recv(int64_t ch);
+    vyb_file_str __vyb_strchan_try(int64_t ch);
+    int64_t __vyb_strchan_len(int64_t ch);
+    int64_t __vyb_strchan_free(int64_t ch);
     // Tasks (tasks stdlib module): a detached pthread running a closure whose
     // result is delivered to a private capacity-1 channel. handle == chan.
     int64_t __vyb_task_spawn(void* env, void* fn);
     int64_t __vyb_task_await(int64_t task);
     int64_t __vyb_task_poll(int64_t task);
     int64_t __vyb_task_free(int64_t task);
+    // Async event loop (async stdlib module): a cooperative, stackful-fiber
+    // executor on this thread. spawn enqueues a closure as a fiber; await/poll
+    // wait on its result; yield/sleep_ms suspend cooperatively without blocking
+    // the loop.
+    int64_t __vyb_async_spawn(void* env, void* fn);
+    int64_t __vyb_async_run_all(void);
+    int64_t __vyb_async_await(int64_t task);
+    int64_t __vyb_async_poll(int64_t task);
+    int64_t __vyb_async_yield(void);
+    int64_t __vyb_async_sleep_ms(int64_t ms);
 
     // JSON serialization for complex types
     char* __vyb_complex_to_json(void* instance, const char* type_name);
@@ -1065,12 +1084,38 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_chan_len), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_chan_free")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_chan_free), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_chan_select")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_chan_select), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_strchan_new")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_strchan_new), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_strchan_send")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_strchan_send), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_strchan_recv")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_strchan_recv), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_strchan_try")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_strchan_try), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_strchan_len")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_strchan_len), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_strchan_free")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_strchan_free), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_task_spawn")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_task_spawn), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_task_await")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_task_await), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_task_poll")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_task_poll), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_async_spawn")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_spawn), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_async_run_all")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_run_all), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_async_await")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_await), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_async_poll")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_poll), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_async_yield")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_yield), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_async_sleep_ms")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_sleep_ms), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_task_free")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_task_free), llvm::JITSymbolFlags::Exported);
 

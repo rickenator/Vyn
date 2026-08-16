@@ -1,0 +1,65 @@
+# async - a cooperative event loop with stackful-fiber tasks.
+#
+# This is the real event-loop executor that the earlier `tasks` module's
+# fire-and-forget threads were steps toward. Each async_spawn task runs on its
+# own stack (a fiber), and a running fiber can suspend cooperatively without
+# blocking the loop:
+#
+#   import async
+#   a = async_spawn(|| -> { async_sleep_ms(40); return 10 })
+#   b = async_spawn(|| -> { async_sleep_ms(5); return 32 })
+#   v1 = async_await(a)   // drives the loop until a completes -> 10
+#   v2 = async_await(b)   // -> 32   (took ~40ms total, not ~45ms)
+#
+# Suspension points are the suspendable intrinsics: async_yield() (round-robin
+# fairness), async_sleep_ms(ms) (a timer, not a thread sleep, so other tasks
+# proceed), and async_await(t) (block until task `t` completes, returning it).
+# Because the fibers are stackful, a fn() can suspend mid-body simply by calling
+# these -- no state-machine transform is required.
+#
+# Lifecycle: tasks stay valid across main-thread awaits, so you can spawn
+# several and await them in any order. async_run_all() runs whatever is left and
+# then reclaims every task (handles must not be used afterwards); a leftover-task
+# atexit hook reclaims anything forgotten. A single-threaded executor; a
+# multi-threaded loop is a later follow-on.
+
+# Enqueue `work` (a fn() -> Int) on the event loop; returns a task handle (>= 1)
+# or 0 on failure. The loop runs on the next async_await/async_run_all.
+share(all)
+async_spawn(work<fn() -> Int>)<Int> -> {
+    return vyb_async_spawn(work)
+}
+
+# Run the loop until no ready work or pending timer remain, then reclaim tasks.
+share(all)
+async_run_all()<Int> -> {
+    return vyb_async_run_all()
+}
+
+# Block until task `t` completes and return its closure result. From the entry
+# thread this drives the loop; from inside a fiber it suspends that fiber while
+# the loop continues other work.
+share(all)
+async_await(t<Int>)<Int> -> {
+    return vyb_async_await(t)
+}
+
+# Non-blocking: the task's result if it is done, else -1.
+share(all)
+async_poll(t<Int>)<Int> -> {
+    return vyb_async_poll(t)
+}
+
+# Cooperative yield: suspend the current fiber and reschedule it (a no-op if
+# called outside a fiber).
+share(all)
+async_yield()<Int> -> {
+    return vyb_async_yield()
+}
+
+# Cooperative sleep: suspend the current fiber for `ms` on a timer so other loop
+# work proceeds. Outside a fiber this sleeps the calling thread.
+share(all)
+async_sleep_ms(ms<Int>)<Int> -> {
+    return vyb_async_sleep_ms(ms)
+}
