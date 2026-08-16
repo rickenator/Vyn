@@ -14,7 +14,7 @@ main()<Int> -> {
         println_int(n)
         m<Int> = Mode::MODE_FAST
         if (m != 2) { return 2 }
-        if (MAX_ITEMS::MAX_ITEMS != 16) { return 3 }
+        if (Libsample::MAX_ITEMS != 16) { return 3 }
         puts("hey from bindgen")
         p<Point> = Point { x = 1, y = 2 }
         c<Color> = Color::COLOR_GREEN

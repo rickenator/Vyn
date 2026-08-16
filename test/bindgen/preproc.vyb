@@ -3,10 +3,6 @@
 // @test: Generated macro-constant bindings (fixture)
 // @parse-only: true
 
-share(all)
-enum MAX_BUFSIZE {
-    MAX_BUFSIZE = 4096
-}
 
 share(all)
 DEFAULT_NAME()<String> -> {
@@ -19,16 +15,10 @@ SCALE_FACTOR()<Float> -> {
 }
 
 share(all)
-enum FLAG_ENABLED {
+enum Preproc {
+    MAX_BUFSIZE = 4096
     FLAG_ENABLED = 1
-}
-
-share(all)
-enum MASK {
     MASK = 0xff00
-}
-
-share(all)
-enum TWEAK {
     TWEAK = -2
 }
+

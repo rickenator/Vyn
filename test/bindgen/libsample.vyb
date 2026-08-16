@@ -18,7 +18,7 @@ struct Point {
 }
 
 share(all)
-enum MAX_ITEMS {
+enum Libsample {
     MAX_ITEMS = 16
 }
 

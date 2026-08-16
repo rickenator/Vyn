@@ -1281,7 +1281,7 @@ int main(int argc, char* argv[]) {
             std::string source((std::istreambuf_iterator<char>(headerFile)),
                                std::istreambuf_iterator<char>());
             headerFile.close();
-            bindings = vyb::bindgen::generateBindings(source, &bindgenWarnings);
+            bindings = vyb::bindgen::generateBindings(source, headerPath, &bindgenWarnings);
         }
 
         for (const auto& warning : bindgenWarnings) {

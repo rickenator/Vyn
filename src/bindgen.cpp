@@ -98,9 +98,37 @@ std::vector<Tok> tokenize(const std::string& s) {
 
 // --- parser -----------------------------------------------------------------
 
+// Derives a valid Vyb const-enum name from the header file's basename (sans
+// extension), so all integer `#define`s from one header share a single
+// file-scoped namespace (e.g. `preproc.h` -> `Preproc`, `libsample.h` ->
+// `Libsample`). Separators are dropped and the following letter capitalized;
+// falls back to "HeaderConsts" if the name cannot be used.
+std::string deriveNamespace(const std::string& headerPath) {
+    std::string base = headerPath;
+    size_t slash = base.find_last_of("/\\");
+    if (slash != std::string::npos) base = base.substr(slash + 1);
+    size_t dot = base.find_last_of('.');
+    if (dot != std::string::npos && dot > 0) base = base.substr(0, dot);
+    std::string out;
+    bool capNext = true;
+    for (char c : base) {
+        if (std::isalnum(static_cast<unsigned char>(c))) {
+            out.push_back(capNext ? static_cast<char>(
+                std::toupper(static_cast<unsigned char>(c))) : c);
+            capNext = false;
+        } else {
+            capNext = true;
+        }
+    }
+    if (out.empty()) return "HeaderConsts";
+    if (std::isdigit(static_cast<unsigned char>(out[0]))) out = "_" + out;
+    return out;
+}
+
 class CParser {
 public:
-    explicit CParser(const std::string& src) : toks_(tokenize(stripNoise(src))) {
+    explicit CParser(const std::string& src, const std::string& ns)
+        : ns_(ns.empty() ? "HeaderConsts" : ns), toks_(tokenize(stripNoise(src))) {
         extractDefineMacros(src);
     }
 
@@ -125,6 +153,7 @@ public:
 
 private:
     std::vector<Tok> toks_;
+    std::string ns_;
     size_t p_ = 0;
     std::vector<std::string> warnings_;
 
@@ -339,20 +368,27 @@ private:
 
     void emitMacros(std::ostringstream& os) {
         if (consts_.empty()) return;
+        std::vector<ConstDecl> intConsts;
         for (const auto& c : consts_) {
+            if (c.type == "CInt" || c.type == "Int") { intConsts.push_back(c); continue; }
             os << "share(all)\n";
-            if (c.type == "CInt" || c.type == "Int") {
-                // Integer constant: a single-variant constant enum. The member
-                // is a compile-time Int constant (`NAME::NAME`) rather than a
-                // needless `NAME()` call.
-                os << "enum " << c.name << " {\n";
-                os << "    " << c.name << " = " << c.value << "\n";
-                os << "}\n\n";
-            } else {
-                os << c.name << "()<" << c.type << "> -> {\n";
-                os << "    return " << c.value << "\n";
-                os << "}\n\n";
+            os << c.name << "()<" << c.type << "> -> {\n";
+            os << "    return " << c.value << "\n";
+            os << "}\n\n";
+        }
+        if (!intConsts.empty()) {
+            // All integer `#define`s from one header are members of a single
+            // const-enum named after the file's basename (e.g. `preproc.h` ->
+            // `Preproc`), accessed as `Preproc::MAX_BUFSIZE`. The enum is the
+            // namespace that keeps macro names from colliding with each other
+            // or with other top-level type names.
+            os << "share(all)\nenum " << ns_ << " {\n";
+            size_t n = intConsts.size();
+            for (size_t i = 0; i < n; ++i) {
+                os << "    " << intConsts[i].name << " = " << intConsts[i].value;
+                if (i + 1 < n) os << "\n";
             }
+            os << "\n}\n\n";
         }
     }
 
@@ -763,9 +799,10 @@ private:
 } // namespace
 
 std::string generateBindings(const std::string& headerSource,
+                             const std::string& headerPath,
                              std::vector<std::string>* warnings) {
     std::vector<std::string> collected;
-    CParser parser(headerSource);
+    CParser parser(headerSource, deriveNamespace(headerPath));
     std::string out = parser.run(collected);
     if (warnings) *warnings = std::move(collected);
     return out;

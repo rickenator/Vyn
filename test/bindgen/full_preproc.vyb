@@ -4,21 +4,6 @@
 
 
 share(all)
-enum COUNT {
-    COUNT = 4
-}
-
-share(all)
-enum WIDE {
-    WIDE = 8
-}
-
-share(all)
-enum LIMIT_HI {
-    LIMIT_HI = 0xFF00
-}
-
-share(all)
 SQUARE(x<Int>)<Int> -> {
     return (x * x)
 }
@@ -64,11 +49,6 @@ STATUS()<String> -> {
 }
 
 share(all)
-enum BIG_ENOUGH {
-    BIG_ENOUGH = 1
-}
-
-share(all)
 #[repr(C)]
 struct Vec2 {
     x<CInt>,
@@ -89,4 +69,12 @@ classify(p<loc<Vec2>>)<Mode>
 
 share(all)
 scale(out<loc<Vec2>>, f<CInt>)<CVoid>
+
+share(all)
+enum FullPreproc {
+    COUNT = 4
+    WIDE = 8
+    LIMIT_HI = 0xFF00
+    BIG_ENOUGH = 1
+}
 

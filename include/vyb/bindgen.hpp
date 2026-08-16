@@ -23,6 +23,7 @@ namespace bindgen {
 // Returns the generated Vyb source. If `warnings` is non-null, it is filled
 // with human-readable notes about declarations that could not be mapped.
 std::string generateBindings(const std::string& headerSource,
+                             const std::string& headerPath,
                              std::vector<std::string>* warnings = nullptr);
 
 #ifdef VYB_BINDGEN_LIBCLANG
@@ -31,11 +32,15 @@ std::string generateBindings(const std::string& headerSource,
 // expand `#include` (e.g. `<stdint.h>` typedefs) and evaluate conditionals
 // (`#if`/`#ifdef`), mapping typedefs through their canonical types
 // (`int32_t` -> CInt on this platform, `uint64_t` -> CULong on LP64, and
-// similarly for the other <stdint.h> widths). Object-like `#define` constants
-// (numeric, string, or integer constant expressions) bind as shared constant
-// functions; function-like macros bind as type-aware Vyb functions, mapping
-// comparison/logical operators directly and C `? :` ternaries to `select`, so
-// they resolve to `Int`, `Float`, `Bool`, or `String` as appropriate. Fixed-size
+// similarly for the other <stdint.h> widths). Object-like integer `#define`
+// constants (numeric or integer constant expressions) group into a single
+// const-enum named after the header's basename (e.g. `preproc.h` ->
+// `Preproc`, accessed as `Preproc::MAX_BUFSIZE`), keeping them in a
+// file-scoped namespace free of collisions; object-like String/Float `#define`s
+// bind as shared constant functions. Function-like macros bind as type-aware
+// Vyb functions, mapping comparison/logical operators directly and C `? :`
+// ternaries to `select`, so they resolve to `Int`, `Float`, `Bool`, or `String`
+// as appropriate. Fixed-size
 // C array struct fields (direct, nested, or via a typedef such as
 // `typedef char name_t[8]`) bind as contiguous Vyb value-array fields
 // (`[CChar; 8]`, `[[CDouble; 3]; 2]`); flexible/variable array members skip

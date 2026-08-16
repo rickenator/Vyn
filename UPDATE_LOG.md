@@ -6,10 +6,14 @@ Audit date: 2026-05-23
 - 2026-08-15: **`vyb bindgen` emits constant enums for C integer constants**.
   Object-like integer `#define` macros (e.g. `MAX_BUFSIZE 4096`) and C enums
   whose variants all carry explicit `= <int>` values (e.g. `MODE_EXACT = 1`)
-  are now emitted as single-variant / explicit-value constant enums
-  (`enum MAX_BUFSIZE { MAX_BUFSIZE = 4096 }`, used as `MAX_BUFSIZE::MAX_BUFSIZE`;
-  `enum Mode { MODE_EXACT = 1, ... }`) instead of the `X()<Int> { return N }`
-  constant-function shape, and instead of dropping explicit enum values. This
+  are now emitted as constant enums instead of the `X()<Int> { return N }`
+  constant-function shape, and instead of dropping explicit enum values. The
+  integer macros from one header are grouped into a single const-enum named
+  after the file's basename (e.g. `preproc.h` -> `enum Preproc { MAX_BUFSIZE =
+  4096, ... }`, used as `Preproc::MAX_BUFSIZE`), so their names live under a
+  file-scoped namespace and can't collide with each other or with other
+  top-level types; explicit-value C enums keep their own name (`enum Mode {
+  MODE_EXACT = 1, ... }`, used as `Mode::MODE_FAST`). This
   matches the constant-enum language feature (the `AF_INET()<Int>` shape the
   compiler now avoids). Both backends updated: the lightweight parser
   (`src/bindgen.cpp`, `vyb bindgen <header.h>`) and the libclang full-preprocessor

@@ -21,9 +21,9 @@
 import full_preproc
 
 main()<Int> -> {
-    println("count=", COUNT::COUNT)
-    println("wide=", WIDE::WIDE)
-    println("big=", BIG_ENOUGH::BIG_ENOUGH)
+    println("count=", FullPreproc::COUNT)
+    println("wide=", FullPreproc::WIDE)
+    println("big=", FullPreproc::BIG_ENOUGH)
     println("sq=", SQUARE(5))
     println("add=", ADD2(3, 4))
     println("max=", MAX(3, 9))
@@ -33,6 +33,6 @@ main()<Int> -> {
     println("mask=", MASK8(0x12F))
     println("lsl=", LSL2(3))
     println("status=", STATUS())
-    println("hi=", LIMIT_HI::LIMIT_HI)
+    println("hi=", FullPreproc::LIMIT_HI)
     return 0
 }
