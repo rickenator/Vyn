@@ -1291,6 +1291,42 @@ llvm::Value* LLVMCodegen::generateStructDeepCopy(llvm::Value* structValue,
     return outVal;
 }
 
+// Deep-copy a standalone `my<Struct>` payload. `myPtr` points at a heap block of
+// the pointee's layout; a fresh block is allocated and the pointee is recursively
+// copied (String fields retained, Vec buffers cloned, nested `my` blocks
+// deep-copied, our/mild control blocks retained), mirroring what
+// `reclaimStructOwnedFieldsAt` will later release. Used when a new owner of a
+// `my<Struct>` is created from a borrowed `my` (a `my` parameter being moved into
+// a local or returned), so the new binding owns data independent of the caller's.
+// Returns the new heap pointer (null when `myPtr` is null).
+llvm::Value* LLVMCodegen::deepCopyMyStruct(llvm::Value* myPtr,
+                                           const vyb::ast::TypeNode* pointeeAst,
+                                           llvm::StructType* pointeeTy) {
+    llvm::PointerType* rawPtr = llvm::PointerType::get(*context, 0);
+    llvm::Constant* nullPtr = llvm::ConstantPointerNull::get(rawPtr);
+    llvm::Value* isNull = builder->CreateICmpEQ(myPtr, nullPtr, "mydc.null");
+    llvm::BasicBlock* doBB = llvm::BasicBlock::Create(*context, "mydc.do", currentFunction);
+    llvm::BasicBlock* doneBB = llvm::BasicBlock::Create(*context, "mydc.done", currentFunction);
+    llvm::BasicBlock* entryBlock = builder->GetInsertBlock();
+    builder->CreateCondBr(isNull, doneBB, doBB);
+    builder->SetInsertPoint(doBB);
+    llvm::DataLayout dl(module.get());
+    llvm::Value* blockBytes = llvm::ConstantInt::get(
+        llvm::Type::getInt64Ty(*context), dl.getTypeAllocSize(pointeeTy));
+    llvm::Value* rawNew = builder->CreateCall(getOrCreateMallocFunction(), {blockBytes}, "mydc.alloc");
+    llvm::Value* newBlock = builder->CreateBitCast(rawNew, pointeeTy->getPointerTo(), "mydc.block");
+    llvm::Value* pointeeVal = builder->CreateLoad(pointeeTy, myPtr, "mydc.load");
+    llvm::Value* copied = generateStructDeepCopy(pointeeVal, pointeeAst, pointeeTy);
+    builder->CreateStore(copied, newBlock);
+    llvm::BasicBlock* doDoneBlock = builder->GetInsertBlock();
+    builder->CreateBr(doneBB);
+    builder->SetInsertPoint(doneBB);
+    llvm::PHINode* ph = builder->CreatePHI(myPtr->getType(), 2, "mydc.phi");
+    ph->addIncoming(nullPtr, entryBlock);
+    ph->addIncoming(newBlock, doDoneBlock);
+    return ph;
+}
+
 // Vec struct layout: { ptr, i64 (size), i64 (capacity) }
 bool LLVMCodegen::isVybStringStructType(llvm::Type* type) {
     auto* st = llvm::dyn_cast<llvm::StructType>(type);

@@ -1,0 +1,29 @@
+// @test: local moved from a my<Struct> borrow, then reassigned
+// @description: A local initialized from a borrowed `my` parameter deep-copies the
+//   payload (it cannot take the caller's pointer). Later reassigning that local to a
+//   fresh `my{...}` must free only the local's own copy and reclaim the fresh value on
+//   scope exit — never the caller's allocation, and with no leak.
+// @category: ownership, my, move, memory, struct, parameter
+// @expect: pass
+// @expect-return: 0
+
+struct Node {
+    value<Int>,
+    label<String>
+}
+
+relocate(a<my<Node>>)<Int> -> {
+    b<my<Node>> = a
+    b = my(Node { value = 3, label = "b2" })
+    return b.value
+}
+
+main()<Int> -> {
+    x<my<Node>> = my(Node { value = 11, label = "x" })
+    r<Int> = relocate(x)
+    if (r != 3) {
+        return 1
+    }
+    println("ok")
+    return 0
+}

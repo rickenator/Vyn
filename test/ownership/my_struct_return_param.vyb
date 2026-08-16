@@ -1,0 +1,27 @@
+// @test: return a borrowed my<Struct> parameter
+// @description: Returning a `my<Node>` parameter hands a value back to the caller, but
+//   the parameter only borrows the caller's own allocation. The returned value must be a
+//   deep copy so the caller's original binding and the returned binding free independent
+//   blocks on scope exit (no double free).
+// @category: ownership, my, move, memory, struct, return, parameter
+// @expect: pass
+// @expect-return: 0
+
+struct Node {
+    value<Int>,
+    label<String>
+}
+
+give_back(a<my<Node>>)<my<Node>> -> {
+    return a
+}
+
+main()<Int> -> {
+    x<my<Node>> = my(Node { value = 7, label = "x" })
+    y<my<Node>> = give_back(x)
+    if (y.value != 7) {
+        return 1
+    }
+    println("ok")
+    return 0
+}

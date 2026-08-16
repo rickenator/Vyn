@@ -447,9 +447,11 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
         // pointer after the init has stored it, so without invalidation both
         // bindings would reclaim the same allocation on scope exit (double free).
         // Transfer the pointer by nulling the source slot when the source is a
-        // local owner. When the source is a borrowed `my` parameter (the callee
-        // does not own the payload), the new binding must NOT reclaim it either:
-        // it borrows like the parameter, leaving the caller's owner to free once.
+        // local owner. When the source is a borrowed `my` (a `my` parameter, which
+        // the caller still owns), the pointer cannot be taken: the new binding
+        // deep-copies the payload so it owns data independent of the caller's
+        // (mirroring how owned struct fields are copied), and stays a real owner
+        // so a later overwrite only frees its own copy.
         if (node->init && node->typeNode && isMyOwnedStructTypeNode(node->typeNode.get())) {
             if (auto* initIdent = dynamic_cast<ast::Identifier*>(node->init.get())) {
                 const ScopeVariable* srcVar = nullptr;
@@ -468,11 +470,21 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
                         VYB_CDBG << "DEBUG: my<Struct> move '" << initIdent->name
                                   << "' -> '" << node->id->name << "': nulled source slot" << std::endl;
                     } else {
-                        // Borrowed parameter: the new binding borrows too (no free).
-                        needsCleanup = false;
-                        VYB_CDBG << "DEBUG: my<Struct> init '" << node->id->name
-                                  << "' from borrow param '" << initIdent->name
-                                  << "': new binding borrows" << std::endl;
+                        // Borrowed `my` param: deep-copy into the new binding.
+                        const vyb::ast::TypeNode* pointeeAst = myPointeeOf(node->typeNode.get());
+                        if (llvm::Type* pointeeT = pointeeAst
+                                ? codegenType(const_cast<vyb::ast::TypeNode*>(pointeeAst)) : nullptr) {
+                            if (auto* poise = llvm::dyn_cast<llvm::StructType>(pointeeT)) {
+                                initialVal = deepCopyMyStruct(initialVal, pointeeAst, poise);
+                                // The store of the (borrowed) source pointer already
+                                // happened above; overwrite it so the binding owns the
+                                // independent copy.
+                                builder->CreateStore(initialVal, alloca, "init.borrowcopy");
+                                VYB_CDBG << "DEBUG: my<Struct> init '" << node->id->name
+                                          << "' from borrow param '" << initIdent->name
+                                          << "': deep-copied payload" << std::endl;
+                            }
+                        }
                     }
                 }
             }

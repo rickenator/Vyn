@@ -492,6 +492,11 @@ private:
     llvm::Value* generateStructDeepCopy(llvm::Value* structValue,
                                         const vyb::ast::TypeNode* astType,
                                         llvm::StructType* llvmTy);
+    // Deep-copy a standalone `my<Struct>` heap payload so the new owner holds data
+    // independent of the caller's. Mirrors generateStructDeepCopy's field handling.
+    llvm::Value* deepCopyMyStruct(llvm::Value* myPtr,
+                                  const vyb::ast::TypeNode* pointeeAst,
+                                  llvm::StructType* pointeeTy);
 
     // Owned-field introspection + reclaim for struct-typed storage. Resolves a
     // struct's concrete field type nodes (substituting generic args) in layout

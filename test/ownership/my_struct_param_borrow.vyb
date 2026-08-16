@@ -1,7 +1,9 @@
 // @test: my<Struct> parameter is a runtime borrow
 // @description: A `my<Node>` parameter borrows the caller-owned allocation (the callee
-//   does not reclaim it). Moving from a borrowed parameter into a local must not make
-//   that local a second owner; it borrows too, leaving the caller's owner to free once.
+//   does not reclaim it, and the caller frees once at scope exit). Moving from a
+//   borrowed parameter into a local cannot transfer the caller's pointer, so the local
+//   deep-copies the payload and owns its own copy — the caller and the local end up with
+//   independent data.
 // @category: ownership, my, move, memory, struct, parameter
 // @expect: pass
 // @expect-return: 0

@@ -535,6 +535,40 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                     }
                 }
 
+                // Returning a standalone `my<Struct>` that the function only borrows
+                // (a `my` parameter's payload is owned by the caller, not the callee)
+                // hands the caller's own pointer back, so the caller would free it
+                // twice (its binding and the returned value). Deep-copy the payload
+                // so the returned value is an independent owner, and leave the
+                // caller's original to its own binding.
+                if (node->argument) {
+                    if (auto* retIdent = dynamic_cast<ast::Identifier*>(node->argument.get())) {
+                        const ScopeVariable* rv = nullptr;
+                        for (auto sit = scopeStack.rbegin(); sit != scopeStack.rend() && !rv; ++sit) {
+                            for (const auto& sv : *sit) {
+                                if (sv.name == retIdent->name) { rv = &sv; break; }
+                            }
+                        }
+                        if (rv && rv->ownership == ast::OwnershipKind::MY && !rv->needsCleanup &&
+                            rv->type && rv->type->isPointerTy()) {
+                            auto astIt = valueTypeMap.find(rv->allocaInst);
+                            if (astIt != valueTypeMap.end() && astIt->second &&
+                                isMyOwnedStructTypeNode(astIt->second.get())) {
+                                if (const vyb::ast::TypeNode* pAst = myPointeeOf(astIt->second.get())) {
+                                    if (llvm::Type* pT = codegenType(const_cast<vyb::ast::TypeNode*>(pAst))) {
+                                        if (auto* pStruct = llvm::dyn_cast<llvm::StructType>(pT)) {
+                                            returnValue = deepCopyMyStruct(returnValue, pAst, pStruct);
+                                            VYB_CDBG << "DEBUG: returned borrowed my<Struct> param '"
+                                                      << retIdent->name
+                                                      << "' deep-copied for caller" << std::endl;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // IMPORTANT: Clean up the function's scopes before returning so the
                 // cleanup happens (and the last cleanup leaves the insert point in a
                 // terminator-free block) before the terminator is emitted. A return
