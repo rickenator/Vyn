@@ -130,8 +130,8 @@ main()<Int> -> {
 
 The compiler compiles `*.vyb` to LLVM IR, codegens an object, links it with
 `runtime/vyb_runtime.c` + libc/libm (and OpenSSL for TLS), and produces a
-native executable. See `README.md` §**Quick Start** for the build flags
-(`--emit-obj`, `--optimize`, static vs dynamic linking).
+native executable. Common build flags: `--emit-obj`, `--optimize`, and
+static vs dynamic linking.
 
 ### Running the test suite
 
@@ -211,7 +211,7 @@ n<Int const> = 7  // immutable (const is a type modifier)
 ```
 
 Declarations are type-first (`name<Type>`). Values default to mutable unless
-typed `const`. See `README.md` §**Variables and Types**.
+typed `const`.
 
 ### 3.4 Functions and parameters
 
@@ -384,7 +384,7 @@ v = (1, 2, 3, 4, 5, 6, 7)     # variadic
 ```
 
 A function can return a tuple and the caller can destructure by index:
-`.0`, `.1`, … (see `README.md` §**Variadic Tuples**).
+`.0`, `.1`, …
 
 ### 3.9 Structs
 
@@ -753,7 +753,7 @@ output behavior in CLI contexts.
 Vyb exposes runtime and compile-time introspection: type-of, shape/arity
 probes, and module-surface status functions (e.g. `io_status_message`,
 `collections_status_message`, `result_status_message`, `prelude_ok`) used by
-the import-surface tests. See `README.md` §**Introspection System**.
+the import-surface tests.
 
 ### 3.23 Asynchronous programming
 
@@ -892,8 +892,8 @@ contracts and error structs with context (file, network, parse). Pair with
 fail FileError { operation = "open", path = p, err = code }
 ```
 
-Use these as the rich-context half of error handling; see `README.md`
-§**Error Handling Best Practices**.
+Use these as the rich-context half of error handling; the error type carries
+the context while `trap` selects how it is handled at the call site.
 
 ### 4.3 `io` — files
 
@@ -1020,7 +1020,7 @@ async_yield()<Int>                # round-robin to other fibers
 ```
 
 Non-`Int` futures (`Float`, `Bool`, `String`) are supported
-(`Future<T>` async functions — see `README.md` §**Async Programming**).
+(`Future<T>` async functions, §3.23).
 
 ### 4.10 `network` — sockets, TCP, UDP
 
