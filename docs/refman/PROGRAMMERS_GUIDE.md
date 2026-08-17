@@ -228,22 +228,40 @@ b0<UInt8> = 0x80             // hex into a sized unsigned type
 c<UInt32> = (b0 as UInt32) | ((1 as UInt32) << 8)
 ```
 
-**Optional `T?`** is Vyb's native optional, built directly into the type system:
+**Optional `T?`** is Vyb's native optional, built into the type system.
+
+A `T?` is either **present** — carrying a live value of type `T` — or **absent** —
+carrying no value at all. Vyb's data model has no `null`: a spot that may lack a
+value is *typed* as `T?`, so absence is an explicit state, never a surprise read.
 
 ```vyb
-a<Int?>  = Int?(5)          // present
-b<Int?>  = Int?()           // absent
-val<Int> = b else 42        // payload when present, else the default
-
-makeopt(v<Int>)<Int?> -> {
-    if (v > 0) { return Int?(v) }
-    return Int?()
-}
-q<Int> = makeopt(9) else -1    // 9
+a<Int?>  = Int?(5)          // present: carries 5
+b<Int?>  = Int?()           // absent:  carries nothing
 ```
 
-Present reads are bare — no `Some(v)` wrapper and no `.unwrap()` ceremony.
-`else` is right-associative: `a else b else c` == `a else (b else c)`.
+Because absence is explicit, an optional cannot be silently read as its plain
+`T`. `val<Int> = a` is rejected at compile time ("Expected Int but got Int?");
+every read must say what to do when the value is missing. **`else`** is that
+decision — the payload when present, otherwise the fallback you provide:
+
+```vyb
+val<Int> = b else 42          // absent  -> 42
+p<Int>   = a else 0           // present -> 5
+
+makeopt(v<Int>)<Int?> -> { if (v > 0) { return Int?(v) } return Int?() }
+q<Int> = makeopt(9) else -1     // 9
+r<Int> = makeopt(-5) else -1    // -1
+```
+
+Reading a present optional yields its value directly — no `Some(v)` wrapper and
+no `.unwrap()` ceremony. Chaining is short-circuit and right-associative
+(`a else b else c` == `a else (b else c)`): the first present value wins,
+otherwise the final fallback.
+
+Optionals are what reads return when there may be no value: `v.pop()?` (absent
+when empty), `v.first()` / `v.last()` / `v.get(i)` (absent on a missing
+element), `grab()` on a released `mild` (absent), and channel receives
+(`chan_recv_opt` is absent when the channel is closed and drained).
 
 ### 3.3 Variables, inference, mutability
 
