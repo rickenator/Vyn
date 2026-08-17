@@ -151,6 +151,7 @@ extern "C" {
     int64_t __vyb_chan_send(int64_t ch, int64_t v);
     int64_t __vyb_chan_recv(int64_t ch);
     int64_t __vyb_chan_try(int64_t ch);
+    int64_t __vyb_chan_poll(int64_t ch, int64_t* out);
     int64_t __vyb_chan_len(int64_t ch);
     int64_t __vyb_chan_free(int64_t ch);
     int64_t __vyb_chan_select(int64_t* handles, int64_t n);
@@ -1080,6 +1081,8 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_chan_recv), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_chan_try")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_chan_try), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_chan_poll")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_chan_poll), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_chan_len")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_chan_len), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_chan_free")] = llvm::orc::ExecutorSymbolDef(

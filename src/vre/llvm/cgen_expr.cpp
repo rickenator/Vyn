@@ -3567,6 +3567,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 bool isByRefVec = false;
                 bool isChanVar = false;
                 bool chanIsString = false;
+                const vyb::ast::TypeNode* chanElem = nullptr;
                 unsigned tupleSize = 0;
 
                 if (varIt != namedValues.end()) {
@@ -3593,7 +3594,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                                 // Built-in channel receiver `chan<T>`: a single i64
                                 // handle; the element type picks the runtime path.
                                 isChanVar = true;
-                                chanIsString = chanElementIsString(typeName->genericArgs[0].get());
+                                chanElem = typeName->genericArgs[0].get();
+                                chanIsString = chanElementIsString(chanElem);
                             } else if (typeName->identifier &&
                                        (typeName->identifier->name == "their" ||
                                         typeName->identifier->name == "my" ||
@@ -3643,7 +3645,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 if (isChanVar) {
                     llvm::Value* handle = builder->CreateLoad(
                         llvm::Type::getInt64Ty(*context), varIt->second, "chan.load");
-                    emitChannelMethod(node, handle, methodName, chanIsString);
+                    emitChannelMethod(node, handle, methodName, chanIsString, chanElem);
                     return;
                 }
 

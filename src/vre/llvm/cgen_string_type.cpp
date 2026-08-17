@@ -1046,7 +1046,8 @@ void LLVMCodegen::handleStringFormat(vyb::ast::CallExpression* node, llvm::Value
 // the int-slot channel runtime. Covers the ergonomic `chan<T>` surface: send,
 // recv, try, len, free, and handle (the raw Int handle for `chan_select`).
 void LLVMCodegen::emitChannelMethod(vyb::ast::CallExpression* node, llvm::Value* handle,
-                                    const std::string& methodName, bool isString) {
+                                    const std::string& methodName, bool isString,
+                                    const vyb::ast::TypeNode* elem) {
     if (!handle) { m_currentLLVMValue = nullptr; return; }
     llvm::Value* h64 = handle;
     if (h64->getType()->isIntegerTy() && !h64->getType()->isIntegerTy(64))
@@ -1096,36 +1097,136 @@ void LLVMCodegen::emitChannelMethod(vyb::ast::CallExpression* node, llvm::Value*
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type}, false);
                 f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_chan_send", module.get());
             }
-            llvm::Value* v64 = tryCast(payload, int64Type, node->loc);
+            llvm::Value* v64 = encodeChannelScalar(payload, elem);
             m_currentLLVMValue = builder->CreateCall(f, {h64, v64}, "chan.sent");
         }
         return;
     }
-    if (methodName == "recv" || methodName == "poll") {
-        const char* rf = (methodName == "recv") ?
-            (isString ? "__vyb_strchan_recv" : "__vyb_chan_recv") :
-            (isString ? "__vyb_strchan_try" : "__vyb_chan_try");
+    if (methodName == "recv") {
         if (isString) {
             std::vector<llvm::Type*> sf = {int8PtrType, int64Type};
             llvm::StructType* st = llvm::StructType::get(*context, sf, false);
-            llvm::Function* f = module->getFunction(rf);
+            llvm::Function* f = module->getFunction("__vyb_strchan_recv");
             if (!f) {
                 llvm::FunctionType* ft = llvm::FunctionType::get(st, {int64Type}, false);
-                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, rf, module.get());
+                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_strchan_recv", module.get());
             }
             m_currentLLVMValue = builder->CreateCall(f, {h64}, "chan.recv");
         } else {
-            llvm::Function* f = module->getFunction(rf);
+            llvm::Function* f = module->getFunction("__vyb_chan_recv");
             if (!f) {
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
-                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, rf, module.get());
+                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_chan_recv", module.get());
             }
-            m_currentLLVMValue = builder->CreateCall(f, {h64}, "chan.recv");
+            llvm::Value* raw = builder->CreateCall(f, {h64}, "chan.recv");
+            m_currentLLVMValue = decodeChannelScalar(raw, elem);
         }
+        return;
+    }
+    if (methodName == "poll") {
+        if (isString) {
+            // String payloads keep the empty-string sentinel poll (existing behavior).
+            std::vector<llvm::Type*> sf = {int8PtrType, int64Type};
+            llvm::StructType* st = llvm::StructType::get(*context, sf, false);
+            llvm::Function* f = module->getFunction("__vyb_strchan_try");
+            if (!f) {
+                llvm::FunctionType* ft = llvm::FunctionType::get(st, {int64Type}, false);
+                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_strchan_try", module.get());
+            }
+            m_currentLLVMValue = builder->CreateCall(f, {h64}, "chan.tryed");
+            return;
+        }
+        // Scalar payloads: non-blocking poll reports readiness explicitly (no -1
+        // sentinel), returning Option<T> -- Some(decoded value) or None when empty.
+        // This guarantees a Bool channel can't read empty as `true`, a Char channel
+        // as 0xFF, or a Float channel as a NaN bit pattern.
+        llvm::Function* pf = module->getFunction("__vyb_chan_poll");
+        if (!pf) {
+            llvm::FunctionType* ft = llvm::FunctionType::get(
+                int64Type, {int64Type, llvm::PointerType::get(int64Type, 0)}, false);
+            pf = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_chan_poll", module.get());
+        }
+        llvm::AllocaInst* outAlloca = builder->CreateAlloca(int64Type, nullptr, "chan.poll.out");
+        llvm::Value* ready = builder->CreateCall(pf, {h64, outAlloca}, "chan.poll.ready");
+        llvm::Value* isReady = builder->CreateTrunc(ready, llvm::Type::getInt1Ty(*context), "chan.poll.bool");
+
+        // Materialize (monomorphize) Option<T> for the payload type.
+        std::vector<ast::TypeNodePtr> optArgs;
+        if (elem) optArgs.push_back(std::unique_ptr<ast::TypeNode>(elem->clone()));
+        std::string mangled = optArgs.empty() ? "Option" : mangleGenericTypeName("Option", optArgs);
+        if (!taggedEnumInfo.count(mangled)) {
+            monomorphizeEnum("Option", optArgs);
+        }
+        llvm::Type* optionTy = taggedEnumInfo[mangled].llvmType;
+
+        llvm::Function* parent = builder->GetInsertBlock()->getParent();
+        llvm::BasicBlock* rBlock = llvm::BasicBlock::Create(*context, "chan.poll.ready", parent);
+        llvm::BasicBlock* nBlock = llvm::BasicBlock::Create(*context, "chan.poll.none", parent);
+        llvm::BasicBlock* merge = llvm::BasicBlock::Create(*context, "chan.poll.merge", parent);
+        builder->CreateCondBr(isReady, rBlock, nBlock);
+
+        builder->SetInsertPoint(rBlock);
+        llvm::Value* outVal = builder->CreateLoad(int64Type, outAlloca, "chan.poll.val");
+        llvm::Value* decoded = decodeChannelScalar(outVal, elem);
+        llvm::Value* someVal = buildTaggedEnumValue(mangled, "Some", {decoded});
+        builder->CreateBr(merge);
+
+        builder->SetInsertPoint(nBlock);
+        llvm::Value* noneVal = buildTaggedEnumValue(mangled, "None", {});
+        builder->CreateBr(merge);
+
+        builder->SetInsertPoint(merge);
+        llvm::PHINode* phi = builder->CreatePHI(optionTy, 2, "chan.poll.option");
+        phi->addIncoming(someVal, rBlock);
+        phi->addIncoming(noneVal, nBlock);
+        m_currentLLVMValue = phi;
         return;
     }
     logError(node->loc, "Unknown channel method '" + methodName + "'");
     m_currentLLVMValue = nullptr;
+}
+
+
+// Encode a scalar channel payload into the int64 transport slot. Floats are
+// stored as their IEEE bit pattern; Bool as 0/1; integer-family types truncate
+// to their natural width. The int-slot channel stores all payloads as i64.
+llvm::Value* LLVMCodegen::encodeChannelScalar(llvm::Value* payload, const vyb::ast::TypeNode* elem) {
+    if (!payload) return nullptr;
+    llvm::Type* elemTy = elem ? codegenType(const_cast<vyb::ast::TypeNode*>(elem)) : nullptr;
+    if (!elemTy || elemTy == int64Type) return payload;
+    if (elemTy->isFloatingPointTy()) {
+        // f64 -> i64 (bitcast); f32 -> i32 (bitcast) then zero-extend to i64.
+        if (elemTy->getPrimitiveSizeInBits() == 64) {
+            return builder->CreateBitCast(payload, int64Type, "chan.enc.bitcast");
+        }
+        llvm::Type* i32T = llvm::Type::getInt32Ty(*context);
+        llvm::Value* asI32 = builder->CreateBitCast(payload, i32T, "chan.enc.f32");
+        return builder->CreateZExt(asI32, int64Type, "chan.enc.f32ze");
+    }
+    if (elemTy->isIntegerTy()) {
+        return builder->CreateZExt(payload, int64Type, "chan.enc.zext");
+    }
+    return payload;
+}
+
+// Decode an int64 channel slot back into the payload element type (inverse of
+// encodeChannelScalar): bitcast back for Float, truncate for Bool/Char/int-width.
+llvm::Value* LLVMCodegen::decodeChannelScalar(llvm::Value* raw, const vyb::ast::TypeNode* elem) {
+    if (!raw) return nullptr;
+    llvm::Type* elemTy = elem ? codegenType(const_cast<vyb::ast::TypeNode*>(elem)) : nullptr;
+    if (!elemTy || elemTy == int64Type) return raw;
+    if (elemTy->isFloatingPointTy()) {
+        if (elemTy->getPrimitiveSizeInBits() == 64) {
+            return builder->CreateBitCast(raw, elemTy, "chan.dec.bitcast");
+        }
+        llvm::Type* i32T = llvm::Type::getInt32Ty(*context);
+        llvm::Value* asI32 = builder->CreateTrunc(raw, i32T, "chan.dec.f32trunc");
+        return builder->CreateBitCast(asI32, elemTy, "chan.dec.f32");
+    }
+    if (elemTy->isIntegerTy()) {
+        return builder->CreateTrunc(raw, elemTy, "chan.dec.trunc");
+    }
+    return raw;
 }
 
 } // namespace vyb

@@ -891,6 +891,23 @@ VYB_WEAK int64_t __vyb_chan_try(int64_t ch) {
     return v;
 }
 
+// Non-blocking dequeue that reports readiness explicitly: returns 1 and stores
+// the popped value in *out, or 0 when the channel is empty (or closed). Unlike
+// __vyb_chan_try this never collides with a legitimate -1 payload, so it is the
+// right primitive for Float/Bool/Char (and any scalar) channel payloads. Only
+// *out is written on a successful pop; on 0 the caller must not consume *out.
+VYB_WEAK int64_t __vyb_chan_poll(int64_t ch, int64_t* out) {
+    if (!ch || !out) return 0;
+    vyb_chan* c = (vyb_chan*)(intptr_t)ch;
+    pthread_mutex_lock(&c->mutex);
+    if (c->size == 0) { pthread_mutex_unlock(&c->mutex); return 0; }
+    *out = c->buf[c->head];
+    c->head = (c->head + 1) % c->cap;
+    c->size--;
+    pthread_mutex_unlock(&c->mutex);
+    return 1;
+}
+
 // Number of buffered values.
 VYB_WEAK int64_t __vyb_chan_len(int64_t ch) {
     if (!ch) return -1;

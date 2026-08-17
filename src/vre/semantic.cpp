@@ -24,6 +24,20 @@ extern bool g_debug_codegen;
 
 namespace vyb {
 
+// True when a channel payload element type is a String. Scalar / Bool / Char /
+// Float payloads use the int-slot channel runtime; String uses the refcounted
+// string runtime. Mirrors the codegen helper of the same name.
+static bool chanElementIsString(const ast::TypeNode* tn) {
+    if (!tn) return false;
+    if (auto* nn = dynamic_cast<const ast::TypeName*>(tn)) {
+        if (nn->identifier) {
+            const std::string& n = nn->identifier->name;
+            if (n == "String" || n == "string") return true;
+        }
+    }
+    return false;
+}
+
 static bool isBuiltinVecMethodName(const std::string& methodName) {
     return methodName == "push" || methodName == "pop" || methodName == "len" ||
            methodName == "get" || methodName == "set" || methodName == "push_array" ||
@@ -2792,8 +2806,9 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                         }
                     }
 
-                    // Built-in channel methods: `chan<T>.send(v)` returns Int;
-                    // `recv`/`try` return the element type `T`; `len`/`free`/`handle`
+                    // Built-in channel methods (chan<T>): `send(v)` returns Int;
+                    // `recv` returns the element type `T`; `poll` returns `Option<T>`
+                    // for scalar payloads (String for String payloads); `len`/`free`/`handle`
                     // return Int. Dispatch is done in codegen by element type.
                     if (auto chanTn = dynamic_cast<ast::TypeName*>(objSymbol->type)) {
                         if (chanTn->identifier && chanTn->identifier->name == "chan" &&
@@ -2810,13 +2825,37 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                                 node->type = std::shared_ptr<ast::TypeNode>(intType->clone());
                                 return;
                             }
-                            if (methodName == "recv" || methodName == "poll") {
+                            if (methodName == "recv") {
                                 if (!node->arguments.empty()) {
-                                    addError("chan<T>." + methodName + " expects no arguments", node);
+                                    addError("chan<T>.recv expects no arguments", node);
                                     return;
                                 }
                                 expressionTypes[node] = retainType(elem->clone().release());
                                 node->type = std::shared_ptr<ast::TypeNode>(elem->clone());
+                                return;
+                            }
+                            if (methodName == "poll") {
+                                if (!node->arguments.empty()) {
+                                    addError("chan<T>.poll expects no arguments", node);
+                                    return;
+                                }
+                                bool elemIsString = chanElementIsString(elem);
+                                if (elemIsString) {
+                                    // String payloads keep the empty-string sentinel poll.
+                                    expressionTypes[node] = retainType(elem->clone().release());
+                                    node->type = std::shared_ptr<ast::TypeNode>(elem->clone());
+                                } else {
+                                    // Scalar payloads: non-blocking poll returns Option<T>
+                                    // (Some(v) / None) so an empty read is unambiguous.
+                                    auto optTy = std::make_unique<ast::TypeName>(
+                                        node->loc, std::make_unique<ast::Identifier>(node->loc, "Option"));
+                                    optTy->genericArgs.push_back(elem->clone());
+                                    optTy->accept(*this);
+                                    if (optTy->type) {
+                                        node->type = std::shared_ptr<ast::TypeNode>(optTy->type->clone());
+                                        expressionTypes[node] = node->type.get();
+                                    }
+                                }
                                 return;
                             }
                             if (methodName == "len" || methodName == "free" || methodName == "handle") {
