@@ -1,0 +1,67 @@
+// @test: https client - TLS-secured HTTP GET against a local TLS server
+// @description: A worker thread stands up a TLS server (in-line PEM cert/key)
+//   that answers a request over TLS, while the client fetches it via
+//   https_get_full and validates the parsed status, reason, Content-Length, and
+//   body - proving the https module layers network + tls + http cleanly. The
+//   round-trip runs inside https_selfhost so the test needs only one import.
+// @category: modules, https, tls, http, network, threads, stdlib
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import https::{https_selfhost}
+
+main()<Int> -> {
+    cert<String> = "-----BEGIN CERTIFICATE-----
+MIIDJTCCAg2gAwIBAgIUQSza8Jzq6eaC7QZxN6SWUUkl46UwDQYJKoZIhvcNAQEL
+BQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MB4XDTI2MDgxNzA1Mzg0NVoXDTM2MDgx
+NDA1Mzg0NVowFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEF
+AAOCAQ8AMIIBCgKCAQEAry4PgJdCc+380uIK416p3WwKNCXyHcgtbEhoYRF49lYD
+IdvNAfuDSPFymNRQhYxnzwR6zX6Qs9eCzaz6wRdWlgrM0ZWwM4ntGE+LvHbks9BS
+740cMvBV+dT5Emeu7eAoI5K0/VSqnOca7SAjt4mgB2y+E7FM7oqlFHtNnmB//PzW
+ykVexrVEd4WwqZm2sClGedcITCns+wYDkx0OSQ1TIqUMhydQvd+KxvOtgux4nnqI
+AqJ2Yk7vuCRm2GGaFs4hpR/IkoVhx2nsSbJqDd7QDS4ECHjdwrG9i94ZxyBEcQNG
+K4Eo/uXS9AfWOEO9so1Xa5gTCwzZS8h/tXFVFwm7EQIDAQABo28wbTAdBgNVHQ4E
+FgQUVSARDMG/7qFMZvw7scN36ogJI2gwHwYDVR0jBBgwFoAUVSARDMG/7qFMZvw7
+scN36ogJI2gwDwYDVR0TAQH/BAUwAwEB/zAaBgNVHREEEzARgglsb2NhbGhvc3SH
+BH8AAAEwDQYJKoZIhvcNAQELBQADggEBAKkVo8/99NARjSdZIrVJEg0PmYFw/m9G
+zXxAHqxG1rQGGb8mMWl8JCRcFG70vZ3PfIqMMi2YURAjnbTfc4YOZv1PPFWlcbAR
+9uxUrtPngEQIlevLSzU/m5oErl/J5jpTV75/7S/vzNVjs3qCRuCYMCQMlwvhhTqh
+l0qiv7BN2FrrPBiz8d8eS6/SnQQ69DxHGY3iQDyJlqCg4VzPjQHH+FB28xmLWWuJ
+kVdyVeSRwAGUNLRH045qGOF8AiGNjKPH3GEpCRXvFKGPSGvTAlHfvvYFuMnyk2KR
+yYWXenWZikzXLl5NTIg7k3a/9rZwqxpvgTyPAPlo2Y3t34b48lYZCzo=
+-----END CERTIFICATE-----"
+    key<String> = "-----BEGIN PRIVATE KEY-----
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCvLg+Al0Jz7fzS
+4grjXqndbAo0JfIdyC1sSGhhEXj2VgMh280B+4NI8XKY1FCFjGfPBHrNfpCz14LN
+rPrBF1aWCszRlbAzie0YT4u8duSz0FLvjRwy8FX51PkSZ67t4CgjkrT9VKqc5xrt
+ICO3iaAHbL4TsUzuiqUUe02eYH/8/NbKRV7GtUR3hbCpmbawKUZ51whMKez7BgOT
+HQ5JDVMipQyHJ1C934rG862C7HieeogConZiTu+4JGbYYZoWziGlH8iShWHHaexJ
+smoN3tANLgQIeN3Csb2L3hnHIERxA0YrgSj+5dL0B9Y4Q72yjVdrmBMLDNlLyH+1
+cVUXCbsRAgMBAAECggEAJsztLpZyJ9LN1ZivADLarVotfWTtNlb85pe4FM3lrKwa
+6AAy7W47oyelcf/OsPHLGWF84LCYlNjWVj9qz+NfMH8GZCKDQzsYunJ9+RmdaM1q
+3Te0R/0PEfWv0DmKV5I3Wb+4GkdLPdL7VguxFYkkWpillh+GcmxfiYSRCdQGbS5m
+CmtDHuz09jDkDfzv28IPNUvuKvJ0br3RFipVbUKJvJH8tk4n1aIAf1Ed10udsath
+JDRIWa+TI0yQgoF7h5OPoD8tY3fbDwxh4L7SEStwW/Si8/ylCQ/FqyRszLUX7ev4
+N+xa8Rh/Kfzv/lfRbJnDrGLw+gzqEIp4oOsWx0PIpQKBgQDqYqVyVPqY3OqkB3UV
+/shuO4xFUtBopj/KNr9jKFX6J/U/jNjbFTIwgZbpPur+urvbfq+8nXiLRMHUG6he
+v1KxRtMXEBwqMTqOV/cQVmS5RMhGObRyHx+rAFt8f7lTA/MQXfEvIWTPRQnEPG9l
+ALk1JFkIgZ64576ywWio3BBlRQKBgQC/VbJexDPgNsZyfymFHrSV4+50kQNJqVbK
+HhcR4wWJcy5MgehhP7plhYHIKQzEjRNjLdHQ3kP4895hoyWmCeCxS1lHWexYR/dG
+5EkIXunDnz1Mm9ZOsdHJjQ5eGrgADOi9AKg0tWw8DY4T1J5+nQ8U9L9S07cKZSGO
+x4jMo529XQKBgQCTud0BNKJFmmehProDRPRa1dlRECMe8jmeX+c8vf2Cj5C5nzJG
+0xMxE1xkYi2Go3cnnq9wt+d0D8ACyfPS089wwGznSlYWGbUIZlTnzSvqwXlhGZmr
+nAY/pxgCXhYWRpT6KduLkwaQxLilIFotVMlmvyQGgnvhmt7Ml645T4pd6QKBgHeb
+0eKuEqPiehIPblw6greFAoc6M+zzgD7fqppS6h4vs8y+FQ/eL97RI/2Fs+aXLnx8
+o0JIAAP8J5Ov0pRGboFG0ivpifbyHiHiCcnC062nuUFP1hvhy3yMwmOPnmDhsQie
+BYjVtTChZKT+8InEEy6NhaD4mt9TszO3hswuqCg9AoGBAJM6mJ0tg4g4Dh9OuVEt
+Aq0cwymlPoxxCyl8hH7Kl0HEJuraLq0vLytwHddAymIenif5HZgSm2qAVVqblv38
+tNJ+gvTsNS/Y3DSoPu0E6tgr5EjK/FV0H/GIGWz9hAWYHV3dx2grL7GS2MOMu7n8
+QsM4qhE7CXh5EW4f/zlKqRoL
+-----END PRIVATE KEY-----"
+    r<Int> = https_selfhost(cert, key)
+    if (r != 0) { return 1 }
+    println("ok")
+    return 0
+}
