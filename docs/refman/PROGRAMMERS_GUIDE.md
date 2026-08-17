@@ -972,23 +972,7 @@ hash_chars(s<String>)<Int>
 prelude_ok()<Int>                              # surface probe
 ```
 
-### 4.2 `error` — structured domain errors
-
-Module page: [`error.md`](error.md). A multi-file namespace
-(`errable.vyb`, `display.vyb`, `error.vyb`, `io_error.vyb`,
-`network_error.vyb`, `parse_error.vyb`) providing `Display`/`Errable`
-contracts and error structs with context (file, network, parse). Pair with
-`trap` / `fail` ([§3.16](#316-error-handling-trap-fail-ensure)) for domain error types.
-
-```vyb
-# fail with a structured error carrying context
-fail FileError { operation = "open", path = p, err = code }
-```
-
-Use these as the rich-context half of error handling; the error type carries
-the context while `trap` selects how it is handled at the call site.
-
-### 4.3 `io` — files
+### 4.2 `io` — files
 
 Module page: [`io.md`](io.md). `File` is a small struct (`fd`, `path`) and
 all ops live on it.
@@ -1007,7 +991,7 @@ close(f<File>)<Void>
 `APPEND`) combine with `|`. `io_status_message()` is the import-surface probe.
 `File` with `fd == -1` signals a failed open.
 
-### 4.4 `time` — clocks and sleep
+### 4.3 `time` — clocks and sleep
 
 Module page: [`time.md`](time.md). Thin, allocation-free wrappers over
 `clock_gettime` / `nanosleep`; all values are `Int`.
@@ -1017,7 +1001,7 @@ time_epoch_secs()<Int>        time_epoch_millis()<Int>   time_nanos()<Int>
 time_mono_millis()<Int>       sleep_ms(millis<Int>)<Int>
 ```
 
-### 4.5 `collections` — Vec, Map, Set, BTree
+### 4.4 `collections` — Vec, Map, Set, BTree
 
 Module page: [`collections.md`](collections.md). Generics are bounded by the
 core aspects; reads return `V?` optionals (use `else` to default).
@@ -1067,7 +1051,7 @@ b<BTreeMap<String, Int>> = BTreeMap()   # K<Comparable, Equatable>
 Iterator types `VecIter`, `MapIter`, `HashIter`, `BTreeIter` bind the
 `Iterator` aspect, so they work directly in `for (x in …)` ([§3.6](#36-control-flow)).
 
-### 4.6 `channels` — typed channel primitives
+### 4.5 `channels` — typed channel primitives
 
 Module page: [`channels.md`](channels.md). Two payload kinds today: `Int`
 (`chan_*`) and `String` (`strchan_*`), both unbounded or bounded.
@@ -1086,7 +1070,7 @@ channel is closed and drained). `strchan_*` mirror these over `String`
 payloads (`String?` for the empty case). `chan_select` returns which handle
 is ready; see [§5](#5-concurrency-and-async-model) for its role in the async model.
 
-### 4.7 `threads` — pthread, mutex, condvar, atomics
+### 4.6 `threads` — pthread, mutex, condvar, atomics
 
 Module page: [`threads.md`](threads.md). A thread runs a `fn() -> Int`
 closure (zero captures in the basic surface).
@@ -1101,7 +1085,7 @@ a = atomic_new(0); atomic_load(a); atomic_store(a, v)
 atomic_add(a, v); atomic_cas(a, exp, des)<Int>; atomic_free(a)
 ```
 
-### 4.8 `tasks` — fire-and-forget threads
+### 4.7 `tasks` — fire-and-forget threads
 
 Module page: [`tasks.md`](tasks.md). A lighter precursor to the async
 executor: each spawn is its own detached pthread returning a handle.
@@ -1116,7 +1100,7 @@ task_free(t)<Int>
 No captures/arguments in the `fn() -> Int` surface; use `asyncs` for
 real parallelism with cooperative scheduling.
 
-### 4.9 `asyncs` — a real executor (fibers + thread pool)
+### 4.8 `asyncs` — a real executor (fibers + thread pool)
 
 Module page: [`asyncs.md`](asyncs.md). Each `async_spawn` runs on its own
 stack-fiber pinned to a worker (one scheduler per core) and can suspend
@@ -1136,7 +1120,7 @@ async_yield()<Int>                # round-robin to other fibers
 Non-`Int` futures (`Float`, `Bool`, `String`) are supported
 (`Future<T>` async functions, [§3.23](#323-asynchronous-programming)).
 
-### 4.10 `agents` — message-passing units
+### 4.9 `agents` — message-passing units
 
 Module page: [`agents.md`](agents.md). An agent is a unit of concurrency that
 owns a mailbox (an unbounded channel by default) and runs a behavior closure on
@@ -1176,7 +1160,7 @@ the agent is marked failed (`agent_status` = 2, mailbox closed, senders see 0).
 `"kind @ file:line"` descriptor, and `agent_dead_letter(a, ch)` can route the
 failed agent's handle to a supervisor channel.
 
-### 4.11 `network` — sockets, TCP, UDP
+### 4.10 `network` — sockets, TCP, UDP
 
 Module page: [`network.md`](network.md). Raw `socket_*` primitives, ergonomic
 TCP/UDP wrappers, and `async_*` variants.
@@ -1220,7 +1204,7 @@ comes from the matching aspect:
 `async_tcp_*` and `async_udp_*` helpers integrate sockets with the async
 executor.
 
-### 4.12 `tls` — TLS contexts, sessions, handshakes
+### 4.11 `tls` — TLS contexts, sessions, handshakes
 
 Module page: [`tls.md`](tls.md). Layers over OpenSSL; a `TlsContext` is the
 `SSL_CTX`, a `TlsStream` is a TLS session on an already-connected fd.
@@ -1242,10 +1226,10 @@ tls_error_message()
 
 `TlsStreamOps` and `TlsContextOps` bind the method surface (`write`, `read`,
 `connect`, `accept`, `close`, `dispose`) onto the structs. The
-`https_selfhost*` helpers ([§4.14](#414-https-https-client-over-tls-http))
+`https_selfhost*` helpers ([§4.13](#413-https-https-client-over-tls-http))
 exercise the full wiring end-to-end.
 
-### 4.13 `http` — pure-Vyb HTTP/1.1 client and server
+### 4.12 `http` — pure-Vyb HTTP/1.1 client and server
 
 Module page: [`http.md`](http.md). Layered over `network`/`threads` (not raw
 runtime calls). `HttpResponse` holds `status`, `headers`, `body`.
@@ -1282,7 +1266,7 @@ detached thread (`http_serve_conn`), reading the head and echoing a
 well-formed response. This is a pure-Vyb reference implementation — start
 here before layering TLS.
 
-### 4.14 `https` — HTTPS client over tls + http
+### 4.13 `https` — HTTPS client over tls + http
 
 Module page: [`https.md`](https.md). A client that runs the `http` request
 state machine over a `TlsStream` (reusing `http`'s parsers and the shared
@@ -1303,7 +1287,7 @@ https_selfhost_verified(cert_pem, key_pem)<Int>
 `https_selfhost*` pair generates a self-signed cert at runtime and drives the
 whole tls+http wiring without an external server.
 
-### 4.15 `prelude` — the auto-imported re-export surface
+### 4.14 `prelude` — the auto-imported re-export surface
 
 Module page: [`prelude.md`](prelude.md). Re-exports `Display`, `Debug`,
 `Clone`, `Equatable`, `Hashable`, `Comparable`, `hash_chars`, and
@@ -1475,7 +1459,6 @@ regenerates byte-identical output.
 | Area | Module page | Cross-index |
 |---|---|---|
 | Contracts & math | [`core`](core.md) | [aspects & binds](aspects.md) |
-| Domain errors | [`error`](error.md) | — |
 | Files | [`io`](io.md) | [types](types.md) |
 | Clocks | [`time`](time.md) | — |
 | Vec/Map/Set/BTree | [`collections`](collections.md) | [functions](functions.md) |
@@ -1492,13 +1475,11 @@ regenerates byte-identical output.
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
 
-
 The **shared cross-module types** (`HttpResponse`, `TcpStream`, `TlsContext`,
 `TlsStream`, `Socket`) and every symbol that uses them are in
 [`interfaces.md`](interfaces.md).
 
 ---
-
 
 ## Appendix A — Memory model
 

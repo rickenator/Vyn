@@ -7,15 +7,13 @@ and how they reference each other — even where prose is absent.
 
 ## Source scope (v1)
 
-Scan all `stdlib/**/*.vyb`: **23 files** across **13 namespaces** (~3,100 LOC).
+Scan all `stdlib/**/*.vyb`: **18 files** across **13 namespaces** (~3,100 LOC).
 
-- Single-file modules: `asyncs`, `channels`, `collections`, `http`, `https`,
-  `io`, `network`, `tasks`, `threads`, `time`, `tls` (each `mod.vyb`).
+- Single-file modules: `agents`, `asyncs`, `channels`, `collections`, `http`,
+  `https`, `io`, `network`, `tasks`, `threads`, `time`, `tls` (each `mod.vyb`).
 - Root module: `prelude.vyb`.
-- Multi-file modules (a directory = one module page, one section per file):
+- Multi-file namespace (a directory = one module page, one section per file):
   - `core/` → `aspects.vyb`, `iter.vyb`, `math.vyb`, `prelude.vyb`, `result.vyb`
-  - `error/` → `errable.vyb`, `display.vyb`, `error.vyb`, `io_error.vyb`,
-    `network_error.vyb`, `parse_error.vyb`
 
 **Module identity** = the top-level namespace directory (or root for `prelude`).
 An import `core::iter::{Iterator}` is an **edge** from the importing module to the

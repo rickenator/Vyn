@@ -11,10 +11,6 @@
 
 [`Clone`](#sym-clone), [`Clone->Int`](#sym-clone--int), [`Clone->String`](#sym-clone--string), [`Comparable`](#sym-comparable), [`Comparable->Bool`](#sym-comparable--bool), [`Comparable->Float`](#sym-comparable--float), [`Comparable->Int`](#sym-comparable--int), [`Comparable->String`](#sym-comparable--string), [`Debug`](#sym-debug), [`Display`](#sym-display), [`Display->Bool`](#sym-display--bool), [`Display->Float`](#sym-display--float), [`Display->Int`](#sym-display--int), [`Display->String`](#sym-display--string), [`Equatable`](#sym-equatable), [`Equatable->Bool`](#sym-equatable--bool), [`Equatable->Float`](#sym-equatable--float), [`Equatable->Int`](#sym-equatable--int), [`Equatable->String`](#sym-equatable--string), [`Hashable`](#sym-hashable), [`Hashable->Bool`](#sym-hashable--bool), [`Hashable->Float`](#sym-hashable--float), [`Hashable->Int`](#sym-hashable--int), [`Hashable->String`](#sym-hashable--string), [`Iterator`](#sym-iterator), [`StringOps`](#sym-stringops), [`StringOps->String`](#sym-stringops--string)
 
-## `error`
-
-[`Display`](#sym-display), [`Display->Error`](#sym-display--error), [`Display->IOError`](#sym-display--ioerror), [`Display->NetworkError`](#sym-display--networkerror), [`Display->ParseError`](#sym-display--parseerror), [`Errable`](#sym-errable), [`Errable->Error`](#sym-errable--error), [`Errable->IOError`](#sym-errable--ioerror), [`Errable->NetworkError`](#sym-errable--networkerror), [`Errable->ParseError`](#sym-errable--parseerror)
-
 ## `network`
 
 [`TcpListenerOps`](#sym-tcplistenerops), [`TcpListenerOps->TcpListener`](#sym-tcplistenerops--tcplistener), [`TcpStreamOps`](#sym-tcpstreamops), [`TcpStreamOps->TcpStream`](#sym-tcpstreamops--tcpstream), [`UdpSocketOps`](#sym-udpsocketops), [`UdpSocketOps->UdpSocket`](#sym-udpsocketops--udpsocket)

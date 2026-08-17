@@ -7,10 +7,6 @@
 
 [`BTreeIter<K, V>`](#sym-btreeiter-k--v-), [`BTreeMap<K, V>`](#sym-btreemap-k--v-), [`HashIter<K>`](#sym-hashiter-k-), [`HashMap<K, V>`](#sym-hashmap-k--v-), [`HashSet<K>`](#sym-hashset-k-), [`MapEntry<K, V>`](#sym-mapentry-k--v-), [`MapIter<K, V>`](#sym-mapiter-k--v-), [`VecIter<T>`](#sym-veciter-t-)
 
-## `error`
-
-[`Error`](#sym-error), [`IOError`](#sym-ioerror), [`NetworkError`](#sym-networkerror), [`ParseError`](#sym-parseerror)
-
 ## `http`
 
 [`HttpResponse`](#sym-httpresponse)

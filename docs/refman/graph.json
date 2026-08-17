@@ -6,7 +6,6 @@
     "channels",
     "collections",
     "core",
-    "error",
     "http",
     "https",
     "io",
@@ -66,20 +65,6 @@
         ],
         "exported": 32,
         "fan_in": 2,
-        "fan_out": 0
-      },
-      {
-        "name": "error",
-        "files": [
-          "stdlib/error/display.vyb",
-          "stdlib/error/errable.vyb",
-          "stdlib/error/error.vyb",
-          "stdlib/error/io_error.vyb",
-          "stdlib/error/network_error.vyb",
-          "stdlib/error/parse_error.vyb"
-        ],
-        "exported": 14,
-        "fan_in": 0,
         "fan_out": 0
       },
       {
@@ -318,56 +303,6 @@
         "module": "core",
         "symbols": [
           "result_status_message"
-        ]
-      },
-      {
-        "path": "stdlib/error/display.vyb",
-        "module": "error",
-        "symbols": [
-          "Display"
-        ]
-      },
-      {
-        "path": "stdlib/error/errable.vyb",
-        "module": "error",
-        "symbols": [
-          "Errable"
-        ]
-      },
-      {
-        "path": "stdlib/error/error.vyb",
-        "module": "error",
-        "symbols": [
-          "Error",
-          "Errable->Error",
-          "Display->Error"
-        ]
-      },
-      {
-        "path": "stdlib/error/io_error.vyb",
-        "module": "error",
-        "symbols": [
-          "IOError",
-          "Errable->IOError",
-          "Display->IOError"
-        ]
-      },
-      {
-        "path": "stdlib/error/network_error.vyb",
-        "module": "error",
-        "symbols": [
-          "NetworkError",
-          "Errable->NetworkError",
-          "Display->NetworkError"
-        ]
-      },
-      {
-        "path": "stdlib/error/parse_error.vyb",
-        "module": "error",
-        "symbols": [
-          "ParseError",
-          "Errable->ParseError",
-          "Display->ParseError"
         ]
       },
       {
@@ -1459,132 +1394,6 @@
         "file": "stdlib/core/result.vyb",
         "kind": "fn",
         "signature": "result_status_message()<String> ->",
-        "summary": "",
-        "fan_in": 0
-      },
-      {
-        "name": "Display",
-        "module": "error",
-        "file": "stdlib/error/display.vyb",
-        "kind": "aspect",
-        "signature": "aspect Display {",
-        "summary": "",
-        "fan_in": 0
-      },
-      {
-        "name": "Display->Error",
-        "module": "error",
-        "file": "stdlib/error/error.vyb",
-        "kind": "bind",
-        "signature": "bind Display -> Error {",
-        "summary": "Implement Display for Error",
-        "fan_in": 0
-      },
-      {
-        "name": "Display->IOError",
-        "module": "error",
-        "file": "stdlib/error/io_error.vyb",
-        "kind": "bind",
-        "signature": "bind Display -> IOError {",
-        "summary": "",
-        "fan_in": 0
-      },
-      {
-        "name": "Display->NetworkError",
-        "module": "error",
-        "file": "stdlib/error/network_error.vyb",
-        "kind": "bind",
-        "signature": "bind Display -> NetworkError {",
-        "summary": "",
-        "fan_in": 0
-      },
-      {
-        "name": "Display->ParseError",
-        "module": "error",
-        "file": "stdlib/error/parse_error.vyb",
-        "kind": "bind",
-        "signature": "bind Display -> ParseError {",
-        "summary": "",
-        "fan_in": 0
-      },
-      {
-        "name": "Errable",
-        "module": "error",
-        "file": "stdlib/error/errable.vyb",
-        "kind": "aspect",
-        "signature": "aspect Errable {",
-        "summary": "",
-        "fan_in": 0
-      },
-      {
-        "name": "Errable->Error",
-        "module": "error",
-        "file": "stdlib/error/error.vyb",
-        "kind": "bind",
-        "signature": "bind Errable -> Error {",
-        "summary": "Implement Errable for Error",
-        "fan_in": 0
-      },
-      {
-        "name": "Errable->IOError",
-        "module": "error",
-        "file": "stdlib/error/io_error.vyb",
-        "kind": "bind",
-        "signature": "bind Errable -> IOError {",
-        "summary": "",
-        "fan_in": 0
-      },
-      {
-        "name": "Errable->NetworkError",
-        "module": "error",
-        "file": "stdlib/error/network_error.vyb",
-        "kind": "bind",
-        "signature": "bind Errable -> NetworkError {",
-        "summary": "",
-        "fan_in": 0
-      },
-      {
-        "name": "Errable->ParseError",
-        "module": "error",
-        "file": "stdlib/error/parse_error.vyb",
-        "kind": "bind",
-        "signature": "bind Errable -> ParseError {",
-        "summary": "",
-        "fan_in": 0
-      },
-      {
-        "name": "Error",
-        "module": "error",
-        "file": "stdlib/error/error.vyb",
-        "kind": "struct",
-        "signature": "struct Error {",
-        "summary": "",
-        "fan_in": 0
-      },
-      {
-        "name": "IOError",
-        "module": "error",
-        "file": "stdlib/error/io_error.vyb",
-        "kind": "struct",
-        "signature": "struct IOError {",
-        "summary": "",
-        "fan_in": 0
-      },
-      {
-        "name": "NetworkError",
-        "module": "error",
-        "file": "stdlib/error/network_error.vyb",
-        "kind": "struct",
-        "signature": "struct NetworkError {",
-        "summary": "",
-        "fan_in": 0
-      },
-      {
-        "name": "ParseError",
-        "module": "error",
-        "file": "stdlib/error/parse_error.vyb",
-        "kind": "struct",
-        "signature": "struct ParseError {",
         "summary": "",
         "fan_in": 0
       },
@@ -3599,62 +3408,6 @@
     },
     {
       "type": "implement",
-      "from_module": "error",
-      "from_symbol": "Display->Error",
-      "to_module": "error",
-      "to_symbol": "Display"
-    },
-    {
-      "type": "implement",
-      "from_module": "error",
-      "from_symbol": "Display->IOError",
-      "to_module": "error",
-      "to_symbol": "Display"
-    },
-    {
-      "type": "implement",
-      "from_module": "error",
-      "from_symbol": "Display->NetworkError",
-      "to_module": "error",
-      "to_symbol": "Display"
-    },
-    {
-      "type": "implement",
-      "from_module": "error",
-      "from_symbol": "Display->ParseError",
-      "to_module": "error",
-      "to_symbol": "Display"
-    },
-    {
-      "type": "implement",
-      "from_module": "error",
-      "from_symbol": "Errable->Error",
-      "to_module": "error",
-      "to_symbol": "Errable"
-    },
-    {
-      "type": "implement",
-      "from_module": "error",
-      "from_symbol": "Errable->IOError",
-      "to_module": "error",
-      "to_symbol": "Errable"
-    },
-    {
-      "type": "implement",
-      "from_module": "error",
-      "from_symbol": "Errable->NetworkError",
-      "to_module": "error",
-      "to_symbol": "Errable"
-    },
-    {
-      "type": "implement",
-      "from_module": "error",
-      "from_symbol": "Errable->ParseError",
-      "to_module": "error",
-      "to_symbol": "Errable"
-    },
-    {
-      "type": "implement",
       "from_module": "network",
       "from_symbol": "TcpListenerOps->TcpListener",
       "to_module": "network",
@@ -3883,62 +3636,6 @@
       "from_symbol": "StringOps->String",
       "to_module": "core",
       "to_symbol": "String"
-    },
-    {
-      "type": "implementOn",
-      "from_module": "error",
-      "from_symbol": "Display->Error",
-      "to_module": "error",
-      "to_symbol": "Error"
-    },
-    {
-      "type": "implementOn",
-      "from_module": "error",
-      "from_symbol": "Display->IOError",
-      "to_module": "error",
-      "to_symbol": "IOError"
-    },
-    {
-      "type": "implementOn",
-      "from_module": "error",
-      "from_symbol": "Display->NetworkError",
-      "to_module": "error",
-      "to_symbol": "NetworkError"
-    },
-    {
-      "type": "implementOn",
-      "from_module": "error",
-      "from_symbol": "Display->ParseError",
-      "to_module": "error",
-      "to_symbol": "ParseError"
-    },
-    {
-      "type": "implementOn",
-      "from_module": "error",
-      "from_symbol": "Errable->Error",
-      "to_module": "error",
-      "to_symbol": "Error"
-    },
-    {
-      "type": "implementOn",
-      "from_module": "error",
-      "from_symbol": "Errable->IOError",
-      "to_module": "error",
-      "to_symbol": "IOError"
-    },
-    {
-      "type": "implementOn",
-      "from_module": "error",
-      "from_symbol": "Errable->NetworkError",
-      "to_module": "error",
-      "to_symbol": "NetworkError"
-    },
-    {
-      "type": "implementOn",
-      "from_module": "error",
-      "from_symbol": "Errable->ParseError",
-      "to_module": "error",
-      "to_symbol": "ParseError"
     },
     {
       "type": "implementOn",
