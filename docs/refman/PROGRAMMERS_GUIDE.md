@@ -1346,264 +1346,299 @@ Custom serialization is available by implementing the `Serialize` aspect.
 
 ## Appendix D — Grammar (EBNF)
 
-We host the formal grammar here so there is a single grammar home. This is
-consolidated from the README's grammar; it is broadly current but a handful of
-productions still reflect the earlier syntax. Where it disagrees with the
-feature sections in this guide, **the sections win** — refreshing the grammar
-to the exact current surface is an open follow-up.
+This appendix is the single home for Vyb's formal grammar. Every production here
+is the **current** compiler surface: it parses today, and it matches what the
+feature sections in §3 and §4 (and the `test/` suite) exercise. Vyb has one
+unified syntax — there is no legacy alternate form to keep track of.
 
 ```ebnf
 -*- mode: ebnf -*-
 // Conventions:
-//   IDENTIFIER:        Represents a valid identifier token.
-//   INTEGER_LITERAL:   Represents an integer literal token.
-//   FLOAT_LITERAL:     Represents a float literal token.
-//   STRING_LITERAL:    Represents a string literal token.
-//   BOOLEAN_LITERAL:   Represents 'true' or 'false'.
-//   'keyword':         Denotes a literal keyword.
-//   { ... }:           Represents zero or more occurrences (Kleene star).
-//   [ ... ]:           Represents zero or one occurrence (optional).
-//   ( ... | ... ):     Represents a choice (alternation).
+//   IDENTIFIER:        A valid identifier token.
+//   INTEGER_LITERAL:   An integer literal token.
+//   FLOAT_LITERAL:     A float literal token.
+//   STRING_LITERAL:    A string literal token.
+//   BOOLEAN_LITERAL:   'true' or 'false'.
+//   'keyword':         A literal keyword token.
+//   { ... }:           Zero or more occurrences (Kleene star).
+//   [ ... ]:           Zero or one occurrence (optional).
+//   ( ... | ... ):     A choice (alternation).
 //   ... ::= ... :      Defines a production rule.
 
-// Module Structure
-module                 ::= { module_item } EOF
-module_item            ::= import_statement
-                         | smuggle_statement
-                         | struct_declaration
-                         | enum_declaration
-                         | bind_declaration
-                         | function_declaration
-                         | variable_declaration
-                         | constant_declaration
-                         | type_alias_declaration
-                         | aspect_declaration
-                         | statement
+// ------------------------------- Module structure ---------------------------
 
-// Import System (import/smuggle)
-import_statement       ::= 'import' path [ 'as' IDENTIFIER ] [';']
-smuggle_statement      ::= 'smuggle' path [ 'as' IDENTIFIER ] [';']
-path                   ::= IDENTIFIER { ('::' | '.') IDENTIFIER }
+module                  ::= { module_item } EOF
+module_item             ::= import_statement
+                          | smuggle_statement
+                          | struct_declaration
+                          | enum_declaration
+                          | bind_declaration
+                          | aspect_declaration
+                          | type_alias_declaration
+                          | function_declaration
+                          | variable_declaration
+                          | statement
 
-// Type Declarations
-struct_declaration     ::= [ 'pub' ] [ 'template' '<' type_parameter_list '>' ]
-                           'struct' IDENTIFIER '{' { struct_field_declaration } '}'
-struct_field_declaration ::= [ 'pub' ] IDENTIFIER '<' type '>' [ '=' expression ] [';']
+// ----------------------------- Imports / smuggle ----------------------------
 
+import_statement        ::= 'import' import_shape [';']
+smuggle_statement       ::= 'smuggle' import_shape [';']
+import_shape            ::= '*' 'as' IDENTIFIER 'from' STRING_LITERAL
+                          | module_path [ 'as' IDENTIFIER ] [ 'from' STRING_LITERAL ]
+                          | module_path '::' '{' import_specifier { ',' import_specifier } '}'
+import_specifier        ::= IDENTIFIER [ 'as' IDENTIFIER ]
+module_path             ::= IDENTIFIER { ( '::' | '.' ) IDENTIFIER }
 
-field_declaration      ::= [ 'pub' ] IDENTIFIER '<' type '>' [ '=' expression ] [';']
+// -------------------------------- Types -------------------------------------
 
-enum_declaration       ::= [ 'pub' ] [ 'template' '<' type_parameter_list '>' ]
-                           'enum' IDENTIFIER '{' { enum_variant } '}'
-enum_variant           ::= IDENTIFIER [ '(' type_list ')' ] [ '=' expression ] ','?
+type                    ::= base_type { type_suffix }
+base_type               ::= IDENTIFIER
+                          | lifetime_type_identifier
+                          | qualified_type_name
+                          | '(' [ type { ',' type } [ ',' ] ] ')'        // tuple / group
+                          | '[' type [ ';' expression ] ']'              // array type
+                          | function_type
+lifetime_type_identifier::= 'my' | 'our' | 'their' | 'mild' | 'const'
+qualified_type_name     ::= IDENTIFIER { ( '::' | '.' ) IDENTIFIER }
+type_suffix             ::= '<' [ type { ',' type } ] '>'   // generic args
+                          | '[' ']'                         // array-of (T[])
+                          | '*'                             // pointer (T*)
+                          | '?'                             // native optional (T?)
+                          | 'const'                         // const-qualified type
+function_type           ::= 'fn' '(' [ type { ',' type } ] ')' [ '->' type ]
 
-bind_declaration       ::= [ 'template' '<' type_parameter_list '>' ]
-                           'bind' type [ '->' type ] '{' { method_declaration } '}'
+// ----------------------------- Declarations ---------------------------------
 
-aspect_declaration     ::= [ 'pub' ] 'aspect' IDENTIFIER [ template_parameters ]
-                           '{' { method_signature } '}'
+struct_declaration      ::= 'struct' IDENTIFIER [ '<' type_parameter_list '>' ]
+                            '{' { struct_field_declaration } '}'
+struct_field_declaration::= IDENTIFIER '<' type '>' [ '=' expression ] [';']
 
-// Function Declarations
-function_declaration   ::= [ 'pub' ] [ 'template' '<' type_parameter_list '>' ] [ 'async' ]
-                           IDENTIFIER '(' [ parameter_list ] ')' '<' type_list '>' '->'
-                           ( block_statement | expression [';'] | statement )
-                           [ 'throws' type_list ]
+enum_declaration        ::= 'enum' IDENTIFIER [ '<' type_parameter_list '>' ]
+                            '{' { enum_variant } '}'
+enum_variant            ::= IDENTIFIER [ '(' type_list ')' ] [ '=' expression ] ','?
 
-method_declaration     ::= [ 'pub' ] [ 'static' ] [ 'template' '<' type_parameter_list '>' ] [ 'async' ]
-                           IDENTIFIER '(' [ parameter_list ] ')' '<' type '>' '->'
-                           ( block_statement | expression [';'] ) [ 'throws' type_list ]
+bind_declaration        ::= 'bind' [ '<' type_parameter_list '>' ] type [ '->' type ]
+                            '{' { method_declaration } '}'
 
-method_signature       ::= [ 'async' ] IDENTIFIER '(' [ parameter_list ] ')'
-                           '<' type_list '>' '->' ';' [ 'throws' type_list ]
+aspect_declaration      ::= 'aspect' IDENTIFIER [ '<' type_parameter_list '>' ]
+                            [ ':' aspect_supertypes ] '{' { method_signature } '}'
+aspect_supertypes       ::= IDENTIFIER { '+' IDENTIFIER }
 
-constructor_declaration::= [ 'pub' ] 'new' [ template_parameters ]
-                           '(' [ parameter_list ] ')' [ 'throws' type_list ]
-                           ( block_statement | '=>' expression [';'] )
+type_alias_declaration  ::= 'type' IDENTIFIER [ '<' type_parameter_list '>' ]
+                            '=' type [';']
 
-// Variable Declarations
-variable_declaration   ::= [ 'pub' ] IDENTIFIER '<' type '>' [ '=' expression ] [';']
-constant_declaration   ::= [ 'pub' ] IDENTIFIER '<' type 'const' '>' '=' expression [';']
-type_alias_declaration ::= [ 'pub' ] 'type' IDENTIFIER [ template_parameters ] '=' type [';']
+variable_declaration    ::= var_modifier? IDENTIFIER '<' type '>' [ '=' expression ] [';']
+var_modifier            ::= 'let' | 'var' | 'mut' | 'auto' | 'const'
 
-// Parameters and Templates
-type_parameter_list    ::= type_parameter { ',' type_parameter }
-type_parameter         ::= IDENTIFIER [ ':' type_bounds ] | expression
-type_bounds            ::= type { '+' type }
-template_parameters    ::= '<' type_parameter_list '>'
+function_declaration    ::= [ 'async' ] [ 'extern' ]
+                            IDENTIFIER [ '<' type_parameter_list '>' ]
+                            '(' [ parameter_list ] ')'
+                            ( '<' type_list '>' | '->' type_list )?
+                            function_body
+method_declaration      ::= [ 'async' ] [ 'static' ]
+                            IDENTIFIER [ '<' type_parameter_list '>' ]
+                            '(' [ parameter_list ] ')'
+                            ( '<' type_list '>' | '->' type_list )?
+                            function_body
+method_signature        ::= [ 'async' ] IDENTIFIER '(' [ parameter_list ] ')'
+                            '<' type '>' [ '->' function_body ]
+function_body           ::= block_statement
+                          | statement
+                          | expression_statement
+                          | ';'                       // forward declaration only
+operator_declaration    ::= 'operator' operator_symbol
+                            '(' [ parameter_list ] ')'
+                            ( '<' type_list '>' | '->' type_list )?
+                            function_body
+operator_symbol         ::= '+' | '-' | '*' | '/' | '%'
+                          | '==' | '!=' | '<' | '<=' | '>' | '>='
 
-parameter_list         ::= parameter { ',' parameter }
-parameter              ::= [ 'const' ] IDENTIFIER '<' type '>' [ '=' expression ]
+// Parameters & generics
+type_parameter_list     ::= type_parameter { ',' type_parameter }
+type_parameter          ::= IDENTIFIER [ '<' type_bounds '>' ]
+type_bounds             ::= IDENTIFIER { '+' IDENTIFIER }          // T<Aspect>
+parameter               ::= [ 'const' ] IDENTIFIER ( '<' type '>' | ':' type )? [ '=' expression ]
+parameter_list          ::= parameter { ',' parameter } [ ',' '...' ]
+type_list               ::= type { ',' type }
 
-type_list              ::= type { ',' type }
+// ------------------------------- Statements ---------------------------------
 
-// Statements
-statement              ::= expression_statement
-                         | block_statement
-                         | if_statement
-                         | for_statement
-                         | while_statement
-                         | loop_statement
-                         | match_statement
-                         | return_statement
-                         | break_statement
-                         | continue_statement
-                         | pass_statement
-                         | defer_statement
-                         | try_statement
-                         | variable_declaration
-                         | constant_declaration
-                         | pattern_assignment_statement
-                         | scoped_statement
-                         | throw_statement
+statement               ::= expression_statement
+                          | block_statement
+                          | variable_declaration
+                          | if_statement
+                          | ensure_statement
+                          | while_statement
+                          | for_statement
+                          | async_for_statement
+                          | match_statement
+                          | return_statement
+                          | break_statement
+                          | continue_statement
+                          | pass_statement
+                          | fail_statement
+                          | panic_statement
+                          | exit_statement
+                          | rethrow_statement
+                          | try_statement
+                          | freedom_statement
+                          | defer_statement
+                          | await_statement
+                          | labeled_loop_statement
 
-expression_statement   ::= expression [';']
-block_statement        ::= '{' { statement } '}'
+block_statement         ::= '{' { statement } '}'
+indented_block          ::= INDENT { statement } DEDENT
 
-if_statement           ::= 'if' expression ( block_statement | statement_without_block )
-                           { 'else' 'if' expression ( block_statement | statement_without_block ) }
-                           [ 'else' ( block_statement | statement_without_block ) ]
+if_statement            ::= 'if' '(' expression ')' block_statement
+                            { 'else' 'if' '(' expression ')' block_statement }
+                            [ 'else' block_statement ]
+ensure_statement        ::= 'ensure' '(' expression ')' 'else' block_statement
+while_statement         ::= 'while' '(' expression ')' block_statement
+for_statement           ::= 'for' '(' IDENTIFIER 'in' expression [ ',' expression ] ')'
+                            block_statement                       // step or skip
+async_for_statement     ::= 'async' 'for' '(' IDENTIFIER [ '<' type '>' ] 'in' expression ')'
+                            block_statement                       // channel stream
+labeled_loop_statement  ::= IDENTIFIER ':' ( for_statement | while_statement )
 
-for_statement          ::= 'for' pattern 'in' expression block_statement
-while_statement        ::= 'while' expression block_statement
-loop_statement         ::= 'loop' block_statement
+match_statement         ::= 'match' '(' expression ')' '{' { match_arm } '}'
+match_arm               ::= pattern [ 'if' expression ] '->' ( expression | block_statement ) ','?
 
-match_statement        ::= 'match' '(' expression ')' '{' match_arm* '}'
-match_arm              ::= pattern '->' ( expression | block_statement | statement_without_block ) ','?
+return_statement        ::= 'return' [ expression { ',' expression } ] [';']
+break_statement         ::= 'break' [ IDENTIFIER ] [';']
+continue_statement      ::= 'continue' [ IDENTIFIER ] [';']
+pass_statement          ::= 'pass' expression [';']
+fail_statement          ::= 'fail' ( '<' type '>' '(' expression ')'
+                                   | expression ) [';']
+panic_statement         ::= 'panic' '(' expression ')' [';']
+exit_statement          ::= 'exit' '(' expression ')' [';']
+rethrow_statement       ::= 'rethrow' [';']
+await_statement         ::= 'await' expression [';']
+freedom_statement       ::= 'freedom' block_statement
+defer_statement         ::= 'defer' ( expression_statement | block_statement )
 
-select_expression      ::= 'select' '(' expression ')' '->' '{' select_arm* '}' ';'
-select_arm             ::= pattern '->' ( expression | block_statement ) ','?
+try_statement           ::= 'try' ( block_statement | indented_block )
+                            { catch_clause } [ 'finally' ( block_statement | indented_block ) ]
+catch_clause            ::= 'catch' [ '(' IDENTIFIER [ ':' type ] ')' | IDENTIFIER ]
+                            ( block_statement | indented_block )
 
-return_statement       ::= 'return' [ expression ] [';']
-break_statement        ::= 'break' [ IDENTIFIER ] [ expression ] [';']
-continue_statement     ::= 'continue' [ IDENTIFIER ] [';']
-pass_statement         ::= 'pass' expression [';']
-defer_statement        ::= 'defer' ( expression_statement | block_statement )
-throw_statement        ::= 'throw' expression [';']
-scoped_statement       ::= 'scoped' block_statement
+// A block that may carry trap/ensure clauses (§3.16)
+trappable_block         ::= block_statement { trap_clause } [ ensure_clause ]
+trap_clause             ::= 'trap' '(' IDENTIFIER '<' type '>' ')' '->' block_statement
+ensure_clause           ::= 'ensure' block_statement
 
-try_statement          ::= 'try' block_statement { trap_clause } [ 'finally' block_statement ]
-trap_clause            ::= 'trap' '(' IDENTIFIER '<' type '>' ')' '->' block_statement
+// --------------------------------- Patterns ---------------------------------
 
-pattern_assignment_statement ::= pattern '=' expression [';']
-statement_without_block ::= expression_statement | return_statement | break_statement
-                          | continue_statement | throw_statement
+pattern                 ::= comparison_pattern
+                          | range_pattern
+                          | IDENTIFIER '(' [ pattern_list ] ')'    // enum variant
+                          | path '{' [ field_pattern { ',' field_pattern } [ ',' ] ] '}'
+                          | literal
+                          | '?'
+                          | '[' [ pattern_list ] ']'
+                          | '(' pattern_list ')'
+comparison_pattern      ::= ( '==' | '!=' | '<' | '<=' | '>' | '>=' ) expression
+range_pattern           ::= expression '..' expression
+field_pattern           ::= IDENTIFIER ':' pattern | IDENTIFIER
+pattern_list            ::= pattern { ',' pattern }
 
-// Patterns
-pattern                ::= comparison_pattern
-                         | IDENTIFIER [ '@' pattern ]
-                         | literal
-                         | '?'
-                         | path '{' [ field_pattern { ',' field_pattern } [','] ] '}'
-                         | path '(' [ pattern_list ] ')'
-                         | '[' [ pattern_list ] ']'
-                         | '(' pattern_list ')'
-                         | '&' [ 'const' ] pattern
+// ------------------------------ Expressions ---------------------------------
 
-comparison_pattern     ::= ( '==' | '!=' | '<' | '<=' | '>' | '>=' ) expression
+expression              ::= assignment_expression
+assignment_expression   ::= conditional_expression
+                            [ assignment_operator assignment_expression ]
+assignment_operator     ::= '=' | '+=' | '-=' | '*=' | '/=' | '%=' | '&=' | '|=' | '^=' | '<<=' | '>>='
 
-field_pattern          ::= IDENTIFIER ':' pattern | IDENTIFIER
-pattern_list           ::= pattern { ',' pattern }
+conditional_expression  ::= if_expression
+                          | logical_or_expression [ '?' expression ':' conditional_expression ]
 
-// Expressions
-expression             ::= assignment_expression
-assignment_expression  ::= conditional_expression [ assignment_operator assignment_expression ]
-assignment_operator    ::= '=' | '+=' | '-=' | '*=' | '/=' | '%=' | '&=' | '|=' | '^=' | '<<=' | '>>='
+if_expression           ::= 'if' '(' expression ')' block_statement
+                            [ 'else' ( block_statement | if_expression ) ]
 
-conditional_expression ::= logical_or_expression [ '?' expression ':' conditional_expression ]
-                         | if_expression
+logical_or_expression   ::= logical_and_expression { '||' logical_and_expression }
+logical_and_expression  ::= bitwise_or_expression { '&&' bitwise_or_expression }
+bitwise_or_expression   ::= bitwise_xor_expression { '|' bitwise_xor_expression }
+bitwise_xor_expression  ::= bitwise_and_expression { '^' bitwise_and_expression }
+bitwise_and_expression  ::= equality_expression { '&' equality_expression }
+equality_expression     ::= relational_expression { ( '==' | '!=' ) relational_expression }
+relational_expression   ::= range_expression { ( '<' | '<=' | '>' | '>=' ) range_expression }
+range_expression        ::= shift_expression [ '..' shift_expression ]
+shift_expression        ::= additive_expression { ( '<<' | '>>' ) additive_expression }
+additive_expression     ::= multiplicative_expression { ( '+' | '-' ) multiplicative_expression }
+multiplicative_expression ::= cast_expression { ( '*' | '/' | '%' ) cast_expression }
 
-logical_or_expression  ::= logical_and_expression { '||' logical_and_expression }
-logical_and_expression ::= bitwise_or_expression { '&&' bitwise_or_expression }
-bitwise_or_expression  ::= bitwise_xor_expression { '|' bitwise_xor_expression }
-bitwise_xor_expression ::= bitwise_and_expression { '^' bitwise_and_expression }
-bitwise_and_expression ::= equality_expression { '&' equality_expression }
-equality_expression    ::= relational_expression { ( '==' | '!=' ) relational_expression }
-relational_expression  ::= range_expression { ( '<' | '<=' | '>' | '>=' | 'is' | 'as' ) range_expression }
-range_expression       ::= shift_expression [ '..' shift_expression ]
-shift_expression       ::= additive_expression { ( '<<' | '>>' ) additive_expression }
-additive_expression    ::= multiplicative_expression { ( '+' | '-' ) multiplicative_expression }
-multiplicative_expression ::= unary_expression { ( '*' | '/' | '%' ) unary_expression }
+cast_expression         ::= unary_expression { 'as' type }
+unary_expression        ::= ( '!' | '-' | '~' ) unary_expression
+                          | 'await' unary_expression
+                          | 'typeof' '(' expression ')' | 'typename' '(' expression ')'
+                          | typeof_type_expression
+                          | postfix_expression
+typeof_type_expression  ::= 'typeof' '<' type '>' '(' ')'
 
-unary_expression       ::= ( '!' | '-' | '+' | '*' | 'await' | 'throw' ) unary_expression
-                         | primary_expression
+postfix_expression      ::= primary_expression
+                            { '(' [ argument_list ] ')' | '.' IDENTIFIER
+                            | '::' IDENTIFIER | '[' expression ']' }
 
-primary_expression     ::= literal
-                         | path_expression
-                         | '(' expression ')'
-                         | call_expression
-                         | member_access_expression
-                         | index_access_expression
-                         | list_comprehension
-                         | array_literal
-                         | array_construction
-                         | tuple_literal
-                         | struct_literal
-                         | lambda_expression
-                         | select_expression
-                         | 'self' | 'super'
+primary_expression      ::= literal
+                          | path_expression
+                          | '(' expression ')'
+                          | call_expression
+                          | member_expression
+                          | index_expression
+                          | array_literal
+                          | list_comprehension
+                          | tuple_literal
+                          | struct_literal
+                          | lambda_expression
+                          | select_expression
+                          | borrow_view_expression
 
-if_expression          ::= 'if' expression block_statement 'else' ( block_statement | if_expression )
+literal                 ::= INTEGER_LITERAL | FLOAT_LITERAL | STRING_LITERAL | BOOLEAN_LITERAL
+path_expression         ::= IDENTIFIER { ( '::' | '.' ) IDENTIFIER } [ '<' type_argument_list '>' ]
+call_expression         ::= primary_expression '(' [ argument_list ] ')'
+argument_list           ::= expression { ',' expression }
+member_expression       ::= primary_expression ( '.' | '::' ) IDENTIFIER
+index_expression        ::= primary_expression '[' expression ']'
+type_argument_list      ::= type_argument { ',' type_argument }
+type_argument           ::= type | expression
 
-literal                ::= INTEGER_LITERAL | FLOAT_LITERAL | STRING_LITERAL | BOOLEAN_LITERAL | 'null'
+array_literal           ::= '[' [ expression { ',' expression } [ ',' ] ] ']'
+                          | '[' type ';' expression ']'        // typed array literal
+list_comprehension      ::= '[' expression 'for' IDENTIFIER 'in' expression
+                            [ 'if' expression ] ']'
+tuple_literal           ::= '(' [ expression { ',' expression } [ ',' ] ] ')'
 
-path_expression        ::= path [ type_arguments ]
-call_expression        ::= primary_expression '(' [ argument_list ] ')' [ '?' ]
-argument_list          ::= expression { ',' expression }
+struct_literal          ::= path_expression '{'
+                            [ struct_literal_field { ',' struct_literal_field } [ ',' ] ] '}'
+struct_literal_field    ::= IDENTIFIER ( ':' | '=' ) expression | IDENTIFIER
 
-member_access_expression ::= primary_expression ( '.' | '?.' | '::' ) IDENTIFIER
-index_access_expression  ::= primary_expression '[' expression ']' [ '?' ]
+lambda_expression       ::= [ 'async' ] lambda_params '->'
+                            ( expression | block_statement )
+lambda_params           ::= '|' [ lambda_param { ',' lambda_param } ] '|'
+                          | '||'                      // zero-arg form
+lambda_param            ::= IDENTIFIER [ '<' type '>' ]
 
-list_comprehension     ::= '[' expression 'for' pattern 'in' expression [ 'if' expression ] ']'
-array_literal          ::= '[' [ expression { ',' expression } [','] ] ']'
-                         | '[' expression ';' expression ']'
-array_construction     ::= ArrayType '(' ')'
+select_expression       ::= 'select' '(' expression ')' '->' '{' { select_arm } '}'
+select_arm              ::= pattern '->' ( expression | trappable_block ) ','?
 
-tuple_literal          ::= '(' [ expression { ',' expression } [ ',' ] ] ')'
-
-struct_literal         ::= [ path_expression ] '{' [ struct_literal_field { ',' struct_literal_field } [ ',' ] ] '}'
-struct_literal_field   ::= IDENTIFIER (':' | '=') expression | IDENTIFIER
-
-lambda_expression      ::= [ 'async' ] ( '|' [ parameter_list ] '|' | IDENTIFIER ) '<' type '>'
-                           ( '=>' expression | block_statement )
-
-// Type System
-Type                   ::= BaseType [ 'const' ] [ '?' ]
-BaseType               ::= IDENTIFIER
-                         | OwnershipWrapper '<' Type '>'
-                         | ArrayType
-                         | TupleType
-                         | FunctionType
-                         | '(' Type ')'
-
-OwnershipWrapper       ::= 'my' | 'our' | 'their' | 'ptr' | 'loc'
-
-ArrayType              ::= '[' Type [ ';' Expression ] ']'
-TupleType              ::= '(' [ Type { ',' Type } [ ',' ] ] ')'
-FunctionType           ::= [ 'async' ] '(' [ Type { ',' Type } ] ')' '<' Type '>' '->'
-                           [ 'throws' TypeList ]
-
-type_arguments         ::= '<' type_argument_list '>'
-type_argument_list     ::= type_argument { ',' type_argument }
-type_argument          ::= Type | Expression
-
-// Borrowing Intrinsics
-BorrowExpr             ::= 'borrow' '(' Expression ')'
-                         | 'view' '(' Expression ')'
+borrow_view_expression  ::= 'view' '(' expression ')' | 'borrow' '(' expression ')'
 ```
 
-**Key EBNF features:**
-- **Unified Syntax**: All declarations use `name<Type>` pattern
-- **Comparison Patterns**: `>= expr`, `<= expr`, etc. for match/select
-- **Select Expressions**: Pattern matching that returns values with `pass` keyword
-- **Ownership Types**: `my<T>`, `our<T>`, `their<T>`, `mild<T>`, `loc<T>` wrappers
-- **Import/Smuggle**: Dual module system for verified vs. flexible imports
-- **Async/Await**: Full async function and expression support
-- **Multiple Returns**: Functions can return multiple values (tuples)
-
-**Legacy vs. current:**
-- `template '<' … '>'` / `pub` — legacy generics/visibility; the current surface
-  uses `<T<Aspect>>` generics and `share(all)` for export.
-- `throw` / `throws` — superseded by `fail` / `trap` / `ensure` (§3.16).
-- `null` — Vyb has no null literal; use the native `T?` optional (§3.2).
-- `defer`, `scoped`, `loop`, `?.`, `super` — present in this grammar but not yet
-  part of the documented core; treat as aspirational until covered in §3/§4.
+**Key EBNF features (all current):**
+- **Unified declarations**: everything uses the `name<Type>` pattern, including
+  return types — `main()<Int> -> { … }` and generic functions like
+  `cmp_lt<T<Comparable>>(a<T>, b<T>)<Bool> -> { … }`.
+- **Native optionals**: absence is a `T?` type — there is no null literal in the
+  documented model; `null`/`nil` are lexed but not part of the core surface.
+- **Generics with aspect bounds**: `T<Aspect>` (and `T<Comparable>`), written
+  directly as a type-parameter bound; exports use the `share(all)` marker.
+- **Errors**: `fail` / `trap` / `ensure`, plus `rethrow`; no `throw`/`throws`.
+- **Ownership wrappers**: `my<T>`, `our<T>`, `their<T>`, `mild<T>` are ordinary
+  `name<Type>` applications over the lifetime keywords `my`, `our`, `their`,
+  `mild` (all recognized as type-name starts).
+- **Async**: `async name(params)…` functions, `async |x| -> …` lambdas returning
+  `Future<T>`, `await` expressions, and `async for` over channels.
+- **Select/match**: value-returning `select(expr) -> { … }` and `match (expr) {
+  … }` over the same pattern set.
+- **Verification**: verified `import` and flexible `smuggle`, both with the
+  namespace (`* as NS from "…"`), whole-module (`as NS`), and specifier-list
+  (`::{a as b, c}`) forms.
