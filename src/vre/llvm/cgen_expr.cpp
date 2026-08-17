@@ -3001,6 +3001,150 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         }
     }
 
+    // TLS intrinsics (tls stdlib module). Mirrors the net mapping: each Vyb-level
+    // call (`vyb_tls_*`) resolves to an exported runtime symbol (`__vyb_tls_*`).
+    // SSL/SSL_CTX handles are Ints; PEM cert/key strings arrive as Vyb String
+    // structs whose data ptr is extracted at the boundary. `read` and the error
+    // message return a String built over an owned, registry-registered buffer.
+    if (identCallee) {
+        const std::string& fname = identCallee->name;
+        std::string rtName;
+        if (fname == "vyb_tls_client_context") rtName = "__vyb_tls_client_context";
+        else if (fname == "vyb_tls_server_context") rtName = "__vyb_tls_server_context";
+        else if (fname == "vyb_tls_ctx_free") rtName = "__vyb_tls_ctx_free";
+        else if (fname == "vyb_tls_stream") rtName = "__vyb_tls_stream";
+        else if (fname == "vyb_tls_connect") rtName = "__vyb_tls_connect";
+        else if (fname == "vyb_tls_accept") rtName = "__vyb_tls_accept";
+        else if (fname == "vyb_tls_write") rtName = "__vyb_tls_write";
+        else if (fname == "vyb_tls_read") rtName = "__vyb_tls_read";
+        else if (fname == "vyb_tls_close") rtName = "__vyb_tls_close";
+        else if (fname == "vyb_tls_error_code") rtName = "__vyb_tls_error_code";
+        else if (fname == "vyb_tls_error_message") rtName = "__vyb_tls_error_message";
+        if (!rtName.empty()) {
+            auto getTlsFn = [&](llvm::FunctionType* ft) -> llvm::Function* {
+                llvm::Function* f = module->getFunction(rtName);
+                if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, rtName, module.get());
+                return f;
+            };
+            auto toI64 = [&](llvm::Value* v) -> llvm::Value* {
+                if (!v) return v;
+                if (v->getType()->isIntegerTy(64)) return v;
+                if (v->getType()->isIntegerTy())
+                    return builder->CreateSExt(v, int64Type, "tls.toi64");
+                return v;
+            };
+            auto toStrPtr = [&](llvm::Value* v) -> llvm::Value* {
+                if (v && v->getType()->isStructTy())
+                    return builder->CreateExtractValue(v, 0, "tls.strptr");
+                return v;
+            };
+            auto strStructType = [&]() {
+                std::vector<llvm::Type*> f = {int8PtrType, int64Type};
+                return llvm::StructType::get(*context, f, false);
+            };
+            auto needArg = [&](size_t idx) -> llvm::Value* {
+                if (idx >= node->arguments.size()) { m_currentLLVMValue = nullptr; return nullptr; }
+                node->arguments[idx]->accept(*this);
+                return m_currentLLVMValue;
+            };
+            auto checkArity = [&](size_t n) -> bool {
+                if (node->arguments.size() != n) {
+                    logError(node->loc, rtName + " expects " + std::to_string(n) + " argument(s)");
+                    m_currentLLVMValue = nullptr;
+                    return false;
+                }
+                return true;
+            };
+
+            if (fname == "vyb_tls_client_context") {
+                if (!checkArity(0)) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {}, false);
+                m_currentLLVMValue = builder->CreateCall(getTlsFn(ft), {}, "tls.clientctx");
+                return;
+            } else if (fname == "vyb_tls_server_context") {
+                if (!checkArity(2)) return;
+                llvm::Value* cert = needArg(0); llvm::Value* key = needArg(1);
+                if (!cert || !key) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type,
+                    {int8PtrType, int8PtrType}, false);
+                m_currentLLVMValue = builder->CreateCall(getTlsFn(ft),
+                    {toStrPtr(cert), toStrPtr(key)}, "tls.serverctx");
+                return;
+            } else if (fname == "vyb_tls_ctx_free") {
+                if (!checkArity(1)) return;
+                llvm::Value* ctx = needArg(0); if (!ctx) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(voidType, {int64Type}, false);
+                builder->CreateCall(getTlsFn(ft), {toI64(ctx)});
+                m_currentLLVMValue = nullptr;
+                return;
+            } else if (fname == "vyb_tls_stream") {
+                if (!checkArity(3)) return;
+                llvm::Value* ctx = needArg(0); llvm::Value* fd = needArg(1); llvm::Value* host = needArg(2);
+                if (!ctx || !fd || !host) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type,
+                    {int64Type, int64Type, int8PtrType}, false);
+                m_currentLLVMValue = builder->CreateCall(getTlsFn(ft),
+                    {toI64(ctx), toI64(fd), toStrPtr(host)}, "tls.ssl");
+                return;
+            } else if (fname == "vyb_tls_connect" || fname == "vyb_tls_accept") {
+                if (!checkArity(1)) return;
+                llvm::Value* ssl = needArg(0); if (!ssl) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getTlsFn(ft), {toI64(ssl)},
+                    fname == "vyb_tls_connect" ? "tls.connected" : "tls.accepted");
+                return;
+            } else if (fname == "vyb_tls_write") {
+                if (!checkArity(2)) return;
+                llvm::Value* ssl = needArg(0); llvm::Value* data = needArg(1);
+                if (!ssl || !data) return;
+                llvm::Value* dataPtr = toStrPtr(data);
+                llvm::Value* dataLen = llvm::ConstantInt::get(int64Type, 0);
+                if (data->getType()->isStructTy())
+                    dataLen = builder->CreateExtractValue(data, 1, "tls.writelen");
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type,
+                    {int64Type, int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getTlsFn(ft),
+                    {toI64(ssl), dataPtr, dataLen}, "tls.sent");
+                return;
+            } else if (fname == "vyb_tls_read") {
+                if (!checkArity(2)) return;
+                llvm::Value* ssl = needArg(0); llvm::Value* maxlen = needArg(1);
+                if (!ssl || !maxlen) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(strStructType(), {int64Type, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getTlsFn(ft),
+                    {toI64(ssl), toI64(maxlen)}, "tls.read");
+                return;
+            } else if (fname == "vyb_tls_close") {
+                if (!checkArity(2)) return;
+                llvm::Value* ssl = needArg(0); llvm::Value* fd = needArg(1);
+                if (!ssl || !fd) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getTlsFn(ft),
+                    {toI64(ssl), toI64(fd)}, "tls.closed");
+                return;
+            } else if (fname == "vyb_tls_error_code") {
+                if (!checkArity(0)) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {}, false);
+                m_currentLLVMValue = builder->CreateCall(getTlsFn(ft), {}, "tls.errcode");
+                return;
+            } else { // vyb_tls_error_message
+                if (!checkArity(0)) return;
+                llvm::FunctionType* fmsg = llvm::FunctionType::get(int8PtrType, {}, false);
+                llvm::Value* msgPtr = builder->CreateCall(getTlsFn(fmsg), {}, "tls.errmsg");
+                llvm::FunctionType* strlenType = llvm::FunctionType::get(int64Type, {int8PtrType}, false);
+                llvm::Function* strlenFunc = module->getFunction("strlen");
+                if (!strlenFunc)
+                    strlenFunc = llvm::Function::Create(strlenType, llvm::Function::ExternalLinkage, "strlen", module.get());
+                llvm::Value* msgLen = builder->CreateCall(strlenFunc, {msgPtr}, "tls.errlen");
+                llvm::Value* outStr = llvm::UndefValue::get(strStructType());
+                outStr = builder->CreateInsertValue(outStr, msgPtr, 0, "tls.msg.data");
+                outStr = builder->CreateInsertValue(outStr, msgLen, 1, "tls.msg.len");
+                m_currentLLVMValue = outStr;
+                return;
+            }
+        }
+    }
+
     // Async I/O intrinsics (async stdlib module): non-blocking socket ops that
     // suspend the calling fiber until the fd is ready. accept / send / connect /
     // io_wait return Int; recv returns a String. Mirrors the net mapping: IPs

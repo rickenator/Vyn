@@ -2026,6 +2026,12 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_net_error_code" || name == "vyb_net_error_message" ||
             name == "vyb_net_sendto" || name == "vyb_net_recvfrom" ||
             name == "vyb_net_last_peer_ip" || name == "vyb_net_last_peer_port" ||
+            name == "vyb_tls_client_context" || name == "vyb_tls_server_context" ||
+            name == "vyb_tls_ctx_free" || name == "vyb_tls_stream" ||
+            name == "vyb_tls_connect" || name == "vyb_tls_accept" ||
+            name == "vyb_tls_write" || name == "vyb_tls_read" ||
+            name == "vyb_tls_close" || name == "vyb_tls_error_code" ||
+            name == "vyb_tls_error_message" ||
             name == "vyb_time_epoch_secs" || name == "vyb_time_epoch_millis" ||
             name == "vyb_time_nanos" || name == "vyb_time_mono_millis" ||
             name == "vyb_time_sleep_ms" ||
@@ -2482,6 +2488,27 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 auto* resTy = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc,
                         netIntFuncs.count(name) ? "Int" : "String"));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+
+            // TLS intrinsics (tls stdlib module). SSL/SSL_CTX handles cross as
+            // Int; write/connect/close/error-code return Int, read and the
+            // error message return String. Arity/diagnostic detail is left to
+            // codegen.
+            static const std::set<std::string> tlsIntFuncs = {
+                "vyb_tls_client_context", "vyb_tls_server_context", "vyb_tls_ctx_free",
+                "vyb_tls_stream", "vyb_tls_connect", "vyb_tls_accept",
+                "vyb_tls_write", "vyb_tls_close", "vyb_tls_error_code"
+            };
+            static const std::set<std::string> tlsStrFuncs = {
+                "vyb_tls_read", "vyb_tls_error_message"
+            };
+            if (tlsIntFuncs.count(name) || tlsStrFuncs.count(name)) {
+                auto* resTy = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc,
+                        tlsIntFuncs.count(name) ? "Int" : "String"));
                 expressionTypes[node] = retainType(resTy);
                 node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
                 return;

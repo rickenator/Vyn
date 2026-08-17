@@ -19,6 +19,15 @@
 #include <arpa/inet.h>
 #include <poll.h>
 
+#ifdef VYB_HAVE_OPENSSL
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include <openssl/bio.h>
+#include <openssl/x509.h>
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#endif
+
 #if defined(__GNUC__) || defined(__clang__)
 #define VYB_WEAK __attribute__((weak))
 #else
@@ -581,6 +590,163 @@ VYB_WEAK char* __vyb_net_last_peer_ip(void) {
 VYB_WEAK int64_t __vyb_net_last_peer_port(void) {
     return (int64_t)vyb_net_from_port;
 }
+
+#ifdef VYB_HAVE_OPENSSL
+// ============================================================================
+// TLS (tls stdlib module) - thin facades over OpenSSL (libssl/libcrypto).
+// SSL_CTX and SSL are opaque pointers carried across as Int (keeps the Vyb
+// surface allocation/pointer-free). Server certificates are supplied as in-line
+// PEM strings and loaded through memory BIOs, so there is no file-path coupling.
+// The client context verifies nothing by default (self-signed loopback tests);
+// a verified variant is a follow-up. Every op reports its outcome via
+// __vyb_tls_error_code() / __vyb_tls_error_message().
+// ============================================================================
+
+static int vyb_tls_err = 0;
+
+static void vyb_tls_capture_error(void) {
+    unsigned long e = ERR_get_error();
+    vyb_tls_err = (e == 0) ? 0 : (int)e;
+}
+
+// A shared client SSL_CTX (TLS_client_method), verification off by default.
+VYB_WEAK int64_t __vyb_tls_client_context(void) {
+    OPENSSL_init_ssl(0, NULL);
+    SSL_CTX* ctx = SSL_CTX_new(TLS_client_method());
+    if (!ctx) { vyb_tls_capture_error(); return -1; }
+    SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
+    vyb_tls_err = 0;
+    return (int64_t)(intptr_t)ctx;
+}
+
+// Build a server SSL_CTX from in-line PEM certificate and private key strings.
+VYB_WEAK int64_t __vyb_tls_server_context(const char* cert_pem, const char* key_pem) {
+    OPENSSL_init_ssl(0, NULL);
+    SSL_CTX* ctx = SSL_CTX_new(TLS_server_method());
+    if (!ctx) { vyb_tls_capture_error(); return -1; }
+    X509* cert = NULL;
+    EVP_PKEY* key = NULL;
+    BIO* cb = BIO_new_mem_buf((void*)cert_pem, (int)(cert_pem ? strlen(cert_pem) : 0));
+    BIO* kb = BIO_new_mem_buf((void*)key_pem, (int)(key_pem ? strlen(key_pem) : 0));
+    if (cb && kb) {
+        cert = PEM_read_bio_X509(cb, NULL, NULL, NULL);
+        key = PEM_read_bio_PrivateKey(kb, NULL, NULL, NULL);
+        if (cert && key && SSL_CTX_use_certificate(ctx, cert) == 1 &&
+            SSL_CTX_use_PrivateKey(ctx, key) == 1 &&
+            SSL_CTX_check_private_key(ctx) == 1) {
+            BIO_free(cb); BIO_free(kb);
+            X509_free(cert); EVP_PKEY_free(key);
+            vyb_tls_err = 0;
+            return (int64_t)(intptr_t)ctx;
+        }
+        vyb_tls_capture_error();
+    } else {
+        vyb_tls_err = ENOMEM;
+    }
+    if (cb) BIO_free(cb);
+    if (kb) BIO_free(kb);
+    if (cert) X509_free(cert);
+    if (key) EVP_PKEY_free(key);
+    SSL_CTX_free(ctx);
+    return -1;
+}
+
+VYB_WEAK void __vyb_tls_ctx_free(int64_t ctxp) {
+    SSL_CTX* ctx = (SSL_CTX*)(intptr_t)ctxp;
+    if (ctx) SSL_CTX_free(ctx);
+}
+
+// Wrap an already-connected fd (`fd`) in a new SSL from `ctxp`. `host` (if
+// non-empty) is sent as the SNI server-name extension.
+VYB_WEAK int64_t __vyb_tls_stream(int64_t ctxp, int64_t fd, const char* host) {
+    SSL_CTX* ctx = (SSL_CTX*)(intptr_t)ctxp;
+    SSL* ssl = SSL_new(ctx);
+    if (!ssl) { vyb_tls_capture_error(); return -1; }
+    if (SSL_set_fd(ssl, (int)fd) != 1) {
+        vyb_tls_capture_error();
+        SSL_free(ssl);
+        return -1;
+    }
+    if (host && *host) SSL_set_tlsext_host_name(ssl, host);
+    vyb_tls_err = 0;
+    return (int64_t)(intptr_t)ssl;
+}
+
+// Complete the client TLS handshake. Returns 0 on success, -1 on error.
+VYB_WEAK int64_t __vyb_tls_connect(int64_t sslp) {
+    SSL* ssl = (SSL*)(intptr_t)sslp;
+    int r = SSL_connect(ssl);
+    if (r != 1) { vyb_tls_capture_error(); return -1; }
+    vyb_tls_err = 0;
+    return 0;
+}
+
+// Complete the server TLS handshake. Returns 0 on success, -1 on error.
+VYB_WEAK int64_t __vyb_tls_accept(int64_t sslp) {
+    SSL* ssl = (SSL*)(intptr_t)sslp;
+    int r = SSL_accept(ssl);
+    if (r != 1) { vyb_tls_capture_error(); return -1; }
+    vyb_tls_err = 0;
+    return 0;
+}
+
+VYB_WEAK int64_t __vyb_tls_write(int64_t sslp, const char* data, int64_t len) {
+    SSL* ssl = (SSL*)(intptr_t)sslp;
+    int w = SSL_write(ssl, data, (int)len);
+    if (w <= 0) { vyb_tls_capture_error(); return -1; }
+    vyb_tls_err = 0;
+    return (int64_t)w;
+}
+
+// Read up to `maxlen` decrypted bytes into a fresh, registry-registered buffer.
+VYB_WEAK vyb_file_str __vyb_tls_read(int64_t sslp, int64_t maxlen) {
+    vyb_file_str r = { NULL, 0 };
+    if (maxlen <= 0) maxlen = 4096;
+    SSL* ssl = (SSL*)(intptr_t)sslp;
+    char* buf = (char*)malloc((size_t)maxlen);
+    if (!buf) { vyb_tls_err = ENOMEM; return r; }
+    int n = SSL_read(ssl, buf, (int)maxlen);
+    if (n <= 0) {
+        vyb_tls_capture_error();
+        free(buf);
+        return r;
+    }
+    __vyb_string_register(buf);
+    r.ptr = buf;
+    r.len = (int64_t)n;
+    vyb_tls_err = 0;
+    return r;
+}
+
+// Shut down and free the SSL, then close the underlying fd. Returns close()'s
+// result (0 on success, -1 on error).
+VYB_WEAK int64_t __vyb_tls_close(int64_t sslp, int64_t fd) {
+    SSL* ssl = (SSL*)(intptr_t)sslp;
+    if (ssl) {
+        SSL_shutdown(ssl);
+        SSL_free(ssl);
+    }
+    int r = 0;
+    if (fd >= 0) r = close((int)fd);
+    vyb_tls_err = 0;
+    return (int64_t)r;
+}
+
+VYB_WEAK int64_t __vyb_tls_error_code(void) {
+    return (int64_t)vyb_tls_err;
+}
+
+// Human-readable message for the last TLS error. Returns an owned heap copy
+// (registered with the string registry).
+VYB_WEAK char* __vyb_tls_error_message(void) {
+    char buf[256];
+    if (vyb_tls_err == 0) strcpy(buf, "no error");
+    else ERR_error_string_n((unsigned long)vyb_tls_err, buf, sizeof(buf));
+    char* copy = strdup(buf);
+    if (copy) __vyb_string_register(copy);
+    return copy;
+}
+#endif // VYB_HAVE_OPENSSL
 
 // ============================================================================
 // TIME module (stdlib/network is separate) - epoch/monotonic clocks and sleep.

@@ -123,6 +123,22 @@ extern "C" {
     const char* __vyb_net_last_peer_ip(void);
     int64_t __vyb_net_last_peer_port(void);
 
+#ifdef VYB_HAVE_OPENSSL
+    // TLS runtime helpers (tls stdlib module) over OpenSSL. SSL/SSL_CTX are
+    // opaque pointers carried across as Int; certs are in-line PEM strings.
+    int64_t __vyb_tls_client_context(void);
+    int64_t __vyb_tls_server_context(const char* cert_pem, const char* key_pem);
+    void    __vyb_tls_ctx_free(int64_t ctxp);
+    int64_t __vyb_tls_stream(int64_t ctxp, int64_t fd, const char* host);
+    int64_t __vyb_tls_connect(int64_t sslp);
+    int64_t __vyb_tls_accept(int64_t sslp);
+    int64_t __vyb_tls_write(int64_t sslp, const char* data, int64_t len);
+    vyb_file_str __vyb_tls_read(int64_t sslp, int64_t maxlen);
+    int64_t __vyb_tls_close(int64_t sslp, int64_t fd);
+    int64_t __vyb_tls_error_code(void);
+    const char* __vyb_tls_error_message(void);
+#endif
+
     // Time runtime helpers (time stdlib module)
     int64_t __vyb_time_epoch_secs(void);
     int64_t __vyb_time_epoch_millis(void);
@@ -1069,6 +1085,32 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_last_peer_ip), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_net_last_peer_port")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_last_peer_port), llvm::JITSymbolFlags::Exported);
+#ifdef VYB_HAVE_OPENSSL
+        // TLS runtime shims (tls stdlib module). Only present in OpenSSL builds;
+        // a no-OpenSSL build simply has no tls module symbols to register.
+        runtimeSymbols[mangle("__vyb_tls_client_context")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_tls_client_context), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_tls_server_context")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_tls_server_context), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_tls_ctx_free")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_tls_ctx_free), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_tls_stream")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_tls_stream), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_tls_connect")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_tls_connect), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_tls_accept")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_tls_accept), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_tls_write")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_tls_write), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_tls_read")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_tls_read), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_tls_close")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_tls_close), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_tls_error_code")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_tls_error_code), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_tls_error_message")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_tls_error_message), llvm::JITSymbolFlags::Exported);
+#endif
         runtimeSymbols[mangle("__vyb_time_epoch_secs")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_time_epoch_secs), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_time_epoch_millis")] = llvm::orc::ExecutorSymbolDef(
