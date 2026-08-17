@@ -1,0 +1,63 @@
+// @test: serializing a struct to JSON and deserializing it back is lossless
+// @description: structs containing Vec fields and nested structs serialize to
+//   JSON (out) and deserialize back (in) at arbitrary depth. Exercises Vec<String>,
+//   Vec<Int>, a nested struct field, and a Vec<struct> (array of objects), plus
+//   string escaping. A round-trip through to_string() / T::from_string() is
+//   byte-identical.
+// @category: json, serialization, structs, vec, nested
+// @expect: pass
+// @expect-return: 0
+// @execute-jit: true
+
+import collections
+
+struct Point {
+    x<Int>,
+    y<Int>
+}
+struct Track {
+    label<String>,
+    points<Vec<Point>>
+}
+struct Person {
+    name<String>,
+    age<Int>,
+    nicknames<Vec<String>>,
+    lucky<Vec<Int>>,
+    home<Point>
+}
+
+main()<Int> -> {
+    p<Person> = Person {
+        name = "Rick",
+        age = 42,
+        nicknames = Vec(),
+        lucky = Vec(),
+        home = Point { x = 3, y = 4 }
+    }
+    p.nicknames.push("Ricky"); p.nicknames.push("RR")
+    p.lucky.push(7); p.lucky.push(13)
+
+    j0<String> = p.to_string()
+    q<Person> = Person::from_string(j0)
+    if (q.to_string() != j0) { return 1 }
+    if (q.home.x != 3 || q.age != 42) { return 2 }
+    if (q.nicknames.len() != 2) { return 3 }
+
+    t<Track> = Track { label = "loop", points = Vec() }
+    t.points.push(Point { x = 1, y = 2 })
+    t.points.push(Point { x = 5, y = 6 })
+    j1<String> = t.to_string()
+    u<Track> = Track::from_string(j1)
+    if (u.to_string() != j1) { return 4 }
+    if (u.points.len() != 2 || u.points.get(1).y != 6) { return 5 }
+
+    # Simple scalar struct round-trip too.
+    s<Point> = Point { x = 9, y = 8 }
+    js<String> = s.to_string()
+    s2<Point> = Point::from_string(js)
+    if (s2.x != 9 || s2.y != 8) { return 6 }
+
+    println("ok")
+    return 0
+}
