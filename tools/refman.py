@@ -218,12 +218,17 @@ def parse_members(kind: str, block: str) -> list:
         else:  # aspect / bind -> methods
             if re.match(r"^[A-Za-z_]\w*\s*\(", l) and not re.match(r"^(return|if|else|while|for|let|var)\b", l):
                 head = l.split("{", 1)[0]
-                ar = head.rfind("->")
-                if ar != -1:
-                    sig = head[:ar].strip()
-                    parsed = extract_call(sig)
-                    if parsed:
-                        members.append(parsed)
+                # Aspects declare plain `name(…) <Ret>` signatures (no arrow); binds
+                # carry a `->` body separator on the header line. extract_call is
+                # tolerant of both, but for binds we still require the arrow so that
+                # inner calls in method bodies are not mistaken for methods.
+                sig = head
+                if kind != "aspect":
+                    ar = head.rfind("->")
+                    sig = head[:ar].strip() if ar != -1 else ""
+                parsed = extract_call(sig) if sig else None
+                if parsed:
+                    members.append(parsed)
     return members
 
 
@@ -659,7 +664,22 @@ def render_module(m, g):
         L.append('<a id="%s"></a>' % slug(s["name"]))
         L.append("### `%s` · %s" % (s["name"], s["kind"]))
         L.append("")
-        if s["kind"] == "bind" and (s.get("aspect") or s.get("target")):
+        if s["kind"] == "aspect":
+            # Render the aspect as a complete, balanced declaration. The raw header
+            # line carries an open brace with no closing one, so reconstruct the
+            # full body from the parsed method signatures.
+            L.append("```")
+            L.append("aspect %s%s {" % (s.get("name", ""), s.get("tvar", "")))
+            for name, params, ret in s.get("params") or []:
+                args = ", ".join(p if not t else "%s<%s>" % (p, t) for p, t in params)
+                sig = "%s(%s)" % (name, args)
+                if ret:
+                    sig += "<%s>" % ret
+                L.append("    " + sig)
+            L.append("}")
+            L.append("```")
+            L.append("")
+        elif s["kind"] == "bind" and (s.get("aspect") or s.get("target")):
             L.append("`%s` implements aspect `%s` on type `%s`%s" % (
                 s["name"], s.get("aspect"), s.get("target"),
                 " (%s)" % s.get("tvar") if s.get("tvar") else ""))
@@ -676,7 +696,7 @@ def render_module(m, g):
             for item in s["params"]:
                 plain.append("`%s<%s>`" % (item[1], item[2]) if item[0] == "field"
                              else "`%s = %s`" % (item[1], item[2]))
-        elif s["kind"] in ("aspect", "bind") and s.get("params"):
+        elif s["kind"] == "bind" and s.get("params"):
             label = "Methods:"
             for item in s["params"]:
                 name, params, ret = item
