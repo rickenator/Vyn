@@ -15,10 +15,10 @@
 
 import threads::{thread_spawn, thread_join}
 import network::{socket_open, socket_bind, socket_listen, socket_accept,
-             socket_connect, socket_close, socket_local_port}
-import tls::{tls_client_context, tls_server_context, tls_stream, tls_connect,
-             tls_accept, tls_write, tls_read, tls_close, tls_free_context,
-             TlsContext, TlsStream}
+             socket_connect, socket_close, socket_local_port, socket_resolve}
+import tls::{tls_client_context, tls_client_context_verified, tls_server_context,
+             tls_stream, tls_connect, tls_accept, tls_write, tls_read, tls_close,
+             tls_free_context, TlsContext, TlsStream}
 share(all) import http::{HttpResponse}
 import http::{http_status_code, http_header_value, http_index_of, http_parse_int}
 
@@ -67,22 +67,22 @@ tls_read_all(s<TlsStream>, max<Int>)<String> -> {
 # reason, headers, and body; status is -1 if the round-trip could not be
 # completed (e.g. connection/handshake failure).
 share(all)
-https_get_full(host<String>, port<Int>, path<String>)<HttpResponse> -> {
+# Shared round-trip: connect to `connect_ip` on `port`, bring up a TLS session
+# over it that verifies the peer against the `verify_host` (SNI + hostname check
+# on verifying contexts), send a GET for `path`, and parse the response. Owns
+# and frees `ctx`.
+# socket_open(AF_INET=2, SOCK_STREAM=1, IPPROTO_TCP=6).
+https_fetch(verify_host<String>, connect_ip<String>, port<Int>, path<String>,
+            ctx<TlsContext>)<HttpResponse> -> {
     bad<HttpResponse> = HttpResponse { status = -1, reason = "",
                                         headers = Vec<String>(), body = "" }
-    // socket_open(AF_INET=2, SOCK_STREAM=1, IPPROTO_TCP=6).
     fd<Int> = socket_open(2, 1, 6)
     if (fd < 0) { return bad }
-    if (socket_connect(fd, host, port) < 0) {
+    if (socket_connect(fd, connect_ip, port) < 0) {
         socket_close(fd)
         return bad
     }
-    ctx<TlsContext> = tls_client_context()
-    if (ctx.ctx < 0) {
-        socket_close(fd)
-        return bad
-    }
-    s<TlsStream> = tls_stream(ctx, fd, host)
+    s<TlsStream> = tls_stream(ctx, fd, verify_host)
     if (s.ssl < 0) {
         tls_free_context(ctx)
         socket_close(fd)
@@ -93,7 +93,7 @@ https_get_full(host<String>, port<Int>, path<String>)<HttpResponse> -> {
         tls_free_context(ctx)
         return bad
     }
-    req<String> = "GET " + path + " HTTP/1.1" + "\r\n" + "Host: " + host +
+    req<String> = "GET " + path + " HTTP/1.1" + "\r\n" + "Host: " + verify_host +
                   "\r\n" + "Connection: close" + "\r\n" + "\r\n"
     tls_write(s, req)
     line<String> = tls_read_line(s)
@@ -136,10 +136,42 @@ https_get_full(host<String>, port<Int>, path<String>)<HttpResponse> -> {
     return HttpResponse { status = code, reason = reason, headers = hs, body = body }
 }
 
+# Full HTTPS/1.1 GET round-trip over an unverified client context (self-signed
+# / loopback). `host` must be an IP literal (connect target == verify name).
+share(all)
+https_get_full(host<String>, port<Int>, path<String>)<HttpResponse> -> {
+    ctx<TlsContext> = tls_client_context()
+    if (ctx.ctx < 0) { return HttpResponse { status = -1, reason = "", headers = Vec<String>(), body = "" } }
+    return https_fetch(host, host, port, path, ctx)
+}
+
+# Full HTTPS/1.1 GET round-trip with peer verification. `host` is a hostname:
+# it is resolved to an IP for the connection while being verified against the
+# certificate (SNI + hostname check). `ca_pem` pins a CA cert or is "" to use
+# the system default CA paths.
+share(all)
+https_get_full_verified(host<String>, port<Int>, path<String>, ca_pem<String>)<HttpResponse> -> {
+    bad<HttpResponse> = HttpResponse { status = -1, reason = "",
+                                        headers = Vec<String>(), body = "" }
+    ip<String> = socket_resolve(host)
+    if (ip.len() == 0) { return bad }
+    ctx<TlsContext> = tls_client_context_verified(ca_pem)
+    if (ctx.ctx < 0) { return bad }
+    return https_fetch(host, ip, port, path, ctx)
+}
+
+
 # Convenience wrapper returning just the response body ("" on failure).
 share(all)
 https_get(host<String>, port<Int>, path<String>)<String> -> {
     resp<HttpResponse> = https_get_full(host, port, path)
+    return resp.body
+}
+
+# Verified convenience wrapper returning just the response body ("" on failure).
+share(all)
+https_get_verified(host<String>, port<Int>, path<String>, ca_pem<String>)<String> -> {
+    resp<HttpResponse> = https_get_full_verified(host, port, path, ca_pem)
     return resp.body
 }
 
@@ -175,6 +207,46 @@ https_selfhost(cert_pem<String>, key_pem<String>)<Int> -> {
     })
     if (th < 0) { tls_free_context(scx); socket_close(srv); return -1 }
     resp<HttpResponse> = https_get_full("127.0.0.1", port, "/secure")
+    io<Int> = thread_join(th)
+    tls_free_context(scx)
+    socket_close(srv)
+    if (io != 0) { return -1 }
+    if (resp.status != 200) { return -1 }
+    if (resp.body != "secure body") { return -1 }
+    if (resp.reason != "OK") { return -1 }
+    return 0
+}
+
+# Diagnostics like https_selfhost, but the client uses a verified context pinned
+# to the server's own cert and connects by name so the hostname is checked.
+share(all)
+https_selfhost_verified(cert_pem<String>, key_pem<String>)<Int> -> {
+    srv<Int> = socket_open(2, 1, 6)
+    if (srv < 0) { return -1 }
+    if (socket_bind(srv, "127.0.0.1", 0) < 0) { socket_close(srv); return -1 }
+    port<Int> = socket_local_port(srv)
+    if (port <= 0) { socket_close(srv); return -1 }
+    if (socket_listen(srv, 1) < 0) { socket_close(srv); return -1 }
+    scx<TlsContext> = tls_server_context(cert_pem, key_pem)
+    if (scx.ctx < 0) { socket_close(srv); return -1 }
+    th<Int> = thread_spawn(|| -> {
+        c<Int> = socket_accept(srv)
+        if (c < 0) { return 1 }
+        s<TlsStream> = tls_stream(scx, c, "")
+        if (tls_accept(s) != 0) { return 2 }
+        got<String> = ""
+        while (got.len() < 2048 && got.index_of("\r\n\r\n") < 0) {
+            chunk<String> = tls_read(s, 256)
+            if (chunk.len() == 0) { break }
+            got = got.concat(chunk)
+        }
+        pk<String> = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 11\r\nConnection: close\r\n\r\nsecure body"
+        tls_write(s, pk)
+        tls_close(s)
+        return 0
+    })
+    if (th < 0) { tls_free_context(scx); socket_close(srv); return -1 }
+    resp<HttpResponse> = https_get_full_verified("localhost", port, "/secure", cert_pem)
     io<Int> = thread_join(th)
     tls_free_context(scx)
     socket_close(srv)

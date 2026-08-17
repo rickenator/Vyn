@@ -26,6 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   doubles as the checked name. Covered by `test/tls/test_tls_verified.vyb`,
   which proves a matching (correct) hostname succeeds over a pinned self-signed
   cert while a mismatching hostname fails the handshake (valgrind-clean).
+- **Verified HTTPS + DNS resolution** — `network::socket_resolve(host)` turns a
+  hostname or IP literal into a dotted-quad IPv4 string via `getaddrinfo`, and
+  `https_get_full_verified(host, port, path, ca_pem)` / `https_get_verified`
+  chain it with `tls_client_context_verified`: the hostname is resolved to an
+  IP for the connection while being verified against the peer certificate
+  (SNI + hostname check), enabling real, pinned-CA (or system-default) HTTPS
+  to named hosts. `https_selfhost_verified` exercises the full verified path
+  offline. Covered by `test/tls/test_https_verified.vyb` (valgrind-clean).
 - **`https` stdlib module** — a TLS-secured HTTP client (`import https`) that
   layers `tls` over the pure-`http` client, reusing http's status/header/int
   parsers and the shared `HttpResponse` type, with its own TLS-aware I/O.

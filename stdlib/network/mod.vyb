@@ -87,6 +87,14 @@ socket_local_port(fd<Int>)<Int> -> {
     return vyb_net_local_port(fd)
 }
 
+# Resolve `host` (a hostname or IP literal) to a dotted-quad IPv4 address
+# string, for connecting by name while keeping the name for SNI / hostname
+# verification. Returns "" on failure (see socket_error_code()).
+share(all)
+socket_resolve(host<String>)<String> -> {
+    return vyb_net_resolve(host)
+}
+
 share(all)
 socket_error_code()<Int> -> {
     return vyb_net_error_code()

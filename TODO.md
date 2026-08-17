@@ -1055,8 +1055,12 @@ async tcp_connect(host<String>, port<Int>)<TcpStream> -> {
   `tls_client_context_verified(ca_pem)` trusts an in-line-pinned CA (or the
   system default CA paths when `ca_pem` is "") and checks the expected hostname
   in the certificate, while `tls_client_context()` stays verification-free for
-  self-signed loopback. Covered by `test/tls/test_tls_loopback.vyb`,
-  `test/tls/test_tls_verified.vyb`, `test/tls/test_https_client.vyb`, and
+  self-signed loopback. `network::socket_resolve` adds hostname->IPv4
+  resolution, and `https_get_full_verified` connects to the resolved IP while
+  verifying the name - so real pinned/system-CA HTTPS to named hosts works.
+  Covered by `test/tls/test_tls_loopback.vyb`,
+  `test/tls/test_tls_verified.vyb`, `test/tls/test_https_client.vyb`,
+  `test/tls/test_https_verified.vyb`, and
   `test/tls/smoke_openssl.vyb` (valgrind-clean for the TLS path).
 - [ ] **Post-1.0 — UDP multicast, raw packets** — Advanced socket options
 

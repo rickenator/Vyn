@@ -2843,6 +2843,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_net_recvfrom") rtName = "__vyb_net_recvfrom";
         else if (fname == "vyb_net_last_peer_ip") rtName = "__vyb_net_last_peer_ip";
         else if (fname == "vyb_net_last_peer_port") rtName = "__vyb_net_last_peer_port";
+        else if (fname == "vyb_net_resolve") rtName = "__vyb_net_resolve";
         if (!rtName.empty()) {
             auto getNetFn = [&](llvm::FunctionType* ft) -> llvm::Function* {
                 llvm::Function* f = module->getFunction(rtName);
@@ -2982,6 +2983,12 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 if (!checkArity(0)) return;
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {}, false);
                 m_currentLLVMValue = builder->CreateCall(getNetFn(ft), {}, "net.errcode");
+                return;
+            } else if (fname == "vyb_net_resolve") {
+                if (!checkArity(1)) return;
+                llvm::Value* host = needArg(0); if (!host) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(strStructType(), {int8PtrType}, false);
+                m_currentLLVMValue = builder->CreateCall(getNetFn(ft), {toStrPtr(host)}, "net.resolved");
                 return;
             } else { // vyb_net_error_message
                 if (!checkArity(0)) return;

@@ -2026,6 +2026,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_net_error_code" || name == "vyb_net_error_message" ||
             name == "vyb_net_sendto" || name == "vyb_net_recvfrom" ||
             name == "vyb_net_last_peer_ip" || name == "vyb_net_last_peer_port" ||
+            name == "vyb_net_resolve" ||
             name == "vyb_tls_client_context" || name == "vyb_tls_client_context_verified" ||
             name == "vyb_tls_server_context" ||
             name == "vyb_tls_ctx_free" || name == "vyb_tls_stream" ||
@@ -2483,7 +2484,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             };
             static const std::set<std::string> netStrFuncs = {
                 "vyb_net_recv", "vyb_net_error_message",
-                "vyb_net_recvfrom", "vyb_net_last_peer_ip"
+                "vyb_net_recvfrom", "vyb_net_last_peer_ip", "vyb_net_resolve"
             };
             if (netIntFuncs.count(name) || netStrFuncs.count(name)) {
                 auto* resTy = new ast::TypeName(node->loc,

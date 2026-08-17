@@ -16,6 +16,7 @@
 #include <time.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netdb.h>
 #include <arpa/inet.h>
 #include <poll.h>
 
@@ -524,6 +525,35 @@ VYB_WEAK int64_t __vyb_net_local_port(int64_t fd) {
     }
     vyb_net_err = 0;
     return (int64_t)ntohs(addr.sin_port);
+}
+
+// Resolve `host` (a hostname or IP literal) to a dotted-quad IPv4 address
+// string. Returns an owned, registry-registered copy; { NULL, 0 } on failure
+// (see net_error_code). Uses getaddrinfo so Vyb code can turn a name into an
+// IP for socket_connect while keeping the name for SNI / hostname verification.
+VYB_WEAK vyb_file_str __vyb_net_resolve(const char* host) {
+    vyb_file_str r = { NULL, 0 };
+    if (!host || !*host) { vyb_net_err = EINVAL; return r; }
+    struct addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    struct addrinfo* res = NULL;
+    int g = getaddrinfo(host, NULL, &hints, &res);
+    if (g != 0) { vyb_net_err = (errno ? errno : EINVAL); return r; }
+    struct sockaddr_in* sin = res ? (struct sockaddr_in*)res->ai_addr : NULL;
+    char ip[INET_ADDRSTRLEN];
+    if (sin && inet_ntop(AF_INET, &sin->sin_addr, ip, sizeof(ip))) {
+        char* copy = strdup(ip);
+        if (copy) __vyb_string_register(copy);
+        r.ptr = copy;
+        r.len = copy ? (int64_t)strlen(copy) : 0;
+    } else {
+        vyb_net_err = EINVAL;
+    }
+    freeaddrinfo(res);
+    if (r.ptr) vyb_net_err = 0;
+    return r;
 }
 
 VYB_WEAK int64_t __vyb_net_error_code(void) {

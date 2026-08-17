@@ -1,16 +1,16 @@
-// @test: https client - TLS-secured HTTP GET against a local TLS server
-// @description: A worker thread stands up a TLS server (in-line PEM cert/key)
-//   that answers a request over TLS, while the client fetches it via
-//   https_get_full and validates the parsed status, reason, Content-Length, and
-//   body - proving the https module layers network + tls + http cleanly. The
-//   round-trip runs inside https_selfhost so the test needs only one import.
-// @category: modules, https, tls, http, network, threads, stdlib
+// @test: https verified client - pinned-CA trust + hostname over real GET
+// @description: https_selfhost_verified stands up a TLS server whose self-signed
+//   cert doubles as the pinned CA, then https_get_full_verified resolves
+//   "localhost" to an IP, connects, verifies the peer against the pinned CA and
+//   checks the hostname, and fetches the response over the encrypted channel -
+//   exercising DNS resolution + verified TLS through the https client.
+// @category: modules, https, tls, network, threads, stdlib
 // @expect: pass
 // @expect-output: ok
 // @expect-return: 0
 // @env: VYB_STDLIB=stdlib
 
-import https::{https_selfhost, https_selfhost_verified}
+import https::{https_selfhost_verified}
 
 main()<Int> -> {
     cert<String> = "-----BEGIN CERTIFICATE-----
@@ -60,7 +60,7 @@ Aq0cwymlPoxxCyl8hH7Kl0HEJuraLq0vLytwHddAymIenif5HZgSm2qAVVqblv38
 tNJ+gvTsNS/Y3DSoPu0E6tgr5EjK/FV0H/GIGWz9hAWYHV3dx2grL7GS2MOMu7n8
 QsM4qhE7CXh5EW4f/zlKqRoL
 -----END PRIVATE KEY-----"
-    r<Int> = https_selfhost(cert, key)
+    r<Int> = https_selfhost_verified(cert, key)
     if (r != 0) { return 1 }
     println("ok")
     return 0
