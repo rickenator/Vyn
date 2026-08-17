@@ -25,20 +25,38 @@ through the test harness.
 Vyb's core conviction: **you should not have to choose between safety and
 power.**
 
-- **Strong, name-first typing** — `x<Int> = 5` reads type-first, values feel
-  like plain data, and the compiler checks types *before* codegen.
-- **Monomorphized generics** — `Vec<T>` / `HashMap<K, V>` and every generic
-  function are specialized per concrete type at compile time. Polymorphism is
-  dispatch-free: there is no vtable, no boxed trait object, no runtime cost.
-- **Explicit ownership** — every value knows whether it is `my`-owned,
-  `our`-shared (ref-counted), `their`-borrowed, or a `mild`/`soft` observer.
-  The allocator + compiler move and free values deterministically.
-- **Freedom when you need it** — `freedom { … }` blocks, raw `loc<T>` pointers,
-  and the FFI let you touch machine state directly. Safety is the default, not
-  the ceiling.
-- **A standard library written in Vyb** — collections, networking, TLS, HTTP,
-  threads, channels, and an async executor are all `stdlib/**/*.vyb` over a
-  small, C-level runtime. The language dogfoods itself.
+**Strong, name-first typing.** The compiler checks types *before* codegen.
+The type leads the name; the value reads like plain data:
+
+```vyb
+x<Int> = 5            # the type leads, the value follows
+```
+
+**Monomorphized generics.** `Vec<T>`, `HashMap<K, V>`, and every generic
+function are specialized per concrete type at compile time — no vtable, no
+boxed trait object, no runtime dispatch:
+
+```vyb
+first<T>(v<Vec<T>>)<T> -> { … }
+cmp_lt<T<Comparable>>(a<T>, b<T>)<Bool> -> { … }
+```
+
+**Explicit ownership.** Every value knows whether it is `my`-owned,
+`our`-shared (ref-counted), `their`-borrowed, or a `mild`/`soft` observer;
+the allocator and compiler move and free values deterministically:
+
+```vyb
+increment(c<their<Counter>>)<Void> -> { c.count = c.count + 1 }
+shadow<mild<Counter>> = soft(shared_data)
+```
+
+**Freedom when you need it.** `freedom { … }` blocks, raw `loc<T>` pointers,
+and the FFI let you touch machine state directly. Safety is the default, not
+the ceiling.
+
+**A standard library written in Vyb.** Collections, networking, TLS, HTTP,
+threads, channels, and an async executor are all `stdlib/**/*.vyb` over a
+small, C-level runtime. The language dogfoods itself.
 
 The result: native executables (or JIT), predictable performance, readable
 code, and zero-cost polymorphism.
