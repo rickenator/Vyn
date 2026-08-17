@@ -6,7 +6,7 @@
 
 > **Where the docs live.** This README is the project **overview**. The
 > canonical, maintained reference for every language feature is the
-> hand-written **[`docs/refman/PROGRAMMERS_GUIDE.md`](docs/refman/PROGRAMMERS_GUIDE.md)**
+> **[`docs/refman/PROGRAMMERS_GUIDE.md`](docs/refman/PROGRAMMERS_GUIDE.md)**
 > — language tour, ownership & polymorphism, closure capture forms, async
 > (`Future<T>` / `await` / async lambdas), the memory model, and a full
 > standard-library tour, with a **core-feature registry** (§1.1) that maps each

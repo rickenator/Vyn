@@ -1,6 +1,7 @@
 {
-  "git_rev": "eab86af152a5c44294554d6b40442b147d25c419",
+  "git_rev": "f92a6d22ea6ab28765b19768c8e21daa126b99fc",
   "modules": [
+    "agents",
     "asyncs",
     "channels",
     "collections",
@@ -18,6 +19,15 @@
   ],
   "nodes": {
     "modules": [
+      {
+        "name": "agents",
+        "files": [
+          "stdlib/agents/mod.vyb"
+        ],
+        "exported": 13,
+        "fan_in": 0,
+        "fan_out": 0
+      },
       {
         "name": "asyncs",
         "files": [
@@ -155,6 +165,25 @@
       }
     ],
     "files": [
+      {
+        "path": "stdlib/agents/mod.vyb",
+        "module": "agents",
+        "symbols": [
+          "agent_send",
+          "agent_len",
+          "agent_alive",
+          "agent_close",
+          "agent_free",
+          "agent_send_bool",
+          "agent_send_float",
+          "agent_send_string",
+          "agent_mailbox",
+          "agent_status",
+          "agent_error_code",
+          "agent_error",
+          "agent_dead_letter"
+        ]
+      },
       {
         "path": "stdlib/asyncs/mod.vyb",
         "module": "asyncs",
@@ -524,6 +553,123 @@
       }
     ],
     "symbols": [
+      {
+        "name": "agent_alive",
+        "module": "agents",
+        "file": "stdlib/agents/mod.vyb",
+        "kind": "fn",
+        "signature": "agent_alive(a<Int>)<Int> ->",
+        "summary": "1 while the agent's worker is running (or draining), 0 once it has exited.",
+        "fan_in": 0
+      },
+      {
+        "name": "agent_close",
+        "module": "agents",
+        "file": "stdlib/agents/mod.vyb",
+        "kind": "fn",
+        "signature": "agent_close(a<Int>)<Int> ->",
+        "summary": "Gracefully stop: close the mailbox; the agent drains buffered messages then",
+        "fan_in": 0
+      },
+      {
+        "name": "agent_dead_letter",
+        "module": "agents",
+        "file": "stdlib/agents/mod.vyb",
+        "kind": "fn",
+        "signature": "agent_dead_letter(a<Int>, ch<Int>)<Int> ->",
+        "summary": "Register an int-slot reply channel as a dead-letter: on failure the runtime",
+        "fan_in": 0
+      },
+      {
+        "name": "agent_error",
+        "module": "agents",
+        "file": "stdlib/agents/mod.vyb",
+        "kind": "fn",
+        "signature": "agent_error(a<Int>)<String> ->",
+        "summary": "A human-readable descriptor of the captured failure (\"kind @ file:line\"), or",
+        "fan_in": 0
+      },
+      {
+        "name": "agent_error_code",
+        "module": "agents",
+        "file": "stdlib/agents/mod.vyb",
+        "kind": "fn",
+        "signature": "agent_error_code(a<Int>)<Int> ->",
+        "summary": "The `fail<Int>(n)` payload when an Int-typed failure was captured, else -1.",
+        "fan_in": 0
+      },
+      {
+        "name": "agent_free",
+        "module": "agents",
+        "file": "stdlib/agents/mod.vyb",
+        "kind": "fn",
+        "signature": "agent_free(a<Int>)<Int> ->",
+        "summary": "Reclaim an agent: waits for the worker to exit (closing first if needed), then",
+        "fan_in": 0
+      },
+      {
+        "name": "agent_len",
+        "module": "agents",
+        "file": "stdlib/agents/mod.vyb",
+        "kind": "fn",
+        "signature": "agent_len(a<Int>)<Int> ->",
+        "summary": "Number of buffered-but-unhandled messages (-1 on a bad handle).",
+        "fan_in": 0
+      },
+      {
+        "name": "agent_mailbox",
+        "module": "agents",
+        "file": "stdlib/agents/mod.vyb",
+        "kind": "fn",
+        "signature": "agent_mailbox(a<Int>)<Int> ->",
+        "summary": "Expose the agent's underlying mailbox channel handle (scalar agents only).",
+        "fan_in": 0
+      },
+      {
+        "name": "agent_send",
+        "module": "agents",
+        "file": "stdlib/agents/mod.vyb",
+        "kind": "fn",
+        "signature": "agent_send(a<Int>, v<Int>)<Int> ->",
+        "summary": "Post a message (non-blocking). Returns 1 on accepted, or 0 if the agent is",
+        "fan_in": 0
+      },
+      {
+        "name": "agent_send_bool",
+        "module": "agents",
+        "file": "stdlib/agents/mod.vyb",
+        "kind": "fn",
+        "signature": "agent_send_bool(a<Int>, b<Bool>)<Int> ->",
+        "summary": "Post a Bool message (non-blocking). 1 on accepted, 0 if stopped/full.",
+        "fan_in": 0
+      },
+      {
+        "name": "agent_send_float",
+        "module": "agents",
+        "file": "stdlib/agents/mod.vyb",
+        "kind": "fn",
+        "signature": "agent_send_float(a<Int>, f<Float>)<Int> ->",
+        "summary": "Post a Float message (non-blocking). 1 on accepted, 0 if stopped/full.",
+        "fan_in": 0
+      },
+      {
+        "name": "agent_send_string",
+        "module": "agents",
+        "file": "stdlib/agents/mod.vyb",
+        "kind": "fn",
+        "signature": "agent_send_string(a<Int>, s<String>)<Int> ->",
+        "summary": "Post a String message (non-blocking). 1 on accepted, 0 if stopped/full. The",
+        "fan_in": 0
+      },
+      {
+        "name": "agent_status",
+        "module": "agents",
+        "file": "stdlib/agents/mod.vyb",
+        "kind": "fn",
+        "signature": "agent_status(a<Int>)<Int> ->",
+        "summary": "Agent state: 0 running/draining, 1 stopped (normal), 2 failed. -1 on a bad",
+        "fan_in": 0
+      },
       {
         "name": "async_accept",
         "module": "asyncs",
@@ -4430,6 +4576,84 @@
       "from_symbol": "read_all",
       "to_module": "io",
       "to_symbol": "error_code"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "agents",
+      "from_symbol": "agent_alive",
+      "to_symbol": "vyb_agent_alive"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "agents",
+      "from_symbol": "agent_close",
+      "to_symbol": "vyb_agent_close"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "agents",
+      "from_symbol": "agent_dead_letter",
+      "to_symbol": "vyb_agent_set_dead_letter"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "agents",
+      "from_symbol": "agent_error",
+      "to_symbol": "vyb_agent_error"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "agents",
+      "from_symbol": "agent_error_code",
+      "to_symbol": "vyb_agent_error_code"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "agents",
+      "from_symbol": "agent_free",
+      "to_symbol": "vyb_agent_free"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "agents",
+      "from_symbol": "agent_len",
+      "to_symbol": "vyb_agent_len"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "agents",
+      "from_symbol": "agent_mailbox",
+      "to_symbol": "vyb_agent_mailbox"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "agents",
+      "from_symbol": "agent_send",
+      "to_symbol": "vyb_agent_send"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "agents",
+      "from_symbol": "agent_send_bool",
+      "to_symbol": "vyb_agent_send_bool"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "agents",
+      "from_symbol": "agent_send_float",
+      "to_symbol": "vyb_agent_send_float"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "agents",
+      "from_symbol": "agent_send_string",
+      "to_symbol": "vyb_agent_send_string"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "agents",
+      "from_symbol": "agent_status",
+      "to_symbol": "vyb_agent_status"
     },
     {
       "type": "runtimeRef",

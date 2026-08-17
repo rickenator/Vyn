@@ -1045,7 +1045,47 @@ async_yield()<Int>                # round-robin to other fibers
 Non-`Int` futures (`Float`, `Bool`, `String`) are supported
 (`Future<T>` async functions, [§3.23](#323-asynchronous-programming)).
 
-### 4.10 `network` — sockets, TCP, UDP
+### 4.10 `agents` — message-passing units
+
+Module page: [`agents.md`](agents.md). An agent is a unit of concurrency that
+owns a mailbox (an unbounded channel by default) and runs a behavior closure on
+its own worker thread: it blocks on recv and hands each message to the closure.
+Only messages cross the boundary — the agent's internal state stays private to
+its behavior. The handle is an `Int` (a runtime table index).
+
+```vyb
+import agents
+counter = agent_start(|v<Int>| -> println("got " + v.to_string()))
+agent_send(counter, 42)          # 1 (accepted)
+agent_close(counter)             # drain then stop (lossless)
+agent_free(counter)              # wait for the worker and reclaim
+```
+
+**Lifecycle.** `agent_send` (non-blocking post; 1 accepted, 0 if closed/full),
+`agent_len` (buffered-but-unhandled count), `agent_alive`, `agent_close`
+(drain-then-stop, loses nothing), and `agent_free` (join + reclaim; closes the
+mailbox first if it was never closed). `agent_mailbox` exposes a scalar agent's
+mailbox as a channel handle so it can join `chan_select` for fan-in/fan-out
+composition (returns -1 for String agents, which use a separate mailbox type).
+
+**Payloads.** Int, Bool, Float, and String are supported through
+`agent_start*` / `agent_send*` (`_bool`, `_float`, `_string`). Bool and Float
+ride the agent's int-slot mailbox; String agents use a refcounted mailbox that
+hands an owned transfer to the behavior.
+
+**Bounded mailboxes / backpressure.** Pass a second Int argument to bound the
+mailbox: `agent_start(behavior, cap)`. A full bounded send returns 0
+immediately (non-blocking), so the caller applies its own backpressure — the
+same semantics as `chan_bounded(cap)` vs `chan_new()`. 0/omitted stays
+unbounded. Once the worker drains, sends are accepted again and nothing is lost.
+
+**Failure channeling.** A behavior that `fail`s is captured rather than dropped:
+the agent is marked failed (`agent_status` = 2, mailbox closed, senders see 0).
+`agent_error_code` returns a `fail<Int>` payload (else -1), `agent_error` a
+`"kind @ file:line"` descriptor, and `agent_dead_letter(a, ch)` can route the
+failed agent's handle to a supervisor channel.
+
+### 4.11 `network` — sockets, TCP, UDP
 
 Module page: [`network.md`](network.md). Raw `socket_*` primitives, ergonomic
 TCP/UDP wrappers, and `async_*` variants.
@@ -1089,7 +1129,7 @@ comes from the matching aspect:
 `async_tcp_*` and `async_udp_*` helpers integrate sockets with the async
 executor.
 
-### 4.11 `tls` — TLS contexts, sessions, handshakes
+### 4.12 `tls` — TLS contexts, sessions, handshakes
 
 Module page: [`tls.md`](tls.md). Layers over OpenSSL; a `TlsContext` is the
 `SSL_CTX`, a `TlsStream` is a TLS session on an already-connected fd.
@@ -1111,10 +1151,10 @@ tls_error_message()
 
 `TlsStreamOps` and `TlsContextOps` bind the method surface (`write`, `read`,
 `connect`, `accept`, `close`, `dispose`) onto the structs. The
-`https_selfhost*` helpers ([§4.13](#413-https-https-client-over-tls-http))
+`https_selfhost*` helpers ([§4.14](#414-https-https-client-over-tls-http))
 exercise the full wiring end-to-end.
 
-### 4.12 `http` — pure-Vyb HTTP/1.1 client and server
+### 4.13 `http` — pure-Vyb HTTP/1.1 client and server
 
 Module page: [`http.md`](http.md). Layered over `network`/`threads` (not raw
 runtime calls). `HttpResponse` holds `status`, `headers`, `body`.
@@ -1151,7 +1191,7 @@ detached thread (`http_serve_conn`), reading the head and echoing a
 well-formed response. This is a pure-Vyb reference implementation — start
 here before layering TLS.
 
-### 4.13 `https` — HTTPS client over tls + http
+### 4.14 `https` — HTTPS client over tls + http
 
 Module page: [`https.md`](https.md). A client that runs the `http` request
 state machine over a `TlsStream` (reusing `http`'s parsers and the shared
@@ -1172,7 +1212,7 @@ https_selfhost_verified(cert_pem, key_pem)<Int>
 `https_selfhost*` pair generates a self-signed cert at runtime and drives the
 whole tls+http wiring without an external server.
 
-### 4.14 `prelude` — the auto-imported re-export surface
+### 4.15 `prelude` — the auto-imported re-export surface
 
 Module page: [`prelude.md`](prelude.md). Re-exports `Display`, `Debug`,
 `Clone`, `Equatable`, `Hashable`, `Comparable`, `hash_chars`, and
@@ -1191,6 +1231,7 @@ Vyb is fully multithreaded (pthreads underneath) with a clean, layered story:
 | `thread_spawn` + mutex/condvar/atomics | `threads` | OS thread, blocking | CPU-bound work, classic pthread patterns |
 | `task_spawn` | `tasks` | detached pthread per task | fire-and-forget jobs |
 | `async_spawn` / `async_await` | `asyncs` | fibers on a per-core worker pool | many concurrent, mostly-waiting tasks |
+| `agent_start` / `agent_send` | `agents` | worker thread + owned mailbox | isolated message-passing, actor-style units |
 | `chan_*` / `chan_select` | `channels` | typed handoff between threads | message passing, fan-out |
 
 **Shared state** is coordinated with `mutex_*`/`cond_*`/`atomic_*`
@@ -1212,7 +1253,8 @@ the executor so I/O futures fit the same await model.
 
 **Teardown discipline.** Because ownership is deterministic, free paths must
 be explicit: channels (`chan_free`), mutexes/condvars/atomics
-(`mutex_free`/`cond_free`/`atomic_free`), tasks (`task_free`), sockets
+(`mutex_free`/`cond_free`/`atomic_free`), tasks (`task_free`), agents
+(`agent_close`/`agent_free`), sockets
 (`close`), and TLS (`tls_free_context`/`tls_close`). `our`-owned values
 release automatically at last drop; leaked handles are a bug in user code, not
 the runtime.
@@ -1338,6 +1380,7 @@ regenerates byte-identical output.
 
 ## 9. API index
 
+<!-- refman:api-index begin -->
 | Area | Module page | Cross-index |
 |---|---|---|
 | Contracts & math | [`core`](core.md) | [aspects & binds](aspects.md) |
@@ -1349,12 +1392,15 @@ regenerates byte-identical output.
 | Threads & atomics | [`threads`](threads.md) | [functions](functions.md) |
 | Fire-and-forget | [`tasks`](tasks.md) | — |
 | Async executor | [`asyncs`](asyncs.md) | — |
+| Message-passing units | [`agents`](agents.md) | — |
 | Sockets/TCP/UDP | [`network`](network.md) | [shared types](interfaces.md) |
 | TLS | [`tls`](tls.md) | [shared types](interfaces.md) |
 | HTTP | [`http`](http.md) | [shared types](interfaces.md) |
 | HTTPS client | [`https`](https.md) | [shared types](interfaces.md) |
 | Auto-imported facade | [`prelude`](prelude.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
+<!-- refman:api-index end -->
+
 
 The **shared cross-module types** (`HttpResponse`, `TcpStream`, `TlsContext`,
 `TlsStream`, `Socket`) and every symbol that uses them are in

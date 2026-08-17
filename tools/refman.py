@@ -31,6 +31,36 @@ DEFAULT_RUNTIME = ROOT / "runtime" / "vyb_runtime.c"
 DEFAULT_OUT = ROOT / "docs" / "refman"
 
 # --------------------------------------------------------------------------
+# maintained-guide automation (PROGRAMMERS_GUIDE.md)
+# Only the *data* sections are regenerated in place (between markers). The
+# editorial prose (language tour + curated per-module digests) is authored and
+# proofread by a human. The API index below is editorial metadata layered over
+# the true module roster (which always comes from the stdlib scan), so a new
+# module is never silently dropped from the index.
+# --------------------------------------------------------------------------
+GUIDE_API_BEGIN = "<!-- refman:api-index begin -->"
+GUIDE_API_END = "<!-- refman:api-index end -->"
+GUIDE_MODULE_ORDER = [
+    "core", "error", "io", "time", "collections", "channels", "threads",
+    "tasks", "asyncs", "agents", "network", "tls", "http", "https", "prelude",
+]
+GUIDE_API_AREA = {
+    "core": "Contracts & math", "error": "Domain errors", "io": "Files",
+    "time": "Clocks", "collections": "Vec/Map/Set/BTree", "channels": "Channels",
+    "threads": "Threads & atomics", "tasks": "Fire-and-forget",
+    "asyncs": "Async executor", "agents": "Message-passing units",
+    "network": "Sockets/TCP/UDP", "tls": "TLS", "http": "HTTP",
+    "https": "HTTPS client", "prelude": "Auto-imported facade",
+}
+GUIDE_API_CROSS = {
+    "core": "[aspects & binds](aspects.md)", "io": "[types](types.md)",
+    "collections": "[functions](functions.md)", "channels": "[functions](functions.md)",
+    "threads": "[functions](functions.md)", "network": "[shared types](interfaces.md)",
+    "tls": "[shared types](interfaces.md)", "http": "[shared types](interfaces.md)",
+    "https": "[shared types](interfaces.md)",
+}
+
+# --------------------------------------------------------------------------
 # small lexer helpers
 # --------------------------------------------------------------------------
 
@@ -926,6 +956,71 @@ def emit(outdir: Path, g):
          "nodes": json_nodes(g), "edges": g["edges"]},
         indent=2))
     outdir.joinpath("PLAN.md").write_text((ROOT / "docs" / "refman" / "PLAN.md").read_text())
+    patch_guide_region(outdir, g)
+
+
+def _api_index_rows(g):
+    """Module roster for the maintained guide's API index, in curated order with
+    any stdlib module not yet curated appended (so it is never hidden)."""
+    known = [m for m in GUIDE_MODULE_ORDER if m in g["module_order"]]
+    rows = []
+    for m in known:
+        area = GUIDE_API_AREA.get(m, m)
+        cross = GUIDE_API_CROSS.get(m, "\u2014")  # em dash
+        rows.append("| %s | [`%s`](%s.md) | %s |" % (area, m, m, cross))
+    unc = sorted(m for m in g["module_order"] if m not in GUIDE_MODULE_ORDER)
+    for m in unc:
+        area = GUIDE_API_AREA.get(m, m)
+        cross = GUIDE_API_CROSS.get(m, "\u2014")
+        rows.append("| %s | [`%s`](%s.md) | %s |" % (area, m, m, cross))
+    rows.append("| Runtime intrinsics | [`runtime`](runtime.md) | \u2014 |")
+    return rows
+
+
+def render_api_index_region(g):
+    return "\n".join(
+        [GUIDE_API_BEGIN, "| Area | Module page | Cross-index |", "|---|---|---|"]
+        + _api_index_rows(g) + [GUIDE_API_END]) + "\n"
+
+
+def patch_guide_region(outdir: Path, g):
+    """Regenerate the marked §9 API-index region of PROGRAMMERS_GUIDE.md in
+    place. Safe to run any time ``tools/refman.py`` is (the rest of the guide is
+    untouched). Does nothing if the markers are absent or the guide is missing."""
+    guide = outdir / "PROGRAMMERS_GUIDE.md"
+    if not guide.exists():
+        return
+    txt = guide.read_text(encoding="utf-8")
+    b, e = txt.find(GUIDE_API_BEGIN), txt.find(GUIDE_API_END)
+    if b < 0 or e < 0:
+        return
+    e += len(GUIDE_API_END)
+    txt = txt[:b] + render_api_index_region(g) + txt[e:]
+    guide.write_text(txt, encoding="utf-8")
+
+
+def guide_structure_problems(emit_dir: Path, g):
+    """Drift guards for the maintained guide: the marked API-index region must
+    match what the generator would emit, and every stdlib module that exports
+    symbols needs a §4 digest section (otherwise the manual has silently fallen
+    behind a feature / module change)."""
+    problems = []
+    guide = emit_dir / "PROGRAMMERS_GUIDE.md"
+    if not guide.exists():
+        return problems
+    txt = guide.read_text(encoding="utf-8")
+    b, e = txt.find(GUIDE_API_BEGIN), txt.find(GUIDE_API_END)
+    if b < 0 or e < 0:
+        problems.append("PROGRAMMERS_GUIDE.md: missing API-index markers (run tools/refman.py)")
+    elif txt[b:e + len(GUIDE_API_END)] != render_api_index_region(g).rstrip("\n"):
+        problems.append("PROGRAMMERS_GUIDE.md: §9 API index is stale (run tools/refman.py)")
+    sections = [ln for ln in txt.splitlines() if ln.startswith("### 4.")]
+    for m in g["module_order"]:
+        if not any(("`%s`" % m) in ln for ln in sections):
+            problems.append(
+                "PROGRAMMERS_GUIDE.md: no §4 digest section for stdlib module '%s' "
+                "(new module? add a curated digest)" % m)
+    return problems
 
 
 def git_rev():
@@ -946,7 +1041,7 @@ def _norm_commit(text: str) -> str:
 
 
 def check_guide(emit_dir: Path) -> list:
-    """Validate the hand-written PROGRAMMERS_GUIDE.md: every local markdown
+    """Validate the maintained PROGRAMMERS_GUIDE.md: every local markdown
     link resolves to a file, and code fences are balanced."""
     problems = []
     guide = emit_dir / "PROGRAMMERS_GUIDE.md"
@@ -1004,6 +1099,7 @@ def main():
                 elif _norm_commit(cur_dir.read_text()) != _norm_commit(tmp):
                     problems.append("drift: " + rel)
         problems += check_guide(Path(a.emit_dir))
+        problems += guide_structure_problems(Path(a.emit_dir), g)
         if problems:
             print("refman --check: %d problem(s)" % len(problems))
             for p in sorted(set(problems)):
