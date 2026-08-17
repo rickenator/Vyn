@@ -2839,6 +2839,10 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_net_local_port") rtName = "__vyb_net_local_port";
         else if (fname == "vyb_net_error_code") rtName = "__vyb_net_error_code";
         else if (fname == "vyb_net_error_message") rtName = "__vyb_net_error_message";
+        else if (fname == "vyb_net_sendto") rtName = "__vyb_net_sendto";
+        else if (fname == "vyb_net_recvfrom") rtName = "__vyb_net_recvfrom";
+        else if (fname == "vyb_net_last_peer_ip") rtName = "__vyb_net_last_peer_ip";
+        else if (fname == "vyb_net_last_peer_port") rtName = "__vyb_net_last_peer_port";
         if (!rtName.empty()) {
             auto getNetFn = [&](llvm::FunctionType* ft) -> llvm::Function* {
                 llvm::Function* f = module->getFunction(rtName);
@@ -2928,6 +2932,46 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 llvm::FunctionType* ft = llvm::FunctionType::get(strStructType(), {int64Type, int64Type}, false);
                 m_currentLLVMValue = builder->CreateCall(getNetFn(ft), {toI64(fd), toI64(maxlen)}, "net.recved");
                 return;
+            } else if (fname == "vyb_net_sendto") {
+                if (!checkArity(4)) return;
+                llvm::Value* fd = needArg(0); llvm::Value* data = needArg(1);
+                llvm::Value* ip = needArg(2); llvm::Value* port = needArg(3);
+                if (!fd || !data || !ip || !port) return;
+                llvm::Value* dataPtr = toStrPtr(data);
+                llvm::Value* dataLen = llvm::ConstantInt::get(int64Type, 0);
+                if (data->getType()->isStructTy())
+                    dataLen = builder->CreateExtractValue(data, 1, "net.udplen");
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type,
+                    {int64Type, int8PtrType, int64Type, int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getNetFn(ft),
+                    {toI64(fd), dataPtr, dataLen, toStrPtr(ip), toI64(port)}, "net.udpsent");
+                return;
+            } else if (fname == "vyb_net_recvfrom") {
+                if (!checkArity(2)) return;
+                llvm::Value* fd = needArg(0); llvm::Value* maxlen = needArg(1);
+                if (!fd || !maxlen) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(strStructType(), {int64Type, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getNetFn(ft), {toI64(fd), toI64(maxlen)}, "net.udprecved");
+                return;
+            } else if (fname == "vyb_net_last_peer_ip") {
+                if (!checkArity(0)) return;
+                llvm::FunctionType* fip = llvm::FunctionType::get(int8PtrType, {}, false);
+                llvm::Value* ipPtr = builder->CreateCall(getNetFn(fip), {}, "net.peerip");
+                llvm::FunctionType* strlenType2 = llvm::FunctionType::get(int64Type, {int8PtrType}, false);
+                llvm::Function* strlenF2 = module->getFunction("strlen");
+                if (!strlenF2)
+                    strlenF2 = llvm::Function::Create(strlenType2, llvm::Function::ExternalLinkage, "strlen", module.get());
+                llvm::Value* ipLen = builder->CreateCall(strlenF2, {ipPtr}, "net.peerilen");
+                llvm::Value* outIp = llvm::UndefValue::get(strStructType());
+                outIp = builder->CreateInsertValue(outIp, ipPtr, 0, "net.peerip.data");
+                outIp = builder->CreateInsertValue(outIp, ipLen, 1, "net.peerip.len");
+                m_currentLLVMValue = outIp;
+                return;
+            } else if (fname == "vyb_net_last_peer_port") {
+                if (!checkArity(0)) return;
+                llvm::FunctionType* fpt = llvm::FunctionType::get(int64Type, {}, false);
+                m_currentLLVMValue = builder->CreateCall(getNetFn(fpt), {}, "net.peerport");
+                return;
             } else if (fname == "vyb_net_local_port") {
                 if (!checkArity(1)) return;
                 llvm::Value* fd = needArg(0); if (!fd) return;
@@ -2970,6 +3014,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_async_connect") rtAsync = "__vyb_async_connect";
         else if (fname == "vyb_async_send") rtAsync = "__vyb_async_send";
         else if (fname == "vyb_async_recv") rtAsync = "__vyb_async_recv";
+        else if (fname == "vyb_async_sendto") rtAsync = "__vyb_async_sendto";
+        else if (fname == "vyb_async_recvfrom") rtAsync = "__vyb_async_recvfrom";
         if (!rtAsync.empty()) {
             auto asyncFn = [&](llvm::FunctionType* ft) -> llvm::Function* {
                 llvm::Function* f = module->getFunction(rtAsync);
@@ -3037,12 +3083,27 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int8PtrType, int64Type}, false);
                 m_currentLLVMValue = builder->CreateCall(asyncFn(ft), {aToI64(fd), dp, dl}, "aio.sent");
                 return;
-            } else { // vyb_async_recv
+            } else if (fname == "vyb_async_recvfrom" || fname == "vyb_async_recv") {
                 if (!aArity(2)) return;
                 llvm::Value* fd = aNeed(0); llvm::Value* maxlen = aNeed(1);
                 if (!fd || !maxlen) return;
                 llvm::FunctionType* ft = llvm::FunctionType::get(aStrType(), {int64Type, int64Type}, false);
-                m_currentLLVMValue = builder->CreateCall(asyncFn(ft), {aToI64(fd), aToI64(maxlen)}, "aio.recved");
+                m_currentLLVMValue = builder->CreateCall(asyncFn(ft), {aToI64(fd), aToI64(maxlen)},
+                    fname == "vyb_async_recvfrom" ? "aio.udprecved" : "aio.recved");
+                return;
+            } else { // vyb_async_sendto
+                if (!aArity(4)) return;
+                llvm::Value* fd = aNeed(0); llvm::Value* data = aNeed(1);
+                llvm::Value* ip = aNeed(2); llvm::Value* port = aNeed(3);
+                if (!fd || !data || !ip || !port) return;
+                llvm::Value* dp = aStrPtr(data);
+                llvm::Value* dl = llvm::ConstantInt::get(int64Type, 0);
+                if (data->getType()->isStructTy())
+                    dl = builder->CreateExtractValue(data, 1, "aio.udplen");
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type,
+                    {int64Type, int8PtrType, int64Type, int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(asyncFn(ft),
+                    {aToI64(fd), dp, dl, aStrPtr(ip), aToI64(port)}, "aio.udpsent");
                 return;
             }
         }

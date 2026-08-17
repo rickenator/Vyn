@@ -1,0 +1,42 @@
+// @test: pure-Vyb TcpStream/TcpListener wrappers over loopback
+// @description: a server thread accepts a connection on a TcpListener; the main
+//   thread reaches it with tcp_connect, writes a payload, and the server echoes
+//   it back over the bound read/write methods.
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import network
+import threads::{thread_spawn, thread_join}
+
+MSG<String> = "hello tcp stream"
+
+main()<Int> -> {
+    l<TcpListener> = tcp_listen("127.0.0.1", 0, 4)
+    if (l.fd < 0) { return 1 }
+    port<Int> = l.local_port()
+    if (port <= 0) { return 2 }
+    lfd<Int> = l.fd
+    srv<Int> = thread_spawn(|| -> {
+        c<TcpStream> = tcp_accept(TcpListener { fd = lfd, local_ip = "", local_port = 0 })
+        if (c.fd < 0) { return 1 }
+        data<String> = c.read(4096)
+        c.write(data)
+        c.close()
+        if (data == MSG) { return 0 }
+        return 2
+    })
+
+    s<TcpStream> = tcp_connect("127.0.0.1", port)
+    if (s.fd < 0) { return 3 }
+    s.write(MSG)
+    back<String> = s.read(4096)
+    s.close()
+    l.close()
+    r<Int> = thread_join(srv)
+    if (r != 0) { return 4 }
+    if (back != MSG) { return 5 }
+    println("ok")
+    return 0
+}

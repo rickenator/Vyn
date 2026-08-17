@@ -530,6 +530,58 @@ VYB_WEAK char* __vyb_net_error_message(void) {
     return copy;
 }
 
+// --- UDP ----------------------------------------------------------------
+// Datagram sockets. sendto/recvfrom track the peer of the last successful
+// recvfrom in `vyb_net_from_*` so the Vyb layer can report where a datagram
+// came from (mirroring the return-code + diagnostic idiom of this module).
+
+static char vyb_net_from_ip[INET_ADDRSTRLEN] = "";
+static int vyb_net_from_port = -1;
+
+VYB_WEAK int64_t __vyb_net_sendto(int64_t fd, const char* data, int64_t len,
+                                  const char* ip, int64_t port) {
+    struct sockaddr_in addr;
+    if (vyb_net_fill_addr(ip, port, &addr) != 0) { vyb_net_err = EINVAL; return -1; }
+    ssize_t n = sendto((int)fd, data, (size_t)len, 0,
+                       (struct sockaddr*)&addr, (socklen_t)sizeof(addr));
+    vyb_net_err = (n < 0) ? errno : 0;
+    return (int64_t)n;
+}
+
+// Receive one datagram into a registry-registered buffer. Also records the
+// sending peer (vyb_net_from_ip / vyb_net_from_port). Returns { NULL, 0 } on
+// error; distinguish "no data" from a genuine empty datagram via error_code().
+VYB_WEAK vyb_file_str __vyb_net_recvfrom(int64_t fd, int64_t maxlen) {
+    vyb_file_str r = { NULL, 0 };
+    if (maxlen <= 0) maxlen = 65536;
+    char* buf = (char*)malloc((size_t)maxlen);
+    if (!buf) { vyb_net_err = errno; return r; }
+    struct sockaddr_in from;
+    socklen_t flen = (socklen_t)sizeof(from);
+    ssize_t n = recvfrom((int)fd, buf, (size_t)maxlen, 0,
+                         (struct sockaddr*)&from, &flen);
+    if (n < 0) { vyb_net_err = errno; free(buf); return r; }
+    __vyb_string_register(buf);
+    r.ptr = buf;
+    r.len = (int64_t)n;
+    vyb_net_err = 0;
+    if (inet_ntop(AF_INET, &from.sin_addr, vyb_net_from_ip, INET_ADDRSTRLEN))
+        vyb_net_from_port = (int)ntohs(from.sin_port);
+    else
+        vyb_net_from_port = -1;
+    return r;
+}
+
+// The peer ip/port of the last recvfrom, as an owned, registry-registered copy.
+VYB_WEAK char* __vyb_net_last_peer_ip(void) {
+    char* copy = strdup(vyb_net_from_ip[0] ? vyb_net_from_ip : "");
+    if (copy) __vyb_string_register(copy);
+    return copy;
+}
+VYB_WEAK int64_t __vyb_net_last_peer_port(void) {
+    return (int64_t)vyb_net_from_port;
+}
+
 // ============================================================================
 // TIME module (stdlib/network is separate) - epoch/monotonic clocks and sleep.
 // ============================================================================
@@ -1803,6 +1855,63 @@ VYB_WEAK int64_t __vyb_async_connect(int64_t fd, const char* ip, int64_t port) {
     }
     vyb_net_err = errno;
     return -1;
+}
+
+// Non-blocking UDP sendto, suspending until the socket accepts a datagram.
+// Returns the number of bytes sent (or -1).
+VYB_WEAK int64_t __vyb_async_sendto(int64_t fd, const char* data, int64_t len,
+                                    const char* ip, int64_t port) {
+    if (len < 0) len = 0;
+    struct sockaddr_in addr;
+    if (vyb_net_fill_addr(ip, port, &addr) != 0) { vyb_net_err = EINVAL; return -1; }
+    vyb_net_set_nonblock((int)fd);
+    for (;;) {
+        ssize_t n = sendto((int)fd, data, (size_t)len, 0,
+                           (struct sockaddr*)&addr, (socklen_t)sizeof(addr));
+        if (n >= 0) { vyb_net_err = 0; return (int64_t)n; }
+        if (errno == EINTR) continue;
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            if (__vyb_async_io_wait(fd, 1) < 0) { vyb_net_err = EIO; return -1; }
+            continue;
+        }
+        vyb_net_err = errno;
+        return -1;
+    }
+}
+
+// Non-blocking UDP recvfrom, suspending until a datagram arrives. Records the
+// sending peer like its blocking sibling. { NULL, 0 } on error.
+VYB_WEAK vyb_file_str __vyb_async_recvfrom(int64_t fd, int64_t maxlen) {
+    vyb_file_str r = { NULL, 0 };
+    if (maxlen <= 0) maxlen = 65536;
+    vyb_net_set_nonblock((int)fd);
+    char* buf = (char*)malloc((size_t)maxlen);
+    if (!buf) { vyb_net_err = errno; return r; }
+    for (;;) {
+        struct sockaddr_in from;
+        socklen_t flen = (socklen_t)sizeof(from);
+        ssize_t n = recvfrom((int)fd, buf, (size_t)maxlen, 0,
+                             (struct sockaddr*)&from, &flen);
+        if (n >= 0) {
+            __vyb_string_register(buf);
+            r.ptr = buf;
+            r.len = (int64_t)n;
+            vyb_net_err = 0;
+            if (inet_ntop(AF_INET, &from.sin_addr, vyb_net_from_ip, INET_ADDRSTRLEN))
+                vyb_net_from_port = (int)ntohs(from.sin_port);
+            else
+                vyb_net_from_port = -1;
+            return r;
+        }
+        if (errno == EINTR) continue;
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            if (__vyb_async_io_wait(fd, 0) < 0) { vyb_net_err = EIO; free(buf); return r; }
+            continue;
+        }
+        vyb_net_err = errno;
+        free(buf);
+        return r;
+    }
 }
 
 // Stop + join the worker pool at process exit, then reclaim any leftover tasks

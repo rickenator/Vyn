@@ -1,0 +1,32 @@
+// @test: pure-Vyb UdpSocket wrapper over loopback datagrams
+// @description: two bound UdpSockets talk: A sends a datagram to B, B receives
+//   it and the last-peer probes report where it came from (A's address/port).
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import network
+
+main()<Int> -> {
+    a<UdpSocket> = udp_bind("127.0.0.1", 0)
+    if (a.fd < 0) { return 1 }
+    b<UdpSocket> = udp_bind("127.0.0.1", 0)
+    if (b.fd < 0) { return 2 }
+    ap<Int> = a.local_port()
+    bp<Int> = b.local_port()
+    n<Int> = a.send_to("127.0.0.1", bp, "ping udp")
+    if (n < 0) { return 3 }
+
+    msg<String> = b.recv_from(4096)
+    if (msg != "ping udp") { return 4 }
+    pip<String> = udp_last_peer_ip()
+    pport<Int> = udp_last_peer_port()
+    if (pip != "127.0.0.1") { return 5 }
+    if (pport != ap) { return 6 }
+
+    a.close()
+    b.close()
+    println("ok")
+    return 0
+}

@@ -36,7 +36,7 @@ is the working audit for what needs to be implemented next.
 | Lambda/closure codegen | ~70% | Capture-by-value closure env structs shipped; move/mutable/`our` capture planned |
 | Module system (`import`/`smuggle`/`bundle`) | ~70% | Local/module-path resolution, aliases, bundle/share visibility done; stdlib modules/package integration pending |
 | FFI (`extern "C"`) | ~35% | Extern blocks, C aliases, freedom-gated JIT calls done; repr(C), variadics, linker flow pending |
-| Standard library | ~62% | Vec, String, HashMap/HashSet, BTreeMap, File I/O, Math, TCP socket I/O, time, HTTP, async socket I/O done; `TcpStream`/`UdpSocket` wrappers, HTTP client pending |
+| Standard library | ~64% | Vec, String, HashMap/HashSet, BTreeMap, File I/O, Math, TCP socket + UDP I/O, time, HTTP, async socket I/O, `TcpStream`/`TcpListener`/`UdpSocket` done; HTTP client pending |
 | Introspection (`typeof`/`typename`) | ~75% | Downcasting, type assertions |
 | Auto-serialization | ~80% | Edge cases remain |
 | Pattern matching | ~60% | Destructuring, guards, enum variants |
@@ -1029,8 +1029,13 @@ async tcp_connect(host<String>, port<Int>)<TcpStream> -> {
 
 - [ ] **v0.5 — FFI foundation** (`extern "C"` blocks, C type mapping)
 - [ ] **v0.5 — Raw socket FFI bindings** — `stdlib/net/raw.vyb` wrapping POSIX socket API
-- [ ] **v0.6 — `TcpStream` / `UdpSocket`** — Safe Vyb wrappers with `fail`/`trap` error handling
-- [ ] **v0.6 — `TcpListener`** — Server-side accept loop integrated with async runtime
+- [x] **v0.6 — `TcpStream` / `UdpSocket`** — method-bound wrappers in `network`
+  (`tcp_connect`/`tcp_listen`/`tcp_accept`/`udp_bind` + `.write`/`.read`/
+  `.send_to`/`.recv_from`/`.close`); errors via the module's `error_code()`
+  idiom, plus `async_tcp_*` / `async_udp_*` variants on the event loop
+- [x] **v0.6 — `TcpListener`** — accept loop via `tcp_listen`/`tcp_accept`
+  (blocking) and `async_tcp_accept` (event-loop fiber), integrated with the
+  async runtime
 - [x] **v0.6 — Async I/O** — Non-blocking socket I/O on the real executor
   (`asyncs::async_accept`/`async_connect`/`async_send`/`async_recv` suspend the
   fiber via the poll pump; no worker is ever blocked)

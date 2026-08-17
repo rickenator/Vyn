@@ -10,6 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`TcpStream` / `TcpListener` / `UdpSocket`** — ergonomic, method-bound socket
+  types in the `network` module, layered on the runtime sockets. `tcp_listen` /
+  `tcp_accept` / `tcp_connect` build a `TcpStream` with `.write(...)` /
+  `.read(...)` / `.close()` / `.peer_*()`, and `udp_bind` builds a `UdpSocket`
+  with `.send_to(...)` / `.recv_from(...)` plus `udp_last_peer_ip()/port()` to
+  see where a datagram came from. Async variants (`async_tcp_*` / `async_udp_*`)
+  run on the event-loop executor and suspend the fiber instead of blocking a
+  worker. UDP gained new runtime `sendto`/`recvfrom` helpers and `SOCK_DGRAM` /
+  `IPPROTO_UDP` constants. Covered by `test/modules/test_tcp_stream.vyb`,
+  `test/modules/test_udp_socket.vyb`, and `test/async/async_net_wrappers.vyb`
+  (all valgrind-clean).
 - **Async I/O over the event loop** — `import asyncs` gains suspendable,
   non-blocking socket operations: `async_accept(fd)`, `async_connect(fd, ip,
   port)`, `async_send(fd, data)`, and `async_recv(fd, maxlen)`. When a socket

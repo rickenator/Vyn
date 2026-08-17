@@ -116,6 +116,12 @@ extern "C" {
     int64_t __vyb_net_local_port(int64_t fd);
     int64_t __vyb_net_error_code(void);
     const char* __vyb_net_error_message(void);
+    // UDP helpers (network stdlib module): sendto/recvfrom + last-peer probes.
+    int64_t __vyb_net_sendto(int64_t fd, const char* data, int64_t len,
+                             const char* ip, int64_t port);
+    vyb_file_str __vyb_net_recvfrom(int64_t fd, int64_t maxlen);
+    const char* __vyb_net_last_peer_ip(void);
+    int64_t __vyb_net_last_peer_port(void);
 
     // Time runtime helpers (time stdlib module)
     int64_t __vyb_time_epoch_secs(void);
@@ -189,6 +195,9 @@ extern "C" {
     vyb_file_str __vyb_async_recv(int64_t fd, int64_t maxlen);
     int64_t __vyb_async_send(int64_t fd, const char* data, int64_t len);
     int64_t __vyb_async_connect(int64_t fd, const char* ip, int64_t port);
+    int64_t __vyb_async_sendto(int64_t fd, const char* data, int64_t len,
+                               const char* ip, int64_t port);
+    vyb_file_str __vyb_async_recvfrom(int64_t fd, int64_t maxlen);
 
     // JSON serialization for complex types
     char* __vyb_complex_to_json(void* instance, const char* type_name);
@@ -1038,6 +1047,14 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_error_code), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_net_error_message")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_error_message), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_net_sendto")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_sendto), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_net_recvfrom")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_recvfrom), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_net_last_peer_ip")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_last_peer_ip), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_net_last_peer_port")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_last_peer_port), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_time_epoch_secs")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_time_epoch_secs), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_time_epoch_millis")] = llvm::orc::ExecutorSymbolDef(
@@ -1147,6 +1164,10 @@ runtimeSymbols[mangle("__vyb_strchan_free")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_send), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_async_connect")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_connect), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_async_sendto")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_sendto), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_async_recvfrom")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_recvfrom), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_task_free")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_task_free), llvm::JITSymbolFlags::Exported);
 

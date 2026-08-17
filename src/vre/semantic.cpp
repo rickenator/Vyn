@@ -2024,6 +2024,8 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_net_listen" || name == "vyb_net_accept" || name == "vyb_net_connect" ||
             name == "vyb_net_send" || name == "vyb_net_recv" || name == "vyb_net_local_port" ||
             name == "vyb_net_error_code" || name == "vyb_net_error_message" ||
+            name == "vyb_net_sendto" || name == "vyb_net_recvfrom" ||
+            name == "vyb_net_last_peer_ip" || name == "vyb_net_last_peer_port" ||
             name == "vyb_time_epoch_secs" || name == "vyb_time_epoch_millis" ||
             name == "vyb_time_nanos" || name == "vyb_time_mono_millis" ||
             name == "vyb_time_sleep_ms" ||
@@ -2050,6 +2052,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_async_io_wait" || name == "vyb_async_accept" ||
             name == "vyb_async_recv" || name == "vyb_async_send" ||
             name == "vyb_async_connect" ||
+            name == "vyb_async_sendto" || name == "vyb_async_recvfrom" ||
             name == "vyb_strchan_new" || name == "vyb_strchan_send" ||
             name == "vyb_strchan_recv" || name == "vyb_strchan_try" ||
             name == "vyb_strchan_recv_opt" ||
@@ -2468,10 +2471,12 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             static const std::set<std::string> netIntFuncs = {
                 "vyb_net_open", "vyb_net_close", "vyb_net_bind", "vyb_net_listen",
                 "vyb_net_accept", "vyb_net_connect", "vyb_net_send",
-                "vyb_net_local_port", "vyb_net_error_code"
+                "vyb_net_local_port", "vyb_net_error_code",
+                "vyb_net_sendto", "vyb_net_last_peer_port"
             };
             static const std::set<std::string> netStrFuncs = {
-                "vyb_net_recv", "vyb_net_error_message"
+                "vyb_net_recv", "vyb_net_error_message",
+                "vyb_net_recvfrom", "vyb_net_last_peer_ip"
             };
             if (netIntFuncs.count(name) || netStrFuncs.count(name)) {
                 auto* resTy = new ast::TypeName(node->loc,
@@ -2548,6 +2553,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 name == "vyb_async_yield" || name == "vyb_async_sleep_ms" ||
                 name == "vyb_async_io_wait" || name == "vyb_async_accept" ||
                 name == "vyb_async_send" || name == "vyb_async_connect" ||
+                name == "vyb_async_sendto" ||
                 name == "vyb_strchan_new" || name == "vyb_strchan_send" ||
                 name == "vyb_strchan_len" || name == "vyb_strchan_free") {
                 auto* resTy = new ast::TypeName(node->loc,
@@ -2559,7 +2565,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
 
             // Async I/O (async stdlib module): the non-blocking socket recv
             // hands back a String; its siblings return Ints.
-            if (name == "vyb_async_recv") {
+            if (name == "vyb_async_recv" || name == "vyb_async_recvfrom") {
                 auto* resTy = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "String"));
                 expressionTypes[node] = retainType(resTy);
