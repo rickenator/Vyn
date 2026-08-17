@@ -153,10 +153,10 @@ extern "C" {
     int64_t __vyb_thread_spawn(void* env, void* fn);
     int64_t __vyb_thread_join(int64_t handle);
     int64_t __vyb_thread_detach(int64_t handle);
-    int64_t __vyb_agent_start(void* env, void* fn, int64_t failable);
-    int64_t __vyb_agent_start_bool(void* env, void* fn, int64_t failable);
-    int64_t __vyb_agent_start_float(void* env, void* fn, int64_t failable);
-    int64_t __vyb_agent_start_string(void* env, void* fn, int64_t failable);
+    int64_t __vyb_agent_start(void* env, void* fn, int64_t failable, int64_t cap);
+    int64_t __vyb_agent_start_bool(void* env, void* fn, int64_t failable, int64_t cap);
+    int64_t __vyb_agent_start_float(void* env, void* fn, int64_t failable, int64_t cap);
+    int64_t __vyb_agent_start_string(void* env, void* fn, int64_t failable, int64_t cap);
     int64_t __vyb_agent_send(int64_t handle, int64_t v);
     int64_t __vyb_agent_send_bool(int64_t handle, int64_t b);
     int64_t __vyb_agent_send_float(int64_t handle, int64_t bits);

@@ -1478,11 +1478,13 @@ static void* vyb_agent_loop(void* arg) {
 
 // Core spawn: create the mailbox (int-slot or string), allocate a table slot,
 // and start the behavior loop thread. `failable` selects the behavior calling
-// convention ({i1, i8*} fail-propagating vs. plain Void). Returns a handle
+// convention ({i1, i8*} fail-propagating vs. plain Void); `cap` bounds the
+// mailbox (0 = unbounded, mirroring chan_new/chan_bounded). A full bounded
+// send returns 0 immediately (non-blocking backpressure). Returns a handle
 // (>= 1) or 0 on failure.
-static int64_t vyb_agent_spawn(void* env, void* fn, int kind, int failable) {
+static int64_t vyb_agent_spawn(void* env, void* fn, int kind, int failable, int64_t cap) {
     if (!fn) return 0;
-    int64_t mailbox = (kind == AGENT_KIND_STRING) ? __vyb_strchan_new(0) : __vyb_chan_new(0);
+    int64_t mailbox = (kind == AGENT_KIND_STRING) ? __vyb_strchan_new(cap) : __vyb_chan_new(cap);
     if (!mailbox) return 0;
     pthread_mutex_lock(&vyb_agents_lock);
     int idx = -1;
@@ -1514,10 +1516,11 @@ static int64_t vyb_agent_spawn(void* env, void* fn, int kind, int failable) {
 }
 
 // Start an agent running `fn`, a Vyb `fn(Payload) -> Void` closure (as { env, fn }).
-VYB_WEAK int64_t __vyb_agent_start(void* env, void* fn, int64_t failable)          { return vyb_agent_spawn(env, fn, AGENT_KIND_INT, (int)failable); }
-VYB_WEAK int64_t __vyb_agent_start_bool(void* env, void* fn, int64_t failable)     { return vyb_agent_spawn(env, fn, AGENT_KIND_BOOL, (int)failable); }
-VYB_WEAK int64_t __vyb_agent_start_float(void* env, void* fn, int64_t failable)    { return vyb_agent_spawn(env, fn, AGENT_KIND_FLOAT, (int)failable); }
-VYB_WEAK int64_t __vyb_agent_start_string(void* env, void* fn, int64_t failable)   { return vyb_agent_spawn(env, fn, AGENT_KIND_STRING, (int)failable); }
+// `cap` bounds the mailbox (0 = unbounded).
+VYB_WEAK int64_t __vyb_agent_start(void* env, void* fn, int64_t failable, int64_t cap)          { return vyb_agent_spawn(env, fn, AGENT_KIND_INT, (int)failable, cap); }
+VYB_WEAK int64_t __vyb_agent_start_bool(void* env, void* fn, int64_t failable, int64_t cap)     { return vyb_agent_spawn(env, fn, AGENT_KIND_BOOL, (int)failable, cap); }
+VYB_WEAK int64_t __vyb_agent_start_float(void* env, void* fn, int64_t failable, int64_t cap)    { return vyb_agent_spawn(env, fn, AGENT_KIND_FLOAT, (int)failable, cap); }
+VYB_WEAK int64_t __vyb_agent_start_string(void* env, void* fn, int64_t failable, int64_t cap)   { return vyb_agent_spawn(env, fn, AGENT_KIND_STRING, (int)failable, cap); }
 
 // 1 while the agent's worker is running (or draining), 0 once it has exited.
 static int vyb_agent_valid(int64_t handle) {

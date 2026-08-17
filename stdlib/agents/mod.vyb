@@ -25,7 +25,10 @@
 # `agent_start` / `agent_start_bool` / `agent_start_float` / `agent_start_string`
 # are compiler-native: the behavior closure's failable flag is unpacked there, so
 # a behavior that `fail`s is captured (Stage 4) rather than dropped. They return
-# a handle (>= 1) or 0 on failure (table full / worker create failed).
+# a handle (>= 1) or 0 on failure (table full / worker create failed). Pass a
+# second Int argument to bound the mailbox: `agent_start(behavior, cap)`. A full
+# bounded send returns 0 immediately (non-blocking backpressure); 0/omitted means
+# unbounded (like `chan_new()` vs `chan_bounded(cap)`).
 
 # Post a message (non-blocking). Returns 1 on accepted, or 0 if the agent is
 # stopped/closed or its bounded mailbox is full.

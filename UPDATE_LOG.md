@@ -3,6 +3,22 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-17: **Agents: backpressure + bounded mailboxes (Stage 5)**. Completing
+  the agents design doc (all five stages shipped). `agent_start` and its
+  Bool/Float/String siblings now take an optional mailbox capacity:
+  `agent_start(behavior, cap)` bounds the agent\'s mailbox (0/omitted stays
+  unbounded, mirroring `chan_new` vs `chan_bounded`). A full bounded send
+  returns 0 immediately (non-blocking backpressure) instead of blocking; once
+  the worker drains, sends are accepted again and nothing is lost. Capacity is
+  threaded through `vyb_agent_spawn` into `__vyb_chan_new`/`__vyb_strchan_new`,
+  the `__vyb_agent_start*` externs gained a 4th `cap` argument, and the
+  agent-start codegen handler evaluates the optional capacity (sext to i64,
+  default 0) with `FunctionExpression::canFail` still choosing the failable
+  ABI. New test `test/agents/test_agent_bounded.vyb` covers bounded Int agents
+  (cap 3, gate-gated worker, FIFO drain), bounded String agents (cap 2 strchan
+  path), and unbounded (cap 0) agents; valgrind clean (0 bytes lost). Full
+  unit/module/milestone suites pass (agents: 5/5).
+
 - 2026-08-17: **Agents: failure channeling (Stage 4)**. A behavior that `fail`s is
   now captured instead of dropped. `agent_start`/`agent_start_bool`/
   `agent_start_float`/`agent_start_string` became compiler-native so codegen can

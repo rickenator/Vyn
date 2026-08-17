@@ -1,0 +1,99 @@
+# Agents - backpressure + bounded mailboxes (Stage 5).
+#   - `agent_start(behavior, cap)` bounds the mailbox; a full bounded send
+#     returns 0 immediately (non-blocking backpressure), mirroring channels.
+#   - once the worker drains, sends are accepted again; nothing is lost.
+#   - 0/omitted capacity stays unbounded (all sends accepted).
+# Works for Int, Bool/Float (int-slot) and String (strchan) mailboxes.
+// @test: Agents - bounded mailboxes and backpressure (Stage 5)
+// @category: agents,concurrency,backpressure,stdlib
+// @expect: pass
+// @expect-return: 0
+
+import agents
+import channels
+
+main()<Int> -> {
+    # A bounded Int agent (cap 3). The behavior blocks on `gate` before handling
+    # each message, so the worker holds one message and the mailbox buffers the
+    # rest: total outstanding = 1 in-flight + 3 buffered = 4.
+    gate<Int> = chan_new()
+    out<Int> = chan_new()
+    a<Int> = agent_start(|v<Int>| -> {
+        chan_recv(gate)
+        chan_send(out, v)
+    }, 3)
+    if (a == 0) { return 1 }
+
+    # Fill until the bounded mailbox rejects a send.
+    sends<Int> = 0
+    while (true) {
+        r<Int> = agent_send(a, sends + 1)
+        if (r == 0) { break }
+        sends = sends + 1
+        if (sends > 100) { return 2 }
+    }
+    # The worker may have consumed one in-flight message or not by the time the
+    # box fills, so `sends` is cap..cap+1; the box itself is always full (cap).
+    if (sends < 3 || sends > 4) { return 3 }
+    if (agent_len(a) != 3) { return 4 }   # box is full: 3 buffered
+    if (agent_send(a, 500) != 0) { return 5 }   # full -> non-blocking 0
+
+    # Drain with one gate token per outstanding message; replies are FIFO.
+    i<Int> = 1
+    while (i <= sends) {
+        chan_send(gate, 1)
+        rv<Int> = chan_recv(out)
+        if (rv != i) { return 6 }
+        i = i + 1
+    }
+    if (agent_len(a) != 0) { return 7 }
+    if (agent_send(a, 77) != 1) { return 8 }   # emptied -> accepts again
+
+    chan_send(gate, 1)
+    if (chan_recv(out) != 77) { return 9 }
+    agent_close(a)
+    agent_free(a)
+
+    # A bounded String agent exercises the strchan mailbox path: cap 2 buffers 2,
+    # plus whatever the worker holds in-flight at that instant, so the box can
+    # accept 2..3 before a full send returns 0 (timing-dependent).
+    sgate<Int> = chan_new()
+    sa<Int> = agent_start_string(|sv<String>| -> {
+        chan_recv(sgate)
+    }, 2)
+    if (agent_send_string(sa, "a") != 1) { return 10 }
+    if (agent_send_string(sa, "b") != 1) { return 11 }
+    ssends<Int> = 2
+    while (true) {
+        r<Int> = agent_send_string(sa, "x")
+        if (r == 0) { break }
+        ssends = ssends + 1
+        if (ssends > 100) { return 12 }
+    }
+    # 2 buffered + 0..1 in-flight -> a full send returns 0 (non-blocking).
+    if (ssends < 2 || ssends > 3) { return 12 }
+    if (agent_send_string(sa, "e") != 0) { return 13 }   # full -> 0
+    c2<Int> = 0
+    while (c2 < ssends) {
+        chan_send(sgate, 1)
+        c2 = c2 + 1
+    }
+    agent_close(sa)
+    agent_free(sa)
+    chan_free(sgate)
+
+    # Unbounded (0 / omitted): every send is accepted.
+    u<Int> = agent_start(|v<Int>| -> { }, 0)
+    c<Int> = 0
+    while (c < 100) {
+        if (agent_send(u, c) != 1) { return 15 }
+        c = c + 1
+    }
+    agent_close(u)
+    agent_free(u)
+
+    chan_free(gate)
+    chan_free(out)
+    println("ok")
+    return 0
+}

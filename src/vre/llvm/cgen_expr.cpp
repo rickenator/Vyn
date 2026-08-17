@@ -3361,8 +3361,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                               : (fname == "agent_start_float" || fname == "vyb_agent_start_float") ? "__vyb_agent_start_float"
                               : "__vyb_agent_start_string";
             std::string rt(rtName);
-            if (node->arguments.size() != 1) {
-                logError(node->loc, fname + " expects 1 argument (fn(Payload) -> Void)");
+            if (node->arguments.size() != 1 && node->arguments.size() != 2) {
+                logError(node->loc, fname + " expects the behavior closure and an optional mailbox capacity");
                 m_currentLLVMValue = nullptr; return;
             }
             // The failable flag is a compile-time property of the behavior lambda
@@ -3391,11 +3391,23 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             llvm::Function* f = module->getFunction(rt);
             if (!f) {
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type,
-                    {llvm::PointerType::get(*context, 0), llvm::PointerType::get(*context, 0), int64Type}, false);
+                    {llvm::PointerType::get(*context, 0), llvm::PointerType::get(*context, 0),
+                     int64Type, int64Type}, false);
                 f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, rt, module.get());
             }
+            // Optional bounded mailbox capacity (0 = unbounded, like chan_new).
+            llvm::Value* capV = llvm::ConstantInt::get(int64Type, 0);
+            if (node->arguments.size() == 2) {
+                node->arguments[1]->accept(*this);
+                llvm::Value* capArg = m_currentLLVMValue;
+                if (capArg) {
+                    if (capArg->getType()->isIntegerTy() && !capArg->getType()->isIntegerTy(64))
+                        capArg = builder->CreateSExt(capArg, int64Type, "agent.cap.toi64");
+                    capV = capArg;
+                }
+            }
             llvm::Value* failableV = llvm::ConstantInt::get(int64Type, failable);
-            m_currentLLVMValue = builder->CreateCall(f, {envPtr, fnPtr, failableV}, "agent.handle");
+            m_currentLLVMValue = builder->CreateCall(f, {envPtr, fnPtr, failableV, capV}, "agent.handle");
             return;
         } else if (fname == "vyb_task_spawn") {
             // Tasks (tasks stdlib module): same closure { env, fn } unpack as
