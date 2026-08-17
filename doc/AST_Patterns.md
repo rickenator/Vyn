@@ -46,7 +46,7 @@ Matches a value and binds it to an identifier. Can also be used for struct field
 -   **Fields**:
     -   `name` (`IdentifierPtr`): The identifier to bind to.
     -   `isMutable` (`bool`): Whether the binding is mutable.
-    -   `subPattern` (`std::optional<PatternPtr>`): Optional sub-pattern for destructuring (e.g., `identifier @ sub_pattern` or for enum variants like `Some(x)` where `x` is the identifier pattern).
+    -   `subPattern` (`std::optional<PatternPtr>`): Optional sub-pattern for destructuring (e.g., `identifier @ sub_pattern` or for enum variants like `Circle(r)` where `r` is the identifier pattern).
 
 ```cpp
 // From include/vyb/parser/ast.hpp
@@ -149,8 +149,8 @@ Matches and destructures a specific enum variant.
 -   **C++ Class**: `vyb::ast::EnumVariantPattern`
 -   **`NodeType`**: `ENUM_VARIANT_PATTERN`
 -   **Fields**:
-    -   `enumType` (`TypeNodePtr`): The type of the enum (e.g., `BasicTypeNode` for `Option`).
-    -   `variantName` (`IdentifierPtr`): The name of the variant (e.g., `Some`).
+    -   `enumType` (`TypeNodePtr`): The type of the enum (e.g., `BasicTypeNode` for `Shape`).
+    -   `variantName` (`IdentifierPtr`): The name of the variant (e.g., `Circle`).
     -   `arguments` (`std::vector<PatternPtr>`): Patterns for the arguments of the variant, if any.
 
 ```cpp
@@ -159,8 +159,8 @@ namespace vyb::ast {
 
 class EnumVariantPattern : public PatternNode {
 public:
-    TypeNodePtr enumType; // e.g., BasicTypeNode for "Option"
-    IdentifierPtr variantName; // e.g., Identifier for "Some"
+    TypeNodePtr enumType; // e.g., BasicTypeNode for "Shape"
+    IdentifierPtr variantName; // e.g., Identifier for "Circle"
     std::vector<PatternPtr> arguments;
 
     EnumVariantPattern(SourceLocation loc, TypeNodePtr enumType, IdentifierPtr variantName, std::vector<PatternPtr> arguments);
@@ -220,7 +220,7 @@ public:
 
 ### 2.8. `OrPattern`
 
-Allows matching against multiple alternative patterns (e.g., `Some(0) | None` or `1 | 2 | 3`).
+Allows matching against multiple alternative patterns (e.g., `Circle(0.0) | Unit` or `1 | 2 | 3`).
 
 -   **C++ Class**: `vyb::ast::OrPattern`
 -   **`NodeType`**: `OR_PATTERN`

@@ -40,23 +40,23 @@ struct Node {
 
 ## Key Methods
 
-### `grab() -> Option<our<T>>`
+### `grab() -> our<T>?`
 
 Attempts to upgrade the mild reference to a strong reference. Returns
-`Some(our<T>)` (with `strong_count` incremented) while the target is live, and
-`None` once the object has been released. The failed-upgrade path is therefore
-type-safe and detectable with `match`/`select` (or the `.value` accessor) without
-dereferencing a dangling handle.
+the native optional `our<T>?` — present (a retained `our<T>`, `strong_count`
+incremented) while the target is live, and absent (`?`) once the object has been
+released. The failed-upgrade path is therefore type-safe and detectable with the
+optional `?` arm (or `else`) without dereferencing a dangling handle.
 
 ```vyb
 node<our<Node>> = get_node()
 shadow<mild<Node>> = soft(node)
 
 # Match on the upgrade result
-result<Option<our<Node>>> = shadow.grab()
+result<our<Node>?> = shadow.grab()
 match (result) {
-    Some(strong) -> println(strong.value)
-    None -> println("Node no longer exists")
+    strong -> println(strong.value)
+    ? -> println("Node no longer exists")
 }
 ```
 

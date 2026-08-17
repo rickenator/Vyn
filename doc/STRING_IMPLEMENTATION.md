@@ -303,7 +303,7 @@ This approach:
 - **split(delimiter: String) -> Vec<String>**: Split string into vector
 - **trim() -> String**: Remove leading/trailing whitespace
 - **replace(old: String, new: String) -> String**: Replace substring
-- **parse_int() -> Option<Int>**: Parse string to integer
+- **parse_int() -> Int?**: Parse string to integer
 - **format()**: String interpolation support
 
 ### Performance Improvements

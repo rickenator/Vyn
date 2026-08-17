@@ -49,13 +49,13 @@ Vyb's static type system will be mapped to efficient runtime representations.
         interoperates with a C integer-backed enum passed by value.
     *   **Tagged Unions (Enums with data):** Represented as a struct containing a tag (integer) and a union of the possible data types. The layout will be optimized to minimize space, e.g., by placing the tag and data in a way that leverages alignment.
         ```
-        // Vyb: enum Option<T> { Some(T), None }
+        // Vyb: enum Result<T, E> { Ok(T), Err(E) }
         // Runtime (conceptual):
-        // struct Option<T> {
-        //   tag: u8, // 0 for None, 1 for Some
+        // struct Result<T, E> {
+        //   tag: u8, // 0 for Ok, 1 for Err
         //   data: union {
-        //     // no data for None
-        //     value: T, // for Some
+        //     ok: T,  // for Ok
+        //     err: E, // for Err
         //   }
         // }
         ```
@@ -103,7 +103,7 @@ Vyb's static type system will be mapped to efficient runtime representations.
 
 A minimal standard library will be needed, providing core functionalities. This will be implemented in Vyb itself where possible, or via C FFI for OS interactions.
 
-*   **Core Types:** `Option<T>`, `Result<T, E>`, `Box<T>`, `Shared<T>` (if ARC).
+*   **Core Types:** `Result<T, E>`, `Box<T>`, `Shared<T>` (if ARC).
 *   **Collections:** `Vec<T>` (dynamic array), `HashMap<K, V>`, `String`.
 *   **I/O:** Basic console I/O (`print`, `println`), file operations.
 *   **Concurrency Primitives:** (Future) Channels, mutexes, atomic operations.

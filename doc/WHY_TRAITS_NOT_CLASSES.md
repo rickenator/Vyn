@@ -97,15 +97,16 @@ render<T<Drawable>>(shape<their<T>>)<Void> -> {
 aspect Iterator {
     type Item                                    # associated type
     # Required
-    next(self<their<Self>>)<Option<Self::Item>> -> { }
+    next(self<their<Self>>)<Self::Item?> -> { }
 
     # Free implementation for all iterators!
     count(self<their<Self>>)<Int> -> {
         n<Int> = 0
         loop {
-            item<Option<Self::Item>> = self.next()
-            if (item.is_none()) { break }
-            n = n + 1
+            match (self.next()) {
+                item -> { n = n + 1 }
+                ? -> { break }
+            }
         }
         return n
     }

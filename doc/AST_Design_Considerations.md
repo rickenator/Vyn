@@ -211,7 +211,7 @@ Pattern nodes are planned but not yet implemented as concrete AST nodes with vis
     -   Fields: `std::vector<PPattern> elements;`
 -   `StructPattern`: Destructures a struct (e.g., `Point { x, y }`).
     -   Fields: `PExpression structName; std::vector<std::pair<PIdentifier, PPattern>> fields; bool ignoreRest;`
--   `EnumVariantPattern`: Matches and destructures an enum variant (e.g., `Option::Some(s)`).
+-   `EnumVariantPattern`: Matches and destructures an enum variant (e.g., `Shape::Circle(r)`).
     -   Fields: `PExpression enumPath; PIdentifier variantName; std::vector<PPattern> arguments;`
 -   `WildcardPattern`: Matches anything without binding (`_`).
 -   `RangePattern`: Matches a value within a range (e.g., `1..=5`).

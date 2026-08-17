@@ -149,7 +149,7 @@ impl<T> From<T> for Box<T> { ... }
 ```vyb
 trait Iterator {
     type Item
-    fn next(self<Self>)<Option<Self.Item>>
+    fn next(self<Self>)<Self.Item?>
 }
 ```
 

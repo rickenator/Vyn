@@ -245,7 +245,7 @@ aspect Display {
 ```vyb
 aspect Iterator {
     type Item                                    # associated type
-    next(self<their<Self>>)<Option<Self::Item>>  # returns next value or None
+    next(self<their<Self>>)<Self::Item?>         # present payload, absent when exhausted
 }
 
 // Types that bind Iterator are usable in for loops
@@ -257,7 +257,7 @@ aspect Iterator {
 ```vyb
 aspect Serializable {
     serialize(self<their<Self>>)<Bytes> ->
-    deserialize(data<their<Bytes>>)<Option<Self>> ->
+    deserialize(data<their<Bytes>>)<Self?> ->
 }
 
 aspect Async<T> {
@@ -492,4 +492,3 @@ Vyb's aspect system balances:
 - **Performance** — Zero-cost abstractions via monomorphization
 
 No classes. By design. Forever.
-

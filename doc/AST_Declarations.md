@@ -374,7 +374,7 @@ namespace vyb::ast {
 class EnumVariant : public Node { // Inherits from Node
 public:
     IdentifierPtr name;
-    std::optional<TypeNodePtr> associatedType; // e.g., Option::Some(T) -> T is associatedType
+    std::optional<TypeNodePtr> associatedType; // e.g., Result::Ok(T) -> T is associatedType
 
     EnumVariant(SourceLocation loc, IdentifierPtr name, std::optional<TypeNodePtr> associatedType);
     // ... accept, getType, toString methods ...

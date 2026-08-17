@@ -117,7 +117,7 @@ See the "Unreachable Pattern Detection" section below for details.
 ### Future: Complex Patterns
 Planned support for:
 - Struct destructuring: `Point { x, y } > ...`
-- Enum variants: `Some(value) > ...`
+- Enum variants: `Shape::Circle(r) > ...`
 - Range patterns: `1..10 > ...`
 - Guard clauses: `x if x > 0 > ...`
 
