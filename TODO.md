@@ -31,7 +31,7 @@ is the working audit for what needs to be implemented next.
 | `mild<T>` weak references | ~75% | Control blocks, failed `grab()` (native `our<T>?`), and `our<T>` copy/assignment/parameter refcounting done; full copy/drop semantics remain |
 | Aspect/bind system | ~78% | Aspect objects/dyn dispatch |
 | Generic monomorphization | ~85% | **SEALED**: Compile-time only. See doc/MONOMORPHIZATION_DESIGN.md |
-| Async/await | ~95% | `async for`, actors |
+| Async/await | ~95% | `async for`, agents |
 | Error propagation (`fail`/`trap`) | ~80% | Standard error aspects, `rethrow`, ensure contracts |
 | Lambda/closure codegen | ~70% | Capture-by-value closure env structs shipped; move/mutable/`our` capture planned |
 | Module system (`import`/`smuggle`/`bundle`) | ~70% | Local/module-path resolution, aliases, bundle/share visibility done; stdlib modules/package integration pending |
@@ -617,7 +617,7 @@ with `pass` for multi-statement case bodies. Needs polishing:
   non-blocking, event-loop concurrency.
 - [x] **Typed channels** — `chan<T>` is a built-in generic typed channel for
   message passing between tasks (send/recv/poll/len/handle/free; test above).
-- [ ] **Actors** — Lightweight isolated concurrency units (planned)
+- [ ] **Agents** — Lightweight isolated message-passing units (planned)
 - [x] **`select` over channels** — `chan_select(handles<Vec<Int>>)` waits on many
   channels at once and returns the ready index (Vyb-natural extension; blocks
   with ~1ms wakeup, does not consume).
@@ -772,12 +772,12 @@ Types that `bind Iterator` become usable in `for` loops. The compiler desugars
 `for (item in col)` to repeated `Iterator::next()` calls. Depends on associated types
 being implemented in the aspect system first (tracked separately).
 
-### [DECIDED] Channels / Actors — Deferred to Post-1.0
+### [DECIDED] Channels / Agents — Deferred to Post-1.0
 
-**Decision:** Channels and actors are not part of the 1.0 release.
+**Decision:** Channels and agents are not part of the 1.0 release.
 
 A solid 1.0 with `async`/`await` + structured concurrency is more valuable than an
-under-designed actor model. Channels and actors require a full design document before
+under-designed agent model. Channels and agents require a full design document before
 implementation. The README has been updated to remove them from the v1.0 scope.
 
 ### [DECIDED] Dynamic Dispatch (`dyn Aspect`) — Marked as Future Experiment
@@ -970,7 +970,7 @@ For Vyb to be considered production-ready at 1.0, **all of the following must be
 - [ ] Debugger integration validated end-to-end with `gdb`/`lldb`
 
 ### Post-1.0 Roadmap
-- [ ] Channels + actors (design doc first!)
+- [ ] Channels + agents (design doc first!)
 - [x] **Network/socket MVP** — synchronous TCP/IP sockets shipped via the `network`
   stdlib module (`socket_open/bind/listen/accept/connect/send/recv/local_port/close`,
   `AF_INET`/`SOCK_STREAM`/`IPPROTO_TCP`; loopback echo
