@@ -450,7 +450,9 @@ with only the pthread ABI beneath). The thread-safety foundation above came firs
   Float/Bool/Char payloads are supported too (a Float travels as its IEEE bit
   pattern, Bool as 0/1, Char as its code unit), and scalar `poll()` returns
   `Option<T>` (Some(v) / None) so an empty read is unambiguous (`test/modules/test_chan_scalar.vyb`).
-  Non-identifier method receivers remain a follow-up.
+  Non-identifier receivers now work too — a chan returned by a function
+  (`make().send(x)`) or held as a struct field (`h.ch.recv()` / `h.ch.poll()`)
+  resolves the same way as the named-variable path (`test/modules/test_chan_nonident.vyb`).
 - [x] **Task spawn/await/poll (`tasks` module)** — policy-clean concurrency on
   the external pthread runtime: `task_spawn(fn() -> Int)` runs the closure on a
   detached worker whose result is delivered to a private capacity-1 channel; the

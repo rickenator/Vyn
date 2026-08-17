@@ -73,6 +73,9 @@ Legend: ✅ Implemented | 🚧 Partial / Stubbed | 📋 Planned
 | `chan<T>` (typed channels) | ✅ | Built-in generic thread-safe channel (single i64 handle, spatially identical to Int, so sharing a chan by value across pthreads references one channel). `chan<T>()` / `chan<T>(cap)` construct an unbounded/bounded channel; methods `send(v)`, `recv()` (blocking), `poll()` (non-blocking), `len()`, `free()`, and `handle()` (the raw Int for `chan_select`). Int-family scalar payloads use the int-slot channel runtime; String payloads use the refcounted string runtime with reference transfer (`test/modules/test_chan_typed.vyb`, `test/modules/test_chan_threaded.vyb`). Float/Bool/Char payloads are likewise supported (Float as its IEEE bit pattern,
   Bool as 0/1, Char as its code unit), and scalar `poll()` returns `Option<T>`
   (Some/None) so an empty read is unambiguous (`test/modules/test_chan_scalar.vyb`).
+  Non-identifier receivers dispatch too — a chan returned by a function
+  (`make().send(x)`) or held as a struct field (`h.ch.recv()` / `h.ch.poll()`)
+  lowers like the named-variable path (`test/modules/test_chan_nonident.vyb`).
   String payloads keep the empty-string sentinel poll. Non-identifier method
   receivers remain a follow-up |
 | `async` / `await` | 🚧 | Runtime stub |

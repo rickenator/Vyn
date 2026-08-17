@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shared by value across pthreads; scalar `poll()` is unambiguous because it
   reports readiness explicitly (`test/modules/test_chan_typed.vyb`,
   `test/modules/test_chan_threaded.vyb`, `test/modules/test_chan_scalar.vyb`).
+  Non-identifier receivers now dispatch too: a chan returned by a function
+  (`make().send(x)`) or held as a struct field (`h.ch.recv()` / `h.ch.poll()`)
+  lowers like the named-variable path (`test/modules/test_chan_nonident.vyb`).
 
 - **`vyb bindgen --full` non-integer function-like macros** — the libclang
   backend now binds comparison/logical, ternary, and string macro bodies as
