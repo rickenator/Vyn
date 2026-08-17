@@ -19,7 +19,6 @@ stdlib/
   prelude.vyb            # top-level prelude re-export module
   core/
     prelude.vyb          # canonical prelude contents
-    option.vyb           # transitional OptionInt bridge + Option<T> notes
     result.vyb           # placeholder for future Result<T,E>
   collections/
     mod.vyb              # placeholder scaffold
@@ -37,11 +36,13 @@ Prelude is **explicit-only** right now.
   - `import core::prelude`
   - `import prelude`
 
-This keeps module behavior deterministic while Option/Result/iterator/core-aspect
+This keeps module behavior deterministic while Result/iterator/core-aspect
 work is still evolving.
 
 ## Option/Result status
 
-- `core::option` currently ships a transitional, non-generic `OptionInt` model.
-- Canonical generic `Option<T>` with `Some(value)` / `None` is still future work.
+- `Option<T>` (with `Some(value)` / `None`) is a first-class built-in generic
+  data enum registered directly in the compiler; it needs no `import`. The
+  transitional `core::option::OptionInt` bridge that predated it has been
+  removed.
 - `core::result` is a placeholder module that documents future `Result<T,E>`.

@@ -1,7 +1,6 @@
-import core::option::{OptionInt, option_int_some, option_int_unwrap_or}
+import core::math::{clamp}
 
 main()<Int> -> {
-    maybe<OptionInt> = option_int_some(42)
-    println_int(option_int_unwrap_or(maybe, 0))
+    println_int(clamp(15, 0, 10))
     return 0
 }

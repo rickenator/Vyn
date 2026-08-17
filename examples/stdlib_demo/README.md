@@ -1,6 +1,6 @@
 # stdlib_demo
 
-Demonstrates stdlib module discovery with an explicit `import core::option`.
+Demonstrates stdlib module discovery with an explicit `import core::math`.
 
 ## Run
 
@@ -14,4 +14,4 @@ VYB_STDLIB=stdlib ./build/vyb examples/stdlib_demo/main.vyb
 ./build/vyb examples/stdlib_demo/main.vyb
 ```
 
-Expected output: `42`
+Expected output: `10`

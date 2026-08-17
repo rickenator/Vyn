@@ -883,18 +883,21 @@ exhaustiveness; the `for (x in it)` desugar emits that native-optional match
 (including the step form). Generic `T?` substitutes through binds, and the `else`
 operator tolerates an unresolved generic payload type (codegen enforces the
 concrete payload).
-`Option<T>`/`Some`/`None` have been fully replaced by the native `T?` surface
-in every call site (chan `poll()`, map `.get()`, iterator `next()`, and
-`mild<T>.grab()`); the only remaining work is dropping the now-dead
-`Option<T>`/`Some`/`None` definitions from the stdlib
-(`stdlib/core/option.vyb` and the prelude imports).
-**Open design question (flagged before 1.0).** The `Option<T>` / `Some(v)` / `None`
-vocabulary came from Rust (via Haskell's `Maybe`). Vyb already HAS a native optional type
+`Option<T>`/`Some`/`None` have been fully replaced by the native `T?` surface in
+every call site (chan `poll()`, map `.get()`, iterator `next()`, and `mild<T>.grab()`),
+and the now-dead `core::option` bridge (`OptionInt` and its prelude imports) has been
+removed. No `Option<T>`/`Some`/`None` surface remains in the stdlib; the compiler's
+built-in `Option<T>` enum still exists for source-compat and can be dropped by a later
+decision if undesired.
+**RESOLVED — `T?` promoted over `Option<T>`.** The `Option<T>` / `Some(v)` / `None`
+vocabulary came from Rust (via Haskell's `Maybe`). Vyb already had a native optional type
 in the compiler — `<Type>?` parses to `ast::OptionalType`, lowered to a
 `{ bool hasValue, value }` struct in codegen (`src/parser/type_parser.cpp`,
-`src/vre/llvm/cgen_types.cpp`) — but nothing uses it: the stdlib and call sites grew the
-Rust-shaped `Option<T>` enum instead. **The vybey move is to promote `T?` (already Vyb's own
-syntax, mirroring the `?` wildcard) and drop `Some`/`None`, not to rename the enum.**
+`src/vre/llvm/cgen_types.cpp`) — but the stdlib and call sites grew the Rust-shaped
+`Option<T>` enum instead. The vybey move was to promote `T?` (already Vyb's own syntax,
+mirroring the `?` wildcard) and drop `Some`/`None`, not to rename the enum — carried out
+above: every `Option<T>` call site now consumes the native `T?`, and the `core::option`
+bridge is gone.
 The design must cover every current `Option<T>` use, not just channels:
 - **Readiness** — `chan<T>.poll()` -> `Option<T>` (`Some(v)`/`None` scalars, empty-String
   sentinel; `test/modules/test_chan_scalar.vyb`, `test_chan_nonident.vyb`). Readiness is a
@@ -917,9 +920,9 @@ Common consuming surface (vybey = sentence-like, keyword-first):
   (`v<Int> ->`), absence is the existing `?` wildcard (`? ->`).
 - nothing is `Void` / the `?` path — no `Some(v)` constructor ceremony, and no
   `.unwrap()`/`.expect()` method chain.
-Keep Vyb's exhaustiveness guarantee (no silent `null`/`undefined` escape hatch). Note
-`OptionalType` (the `T?` AST + codegen) predates the `Option<T>` enum and is currently
-exercised by no tests — promoting it is more a surface/plumbing change than a new type.
+Keep Vyb's exhaustiveness guarantee (no silent `null`/`undefined` escape hatch). The
+native `T?` (`OptionalType`) is now the canonical consumed surface for chan `poll()`,
+map `.get()`, iterator `next()`, and `mild.grab()`, superseding the `Option<T>` enum.
 
 ---
 

@@ -1,14 +1,13 @@
-// @test: Stdlib core option import via VYB_STDLIB
-// @description: import core::option resolves from VYB_STDLIB without --module-path
+// @test: Stdlib core module import via VYB_STDLIB
+// @description: import core::math resolves from VYB_STDLIB without --module-path
 // @category: modules
 // @expect: pass
 // @expect-output: 7
 // @env: VYB_STDLIB=stdlib
 
-import core::option::{OptionInt, option_int_some, option_int_unwrap_or}
+import core::math::{clamp}
 
 main()<Int> -> {
-    value<OptionInt> = option_int_some(7)
-    println_int(option_int_unwrap_or(value, 0))
+    println_int(clamp(7, 1, 10))
     return 0
 }

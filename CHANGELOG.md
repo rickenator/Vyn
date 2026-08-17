@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Drop the now-dead `core::option` bridge** — the transitional `OptionInt`
+  struct and `option_int_*` helper functions (`stdlib/core/option.vyb`) and
+  their imports from the preludes are removed. They were the last surviving
+  `Option`-shaped surface; every call site (chan `poll()`, map `.get()`,
+  iterator `next()`, `mild.grab()`) already uses the native `T?`. The module
+  import/discovery tests and `examples/stdlib_demo` now exercise `core::math`
+  (`clamp`) / `prelude::prelude_ok` instead.
 - **Native `T?` optional with `else`-default** — Vyb's own optional (`<Type>?`,
   `ast::OptionalType`) is now constructible and consumable, replacing the
   Rust-shaped `Option<T>`/`Some`/`None` idiom one surface at a time.
