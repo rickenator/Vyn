@@ -498,13 +498,48 @@ def module_link(mod):
     return "[`%s`](%s)" % (mod, page(mod))
 
 
+def file_slug(rel):
+    return "file-" + re.sub(r"[^A-Za-z0-9_-]", "-", rel).lower()
+
+
+REF_TYPES = {"import", "call", "usesType", "proseRef"}
+
+
+def module_fans(g, mod):
+    """Distinct external modules that reference `mod` (fan-in) and that `mod`
+    references (fan-out), across all meaningfully-crossing edge types."""
+    inm, outm = set(), set()
+    for e in g["edges"]:
+        if e["type"] not in REF_TYPES:
+            continue
+        fm, tm = e.get("from_module"), e.get("to_module")
+        if not tm:
+            continue
+        if fm == mod and tm != mod:
+            outm.add(tm)
+        if tm == mod and fm and fm != mod:
+            inm.add(fm)
+    return inm, outm
+
+
+def symbol_fan_in(g, mod, name):
+    """Distinct external modules that reference exported symbol `name`."""
+    mods = set()
+    for e in g["edges"]:
+        if e["type"] in REF_TYPES and e.get("to_module") == mod \
+           and e.get("to_symbol") == name and e.get("from_module") not in (None, mod):
+            mods.add(e["from_module"])
+    return mods
+
+
 def render_index(g):
     L = [prov(g["git_rev"]), "# Vyb Standard Library Reference", "",
          "Auto-generated. Each module page links every exported symbol and the "
          "edges between modules: imports, imports-by, implements/binds, uses-type, "
          "runtime calls, and prose references.", "",
          "## Modules", "",
-         "| Module | Files | Exported | Imports | Imported-by | Edges |", "|---|---|---|---|---|---|"]
+         "| Module | Files | Exported | Imports | Fan-in | Fan-out | Edges |",
+         "|---|---|---|---|---|---|---|"]
     bymod = {}
     for rel in g["files"]:
         bymod.setdefault(module_of(rel), []).append(rel)
@@ -513,11 +548,10 @@ def render_index(g):
         exported = sum(1 for rel in files for s in g["files"][rel]["symbols"] if s.get("exported"))
         n_imp = sum(1 for e in g["edges"]
                     if e["type"] == "import" and e.get("from_module") == m)
-        importers = {e["from_module"] for e in g["edges"]
-                     if e["type"] == "import" and e["to_module"] == m and e["from_module"] != m}
+        fin, fout = module_fans(g, m)
         n_edge = sum(1 for e in g["edges"] if e.get("from_module") == m or e.get("to_module") == m)
-        L.append("| %s | %d | %d | %d | %d | %d |" % (
-            module_link(m), len(files), exported, n_imp, len(importers), n_edge))
+        L.append("| %s | %d | %d | %d | %d | %d | %d |" % (
+            module_link(m), len(files), exported, n_imp, len(fin), len(fout), n_edge))
     L += ["", "## Exports by kind", ""]
     kinds = {}
     for rel in g["files"]:
@@ -571,6 +605,13 @@ def render_module(m, g):
                      ", ".join(symlink(g, m, s) if s else "module"
                                for s in sorted(importers[fm]))))
         L.append("")
+    fin, fout = module_fans(g, m)
+    L += ["## Fan-in / Fan-out", ""]
+    L.append("- **Referenced by** (%d): %s" % (
+        len(fin), ", ".join(module_link(x) for x in sorted(fin)) if fin else "—"))
+    L.append("- **References** (%d): %s" % (
+        len(fout), ", ".join(module_link(x) for x in sorted(fout)) if fout else "—"))
+    L.append("")
 
     # exports, grouped by kind
     export_syms = []
@@ -578,15 +619,39 @@ def render_module(m, g):
         for s in g["files"][rel]["symbols"]:
             if s.get("exported"):
                 export_syms.append((rel, s))
-    export_syms.sort(key=lambda t: (t[1]["kind"], t[1]["name"]))
-    L += ["## Exported symbols", "", "| Symbol | Kind | Summary |", "|---|---|---|"]
+    multi = len(rels) > 1
+    export_syms.sort(key=lambda t: (t[0], t[1]["kind"], t[1]["name"]))
+    if multi:
+        L += ["## Exported symbols", "", "| Symbol | File | Kind | Fan-in | Summary |",
+              "|---|---|---|---|---|"]
+    else:
+        L += ["## Exported symbols", "", "| Symbol | Kind | Fan-in | Summary |",
+              "|---|---|---|---|"]
     for rel, s in export_syms:
         one = s.get("doc", "").splitlines()[0] if s.get("doc") else ""
-        L.append("| [`%s`](#%s) | %s | %s |" % (s["name"], slug(s["name"]), s["kind"], one))
+        fin_sym = symbol_fan_in(g, m, s["name"])
+        fincell = "%d" % len(fin_sym) if fin_sym else ""
+        fcell = "[`%s`](#%s)" % (rel, file_slug(rel)) if multi else ""
+        if multi:
+            L.append("| [`%s`](#%s) | %s | %s | %s | %s |" % (
+                s["name"], slug(s["name"]), fcell, s["kind"], fincell, one))
+        else:
+            L.append("| [`%s`](#%s) | %s | %s | %s |" % (
+                s["name"], slug(s["name"]), s["kind"], fincell, one))
     L.append("")
 
     # per-symbol detail
+    prev_rel = None
     for rel, s in export_syms:
+        if multi and rel != prev_rel:
+            L.append('<a id="%s"></a>' % file_slug(rel))
+            L.append("**File: `%s`**" % rel)
+            hdr = g["files"][rel].get("header")
+            if hdr:
+                L.append("")
+                L.append(hdr)
+            L.append("")
+            prev_rel = rel
         L.append('<a id="%s"></a>' % slug(s["name"]))
         L.append("### `%s` · %s" % (s["name"], s["kind"]))
         L.append("")
@@ -636,6 +701,10 @@ def render_module(m, g):
                     rel_out.append("- mentions %s" % symlink(g, e["to_module"], e["to_symbol"]))
                 elif e["type"] == "implement":
                     rel_out.append("- implements aspect %s" % symlink(g, e["to_module"], e["to_symbol"]))
+        fin_sym = symbol_fan_in(g, m, s["name"])
+        if fin_sym:
+            rel_out.append("- referenced by %d: %s" % (
+                len(fin_sym), ", ".join(module_link(x) for x in sorted(fin_sym))))
         if rel_out:
             seen = set()
             uniq = []

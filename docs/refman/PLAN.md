@@ -115,9 +115,11 @@ Deterministic (sorted output) so a clean tree regenerates byte-identical.
 3. **[x] M2 render** — index + per-module + cross indexes + anchors; emit `graph.json`.
 4. **[x] M3 runtime + check** — runtime map; `--check` drift/validation.
 5. **[x] M4 wire** — first-run generate, commit `docs/refman/`; optional CI target.
-6. **[ ] M5 polish** — per-file sections on multi-file module pages (`core`,
-   `error`), fan-in/out and cross-module type-consumer views, a CI `--check`
-   target, and a few hand-written short prose intros where comments are thin.
+6. **[~] M5 polish (part 1 done)** — per-file sections on multi-file module
+   pages (`core`, `error`), module + per-symbol fan-in/fan-out views, and a CI
+   `--check` target. Remaining: cross-module type-consumer view, `graph.json`
+   per-symbol nodes, and a few hand-written short prose intros where comments
+   are thin.
 
 ## Constraints / gotchas
 

@@ -667,8 +667,12 @@ with `pass` for multi-statement case bodies. Needs polishing:
   and emits `docs/refman/` (module pages + cross-indexes + `graph.json`) as an
   inter-relationship graph (import, implement, uses-type, runtime-ref, prose-ref,
   call edges), with `--check` drift/validation. Design in `docs/refman/PLAN.md`.
-- [ ] **Refman polish** — per-file sections on multi-file module pages (`core`,
-  `error`), fan-in/out and cross-module type-consumer views, CI `--check` target.
+- [x] **Refman polish (part 1)** — per-file sections on multi-file module pages
+  (`core`, `error`), module + per-symbol fan-in/fan-out views, and a CI
+  `--check` target (`.github/workflows/refman-check.yml`).
+- [ ] **Refman polish (part 2)** — cross-module type-consumer view (who builds /
+  handles `HttpResponse`, `TcpStream`, …), graph.json per-symbol nodes, and a
+  few hand-written short prose intros where comments are thin.
 
 ### Testing & Tooling
 - [ ] **`vyb test`** — Run test files alongside source (`*.test.vyb`)
