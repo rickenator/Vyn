@@ -884,6 +884,35 @@ def _norm_commit(text: str) -> str:
     return re.sub(r'"git_rev":\s*"[0-9a-f]{4,40}"', '"git_rev": "X"', text)
 
 
+def check_guide(emit_dir: Path) -> list:
+    """Validate the hand-written PROGRAMMERS_GUIDE.md: every local markdown
+    link resolves to a file, and code fences are balanced."""
+    problems = []
+    guide = emit_dir / "PROGRAMMERS_GUIDE.md"
+    if not guide.exists():
+        return problems
+    txt = guide.read_text(encoding="utf-8")
+    # balanced code fences
+    infence = 0
+    for ln in txt.splitlines():
+        if ln.strip().startswith("```"):
+            infence += 1
+    if infence % 2:
+        problems.append("PROGRAMMERS_GUIDE.md: unbalanced code fence")
+    # local markdown links
+    for m in re.finditer(r"\]\(([^)]+)\)", txt):
+        target = m.group(1)
+        if target.startswith(("http://", "https://", "mailto:")):
+            continue
+        filepart = target.split("#", 1)[0].strip()
+        if not filepart:
+            continue  # pure in-file anchor (heading links)
+        p = (emit_dir / filepart) if not filepart.startswith("../") else (ROOT / filepart)
+        if not p.exists():
+            problems.append("PROGRAMMERS_GUIDE.md: broken link -> %s" % target)
+    return problems
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--emit-dir", default=str(DEFAULT_OUT))
@@ -913,6 +942,7 @@ def main():
                     problems.append("missing: " + rel)
                 elif _norm_commit(cur_dir.read_text()) != _norm_commit(tmp):
                     problems.append("drift: " + rel)
+        problems += check_guide(Path(a.emit_dir))
         if problems:
             print("refman --check: %d problem(s)" % len(problems))
             for p in sorted(set(problems)):
