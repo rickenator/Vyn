@@ -70,31 +70,31 @@ lives.
 
 | Area | Sections |
 |---|---|
-| Types, literals, `T?` | §3.2 |
-| Variables, mutability, `const` | §3.3 |
-| Functions & parameters, `fn` types | §3.4 |
-| Closures & lambdas, capture forms | §3.5, §3.5.1 |
-| Control flow (`for`/`while`/ranges) | §3.6 |
-| `match` / `select`, patterns, exhaustiveness | §3.7 |
-| Tuples & variadic tuples | §3.8 |
-| Structs | §3.9 |
-| Enums & constant enums | §3.10 |
-| Operators (arithmetic, bitwise, compound) | §3.11 |
-| Casts (`as`) | §3.12 |
-| Ownership & accessors (`my`/`our`/`their`/`mild`/`soft`) | §3.13 |
-| Generics & monomorphization | §3.14 |
-| Aspects & binds (polymorphism) | §3.15 |
-| Errors (`trap`/`fail`/`ensure`) | §3.16 |
-| Strings | §3.17 |
-| Collections | §3.18 |
-| Modules & imports (`import`/`share(all)`/`prelude`) | §3.19 |
-| FFI & native bridge | §3.20 |
-| Serialization | §3.21 |
-| Introspection | §3.22 |
-| Async / `await` / `Future<T>` | §3.23, §3.23.1–§3.23.3 |
-| Memory model / freedom | §7, Appendix B |
-| Standard library tour | §4 |
-| Concurrency model | §5 |
+| Types, literals, `T?` | [§3.2](#32-primitives-and-literals) |
+| Variables, mutability, `const` | [§3.3](#33-variables-inference-mutability) |
+| Functions & parameters, `fn` types | [§3.4](#34-functions-and-parameters) |
+| Closures & lambdas, capture forms | [§3.5](#35-closures-and-lambdas), [§3.5.1](#351-capture-forms) |
+| Control flow (`for`/`while`/ranges) | [§3.6](#36-control-flow) |
+| `match` / `select`, patterns, exhaustiveness | [§3.7](#37-pattern-matching-match-and-select) |
+| Tuples & variadic tuples | [§3.8](#38-tuples-and-variadic-tuples) |
+| Structs | [§3.9](#39-structs) |
+| Enums & constant enums | [§3.10](#310-enums) |
+| Operators (arithmetic, bitwise, compound) | [§3.11](#311-operators) |
+| Casts (`as`) | [§3.12](#312-casts-with-as) |
+| Ownership & accessors (`my`/`our`/`their`/`mild`/`soft`) | [§3.13](#313-ownership-and-accessors) |
+| Generics & monomorphization | [§3.14](#314-generics-and-monomorphization) |
+| Aspects & binds (polymorphism) | [§3.15](#315-aspects-and-binds-polymorphism) |
+| Errors (`trap`/`fail`/`ensure`) | [§3.16](#316-error-handling-trap-fail-ensure) |
+| Strings | [§3.17](#317-strings) |
+| Collections | [§3.18](#318-collections) |
+| Modules & imports (`import`/`share(all)`/`prelude`) | [§3.19](#319-modules-and-imports) |
+| FFI & native bridge | [§3.20](#320-ffi-and-the-native-bridge) |
+| Serialization | [§3.21](#321-serialization) |
+| Introspection | [§3.22](#322-introspection) |
+| Async / `await` / `Future<T>` | [§3.23](#323-asynchronous-programming), [§3.23.1–§3.23.3](#3231-async-lambdas) |
+| Memory model / freedom | [§7](#7-performance-and-memory-model), [Appendix B](#appendix-b-auto-serialization) |
+| Standard library tour | [§4](#4-standard-library-reference) |
+| Concurrency model | [§5](#5-concurrency-and-async-model) |
 
 **Maintenance policy.** Changes to core language features are documented
 *here* first — not scattered across README or only in tests. When you add or
@@ -140,7 +140,7 @@ static vs dynamic linking.
 python3 test_harness.py --vyb ./build/vyb --workers 16
 ```
 
-Key test knobs (see also §8): `--pattern`, `--category`, `--report`,
+Key test knobs (see also [§8](#8-testing-and-tooling)): `--pattern`, `--category`, `--report`,
 `triage` for triage planning, and HTML report generation.
 
 ---
@@ -296,7 +296,7 @@ readMine<fn(Int) -> Int> = |x<Int>| -> mine.n + x
 - `|| -> …` is the zero-arg form; `|| -> { … }` a zero-arg block body; a
   `failable` body can `fail` and the caller `trap`s it.
 
-Async closures are the §3.23.5 async-lambda form (`async |x| -> await f(x)`).
+Async closures are the [§3.23.2](#3232-async-closures-as-parameters) async-closure form (`async |x| -> await f(x)`).
 
 ### 3.6 Control flow
 
@@ -398,7 +398,7 @@ p<Point> = Point { x = 1.0, y = 2.0 }
 p.x = 3.0                        # field access (mutable receiver/owner)
 ```
 
-Structs hold data only; behavior lives in **binds** (§3.15). Struct fields may
+Structs hold data only; behavior lives in **binds** ([§3.15](#315-aspects-and-binds-polymorphism)). Struct fields may
 be owned, `their`-borrowed, or typed generically (`struct Pair<K, V>`).
 
 ### 3.10 Enums
@@ -445,7 +445,7 @@ s = "Count: " + 42
 ```
 
 Bitwise operators require matching widths; literals adapt to the operand type.
-Build byte compositions with unsigned widths and `as` (§3.12), e.g. packing
+Build byte compositions with unsigned widths and `as` ([§3.12](#312-casts-with-as)), e.g. packing
 four `UInt8` bytes into a `UInt32`.
 
 ### 3.12 Casts with `as`
@@ -563,7 +563,7 @@ bind Drawable -> Circle {
   `MapOps -> HashMap<K, V>`).
 - The **core aspects** — `Display`, `Debug`, `Clone`, `Equatable`,
   `Comparable`, `Hashable`, plus `StringOps` and `Iterator` — are bound to the
-  primitives and used as generic bounds throughout the stdlib (see §4.1).
+  primitives and used as generic bounds throughout the stdlib (see [§4.1](#41-core-contracts-math-prelude)).
 - A bind's methods write against `self` (the bound type's fields) exactly like
   instance methods. Calling `account.transfer(...)` dispatches through the
   type's bound aspect.
@@ -687,7 +687,7 @@ s<BTreeMap<String, Int>> = BTreeMap()   # ordered (Comparable+Equatable keys)
 iterator types (`MapIter<K,V>`, `HashIter<K>`, `BTreeIter<K,V>`).
 
 Range/`Vec` iteration, `for (x in m.iter(), step)`, and the `Iterator`
-protocol are all unified in §3.6.
+protocol are all unified in [§3.6](#36-control-flow).
 
 ### 3.19 Modules and imports
 
@@ -845,7 +845,7 @@ r<Int> = await async_score(scorer, 10)    # 27
 `async_poll`, `async_run_all`, `async_yield`, `async_sleep_ms`, and the
 network bridges `async_tcp_*` / `async_udp_*` (`network`).
 
-See [the asyncs module](asyncs.md) and §5.
+See [the asyncs module](asyncs.md) and [§5](#5-concurrency-and-async-model).
 
 ---
 
@@ -885,7 +885,7 @@ Module page: [`error.md`](error.md). A multi-file namespace
 (`errable.vyb`, `display.vyb`, `error.vyb`, `io_error.vyb`,
 `network_error.vyb`, `parse_error.vyb`) providing `Display`/`Errable`
 contracts and error structs with context (file, network, parse). Pair with
-`trap` / `fail` (§3.16) for domain error types.
+`trap` / `fail` ([§3.16](#316-error-handling-trap-fail-ensure)) for domain error types.
 
 ```vyb
 # fail with a structured error carrying context
@@ -951,7 +951,7 @@ b<BTreeMap<String, Int>> = BTreeMap()   # K<Comparable, Equatable>
 ```
 
 Iterator types `VecIter`, `MapIter`, `HashIter`, `BTreeIter` bind the
-`Iterator` aspect, so they work directly in `for (x in …)` (§3.6).
+`Iterator` aspect, so they work directly in `for (x in …)` ([§3.6](#36-control-flow)).
 
 ### 4.6 `channels` — typed channel primitives
 
@@ -970,7 +970,7 @@ chan_select(handles<Vec<Int>>)<Int>             # wait on many channels
 `chan_recv_opt` returns `Int?` (present when a value arrives, absent when the
 channel is closed and drained). `strchan_*` mirror these over `String`
 payloads (`String?` for the empty case). `chan_select` returns which handle
-is ready; see §5 for its role in the async model.
+is ready; see [§5](#5-concurrency-and-async-model) for its role in the async model.
 
 ### 4.7 `threads` — pthread, mutex, condvar, atomics
 
@@ -1020,7 +1020,7 @@ async_yield()<Int>                # round-robin to other fibers
 ```
 
 Non-`Int` futures (`Float`, `Bool`, `String`) are supported
-(`Future<T>` async functions, §3.23).
+(`Future<T>` async functions, [§3.23](#323-asynchronous-programming)).
 
 ### 4.10 `network` — sockets, TCP, UDP
 
@@ -1071,7 +1071,7 @@ tls_close(s)<Int>; tls_free_context(ctx)<Void>; tls_error_code()/tls_error_messa
 
 `TlsStreamOps`/`TlsContextOps` bind the method surface (`write`, `read`,
 `connect`, `accept`, `close`, `dispose`) onto the structs. `https_selfhost*`
-(§4.13) exercise the full wiring end-to-end.
+([§4.13](#413-https-https-client-over-tls-http)) exercise the full wiring end-to-end.
 
 ### 4.12 `http` — pure-Vyb HTTP/1.1 client and server
 
@@ -1367,7 +1367,7 @@ Custom serialization is available by implementing the `Serialize` aspect.
 
 This appendix is the single home for Vyb's formal grammar. Every production here
 is the **current** compiler surface: it parses today, and it matches what the
-feature sections in §3 and §4 (and the `test/` suite) exercise. Vyb has one
+feature sections in [§3](#3-language-tour) and [§4](#4-standard-library-reference) (and the `test/` suite) exercise. Vyb has one
 unified syntax — there is no legacy alternate form to keep track of.
 
 ```ebnf
