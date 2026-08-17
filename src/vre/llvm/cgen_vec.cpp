@@ -480,19 +480,69 @@ void LLVMCodegen::handleVecToArray(vyb::ast::CallExpression* node, llvm::Value* 
         return;
     }
 
-    // Evaluate the size argument
-    node->arguments[0]->accept(*this);
-    llvm::Value* sizeValue = m_currentLLVMValue;
-    if (!sizeValue) {
-        logError(node->loc, "Failed to evaluate size argument for Vec::to_array");
+    VYB_CDBG << "DEBUG: Vec::to_array() called - converting to fixed array" << std::endl;
+
+    // The call's static type is the fixed array target, e.g. `[T; N]`. Recover
+    // the element type from that annotation; the length N is the (compile-time)
+    // size argument. Together they give a real `[N x T]` value instead of the
+    // old placeholder scalar.
+    llvm::ArrayType* arrayTy = nullptr;
+    ast::TypeNode* resultType = node->type.get();
+    if (ast::ArrayType* arrAst = dynamic_cast<ast::ArrayType*>(resultType)) {
+        llvm::Type* elemTy = arrAst->elementType ? codegenType(arrAst->elementType.get()) : nullptr;
+        if (elemTy) {
+            llvm::Value* sizeV = nullptr;
+            if (ast::IntegerLiteral* sz = dynamic_cast<ast::IntegerLiteral*>(node->arguments[0].get())) {
+                uint64_t n = sz->isUnsigned ? (uint64_t)sz->uvalue : (uint64_t)sz->value;
+                sizeV = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), n);
+            } else {
+                node->arguments[0]->accept(*this);
+                sizeV = m_currentLLVMValue;
+            }
+            if (sizeV) {
+                if (auto* ci = llvm::dyn_cast<llvm::ConstantInt>(sizeV)) {
+                    uint64_t n = ci->getZExtValue();
+                    if (n > 0) arrayTy = llvm::ArrayType::get(elemTy, n);
+                } else {
+                    arrayTy = nullptr; // runtime-sized targets need more work
+                }
+            }
+        }
+    }
+
+    if (!arrayTy) {
+        logError(node->loc, "Vec::to_array requires a fixed-size array target (e.g. `[Int; 2]`)");
+        m_currentLLVMValue = nullptr;
         return;
     }
 
-    VYB_CDBG << "DEBUG: Vec::to_array() called - converting to fixed array" << std::endl;
+    llvm::Type* elemTy = arrayTy->getElementType();
+    const uint64_t count = arrayTy->getNumElements();
+    llvm::DataLayout dl(module.get());
+    const uint64_t elemBytes = dl.getTypeAllocSize(elemTy);
 
-    // For now, return a placeholder array
-    // In full implementation, would create array from Vec elements
-    m_currentLLVMValue = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 0);
+    // Dense storage: { ptr data, i64 size, i64 capacity }. Fetch the data pointer
+    // and the Vec's logical size so we copy only up to what is actually present.
+    llvm::Value* dataPtr = builder->CreateLoad(
+        llvm::PointerType::get(*context, 0),
+        builder->CreateStructGEP(vecStructType, vecPtr, 0, "vec.toarr.data_ptr"),
+        "vec.toarr.data");
+    llvm::Value* vecSize = builder->CreateLoad(
+        llvm::Type::getInt64Ty(*context),
+        builder->CreateStructGEP(vecStructType, vecPtr, 1, "vec.toarr.size_ptr"),
+        "vec.toarr.size");
+
+    llvm::Value* result = llvm::UndefValue::get(arrayTy);
+    for (unsigned i = 0; i < count; ++i) {
+        llvm::Value* idx = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), i);
+        llvm::Value* offset = builder->CreateMul(
+            idx, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), elemBytes), "vec.toarr.off");
+        llvm::Value* elemPtr = builder->CreateGEP(
+            llvm::Type::getInt8Ty(*context), dataPtr, offset, "vec.toarr.elem");
+        llvm::Value* loaded = builder->CreateLoad(elemTy, elemPtr, "vec.toarr.val");
+        result = builder->CreateInsertValue(result, loaded, {i}, "vec.toarr.arr");
+    }
+    m_currentLLVMValue = result;
 }
 
 void LLVMCodegen::handleVecClear(vyb::ast::CallExpression* node, llvm::Value* vecPtr, llvm::Type* vecStructType) {

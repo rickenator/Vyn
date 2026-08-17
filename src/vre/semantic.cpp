@@ -8538,11 +8538,19 @@ void SemanticAnalyzer::handleVecMethodCall(ast::CallExpression* node, const std:
             addError("Vec::to_array expects exactly 1 argument (array size)", node);
             return;
         }
-        // TODO: Validate size argument is integer
-        // Return array type [T; N]
-        auto intId = std::make_unique<ast::Identifier>(node->loc, "Int");
-        auto intType = std::make_unique<ast::TypeName>(node->loc, std::move(intId));
-        auto arrayType = std::make_unique<ast::ArrayType>(node->loc, std::move(intType), nullptr);
+        // Return array type [T; N]: element type taken from the Vec<T> receiver
+        // so `node->type` names a real array and codegen can build `[N x T]`.
+        ast::TypeNodePtr elemType = nullptr;
+        if (auto vt = dynamic_cast<ast::VecType*>(vecTypeNode)) {
+            elemType = vt->elementType ? vt->elementType->clone() : nullptr;
+        } else if (auto tn = dynamic_cast<ast::TypeName*>(vecTypeNode)) {
+            if (tn->identifier && tn->identifier->name == "Vec" && !tn->genericArgs.empty())
+                elemType = tn->genericArgs[0]->clone();
+        }
+        if (!elemType)
+            elemType = std::make_unique<ast::TypeName>(
+                node->loc, std::make_unique<ast::Identifier>(node->loc, "Int"));
+        auto arrayType = std::make_unique<ast::ArrayType>(node->loc, std::move(elemType));
         expressionTypes[node] = arrayType.get();
         node->type = std::shared_ptr<ast::TypeNode>(std::move(arrayType));
 
