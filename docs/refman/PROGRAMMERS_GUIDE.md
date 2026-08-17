@@ -931,19 +931,26 @@ core aspects; reads return `V?` optionals (use `else` to default).
 
 ```vyb
 # Vec
-v<Vec<Int>> = Vec()               # or Vec(n) to preallocate
-v.push(x); v.pop()?/…; v.len(); v.get(i)
-v.first()/v.last()/v.reversed()/v.find(x)/v.min()/v.max()/v.sorted()
-v.sort_in_place()/v.reverse_in_place()/v.map_in_place(f)/v.retain(f)
-v.map(f)/v.filter(f)/v.reduce(init, f)      # higher-order over the Vec
-v.iter()<VecIter<T>>
+v<Vec<Int>> = Vec()                # or Vec(n) to preallocate
+
+v.push(x)                          # append
+v.pop()?                           # remove last (absent when empty)
+v.len()                            # size
+v.get(i)                           # bounds-checked read
+v.first() ; v.last()               # endpoints (optional)
+v.reversed() ; v.sorted()          # fresh copies
+v.find(x) ; v.min() ; v.max()
+v.sort_in_place() ; v.reverse_in_place()
+v.map_in_place(f) ; v.retain(f)
+v.map(f) ; v.filter(f) ; v.reduce(init, f)   # higher-order over the Vec
+v.iter()<VecIter<T>>               # iterator
 ```
 
 ```vyb
 # HashMap (K<Hashable, Equatable>)
 m<HashMap<String, Int>> = HashMap()
 m.put("a", 1); m.get("a") else -1; m.contains_key("a"); m.size()
-m.keys()/m.values(); m.iter()<MapIter<K,V>>
+m.keys() ; m.values() ; m.iter()<MapIter<K,V>>
 
 # HashSet and ordered BTreeMap
 h<HashSet<String>> = HashSet(); h.insert("x"); h.contains("x"); h.size()
