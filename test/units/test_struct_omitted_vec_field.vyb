@@ -1,0 +1,41 @@
+// @test: struct literals zero-initialize omitted owned fields
+// @description: a struct literal that omits an owned field (a Vec or String)
+//   must leave it as an empty value (null buffer), not uninitialized stack bytes.
+//   Otherwise scope-exit reclamation frees a garbage non-null buffer, corrupting
+//   the heap and crashing (regression: assigning a struct with an omitted Vec
+//   field crashed at teardown with SIGSEGV).
+// @category: ownership, structs, vec, crash
+// @expect: pass
+// @expect-return: 3
+// @execute-jit: true
+
+import collections
+
+struct Bundle {
+    id<Int>,
+    tag<String>,
+    nums<Vec<Int>>,
+    names<Vec<String>>
+}
+
+main()<Int> -> {
+    # Empty literal: every owned field defaults to empty (null buffer / empty String).
+    a<Bundle> = Bundle { }
+    a.nums.push(1); a.nums.push(2)
+    a.names.push("x"); a.names.push("y")
+    println_int(a.nums.len())
+    println_int(a.names.len())
+
+    # Partial literal: the omitted tag / names fields default to empty.
+    b<Bundle> = Bundle { id = 9, nums = Vec() }
+    println_int(b.id)
+    println_int(b.names.len())
+
+    # Full literal is unaffected.
+    c<Bundle> = Bundle { id = 3, tag = "hi", nums = Vec(), names = Vec() }
+    c.names.push("z")
+    println_int(c.names.len())
+
+    # Teardown of all three (incl. the omitted Vec/String fields) must not crash.
+    return 3
+}

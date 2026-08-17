@@ -276,6 +276,13 @@ void LLVMCodegen::visit(vyb::ast::ObjectLiteral* node) {
     // Allocate stack space for the struct
     llvm::AllocaInst* allocaInst = builder->CreateAlloca(structTy, nullptr, structName + "_obj");
 
+    // Zero-initialize the whole struct first so any *omitted* fields default to
+    // an empty value (null Vec buffer / empty String / zero scalars) rather than
+    // uninitialized stack bytes. An owned field (e.g. a Vec) left at garbage
+    // bytes would hand its scope-exit reclamation a bogus non-null buffer to free,
+    // corrupting the heap. Explicit properties are stored right after this.
+    builder->CreateStore(llvm::ConstantAggregateZero::get(structTy), allocaInst);
+
     // Set metadata or debug info to help identify this as a struct of type structName
     // This can help when trying to determine the type in MemberExpression
     if (!structName.empty() && structName != "anon") {
