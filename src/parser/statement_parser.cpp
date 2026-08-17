@@ -614,8 +614,8 @@ std::unique_ptr<vyb::ast::ForStatement> StatementParser::buildForLoopIteratorDes
     auto break_block = std::make_unique<vyb::ast::BlockStatement>(loc, std::move(break_block_stmts));
     auto none_body = std::make_unique<vyb::ast::BlockExpression>(loc, std::move(break_block));
 
-    // The Some-arm pattern binding: without a step it is the user's `item`;
-    // with a step the Some-arm first advances `step`-1 more elements (so the
+    // The present-arm pattern binding: without a step it is the user's `item`;
+    // with a step the present arm first advances `step`-1 more elements (so the
     // loop yields indices 0, step, 2*step, ... exactly like the Vec index path)
     // and the `item` it yields is the seed of each group.
     vyb::ast::ExprPtr some_binding = std::make_unique<vyb::ast::Identifier>(loc, ident.lexeme);
@@ -678,7 +678,7 @@ std::unique_ptr<vyb::ast::ForStatement> StatementParser::buildForLoopIteratorDes
         auto inner_while = std::make_unique<vyb::ast::WhileStatement>(loc, std::move(cond), std::move(inner_while_block));
 
         // Prepend `{ var __s_ = 1; while (...) {...}; ` to the body so the user's
-        // `item` (bound by the Some pattern) is the seed of each group.
+        // `item` (bound by the present pattern) is the seed of each group.
         if (body) {
             body->body.insert(body->body.begin(), std::move(inner_while));
             body->body.insert(body->body.begin(), std::move(s_decl));

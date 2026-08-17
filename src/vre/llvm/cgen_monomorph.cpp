@@ -281,29 +281,21 @@ llvm::StructType* LLVMCodegen::monomorphizeEnum(const std::string& baseName,
                                          : (substArgs = applyTypeSubstitutions(typeArgs), substArgs);
     std::string mangledName = mangleGenericTypeName(baseName, effectiveArgs);
 
-    // Built-in generic data enums: `enum Option<T> { Some(T), None }` and
-    // `enum Result<T, E> { Ok(T), Err(E) }`. They are not declared in source, so
-    // build their tagged-union layouts directly from the payload type arguments
-    // rather than a codegen-registered template.
-    if (baseName == "Option" || baseName == "core::option::Option" ||
-        baseName == "Result" || baseName == "core::result::Result") {
+    // Built-in generic data enum `enum Result<T, E> { Ok(T), Err(E) }`. It is not
+    // declared in source, so build its tagged-union layout directly from the payload
+    // type arguments rather than a codegen-registered template. The legacy
+    // `Option<T>` enum (Some/None) has been removed in favor of the native `T?`.
+    if (baseName == "Result" || baseName == "core::result::Result") {
         auto cacheIt = taggedEnumInfo.find(mangledName);
         if (cacheIt != taggedEnumInfo.end()) return cacheIt->second.llvmType;
         TaggedEnumInfo info;
-        const bool isOption = (baseName == "Option" || baseName == "core::option::Option");
         struct PayloadVariant { const char* name; unsigned typeArgIdx; };
         std::vector<PayloadVariant> payloadVariants;
         int64_t tag = 0;
-        if (isOption) {
-            info.variantTags["Some"] = static_cast<unsigned>(tag++);
-            payloadVariants.push_back({"Some", 0});
-            info.variantTags["None"] = static_cast<unsigned>(tag++);
-        } else {
-            info.variantTags["Ok"] = static_cast<unsigned>(tag++);
-            payloadVariants.push_back({"Ok", 0});
-            info.variantTags["Err"] = static_cast<unsigned>(tag++);
-            payloadVariants.push_back({"Err", 1});
-        }
+        info.variantTags["Ok"] = static_cast<unsigned>(tag++);
+        payloadVariants.push_back({"Ok", 0});
+        info.variantTags["Err"] = static_cast<unsigned>(tag++);
+        payloadVariants.push_back({"Err", 1});
         unsigned payloadBytes = 0;
         for (const auto& pv : payloadVariants) {
             if (pv.typeArgIdx >= effectiveArgs.size() || !effectiveArgs[pv.typeArgIdx]) continue;

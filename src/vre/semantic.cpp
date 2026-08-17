@@ -39,7 +39,7 @@ static bool chanElementIsString(const ast::TypeNode* tn) {
 }
 
 // Resolve a built-in chan<T> method call: `send(v)` returns Int; `recv`
-// returns the element type T; `poll` returns Option<T> for scalar payloads
+// returns the element type T; `poll` returns the native `T?` for scalar payloads
 // (T for String payloads); `len`/`free`/`handle` return Int. Shared by the
 // identifier-receiver and non-identifier-receiver paths; codegen dispatches by
 // element type.
@@ -453,12 +453,12 @@ static ast::TypeNodePtr substituteGenericArgsForValidation(
     return typeNode->clone();
 }
 
-// Parse a concrete Vyb type string (e.g. "Option<Int>", "Box<Vec<Int>>", "Int")
+// Parse a concrete Vyb type string (e.g. "Result<Int, String>", "Box<Vec<Int>>", "Int")
 // into a structured TypeName tree. Generic bind/concrete-aspect return types are
 // resolved to strings and previously wrapped as a single flat Identifier (literally
-// named "Option<Int>"), which breaks structural type comparison against a properly
-// parsed "Option<Int>" (an Identifier "Option" with one generic arg). Building the
-// tree preserves the correct shape so `areTypesCompatible` and codegen agree.
+// named "Result<Int,String>"), which breaks structural type comparison against a
+// properly parsed "Result<Int, String>". Building the tree preserves the correct
+// shape so `areTypesCompatible` and codegen agree.
 static std::unique_ptr<ast::TypeNode> concreteTypeStringToNode(const std::string& str);
 
 static std::unique_ptr<ast::TypeNode> concreteTypeStringToNodeImpl(const std::string& str, size_t& i) {
@@ -560,17 +560,15 @@ SemanticAnalyzer::SemanticAnalyzer(Driver& driver) : driver_(driver), currentSco
         "lit", "notype", "bare", "deserial"
     };
 
-    // Built-in generic data enums: `enum Option<T> { Some(T), None }` and
-    // `enum Result<T, E> { Ok(T), Err(E) }`. Registered as templates so the types
-    // are first-class and their variants participate in match/select dispatch and
-    // exhaustiveness, just like source-declared generic enums (e.g. `Box<T>`).
+    // Built-in generic data enum `enum Result<T, E> { Ok(T), Err(E) }`.
+    // Registered as a template so the type is first-class and its variants
+    // participate in match/select dispatch and exhaustiveness, just like
+    // source-declared generic enums (e.g. `Box<T>`). The legacy `Option<T>`
+    // enum (Some/None) has been removed in favor of the native `T?` optional.
     auto typeParam = [](const char* name) {
         return std::make_unique<ast::TypeName>(
             SourceLocation(), std::make_unique<ast::Identifier>(SourceLocation(), name));
     };
-    enumGenericParamOrder["Option"] = std::vector<std::string>{"T"};
-    enumTemplatePayloadTypes["Option"]["Some"].push_back(typeParam("T")->clone());
-    enumTemplatePayloadTypes["Option"]["None"] = std::vector<ast::TypeNodePtr>();
     enumGenericParamOrder["Result"] = std::vector<std::string>{"T", "E"};
     enumTemplatePayloadTypes["Result"]["Ok"].push_back(typeParam("T")->clone());
     enumTemplatePayloadTypes["Result"]["Err"].push_back(typeParam("E")->clone());
@@ -583,33 +581,27 @@ void SemanticAnalyzer::addError(const std::string& message, const ast::Node* nod
     errors.push_back(message);
 }
 
-// If `expr` is a bare constructor of a built-in generic data enum (`Some(x)` /
-// `None` for `Option<T>`, or `Ok(x)` / `Err(x)` for `Result<T, E>`) and
-// `targetType` is the matching enum type, inject the concrete enum type into
-// `expr` so the constructor infers its payload without explicit type arguments.
-// This lets `r<Option<Int>> = None` and `return Ok(v)` infer their payloads.
+// If `expr` is a bare constructor of the built-in generic data enum Result
+// (`Ok(x)` / `Err(x)`) and `targetType` is the matching enum type, inject the
+// concrete enum type into `expr` so the constructor infers its payload without
+// explicit type arguments. This lets `return Ok(v)` infer its payload.
 static bool injectBareEnumConstructorType(ast::Expression* expr, ast::TypeNode* targetType) {
     if (!expr || !targetType) return false;
     auto* tn = dynamic_cast<ast::TypeName*>(targetType);
     if (!tn || !tn->identifier) return false;
     const std::string& enumName = tn->identifier->name;
 
-    bool isSome = false, isNone = false, isOk = false, isErr = false;
+    bool isOk = false, isErr = false;
     if (auto* call = dynamic_cast<ast::CallExpression*>(expr)) {
         if (auto* id = dynamic_cast<ast::Identifier*>(call->callee.get())) {
             const std::string& cn = id->name;
-            isSome = cn == "Some";
             isOk = cn == "Ok";
             isErr = cn == "Err";
         }
-    } else if (auto* id = dynamic_cast<ast::Identifier*>(expr)) {
-        isNone = id->name == "None";
     }
 
     bool matches = false;
-    if (enumName == "Option") {
-        matches = isSome || isNone;
-    } else if (enumName == "Result") {
+    if (enumName == "Result") {
         matches = isOk || isErr;
     }
     if (!matches) return false;
@@ -619,8 +611,8 @@ static bool injectBareEnumConstructorType(ast::Expression* expr, ast::TypeNode* 
 }
 
 void SemanticAnalyzer::injectBareEnumCtorArgTypes(ast::CallExpression* node) {
-    // Inject a parameter's `Option<T>`/`Result<T,E>` type into a matching bare
-    // constructor argument (`Some`/`None`/`Ok`/`Err`) so it infers its payload.
+    // Inject a parameter's `Result<T,E>` type into a matching bare constructor
+    // argument (`Ok`/`Err`) so it infers its payload.
     auto tryInject = [&](ast::Expression* arg, ast::TypeNode* paramType) {
         if (!arg || !paramType) return;
         injectBareEnumConstructorType(arg, paramType);
@@ -642,7 +634,7 @@ void SemanticAnalyzer::injectBareEnumCtorArgTypes(ast::CallExpression* node) {
             ast::TypeNode* pt = fd->params[i].typeNode.get();
             if (!pt) continue;
             // Skip a param that references a generic type parameter: without
-            // forward inference there is no concrete Option/Result to inject.
+            // forward inference there is no concrete Result to inject.
             if (!gparams.empty()) {
                 std::string pstr = pt->toString();
                 bool refsGeneric = false;
@@ -657,7 +649,7 @@ void SemanticAnalyzer::injectBareEnumCtorArgTypes(ast::CallExpression* node) {
     }
 
     // 2. Vec method call: `v.push(x)` propagates the vector's element type into
-    //    its single argument (e.g. `v<Vec<Option<Int>>>` with `v.push(Some(x))`).
+    //    its single argument (e.g. `v<Vec<Result<Int, String>>>`).
     if (auto* mem = dynamic_cast<ast::MemberExpression*>(node->callee.get())) {
         auto* objId = dynamic_cast<ast::Identifier*>(mem->object.get());
         auto* propId = dynamic_cast<ast::Identifier*>(mem->property.get());
@@ -1021,15 +1013,6 @@ ast::TypeNode* SemanticAnalyzer::substituteSelfType(ast::TypeNode* returnType, c
 
 // Basic visit methods for expressions (Single definitions)
 void SemanticAnalyzer::visit(ast::Identifier* node) {
-    // Bare Option unit constructor: `None`. A surrounding annotation injects the
-    // target `Option<T>` type into this node so `None` is typed as that Option.
-    if (node->name == "None" && node->type) {
-        auto* optTn = dynamic_cast<ast::TypeName*>(node->type.get());
-        if (optTn && optTn->identifier && optTn->identifier->name == "Option") {
-            expressionTypes[node] = node->type.get();
-            return;
-        }
-    }
     // Handle built-in type identifiers that don't need to be in symbol table
     // These are used in contexts like Vec::new(), Int::from_string() where the type is a namespace
     if (node->name == "Vec" || node->name == "Int" || node->name == "Float" ||
@@ -1991,19 +1974,18 @@ void SemanticAnalyzer::handleVecConstructor(ast::CallExpression* node) {
 }
 
 void SemanticAnalyzer::visit(ast::CallExpression* node) {
-    // Bare builtin enum constructor: `Some(x)` (Option) and `Ok(x)` / `Err(e)`
-    // (Result). A surrounding annotation (variable declaration or return
-    // statement) injects the target enum type into this node, so the constructor
-    // infers its payload without explicit type arguments.
+    // Bare builtin enum constructor: `Ok(x)` / `Err(e)` for Result. A surrounding
+    // annotation (variable declaration or return statement) injects the target enum
+    // type into this node, so the constructor infers its payload without explicit
+    // type arguments.
     if (auto calleeId = dynamic_cast<ast::Identifier*>(node->callee.get())) {
         const std::string& cn = calleeId->name;
-        if (node->type && (cn == "Some" || cn == "Ok" || cn == "Err")) {
+        if (node->type && (cn == "Ok" || cn == "Err")) {
             auto* etn = dynamic_cast<ast::TypeName*>(node->type.get());
             if (etn && etn->identifier) {
                 const std::string& en = etn->identifier->name;
-                bool isOptionSome = (cn == "Some" && en == "Option");
                 bool isResultCtor = (en == "Result" && (cn == "Ok" || cn == "Err"));
-                if (isOptionSome || isResultCtor) {
+                if (isResultCtor) {
                     if (node->arguments.size() != 1) {
                         addError(cn + " expects exactly one payload argument, got " +
                                  std::to_string(node->arguments.size()), node);
@@ -2159,8 +2141,8 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
     }
 
     // Expected-type propagation: inject param/element types into bare enum
-    // constructor arguments (`Some`/`None`/`Ok`/`Err`) before they are visited,
-    // so they can appear as subexpressions (e.g. `unwrap(Some(7))`).
+    // constructor arguments (`Ok`/`Err`) before they are visited, so they can
+    // appear as subexpressions (e.g. `classify(Ok(11))`).
     injectBareEnumCtorArgTypes(node);
 
     // Visit arguments
@@ -4234,18 +4216,17 @@ void SemanticAnalyzer::visit(ast::MemberExpression* node) {
         return;
     }
 
-    // `.value` accessor on the built-in `Option<T>` / `Result<T,E>` enums:
-    // reads the payload of the primary (success) data variant (`Some(T)` for
-    // Option, `Ok(T)` for Result) as its payload type `T`. The object here is a
-    // value of the concrete enum type (e.g. `m.get(k)` → `Option<Int>`), not a
-    // qualified/`GenericInstantiationExpression` variant constructor, which is
-    // handled earlier in this visitor. Codegen compiles it to a guarded extract
+    // `.value` accessor on the built-in `Result<T,E>` enum: reads the payload of
+    // the primary (success) data variant (`Ok(T)`) as its payload type `T`. The
+    // object here is a value of the concrete enum type (e.g. `Result<Int, String>`),
+    // not a qualified/`GenericInstantiationExpression` variant constructor, which
+    // is handled earlier in this visitor. Codegen compiles it to a guarded extract
     // of the tagged-union payload.
     if (fieldName == "value") {
         if (auto* objEnumType = dynamic_cast<ast::TypeName*>(it->second)) {
             if (objEnumType->identifier) {
                 const std::string env = objEnumType->identifier->name;
-                if ((env == "Option" || env == "Result") && !objEnumType->genericArgs.empty()) {
+                if (env == "Result" && !objEnumType->genericArgs.empty()) {
                     ast::TypeNode* pal = objEnumType->genericArgs[0].get();
                     expressionTypes[node] = pal;
                     node->type = std::shared_ptr<ast::TypeNode>(pal->clone());
@@ -5743,10 +5724,10 @@ void SemanticAnalyzer::visit(ast::MatchStatement* node) {
             matchTypeStr = node->expr->type->toString();
         }
     }
-    // A generic bind method may return a concrete enum (e.g. `Option<T>` substituted
-    // to `Option<Int>`) whose payload types were never materialized (only the bind's
-    // loose `Option<T>` was). Register the concrete enum so variant patterns such as
-    // `Some(x)` / `None` resolve below.
+    // A generic bind method may return a concrete enum (e.g. `Result<T,E>`
+    // substituted to `Result<Int,String>`) whose payload types were never
+    // materialized (only the bind's loose `Result<T,E>` was). Register the
+    // concrete enum so variant patterns such as `Ok(x)` / `Err(e)` resolve below.
     if (node->expr) materializeConcreteEnum(node->expr->type.get());
 
     // A match over a native optional `T?`: the present arm binds the bare payload
@@ -6019,7 +6000,7 @@ void SemanticAnalyzer::visit(ast::MatchStatement* node) {
                         ? std::shared_ptr<ast::TypeNode>(optPayload->clone().release()) : nullptr;
                 }
             } else {
-                // Enum unit-variant pattern: `Unit`, `None`. When matching a tagged
+                // Enum unit-variant pattern: `Unit`. When matching a tagged
                 // enum and the identifier names one of its variants, it binds no
                 // payload; otherwise it is a plain literal/identifier pattern.
                 bool handled = false;
@@ -6705,9 +6686,9 @@ void SemanticAnalyzer::visit(ast::BindDeclaration* node) {
                         }
                     } else if (enumIt != enumGenericParamOrder.end()) {
                         // Generic enum bind target: a user-defined generic enum
-                        // (e.g. bind ToStr -> Box<Int>) or a built-in generic enum
-                        // (Option<T> / Result<T,E>).
-                        if (enumIt->first == "Option" || enumIt->first == "Result") {
+                        // (e.g. bind ToStr -> Box<Int>) or the built-in generic
+                        // enum (Result<T,E>).
+                        if (enumIt->first == "Result") {
                             resolvedInstantiation = true;  // built-in: no scope symbol
                             paramOrder = &enumIt->second;
                         } else {
@@ -7191,10 +7172,6 @@ void SemanticAnalyzer::visit(ast::TypeName* node) {
             return;
         }
         node->genericArgs[0]->accept(*this);
-        node->type = std::shared_ptr<ast::TypeNode>(node->clone());
-    } else if (typeNameStr == "Option") {
-        node->genericArgs[0]->accept(*this);
-        registerGenericEnumConcrete("Option", node->toString(), node->genericArgs);
         node->type = std::shared_ptr<ast::TypeNode>(node->clone());
     } else if (typeNameStr == "Result") {
         // Built-in generic data enum `Result<T, E> { Ok(T), Err(E) }`.

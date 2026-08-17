@@ -52,11 +52,11 @@ main()<Int> -> {
         return 4
     }
 
-    // Option<our<Rich>> carrying owned fields drops cleanly on enum cleanup.
-    o<Option<our<Rich>>> = Some(our(Rich { c: our(Leaf { v: 6 }), nums: Vec(0), tag: "f" }))
+    // Result<our<Rich>, Int> carrying owned fields drops cleanly on enum cleanup.
+    o<Result<our<Rich>, Int>> = Ok(our(Rich { c: our(Leaf { v: 6 }), nums: Vec(0), tag: "f" }))
     r<Int> = match(o) {
-        Some(n) -> n.c.v
-        None -> 0
+        Ok(n) -> n.c.v
+        Err(e) -> 0
     }
     if (r != 6) {
         return 5

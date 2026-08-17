@@ -45,13 +45,13 @@ struct IntVecIter {
 
 bind Iterator -> IntVecIter {
     type Item = Int
-    next(self<their<IntVecIter>>)<Option<Int>> -> {
+    next(self<their<IntVecIter>>)<Int ?> -> {
         if (self.index < self.data.len()) {
             v<Int> = self.data.get(self.index)
             self.index = self.index + 1
-            return Some(v)
+            return Int?(v)
         }
-        return None
+        return Int?()
     }
 }
 
@@ -88,8 +88,8 @@ main()<Int> -> {
     total<Int> = 0
     while (true) {
         match (it.next()) {
-            Some(x) -> { total = total + x }
-            None -> { break }
+            x -> { total = total + x }
+            ? -> { break }
         }
     }
     # values now: 5, 106, 7, 9 -> 127

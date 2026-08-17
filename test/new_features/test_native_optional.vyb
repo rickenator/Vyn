@@ -1,6 +1,6 @@
 // @test: native T? optional type with else-default
 // @description: Vyb's native optional (`T?`) is promoted over the Rust-shaped
-//   `Option<T>`/`Some`/`None`. `T?(v)` builds a present optional, `T?()` the
+//   former `Option<T>`/`Some`/`None`. `T?(v)` builds a present optional, `T?()` the
 //   absent one, and `optional else default` yields the payload when present or
 //   the default otherwise (Vyb's `else`, as in `ensure ... else ...`). Present
 //   reads as the bare value + `?`, with no `Some(v)`/`.unwrap()` ceremony.

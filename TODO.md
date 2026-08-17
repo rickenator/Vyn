@@ -885,10 +885,11 @@ operator tolerates an unresolved generic payload type (codegen enforces the
 concrete payload).
 `Option<T>`/`Some`/`None` have been fully replaced by the native `T?` surface in
 every call site (chan `poll()`, map `.get()`, iterator `next()`, and `mild<T>.grab()`),
-and the now-dead `core::option` bridge (`OptionInt` and its prelude imports) has been
-removed. No `Option<T>`/`Some`/`None` surface remains in the stdlib; the compiler's
-built-in `Option<T>` enum still exists for source-compat and can be dropped by a later
-decision if undesired.
+and the Rust-shaped `Option<T>` enum is now REMOVED from the compiler entirely (including
+the `core::option` bridge and its prelude imports). `Some(x)`/`None` no longer compile;
+the native `T?` (`T?(v)`/`T?()` + `else`/match-`?`) is the one optional surface. The
+built-in `Result<T,E>` (`Ok`/`Err`) enum and the ownership/enum-matching code shared with
+`Option` are preserved.
 **RESOLVED — `T?` promoted over `Option<T>`.** The `Option<T>` / `Some(v)` / `None`
 vocabulary came from Rust (via Haskell's `Maybe`). Vyb already had a native optional type
 in the compiler — `<Type>?` parses to `ast::OptionalType`, lowered to a

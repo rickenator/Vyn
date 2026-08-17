@@ -1137,7 +1137,8 @@ void LLVMCodegen::emitChannelMethod(vyb::ast::CallExpression* node, llvm::Value*
             return;
         }
         // Scalar payloads: non-blocking poll reports readiness explicitly (no -1
-        // sentinel), returning Option<T> -- Some(decoded value) or None when empty.
+        // sentinel), returning the native `T?` (present decoded value / absent when
+        // empty).
         // This guarantees a Bool channel can't read empty as `true`, a Char channel
         // as 0xFF, or a Float channel as a NaN bit pattern.
         llvm::Function* pf = module->getFunction("__vyb_chan_poll");
@@ -1152,7 +1153,7 @@ void LLVMCodegen::emitChannelMethod(vyb::ast::CallExpression* node, llvm::Value*
 
         // Native `T?` result: an OptionalType struct `{ payload, bool ready }`
         // (codegenType layout, value at 0 / flag at 1), consumed via
-        // `poll() else default` — the vybey replacement for `Option<T>`.
+        // `poll() else default` — the native `T?` consuming surface.
         std::unique_ptr<ast::OptionalType> optNode;
         if (elem) {
             optNode = std::make_unique<ast::OptionalType>(

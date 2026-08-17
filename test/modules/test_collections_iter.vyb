@@ -3,7 +3,7 @@
 //   bound to core::iter::Iterator, produced by `m.iter()` (yields `MapEntry<K,V>`
 //   key/value pairs) and `s.iter()` (yields values). Drives `for (kv in m.iter())`
 //   reading `kv.key` / `kv.value`, and `for (v in s.iter())`. Verifies the
-//   two-parameter `Iterator` `Item` monomorphization (`Option<MapEntry<String,Int>>`)
+//   two-parameter `Iterator` `Item` generics (`MapEntry<String,Int>`, `Item?`)
 //   and the nested `their<HashMap<K,V>>` / `their<HashSet<K>>` view-field reads that
 //   were previously a compiler gap.
 // @category: collections, iterator, stdlib, map, set, for

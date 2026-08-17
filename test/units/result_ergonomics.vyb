@@ -1,0 +1,32 @@
+// @test: bare Ok/Err as call arguments (expected-type propagation)
+// @description: bare builtin enum constructors infer from the callee's parameter /
+//   container element type, so they work as subexpressions (classify(Ok(11)),
+//   classify(Err("boom")), and v.push(Ok(x)) on a Vec<Result<Int, String>>), not
+//   just in annotated variable declarations and returns.
+// @category: enum, generics, result, inference, match
+// @expect: pass
+// @expect-return: -77
+// @execute-jit: true
+
+classify(r<Result<Int, String>>)<Int> -> {
+    return match (r) {
+        Ok(v) -> v
+        Err(e) -> -1
+    }
+}
+
+main()<Int> -> {
+    a<Int> = classify(Ok(11))
+    b<Int> = classify(Err("boom"))
+
+    v<Vec<Result<Int, String>>> = Vec()
+    v.push(Ok(5))
+    v.push(Err("e"))
+    p0<Int> = classify(v.get(0))
+    p1<Int> = classify(v.get(1))
+
+    if (a == 11 && b == -1 && p0 == 5 && p1 == -1) {
+        return -77
+    }
+    return 1
+}

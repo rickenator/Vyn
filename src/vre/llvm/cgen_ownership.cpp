@@ -187,7 +187,7 @@ void LLVMCodegen::cleanupVariable(const ScopeVariable& var) {
 
     switch (var.ownership) {
         case ast::OwnershipKind::MY: {
-            // A data-carrying enum (Option<our<T>>, Result<..., our<T>>) owns a
+            // A data-carrying enum (Result<..., our<T>>) owns a
             // strong count on the payload's control block; drop it on scope exit.
             {
                 auto astIt = valueTypeMap.find(var.allocaInst);
@@ -1034,17 +1034,16 @@ void LLVMCodegen::retainMildControlBlock(llvm::Value* controlBlockPtr, const std
     builder->SetInsertPoint(continueBlock);
 }
 
-// Does a data-carrying built-in enum (Option<T>, Result<T, E>) carry an `our<T>`
-// reference in one of its payloads? Only `our` refs need retain/release
+// Does the data-carrying built-in enum (Result<T, E>) carry an `our<T>` reference
+// in one of its payloads? Only `our` refs need retain/release
 // bookkeeping inside an enum: `mild` is a weak count (a copy must not re-count),
 // and my/Vec/String payload ownership is handled by their own storage paths.
 bool LLVMCodegen::enumPayloadHoldsOurRef(const vyb::ast::TypeNode* astType) const {
     auto* tn = dynamic_cast<const vyb::ast::TypeName*>(astType);
     if (!tn || !tn->identifier) return false;
     const std::string& base = tn->identifier->name;
-    const bool isOption = (base == "Option" || base == "core::option::Option");
     const bool isResult = (base == "Result" || base == "core::result::Result");
-    if (!isOption && !isResult) return false;
+    if (!isResult) return false;
     for (const auto& pa : tn->genericArgs) {
         if (pa && isOurRefType(pa.get())) return true;
     }
@@ -1061,9 +1060,8 @@ void LLVMCodegen::reclaimEnumOurPayload(llvm::Value* enumPtr, const vyb::ast::Ty
     auto* tn = dynamic_cast<const vyb::ast::TypeName*>(astType);
     if (!tn || !tn->identifier) return;
     const std::string& base = tn->identifier->name;
-    const bool isOption = (base == "Option" || base == "core::option::Option");
     const bool isResult = (base == "Result" || base == "core::result::Result");
-    if (!isOption && !isResult) return;
+    if (!isResult) return;
 
     const TaggedEnumInfo* info = findTaggedEnum(const_cast<vyb::ast::TypeNode*>(astType));
     if (!info) return;
@@ -1073,8 +1071,8 @@ void LLVMCodegen::reclaimEnumOurPayload(llvm::Value* enumPtr, const vyb::ast::Ty
 
     struct OwnedVariant { const char* variant; unsigned argIdx; };
     std::vector<OwnedVariant> variants;
-    if (isOption) variants.push_back({"Some", 0});
-    else { variants.push_back({"Ok", 0}); variants.push_back({"Err", 1}); }
+    variants.push_back({"Ok", 0});
+    variants.push_back({"Err", 1});
 
     for (const auto& v : variants) {
         if (v.argIdx >= tn->genericArgs.size() || !tn->genericArgs[v.argIdx]) continue;
@@ -1113,15 +1111,15 @@ void LLVMCodegen::reclaimEnumOurPayload(llvm::Value* enumPtr, const vyb::ast::Ty
 // Does an enum-typed initializer hand over its payload's strong ref (a "fresh
 // transfer" that needs no further retain on stow), or is it a borrowed copy that
 // must be retained? `grab()` and function calls returning the enum transfer;
-// `Some(...)` with a fresh `our(...)`/`.grab()` payload also transfers. A bare
-// `Some(owner)` (borrowing an existing `our`) is a copy and must be retained.
+// `Ok(...)` with a fresh `our(...)`/`.grab()` payload also transfers. A bare
+// `Ok(owner)` (borrowing an existing `our`) is a copy and must be retained.
 bool LLVMCodegen::enumInitIsOurTransfer(vyb::ast::Expression* init) {
     if (!init) return false;
     auto* call = dynamic_cast<vyb::ast::CallExpression*>(init);
     if (!call) return false;
     if (auto* id = dynamic_cast<vyb::ast::Identifier*>(call->callee.get())) {
-        if (id->name == "Some" || id->name == "Ok" || id->name == "Err") {
-            if (call->arguments.empty()) return true;  // unit variant (e.g. None-like)
+        if (id->name == "Ok" || id->name == "Err") {
+            if (call->arguments.empty()) return true;  // unit variant
             return exprIsOurTransfer(call->arguments[0].get());
         }
     }

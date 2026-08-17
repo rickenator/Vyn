@@ -1086,19 +1086,18 @@ void LLVMCodegen::emitVecConstructor(vyb::ast::CallExpression* node) {
 
 void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
 
-    // Bare builtin enum constructor: `Some(x)` (Option) and `Ok(x)` / `Err(e)`
-    // (Result). The semantic layer injected the target enum type into this node,
-    // so the payload types are recovered from its generic arguments and the value
-    // is built as the corresponding tagged-union variant.
+    // Bare builtin enum constructor: `Ok(x)` / `Err(e)` for Result. The semantic
+    // layer injected the target enum type into this node, so the payload types
+    // are recovered from its generic arguments and the value is built as the
+    // corresponding tagged-union variant.
     if (auto calleeId = dynamic_cast<ast::Identifier*>(node->callee.get())) {
         const std::string& cn = calleeId->name;
-        if ((cn == "Some" || cn == "Ok" || cn == "Err") && node->type) {
+        if ((cn == "Ok" || cn == "Err") && node->type) {
             auto* etn = dynamic_cast<ast::TypeName*>(node->type.get());
             if (etn && etn->identifier) {
                 const std::string& en = etn->identifier->name;
-                bool isOptionSome = (cn == "Some" && en == "Option");
                 bool isResultCtor = (en == "Result" && (cn == "Ok" || cn == "Err"));
-                if ((isOptionSome || isResultCtor) && !etn->genericArgs.empty()) {
+                if (isResultCtor && !etn->genericArgs.empty()) {
                     // Inside a monomorphized generic bind body the enclosing type
                     // params (e.g. `T` in `Option<T>`) are active via
                     // currentTypeSubstitutions; substitute them so a bare `Some(v)`
@@ -1146,13 +1145,12 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         if (auto gi = dynamic_cast<ast::GenericInstantiationExpression*>(memberExpr->object.get())) {
             if (auto enIdent = dynamic_cast<ast::Identifier*>(gi->baseExpression.get())) {
                 if (auto varIdent = dynamic_cast<ast::Identifier*>(memberExpr->property.get())) {
-                    if (genericEnumTemplates.count(enIdent->name) || enIdent->name == "Option" ||
-                        enIdent->name == "Result") {
+                    if (genericEnumTemplates.count(enIdent->name) || enIdent->name == "Result") {
                         // Inside a monomorphized generic bind body the enclosing type
-                        // params (e.g. `V` in `Option<V>::Some(...)`) are active via
+                        // params (e.g. `E` in `Result<Int, E>::Err(...)`) are active via
                         // currentTypeSubstitutions; substitute them into the concrete
-                        // enum instantiation so `Option<V>` becomes `Option<Int>`
-                        // instead of an unresolved `Option_V`.
+                        // enum instantiation so `Result<Int, E>` becomes
+                        // `Result<Int, String>` instead of an unresolved `Result_Int_E`.
                         std::vector<ast::TypeNodePtr> concreteEnumArgs;
                         concreteEnumArgs.reserve(gi->genericArguments.size());
                         for (const auto& arg : gi->genericArguments) {
@@ -5383,30 +5381,6 @@ void LLVMCodegen::visit(vyb::ast::ArrayElementExpression *node) {
 // --- Basic Expression Visitors ---
 
 void LLVMCodegen::visit(ast::Identifier* node) {
-    // Bare Option unit constructor: `None`. The semantic layer injected the
-    // target Option<T> type into this node, so build the `None` tagged value.
-    if (node->name == "None" && node->type) {
-        auto* optTn = dynamic_cast<ast::TypeName*>(node->type.get());
-        if (optTn && optTn->identifier && optTn->identifier->name == "Option") {
-            // Substitute active generic-bind type params (bare `None` inside a
-            // monomorphized bind body resolves `Option<T>` -> `Option<Int>`).
-            std::vector<ast::TypeNodePtr> concreteEnumArgs;
-            concreteEnumArgs.reserve(optTn->genericArgs.size());
-            for (const auto& arg : optTn->genericArgs) {
-                std::string s = arg->toString();
-                if (!currentTypeSubstitutions.empty()) {
-                    for (const auto& kv : currentTypeSubstitutions) {
-                        s = replaceTypeTokens(s, kv.first, kv.second);
-                    }
-                }
-                concreteEnumArgs.push_back(typePatternToTypeNode(TypePattern::parse(s), node->loc));
-            }
-            std::string mangled = mangleGenericTypeName("Option", concreteEnumArgs);
-            if (!taggedEnumInfo.count(mangled)) monomorphizeEnum("Option", concreteEnumArgs);
-            m_currentLLVMValue = buildTaggedEnumValue(mangled, "None", {});
-            return;
-        }
-    }
     // Look up the identifier in the named values map
     auto it = namedValues.find(node->name);
     if (it != namedValues.end()) {
@@ -5511,8 +5485,7 @@ void LLVMCodegen::visit(ast::MemberExpression* node) {
         if (auto* gi = dynamic_cast<ast::GenericInstantiationExpression*>(node->object.get())) {
             if (auto* baseIdent = dynamic_cast<ast::Identifier*>(gi->baseExpression.get())) {
                 if (auto* propIdent = dynamic_cast<ast::Identifier*>(node->property.get())) {
-                    if (genericEnumTemplates.count(baseIdent->name) || baseIdent->name == "Option" ||
-                        baseIdent->name == "Result") {
+                    if (genericEnumTemplates.count(baseIdent->name) || baseIdent->name == "Result") {
                         std::vector<ast::TypeNodePtr> concreteEnumArgs;
                         concreteEnumArgs.reserve(gi->genericArguments.size());
                         for (const auto& arg : gi->genericArguments) {
@@ -5704,22 +5677,20 @@ void LLVMCodegen::visit(ast::MemberExpression* node) {
         }
     }
 
-    // `.value` accessor on the built-in `Option<T>` / `Result<T,E>` enums:
-    // reads the payload of the primary (success) data variant (`Some(T)` for
-    // Option, `Ok(T)` for Result) as its payload type `T`. Guards on the runtime
-    // tag so reading the "wrong" variant (None / Err) yields a default T rather
-    // than uninitialized union bytes, matching the house "return default on
-    // invalid access" style used by Vec.get.
+    // `.value` accessor on the built-in `Result<T,E>` enum: reads the payload of
+    // the primary (success) data variant (`Ok(T)`) as its payload type `T`.
+    // Guards on the runtime tag so reading the "wrong" variant (Err) yields a
+    // default T rather than uninitialized union bytes, matching the house
+    // "return default on invalid access" style used by Vec.get.
     if (!node->computed) {
         if (auto* valPropIdent = dynamic_cast<ast::Identifier*>(node->property.get())) {
             if (valPropIdent->name == "value") {
                 if (auto* objTn = dynamic_cast<ast::TypeName*>(node->object->type.get())) {
                     const std::string vb = objTn->identifier ? objTn->identifier->name : "";
-                    const bool isOption = vb == "Option";
                     const bool isResult = vb == "Result";
-                    if ((isOption || isResult) && objTn->genericArgs.size() >= 1) {
+                    if (isResult && objTn->genericArgs.size() >= 1) {
                         if (const TaggedEnumInfo* tei = findTaggedEnum(node->object->type.get())) {
-                            const std::string prim = isOption ? "Some" : "Ok";
+                            const std::string prim = "Ok";
                             auto payIt = tei->variantPayloadTypes.find(prim);
                             if (payIt != tei->variantPayloadTypes.end() && payIt->second &&
                                 payIt->second->getNumElements() > 0) {

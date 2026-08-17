@@ -41,8 +41,9 @@ work is still evolving.
 
 ## Option/Result status
 
-- `Option<T>` (with `Some(value)` / `None`) is a first-class built-in generic
-  data enum registered directly in the compiler; it needs no `import`. The
-  transitional `core::option::OptionInt` bridge that predated it has been
-  removed.
+- The Rust-shaped `Option<T>` enum (`Some(value)` / `None`) has been removed;
+  optional values use the native `T?` type (present payload / absent `?`, read
+  via `else` or a `match`/`?` arm). `Result<T,E>` (`Ok` / `Err`) remains a
+  built-in generic data enum registered directly in the compiler; it needs no
+  `import`.
 - `core::result` is a placeholder module that documents future `Result<T,E>`.

@@ -3,15 +3,13 @@
 //   an Int, for both C-like scalar enums and data-carrying tagged-union enums.
 // @category: enum, tag, jit
 // @expect: pass
-// @expect-output: 0
-// @expect-output: 1
 // @expect-output: 2
 // @expect-output: 3
 // @expect-output: 0
 // @expect-output: 1
-// @expect-output: 2
 // @expect-output: 0
 // @expect-output: 1
+// @expect-output: 2
 // @expect-return: 0
 
 enum Direction { North, South, East, West }
@@ -45,13 +43,6 @@ main()<Int> -> {
 
     unit<Shape> = Shape::Unit
     println_int(unit.tag)
-
-    // Built-in generic enums (Option/Result) expose their positional tag too.
-    o<Option<Int>> = Some(7)
-    println_int(o.tag)       // Some is positional tag 0
-
-    no<Option<Int>> = None
-    println_int(no.tag)      // None is tag 1
 
     return 0
 }

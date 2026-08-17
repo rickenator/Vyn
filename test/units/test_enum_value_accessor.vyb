@@ -1,28 +1,24 @@
-// @test: Option/Result native .value payload accessor
-// @description: a value of the built-in Option<T> / Result<T,E> enums exposes
-//   `.value`, reading the primary (success) data variant's payload as T. When the
-//   runtime variant is the primary one the payload is returned; otherwise a
-//   default T is produced (matching the "return default on invalid access" style
-//   of Vec.get). match/select remain the exhaustiveness-checked path.
-// @category: enum, option, result, accessor, generics
+// @test: Result native .value payload accessor
+// @description: a value of the built-in Result<T,E> enum exposes `.value`, reading
+//   the primary (success) data variant's payload as T. When the runtime variant is
+//   the primary one the payload is returned; otherwise a default T is produced
+//   (matching the "return default on invalid access" style of Vec.get).
+//   match/select remain the exhaustiveness-checked path.
+// @category: enum, result, accessor, generics
 // @expect: pass
 // @expect-return: 0
 // @execute-jit: true
 
 main()<Int> -> {
-    some<Option<Int>> = Some(7)
-    none<Option<Int>> = None
     okv<Result<Int, String>> = Result<Int, String>::Ok(5)
     errv<Result<Int, String>> = Result<Int, String>::Err("boom")
 
     // Read every accessor up front (declarations precede the reads), then check.
-    p<Int> = some.value
-    q<Int> = none.value
     r<Int> = okv.value
     s<Int> = errv.value
-    t<Int> = some.value + 3
+    t<Int> = okv.value + 3
 
-    if (p != 7 || q != 0 || r != 5 || s != 0 || t != 10) {
+    if (r != 5 || s != 0 || t != 8) {
         return 1
     }
     return 0

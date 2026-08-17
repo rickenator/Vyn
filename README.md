@@ -1360,7 +1360,7 @@ main()<Int> -> {
     scores.put("beta", 2)
     scores.put("alpha", 99)               # overwrites the existing key
     n_scores<Int> = scores.size()         # 2
-    score<Option<Int>> = scores.get("beta")          # Some(2)
+    score<Int?> = scores.get("beta")                 # Int? (2 when present, absent if missing)
     has_alpha<Bool> = scores.contains_key("alpha")   # true
 
     # HashSet<K> — distinct keys

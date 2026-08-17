@@ -1627,7 +1627,7 @@ void LLVMCodegen::codegenMatch(vyb::ast::MatchStatement* node, llvm::AllocaInst*
                     isMatch = llvm::ConstantInt::getFalse(*context);
                 }
             } else if (matchedEnum && dynamic_cast<ast::Identifier*>(casePattern.get())) {
-                // Enum unit-variant pattern: `Unit`, `None`.
+                // Enum unit-variant pattern: `Unit`.
                 auto* pid = static_cast<ast::Identifier*>(casePattern.get());
                 auto tagIt = matchedEnum->variantTags.find(pid->name);
                 if (tagIt != matchedEnum->variantTags.end()) {
