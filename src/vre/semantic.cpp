@@ -1833,6 +1833,18 @@ void SemanticAnalyzer::visit(ast::BinaryExpression* node) {
 
     ast::TypeNode* resultType = nullptr;
 
+    // Ordering operators are not defined for native optionals: `a < b` on `T?`
+    // has no well-defined meaning and would crash codegen (a struct handed to an
+    // integer compare). Presence checks use `==` / `!=`; read the payload with
+    // `else` before ordering.
+    if ((node->op.type == TokenType::LT || node->op.type == TokenType::LTEQ ||
+         node->op.type == TokenType::GT || node->op.type == TokenType::GTEQ) &&
+        (dynamic_cast<ast::OptionalType*>(leftType) || dynamic_cast<ast::OptionalType*>(rightType))) {
+        addError("Ordering comparison '" + node->op.lexeme +
+                 "' is not defined for optional (T?) operands; read the payload with 'else' before comparing.", node);
+        return;
+    }
+
     switch (node->op.type) {
         case TokenType::PLUS:
         case TokenType::MINUS:

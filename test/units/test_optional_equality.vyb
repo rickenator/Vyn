@@ -1,0 +1,26 @@
+// @test: native optional T? equality (presence + payload)
+// @description: `==` / `!=` on a native optional compares presence and, when
+//   both are present, the payload. `a == Int?()` is a presence check; two absent
+//   optionals are equal; `!=` negates. Regression for a fix that previously sent
+//   the `{ payload, i1 }` optional through the String memcmp path and crashed.
+// @category: optionals, comparison, binary, codegen
+// @expect: pass
+// @expect-return: 0
+// @execute-jit: true
+
+main()<Int> -> {
+    a<Int?> = Int?(5)
+    c<Int?> = Int?(5)
+    b<Int?> = Int?()
+
+    if (a != c) { return 1 }        # both present, equal payload -> false
+    if (a == b) { return 2 }        # present vs absent -> false
+    if (b != Int?()) { return 3 }   # absent == absent -> false
+    if (a == Int?()) { return 4 }   # present vs absent -> false
+
+    s<String?> = String?("hi")
+    if (s != String?("hi")) { return 5 }  # String payload equality -> false
+    if (s == String?()) { return 6 }      # present vs absent -> false
+
+    return 0
+}

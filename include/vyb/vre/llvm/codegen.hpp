@@ -484,6 +484,8 @@ private:
     llvm::StructType* getControlBlockType(llvm::Type* objectPtrType);
     bool isVecStructType(llvm::Type* type); // Check if LLVM type matches Vec{T, i64, i64} layout
     bool isVybStringStructType(llvm::Type* type); // `{ ptr, i64 }` Vyb String layout
+    bool isOptionalStructType(llvm::Type* type); // literal `{ T, i1 }` native `T?`
+    llvm::Value* generateOptionalEquality(llvm::Value* L, llvm::Value* R, vyb::TokenType op); // presence+payload == / !=
     bool exprProducesOwnedStringTemp(vyb::ast::Expression* expr); // String expr yielding a fresh owned heap buffer
     bool exprIsStringTransfer(vyb::ast::Expression* expr); // String value whose single ref transfers on stow
     bool exprIsOurTransfer(vyb::ast::Expression* expr);   // `our`/`grab`/fn-call value whose fresh strong ref transfers on stow
