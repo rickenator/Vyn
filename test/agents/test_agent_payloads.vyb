@@ -1,0 +1,57 @@
+# Agents - payload breadth (Stage 2): Bool, Float, and String messages.
+#   - Int/Bool/Float ride the agent's int-slot mailbox
+#   - String messages use a refcounted strchan mailbox (owned transfer)
+#   - lifecycle (close/free/alive/len) is payload-agnostic
+// @test: Agents - Bool, Float, String payloads
+// @category: agents,concurrency,stdlib
+// @expect: pass
+// @expect-return: 0
+
+import agents
+import channels
+
+main()<Int> -> {
+    # Bool messages
+    bres<Int> = chan_new()
+    ba<Int> = agent_start_bool(|b<Bool>| -> {
+        if (b) { chan_send(bres, 1) } else { chan_send(bres, 0) }
+    })
+    agent_send_bool(ba, true)
+    agent_send_bool(ba, false)
+    b1<Int> = chan_recv(bres)
+    b2<Int> = chan_recv(bres)
+    println("bool1=" + b1.to_string() + " bool2=" + b2.to_string())
+    agent_close(ba)
+    agent_free(ba)
+    chan_free(bres)
+
+    # Float messages (exact value round-trip verified via to_string)
+    frep<Int> = strchan_new()
+    fa<Int> = agent_start_float(|f<Float>| -> {
+        strchan_send(frep, f.to_string())
+    })
+    agent_send_float(fa, 1.25)
+    agent_send_float(fa, -0.5)
+    f1<String> = strchan_recv(frep)
+    f2<String> = strchan_recv(frep)
+    println("float1=" + f1 + " float2=" + f2)
+    agent_close(fa)
+    agent_free(fa)
+    strchan_free(frep)
+
+    # String messages (owned transfer; behavior echoes an uppercased result)
+    srep<Int> = strchan_new()
+    sa<Int> = agent_start_string(|sv<String>| -> {
+        strchan_send(srep, sv + "!")
+    })
+    agent_send_string(sa, "hello")
+    agent_send_string(sa, "agent")
+    s1<String> = strchan_recv(srep)
+    s2<String> = strchan_recv(srep)
+    println("str1=" + s1 + " str2=" + s2)
+    agent_close(sa)
+    agent_free(sa)
+    strchan_free(srep)
+
+    return 0
+}

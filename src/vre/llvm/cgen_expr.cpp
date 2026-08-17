@@ -3344,14 +3344,21 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             }
             m_currentLLVMValue = builder->CreateCall(f, {envPtr, fnPtr}, "thr.handle");
             return;
-        } else if (fname == "vyb_agent_start") {
-            // Agents (agents stdlib module): `vyb_agent_start` takes a
-            // `fn(Int) -> Void` behavior closure value `{ env, fn }`; unpack the
-            // two pointers and hand them to the runtime, which creates the
-            // mailbox and runs the behavior loop on a worker thread. The agent
+        } else if (fname == "vyb_agent_start" || fname == "vyb_agent_start_bool" ||
+                   fname == "vyb_agent_start_float" || fname == "vyb_agent_start_string") {
+            // Agents (agents stdlib module): `vyb_agent_start*` take a
+            // `fn(Payload) -> Void` behavior closure value `{ env, fn }`; unpack
+            // the two pointers and hand them to the runtime, which creates the
+            // mailbox (Int/Bool/Float share the int-slot channel; String uses a
+            // strchan) and runs the behavior loop on a worker thread. The agent
             // handle is an Int (a runtime table index).
+            const char* rtName = (fname == "vyb_agent_start") ? "__vyb_agent_start"
+                              : (fname == "vyb_agent_start_bool") ? "__vyb_agent_start_bool"
+                              : (fname == "vyb_agent_start_float") ? "__vyb_agent_start_float"
+                              : "__vyb_agent_start_string";
+            std::string rt(rtName);
             if (node->arguments.size() != 1) {
-                logError(node->loc, "vyb_agent_start expects 1 argument (fn(Int) -> Void)");
+                logError(node->loc, fname + " expects 1 argument (fn(Payload) -> Void)");
                 m_currentLLVMValue = nullptr; return;
             }
             node->arguments[0]->accept(*this);
@@ -3371,11 +3378,11 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 logError(node->loc, "vyb_agent_start argument is not a fn() closure");
                 m_currentLLVMValue = nullptr; return;
             }
-            llvm::Function* f = module->getFunction("__vyb_agent_start");
+            llvm::Function* f = module->getFunction(rt);
             if (!f) {
                 llvm::FunctionType* ft = llvm::FunctionType::get(
                     int64Type, {llvm::PointerType::get(*context, 0), llvm::PointerType::get(*context, 0)}, false);
-                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_agent_start", module.get());
+                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, rt, module.get());
             }
             m_currentLLVMValue = builder->CreateCall(f, {envPtr, fnPtr}, "agent.handle");
             return;
@@ -3538,8 +3545,74 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             emitHandleIntrinsic("__vyb_atomic_cas", 3);
             return;
         } else if (fname == "vyb_agent_send") {
-            // agents: post a message (non-blocking).
+            // agents: post an Int message (non-blocking).
             emitHandleIntrinsic("__vyb_agent_send", 2);
+            return;
+        } else if (fname == "vyb_agent_send_bool") {
+            // Post a Bool message: sign-extend the i1 payload to its i64 slot.
+            if (node->arguments.size() != 2) {
+                logError(node->loc, "vyb_agent_send_bool expects 2 arguments (agent, bool)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this); llvm::Value* bh = m_currentLLVMValue;
+            node->arguments[1]->accept(*this); llvm::Value* bv = m_currentLLVMValue;
+            if (!bh || !bv) return;
+            llvm::Value* h64 = bh;
+            if (h64->getType()->isIntegerTy() && !h64->getType()->isIntegerTy(64))
+                h64 = builder->CreateSExt(h64, int64Type, "agent.toi64");
+            llvm::Value* b64 = builder->CreateZExt(bv, int64Type, "agent.bool.bits");
+            llvm::Function* f = module->getFunction("__vyb_agent_send_bool");
+            if (!f) {
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type}, false);
+                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_agent_send_bool", module.get());
+            }
+            m_currentLLVMValue = builder->CreateCall(f, {h64, b64}, "agent.sent.bool");
+            return;
+        } else if (fname == "vyb_agent_send_float") {
+            // Post a Float message: bitcast the f64 payload into its i64 slot.
+            if (node->arguments.size() != 2) {
+                logError(node->loc, "vyb_agent_send_float expects 2 arguments (agent, float)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this); llvm::Value* fh = m_currentLLVMValue;
+            node->arguments[1]->accept(*this); llvm::Value* fv = m_currentLLVMValue;
+            if (!fh || !fv) return;
+            llvm::Value* h64 = fh;
+            if (h64->getType()->isIntegerTy() && !h64->getType()->isIntegerTy(64))
+                h64 = builder->CreateSExt(h64, int64Type, "agent.toi64");
+            llvm::Value* bits = builder->CreateBitCast(fv, int64Type, "agent.float.bits");
+            llvm::Function* f = module->getFunction("__vyb_agent_send_float");
+            if (!f) {
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type}, false);
+                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_agent_send_float", module.get());
+            }
+            m_currentLLVMValue = builder->CreateCall(f, {h64, bits}, "agent.sent.float");
+            return;
+        } else if (fname == "vyb_agent_send_string") {
+            // Post a String message: retain the data ptr and store { ptr, len }
+            // in the strchan mailbox. Lowers to (int64, i8*, i64).
+            if (node->arguments.size() != 2) {
+                logError(node->loc, "vyb_agent_send_string expects 2 arguments (agent, string)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this); llvm::Value* sh = m_currentLLVMValue;
+            node->arguments[1]->accept(*this); llvm::Value* sv = m_currentLLVMValue;
+            if (!sh || !sv) return;
+            llvm::Value* h64 = sh;
+            if (h64->getType()->isIntegerTy() && !h64->getType()->isIntegerTy(64))
+                h64 = builder->CreateSExt(h64, int64Type, "agent.toi64");
+            llvm::Value* dataPtr = sv;
+            llvm::Value* dataLen = llvm::ConstantInt::get(int64Type, 0);
+            if (sv->getType()->isStructTy()) {
+                dataPtr = builder->CreateExtractValue(sv, 0, "agent.strptr");
+                dataLen = builder->CreateExtractValue(sv, 1, "agent.strlen");
+            }
+            llvm::Function* f = module->getFunction("__vyb_agent_send_string");
+            if (!f) {
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int8PtrType, int64Type}, false);
+                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_agent_send_string", module.get());
+            }
+            m_currentLLVMValue = builder->CreateCall(f, {h64, dataPtr, dataLen}, "agent.sent.str");
             return;
         } else if (fname == "vyb_agent_len") {
             emitHandleIntrinsic("__vyb_agent_len", 1);

@@ -1346,22 +1346,63 @@ VYB_WEAK int64_t __vyb_chan_select(int64_t* handles, int64_t n) {
 // reclaimed exactly once. Message passing reuses the channel runtime; agents add
 // the worker + lifecycle on top.
 #define VYB_AGENT_CAP 64
+enum {
+    AGENT_KIND_INT    = 0,
+    AGENT_KIND_BOOL   = 1,
+    AGENT_KIND_FLOAT  = 2,
+    AGENT_KIND_STRING = 3
+};
 typedef struct {
     pthread_t tid;
-    int64_t mailbox;     // __vyb_chan_new(0) created at agent_start
-    void* fn;            // behavior: void(env, i64 payload)
+    int64_t mailbox;     // __vyb_chan_new(0) (scalars) or __vyb_strchan_new(0) (String)
+    void* fn;            // behavior closure fn
     void* env;           // behavior's capture environment (may be null)
+    int kind;            // AGENT_KIND_*
     int used;            // slot in use
     int done;            // worker loop has exited
 } vyb_agent;
 static vyb_agent vyb_agents[VYB_AGENT_CAP];
 static pthread_mutex_t vyb_agents_lock = PTHREAD_MUTEX_INITIALIZER;
 
+// Forward declarations for the String channel runtime, which is defined later
+// in this file but used by String-payload agents.
+VYB_WEAK int64_t __vyb_strchan_new(int64_t capacity);
+VYB_WEAK int64_t __vyb_strchan_send(int64_t ch, char* ptr, int64_t len);
+VYB_WEAK int64_t __vyb_strchan_recv_opt(int64_t ch, vyb_file_str* out);
+VYB_WEAK int64_t __vyb_strchan_len(int64_t ch);
+VYB_WEAK int64_t __vyb_strchan_close(int64_t ch);
+VYB_WEAK int64_t __vyb_strchan_free(int64_t ch);
+
 static void* vyb_agent_loop(void* arg) {
     vyb_agent* a = (vyb_agent*)arg;
-    int64_t v;
-    while ((v = __vyb_chan_recv(a->mailbox)) != -1) {
-        ((int64_t (*)(void*, int64_t))a->fn)(a->env, v);
+    if (a->kind == AGENT_KIND_STRING) {
+        // String mailbox: lossless blocking recv transfers a reference to the
+        // worker, which passes it to the behavior; the closure's String param
+        // teardown releases it once the handler returns.
+        vyb_file_str msg;
+        while (__vyb_strchan_recv_opt(a->mailbox, &msg)) {
+            ((void (*)(void*, vyb_file_str))a->fn)(a->env, msg);
+        }
+    } else if (a->kind == AGENT_KIND_FLOAT) {
+        // Float64 stored as its i64 bit pattern in the int-slot channel.
+        for (;;) {
+            int64_t v = __vyb_chan_recv(a->mailbox);
+            if (v == -1) break;
+            double d; memcpy(&d, &v, sizeof(d));
+            ((void (*)(void*, double))a->fn)(a->env, d);
+        }
+    } else if (a->kind == AGENT_KIND_BOOL) {
+        for (;;) {
+            int64_t v = __vyb_chan_recv(a->mailbox);
+            if (v == -1) break;
+            ((void (*)(void*, int))a->fn)(a->env, (int)(v != 0));
+        }
+    } else { // AGENT_KIND_INT
+        for (;;) {
+            int64_t v = __vyb_chan_recv(a->mailbox);
+            if (v == -1) break;
+            ((void (*)(void*, int64_t))a->fn)(a->env, v);
+        }
     }
     if (a->env) __vyb_closure_release(a->env);  // drop the agent's reference
     pthread_mutex_lock(&vyb_agents_lock);
@@ -1370,12 +1411,11 @@ static void* vyb_agent_loop(void* arg) {
     return NULL;
 }
 
-// Start an agent running `fn` (a Vyb `fn(Int) -> Void` closure, as { env, fn }).
-// Creates the mailbox, spawns a worker thread, returns a handle (>= 1), or 0 on
-// failure (table full / create failed).
-VYB_WEAK int64_t __vyb_agent_start(void* env, void* fn) {
+// Core spawn: create the mailbox (int-slot or string), allocate a table slot,
+// and start the behavior loop thread. Returns a handle (>= 1) or 0 on failure.
+static int64_t vyb_agent_spawn(void* env, void* fn, int kind) {
     if (!fn) return 0;
-    int64_t mailbox = __vyb_chan_new(0);
+    int64_t mailbox = (kind == AGENT_KIND_STRING) ? __vyb_strchan_new(0) : __vyb_chan_new(0);
     if (!mailbox) return 0;
     pthread_mutex_lock(&vyb_agents_lock);
     int idx = -1;
@@ -1383,11 +1423,12 @@ VYB_WEAK int64_t __vyb_agent_start(void* env, void* fn) {
         if (!vyb_agents[i].used) { idx = i; break; }
     if (idx < 0) {
         pthread_mutex_unlock(&vyb_agents_lock);
-        __vyb_chan_free(mailbox);
+        if (kind == AGENT_KIND_STRING) __vyb_strchan_free(mailbox); else __vyb_chan_free(mailbox);
         return 0; // table full
     }
     vyb_agent* a = &vyb_agents[idx];
-    a->fn = fn; a->env = env; a->mailbox = mailbox; a->used = 1; a->done = 0;
+    a->fn = fn; a->env = env; a->mailbox = mailbox; a->kind = kind;
+    a->used = 1; a->done = 0;
     // Retain before the worker can run so it can never be reaped before spawn
     // returns.
     if (a->env) __vyb_closure_retain(a->env);
@@ -1396,12 +1437,18 @@ VYB_WEAK int64_t __vyb_agent_start(void* env, void* fn) {
         if (a->env) __vyb_closure_release(a->env);
         a->used = 0;
         pthread_mutex_unlock(&vyb_agents_lock);
-        __vyb_chan_free(mailbox);
+        if (kind == AGENT_KIND_STRING) __vyb_strchan_free(mailbox); else __vyb_chan_free(mailbox);
         return 0;
     }
     pthread_mutex_unlock(&vyb_agents_lock);
     return (int64_t)(idx + 1);
 }
+
+// Start an agent running `fn`, a Vyb `fn(Payload) -> Void` closure (as { env, fn }).
+VYB_WEAK int64_t __vyb_agent_start(void* env, void* fn)          { return vyb_agent_spawn(env, fn, AGENT_KIND_INT); }
+VYB_WEAK int64_t __vyb_agent_start_bool(void* env, void* fn)     { return vyb_agent_spawn(env, fn, AGENT_KIND_BOOL); }
+VYB_WEAK int64_t __vyb_agent_start_float(void* env, void* fn)    { return vyb_agent_spawn(env, fn, AGENT_KIND_FLOAT); }
+VYB_WEAK int64_t __vyb_agent_start_string(void* env, void* fn)   { return vyb_agent_spawn(env, fn, AGENT_KIND_STRING); }
 
 // 1 while the agent's worker is running (or draining), 0 once it has exited.
 static int vyb_agent_valid(int64_t handle) {
@@ -1411,18 +1458,37 @@ static int vyb_agent_valid(int64_t handle) {
 }
 
 // Post a message (non-blocking). 1 on accepted, 0 if closed/stopped or the
-// bounded mailbox is full.
+// bounded mailbox is full. Scalar senders carry the value as an i64 slot (Int,
+// Bool's 0/1, Float's bit pattern); the String sender retains a reference.
 VYB_WEAK int64_t __vyb_agent_send(int64_t handle, int64_t v) {
     int idx = (int)handle - 1;
     if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return 0;
     return __vyb_chan_send(vyb_agents[idx].mailbox, v);
+}
+VYB_WEAK int64_t __vyb_agent_send_bool(int64_t handle, int64_t b) {
+    int idx = (int)handle - 1;
+    if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return 0;
+    return __vyb_chan_send(vyb_agents[idx].mailbox, b & 1);
+}
+VYB_WEAK int64_t __vyb_agent_send_float(int64_t handle, int64_t bits) {
+    int idx = (int)handle - 1;
+    if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return 0;
+    return __vyb_chan_send(vyb_agents[idx].mailbox, bits);
+}
+VYB_WEAK int64_t __vyb_agent_send_string(int64_t handle, char* ptr, int64_t len) {
+    int idx = (int)handle - 1;
+    if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return 0;
+    return __vyb_strchan_send(vyb_agents[idx].mailbox, ptr, len);
 }
 
 // Buffered-but-unhandled message count (-1 on a bad handle).
 VYB_WEAK int64_t __vyb_agent_len(int64_t handle) {
     int idx = (int)handle - 1;
     if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return -1;
-    return __vyb_chan_len(vyb_agents[idx].mailbox);
+    vyb_agent* a = &vyb_agents[idx];
+    return (a->kind == AGENT_KIND_STRING)
+        ? __vyb_strchan_len(a->mailbox)
+        : __vyb_chan_len(a->mailbox);
 }
 
 // 1 while the agent's worker is running (or draining), 0 once it has exited.
@@ -1440,7 +1506,10 @@ VYB_WEAK int64_t __vyb_agent_alive(int64_t handle) {
 VYB_WEAK int64_t __vyb_agent_close(int64_t handle) {
     int idx = (int)handle - 1;
     if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return -1;
-    return __vyb_chan_close(vyb_agents[idx].mailbox);
+    vyb_agent* a = &vyb_agents[idx];
+    return (a->kind == AGENT_KIND_STRING)
+        ? __vyb_strchan_close(a->mailbox)
+        : __vyb_chan_close(a->mailbox);
 }
 
 // Reclaim an agent. Waits for the worker to exit (closing the mailbox first if
@@ -1450,15 +1519,18 @@ VYB_WEAK int64_t __vyb_agent_free(int64_t handle) {
     int idx = (int)handle - 1;
     if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return -1;
     vyb_agent* a = &vyb_agents[idx];
-    if (!a->done) __vyb_chan_close(a->mailbox);
+    if (!a->done) {
+        if (a->kind == AGENT_KIND_STRING) __vyb_strchan_close(a->mailbox);
+        else __vyb_chan_close(a->mailbox);
+    }
     pthread_join(a->tid, NULL);          // worker exits once closed & drained
-    __vyb_chan_free(a->mailbox);
+    if (a->kind == AGENT_KIND_STRING) __vyb_strchan_free(a->mailbox);
+    else __vyb_chan_free(a->mailbox);
     pthread_mutex_lock(&vyb_agents_lock);
     a->used = 0; a->fn = NULL; a->env = NULL; a->mailbox = 0; a->done = 0;
     pthread_mutex_unlock(&vyb_agents_lock);
     return 0;
 }
-
 // String channels. A distinct pthread/Mutex+CondVar ring buffer whose slots are
 // Vyb String values `{ ptr, len }`. On send, the data pointer is RETAINED so the
 // channel owns a reference that survives the sender's own release; on recv/try

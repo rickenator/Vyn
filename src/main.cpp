@@ -154,7 +154,13 @@ extern "C" {
     int64_t __vyb_thread_join(int64_t handle);
     int64_t __vyb_thread_detach(int64_t handle);
     int64_t __vyb_agent_start(void* env, void* fn);
+    int64_t __vyb_agent_start_bool(void* env, void* fn);
+    int64_t __vyb_agent_start_float(void* env, void* fn);
+    int64_t __vyb_agent_start_string(void* env, void* fn);
     int64_t __vyb_agent_send(int64_t handle, int64_t v);
+    int64_t __vyb_agent_send_bool(int64_t handle, int64_t b);
+    int64_t __vyb_agent_send_float(int64_t handle, int64_t bits);
+    int64_t __vyb_agent_send_string(int64_t handle, char* ptr, int64_t len);
     int64_t __vyb_agent_len(int64_t handle);
     int64_t __vyb_agent_alive(int64_t handle);
     int64_t __vyb_agent_close(int64_t handle);
@@ -956,8 +962,20 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_thread_detach), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_agent_start")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_start), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_agent_start_bool")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_start_bool), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_agent_start_float")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_start_float), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_agent_start_string")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_start_string), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_agent_send")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_send), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_agent_send_bool")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_send_bool), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_agent_send_float")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_send_float), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_agent_send_string")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_send_string), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_agent_len")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_len), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_agent_alive")] = llvm::orc::ExecutorSymbolDef(

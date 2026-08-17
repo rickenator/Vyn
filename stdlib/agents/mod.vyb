@@ -61,3 +61,47 @@ share(all)
 agent_free(a<Int>)<Int> -> {
     return vyb_agent_free(a)
 }
+
+# --- Payload breadth (Stage 2) ----------------------------------------------
+# Agent payloads can be Bool, Float, or String in addition to Int. Bool and
+# Float share the agent's int-slot mailbox (the value rides in the i64 slot);
+# String agents use a refcounted strchan mailbox, so every buffered String stays
+# alive and is handed to the behavior as an owned transfer. The lifecycle
+# functions (len/close/free/alive) are payload-agnostic.
+
+# Start a Bool-message agent; `behavior` receives each Bool.
+share(all)
+agent_start_bool(behavior<fn(Bool) -> Void>)<Int> -> {
+    return vyb_agent_start_bool(behavior)
+}
+
+# Start a Float-message agent; `behavior` receives each Float.
+share(all)
+agent_start_float(behavior<fn(Float) -> Void>)<Int> -> {
+    return vyb_agent_start_float(behavior)
+}
+
+# Start a String-message agent; `behavior` receives each String (owned).
+share(all)
+agent_start_string(behavior<fn(String) -> Void>)<Int> -> {
+    return vyb_agent_start_string(behavior)
+}
+
+# Post a Bool message (non-blocking). 1 on accepted, 0 if stopped/full.
+share(all)
+agent_send_bool(a<Int>, b<Bool>)<Int> -> {
+    return vyb_agent_send_bool(a, b)
+}
+
+# Post a Float message (non-blocking). 1 on accepted, 0 if stopped/full.
+share(all)
+agent_send_float(a<Int>, f<Float>)<Int> -> {
+    return vyb_agent_send_float(a, f)
+}
+
+# Post a String message (non-blocking). 1 on accepted, 0 if stopped/full. The
+# message buffer is retained until the behavior receives it.
+share(all)
+agent_send_string(a<Int>, s<String>)<Int> -> {
+    return vyb_agent_send_string(a, s)
+}
