@@ -36,7 +36,7 @@ is the working audit for what needs to be implemented next.
 | Lambda/closure codegen | ~70% | Capture-by-value closure env structs shipped; move/mutable/`our` capture planned |
 | Module system (`import`/`smuggle`/`bundle`) | ~70% | Local/module-path resolution, aliases, bundle/share visibility done; stdlib modules/package integration pending |
 | FFI (`extern "C"`) | ~35% | Extern blocks, C aliases, freedom-gated JIT calls done; repr(C), variadics, linker flow pending |
-| Standard library | ~64% | Vec, String, HashMap/HashSet, BTreeMap, File I/O, Math, TCP socket + UDP I/O, time, HTTP, async socket I/O, `TcpStream`/`TcpListener`/`UdpSocket` done; HTTP client pending |
+| Standard library | ~66% | Vec, String, HashMap/HashSet, BTreeMap, File I/O, Math, TCP socket + UDP I/O, time, HTTP server + client, async socket I/O, `TcpStream`/`TcpListener`/`UdpSocket` done |
 | Introspection (`typeof`/`typename`) | ~75% | Downcasting, type assertions |
 | Auto-serialization | ~80% | Edge cases remain |
 | Pattern matching | ~60% | Destructuring, guards, enum variants |
@@ -1039,7 +1039,9 @@ async tcp_connect(host<String>, port<Int>)<TcpStream> -> {
 - [x] **v0.6 — Async I/O** — Non-blocking socket I/O on the real executor
   (`asyncs::async_accept`/`async_connect`/`async_send`/`async_recv` suspend the
   fiber via the poll pump; no worker is ever blocked)
-- [ ] **v0.7 — HTTP/1.1 client** — Built on `TcpStream`, pure Vyb implementation
+- [x] **v0.7 — HTTP/1.1 client** — `http_get_full()` returns a parsed
+  `HttpResponse` (status/reason/headers/body) over a pure-Vyb socket round-trip,
+  honoring `Content-Length` and falling back to read-until-close
 - [ ] **Post-1.0 — TLS** — Via `extern "C"` bindings to OpenSSL or mbedTLS
 - [ ] **Post-1.0 — UDP multicast, raw packets** — Advanced socket options
 

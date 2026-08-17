@@ -1,0 +1,31 @@
+// @test: pure-Vyb HTTP/1.1 client over TcpStream
+// @description: start a threaded http server on an ephemeral port, then run the
+//   new TcpStream-based client (http_get_full): it must parse the status line,
+//   headers, and Content-Length body, and answer header lookups.
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import http
+
+main()<Int> -> {
+    srv<Int> = http_serve(0, 4)
+    if (srv < 0) { return 1 }
+    port<Int> = http_local_port(srv)
+    if (port <= 0) { return 2 }
+
+    resp<HttpResponse> = http_get_full("127.0.0.1", port, "/greet")
+    http_close(srv)
+
+    if (resp.status != 200) { return 3 }
+    if (resp.reason != "OK") { return 4 }
+    if (resp.body != "hi from vyb: /greet") { return 5 }
+    if (http_header(resp, "Content-Type") != "text/plain") { return 6 }
+    cl<String> = http_header(resp, "content-length")
+    if (cl.len() == 0 || http_parse_int(cl) != resp.body.len()) { return 7 }
+    if (resp.headers.len() < 3) { return 8 }
+
+    println("ok")
+    return 0
+}

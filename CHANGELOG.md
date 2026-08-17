@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Pure-Vyb HTTP/1.1 client** — `http_get_full(host, port, path)` returns a
+  parsed `HttpResponse` (`status`, `reason`, `headers` as a `Vec<String>`, and
+  `body`) after a full GET round-trip: it connects over a socket, sends the
+  request, parses the status line + headers (with `http_status_code`,
+  `http_header`-style lookups and a case-insensitive `http_header_value`), and
+  reads a `Content-Length` body (falling back to reading until the peer
+  closes). Pure Vyb — no new FFI. Covered by
+  `test/modules/test_http_client.vyb` (valgrind-clean).
 - **`TcpStream` / `TcpListener` / `UdpSocket`** — ergonomic, method-bound socket
   types in the `network` module, layered on the runtime sockets. `tcp_listen` /
   `tcp_accept` / `tcp_connect` build a `TcpStream` with `.write(...)` /

@@ -210,3 +210,196 @@ http_serve(port<Int>, backlog<Int>)<Int> -> {
     thread_detach(thr)
     return fd
 }
+
+# --- HTTP/1.1 client ---------------------------------------------------------
+# A pure-Vyb client that sends an HTTP/1.1 request, parses the response status
+# line + headers, and reads a `Content-Length` body (falling back to reading
+# until the peer closes). No new FFI -- it reuses the socket helpers above, so
+# it blocks only on the kernel exactly like the server side.
+
+# A parsed HTTP response. `headers` holds the raw response header lines (minus
+# the terminating blank line); `body` is the payload (Content-Length-sized, or
+# everything read before the peer closed). `status` is -1 when no response could
+# be completed.
+share(all)
+struct HttpResponse {
+    status<Int>,
+    reason<String>,
+    headers<Vec<String>>,
+    body<String>
+}
+
+# Index of the first occurrence of `needle` in `s`, or -1.
+share(all)
+http_index_of(s<String>, needle<String>)<Int> -> {
+    n<Int> = s.len()
+    m<Int> = needle.len()
+    if (m == 0) { return 0 }
+    i<Int> = 0
+    while (i <= n - m) {
+        j<Int> = 0
+        ok<Bool> = true
+        while (ok && j < m) {
+            if (s.char_at(i + j) != needle.char_at(j)) { ok = false }
+            j = j + 1
+        }
+        if (ok) { return i }
+        i = i + 1
+    }
+    return -1
+}
+
+# Case-insensitive ASCII equality.
+share(all)
+http_key_eq(a<String>, b<String>)<Bool> -> {
+    if (a.len() != b.len()) { return false }
+    i<Int> = 0
+    while (i < a.len()) {
+        ca<Int> = a.char_at(i)
+        cb<Int> = b.char_at(i)
+        if (ca >= 65 && ca <= 90) { ca = ca + 32 }
+        if (cb >= 65 && cb <= 90) { cb = cb + 32 }
+        if (ca != cb) { return false }
+        i = i + 1
+    }
+    return true
+}
+
+# Parse a decimal integer at the start of `s`, stopping at the first non-digit.
+share(all)
+http_parse_int(s<String>)<Int> -> {
+    v<Int> = 0
+    i<Int> = 0
+    while (i < s.len()) {
+        c<Int> = s.char_at(i)
+        if (c < 48 || c > 57) { break }
+        v = v * 10 + (c - 48)
+        i = i + 1
+    }
+    return v
+}
+
+# Status code from a status line like "HTTP/1.1 200 OK" (-1 if unparseable).
+share(all)
+http_status_code(line<String>)<Int> -> {
+    sp<Int> = http_index_of(line, " ")
+    if (sp < 0) { return -1 }
+    return http_parse_int(line.substring(sp + 1, line.len()))
+}
+
+# Given one header line, the trimmed value of `name` (case-insensitive), or ""
+# if `header` isn't that header.
+share(all)
+http_header_value(header<String>, name<String>)<String> -> {
+    c<Int> = http_index_of(header, ":")
+    if (c < 0) { return "" }
+    key<String> = header.substring(0, c).trim()
+    if (!http_key_eq(key, name)) { return "" }
+    return header.substring(c + 1, header.len()).trim()
+}
+
+# Read one CRLF-terminated line (without the CRLF) from `fd`. One byte is read
+# per iteration and the CRLF is located with index_of, so the reader stops
+# exactly at the line end without swallowing the header body.
+share(all)
+http_read_line(fd<Int>)<String> -> {
+    buf<String> = ""
+    crlf<String> = "\r\n"
+    while (true) {
+        chunk<String> = socket_recv(fd, 1)
+        if (chunk.len() == 0) { break }
+        buf = buf.concat(chunk)
+        idx<Int> = buf.index_of(crlf)
+        if (idx >= 0) { return buf.substring(0, idx) }
+    }
+    return buf
+}
+
+# Read exactly `length` bytes from `fd`.
+share(all)
+http_read_exact(fd<Int>, length<Int>)<String> -> {
+    buf<String> = ""
+    while (buf.len() < length) {
+        chunk<String> = socket_recv(fd, length - buf.len())
+        if (chunk.len() == 0) { break }
+        buf = buf.concat(chunk)
+    }
+    return buf
+}
+
+# Read until the peer closes (used when a response has no Content-Length).
+share(all)
+http_read_all(fd<Int>, max<Int>)<String> -> {
+    buf<String> = ""
+    while (buf.len() < max) {
+        chunk<String> = socket_recv(fd, 1024)
+        if (chunk.len() == 0) { break }
+        buf = buf.concat(chunk)
+    }
+    return buf
+}
+
+# Full HTTP/1.1 GET round-trip. Returns an HttpResponse with the parsed status,
+# reason, headers, and body; status is -1 if the round-trip could not be
+# completed (e.g. connection failure).
+share(all)
+http_get_full(host<String>, port<Int>, path<String>)<HttpResponse> -> {
+    bad<HttpResponse> = HttpResponse { status = -1, reason = "",
+                                        headers = Vec<String>(), body = "" }
+    fd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
+    if (fd < 0) { return bad }
+    if (socket_connect(fd, host, port) < 0) {
+        socket_close(fd)
+        return bad
+    }
+    req<String> = "GET " + path + " HTTP/1.1\r\nHost: " + host + "\r\nConnection: close\r\n\r\n"
+    socket_send(fd, req)
+    line<String> = http_read_line(fd)
+    code<Int> = http_status_code(line)
+    if (code < 0) {
+        socket_close(fd)
+        return bad
+    }
+    hs<Vec<String>> = Vec<String>()
+    length<Int> = -1
+    has_len<Bool> = false
+    h<String> = http_read_line(fd)
+    while (h.len() > 0) {
+        hs.push(h)
+        lv<String> = http_header_value(h, "content-length")
+        if (lv.len() > 0) {
+            length = http_parse_int(lv)
+            has_len = true
+        }
+        h = http_read_line(fd)
+    }
+    body<String> = ""
+    if (has_len) {
+        body = http_read_exact(fd, length)
+    } else {
+        body = http_read_all(fd, 65536)
+    }
+    reason<String> = ""
+    sp<Int> = http_index_of(line, " ")
+    if (sp >= 0) {
+        rest<String> = line.substring(sp + 1, line.len())
+        sp2<Int> = http_index_of(rest, " ")
+        if (sp2 >= 0) {
+            reason = rest.substring(sp2 + 1, rest.len())
+        }
+    }
+    socket_close(fd)
+    return HttpResponse { status = code, reason = reason, headers = hs, body = body }
+}
+
+# Look a header up by (case-insensitive) name across a parsed response's headers.
+share(all)
+http_header(resp<HttpResponse>, name<String>)<String> -> {
+    i<Int> = 0
+    while (i < resp.headers.len()) {
+        v<String> = http_header_value(resp.headers.get(i), name)
+        if (v.len() > 0) { return v }
+        i = i + 1
+    }
+    return ""
+}
