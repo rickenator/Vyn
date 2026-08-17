@@ -633,6 +633,7 @@ private:
         std::unordered_set<std::string> written;
     };
     std::vector<LambdaCaptureCtx> lambdaCaptureStack;
+    std::vector<ast::FunctionExpression*> lambdaStack;
 
     // Helper methods for move tracking
     void recordMove(const std::string& varName);

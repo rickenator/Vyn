@@ -1361,6 +1361,10 @@ public:
     std::vector<FunctionParameter> params;
     ExprPtr body;
     bool isAsync;
+    // Whether the lambda body can propagate a failure (`fail` statement). Set
+    // during semantic analysis so codegen can pick the failable return ABI
+    // (e.g. for agent behaviors that `fail`).
+    bool canFail = false;
     // Names of variables the lambda captures from its enclosing scope (filled in
     // during semantic analysis). Codegen copies each captured value by reference
     // into the closure's environment at creation time.

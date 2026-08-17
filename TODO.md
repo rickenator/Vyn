@@ -31,7 +31,7 @@ is the working audit for what needs to be implemented next.
 | `mild<T>` weak references | ~90% | `soft()`/`grab()`/`released()`, failed `grab()` → `our<T>?`, weak copy/drop accounting shipped (`test/ownership/mild_*.vyb`) |
 | Aspect/bind system | ~92% | Static dispatch complete (associated types, inheritance, disambiguation, bound dispatch); `dyn` aspect objects are a marked future experiment |
 | Generic monomorphization | ~85% | **SEALED**: Compile-time only. See doc/MONOMORPHIZATION_DESIGN.md |
-| Async/await | ~98% | agents (message-passing units) — design doc (`doc/AGENTS_DESIGN.md`); Stages 1-3 (core shape, Int/Bool/Float/String payloads, request/response + composition) shipped (`test/agents/`); Stages 4-5 pending |
+| Async/await | ~98% | agents (message-passing units) — design doc (`doc/AGENTS_DESIGN.md`); Stages 1-4 (core shape, Int/Bool/Float/String payloads, request/response + composition, failure channeling) shipped (`test/agents/`); Stage 5 (backpressure) pending |
 | Error propagation (`fail`/`trap`) | ~80% | Standard error aspects, `rethrow`, ensure contracts |
 | Lambda/closure codegen | ~90% | Closure env structs, mutable/move/`our` capture, returned-closure env release shipped; rare receiver edge cases remain |
 | Module system (`import`/`smuggle`/`bundle`) | ~90% | Phases 1.1–1.5 shipped (`ModuleRegistry`, aliases, `share`/bundle visibility, path resolution); stdlib package integration / `vyb.toml` pending |

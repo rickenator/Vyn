@@ -1,0 +1,61 @@
+# Agents - failure channeling (Stage 4).
+#   - a behavior that `fail`s is captured (not dropped): the agent stops
+#     cooperatively, its mailbox closes (senders see 0), and the failure is
+#     recorded.
+#   - agent_status reports 2 (failed), agent_error_code surfaces the fail<Int>
+#     payload, and agent_error gives a human-readable descriptor.
+#   - a dead-letter channel is notified with the failed agent's handle so a
+#     supervisor can react, then query status/error.
+// @test: Agents - failure channeling (Stage 4)
+// @category: agents,concurrency,error,stdlib
+// @expect: pass
+// @expect-return: 0
+
+import agents
+import channels
+
+main()<Int> -> {
+    # A service that fails (code 42) on negative input, else replies 10x.
+    out<Int> = chan_new()
+    big<Int> = chan_new()   # dead-letter channel for the supervisor
+    a<Int> = agent_start(|v<Int>| -> {
+        if (v < 0) {
+            fail<Int>(42)
+        }
+        chan_send(out, v * 10)
+    })
+    if (a == 0) { return 1 }
+
+    if (agent_dead_letter(a, big) != 1) { return 2 }
+
+    # Happy path first.
+    agent_send(a, 1)
+    agent_send(a, 2)
+    if (chan_recv(out) != 10) { return 3 }
+    if (chan_recv(out) != 20) { return 4 }
+
+    # Trigger the failure. The accept returns 1 (mailbox open); the worker then
+    # processes -5, fails, reports on the dead-letter, and closes the mailbox.
+    if (agent_send(a, -5) != 1) { return 5 }
+
+    # Dead-letter delivery guarantees the failure has been recorded.
+    fh<Int> = chan_recv(big)
+    if (fh != a) { return 6 }
+
+    if (agent_status(a) != 2) { return 7 }
+    if (agent_error_code(a) != 42) { return 8 }
+
+    er<String> = agent_error(a)
+    if (er.len() == 0) { return 9 }
+    println("err=" + er)
+
+    # The mailbox is closed: sends now return 0 rather than queue into a dead
+    # agent or hang.
+    if (agent_send(a, 9) != 0) { return 10 }
+
+    agent_free(a)
+    chan_free(out)
+    chan_free(big)
+    println("ok")
+    return 0
+}

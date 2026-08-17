@@ -1357,12 +1357,39 @@ typedef struct {
     int64_t mailbox;     // __vyb_chan_new(0) (scalars) or __vyb_strchan_new(0) (String)
     void* fn;            // behavior closure fn
     void* env;           // behavior's capture environment (may be null)
+    int idx;             // this slot's index (handle = idx + 1)
     int kind;            // AGENT_KIND_*
+    int failable;        // behavior returns {i1, i8*} (propagates fail) when set
+    int failed;          // 1 once the behavior has failed
+    int64_t error;       // VybError* for the most recent failure (0 = none)
+    int64_t dead_letter; // optional int-slot channel notified with the handle on failure
     int used;            // slot in use
     int done;            // worker loop has exited
 } vyb_agent;
 static vyb_agent vyb_agents[VYB_AGENT_CAP];
 static pthread_mutex_t vyb_agents_lock = PTHREAD_MUTEX_INITIALIZER;
+
+// Lightweight view of the first fields of VybError (src/runtime/error_handling.hpp)
+// that an agent captures: enough to surface a descriptor and, for Int fails, the
+// payload value. Field offsets must match the real struct through `data_size`.
+typedef struct {
+    uint64_t type_hash;
+    const char* type_name;
+    void* payload;
+    const char* file;
+    uint32_t line;
+    uint32_t col;
+    void* type_id;
+    void* data;
+    size_t data_size;
+} vyb_agent_err;
+
+// The failable-return ABI for a behavior `fn(...) -> Void`: {i1 dummy, i8* err}.
+// On SysV both halves ride in rax:rdx, so this C struct-return capture is accurate.
+typedef struct {
+    unsigned char dummy;
+    void* err;
+} vyb_agent_fail_ret;
 
 // Forward declarations for the String channel runtime, which is defined later
 // in this file but used by String-payload agents.
@@ -1372,6 +1399,24 @@ VYB_WEAK int64_t __vyb_strchan_recv_opt(int64_t ch, vyb_file_str* out);
 VYB_WEAK int64_t __vyb_strchan_len(int64_t ch);
 VYB_WEAK int64_t __vyb_strchan_close(int64_t ch);
 VYB_WEAK int64_t __vyb_strchan_free(int64_t ch);
+void __vyb_runtime_free_error(void* err);  // C++ error runtime; captured failures
+
+// Mark an agent failed after its behavior propagated a VybError: record the
+// error under the table lock, close its mailbox (so senders see 0 rather than
+// queue into a dead agent), and notify the optional dead-letter channel with
+// the agent's own handle. The loop then stops consuming; shutdown stays
+// cooperative and valgrind-clean (the caller still calls agent_free to join).
+static void vyb_agent_close_self(vyb_agent* a, void* err) {
+    int64_t dead = 0;
+    pthread_mutex_lock(&vyb_agents_lock);
+    a->failed = 1;
+    a->error = err ? (int64_t)(intptr_t)err : a->error;
+    dead = a->dead_letter;
+    pthread_mutex_unlock(&vyb_agents_lock);
+    if (a->kind == AGENT_KIND_STRING) __vyb_strchan_close(a->mailbox);
+    else __vyb_chan_close(a->mailbox);
+    if (dead) __vyb_chan_send(dead, (int64_t)a->idx + 1);
+}
 
 static void* vyb_agent_loop(void* arg) {
     vyb_agent* a = (vyb_agent*)arg;
@@ -1381,7 +1426,12 @@ static void* vyb_agent_loop(void* arg) {
         // teardown releases it once the handler returns.
         vyb_file_str msg;
         while (__vyb_strchan_recv_opt(a->mailbox, &msg)) {
-            ((void (*)(void*, vyb_file_str))a->fn)(a->env, msg);
+            if (a->failable) {
+                vyb_agent_fail_ret r = ((vyb_agent_fail_ret (*)(void*, vyb_file_str))a->fn)(a->env, msg);
+                if (r.err) { vyb_agent_close_self(a, r.err); break; }
+            } else {
+                ((void (*)(void*, vyb_file_str))a->fn)(a->env, msg);
+            }
         }
     } else if (a->kind == AGENT_KIND_FLOAT) {
         // Float64 stored as its i64 bit pattern in the int-slot channel.
@@ -1389,19 +1439,34 @@ static void* vyb_agent_loop(void* arg) {
             int64_t v = __vyb_chan_recv(a->mailbox);
             if (v == -1) break;
             double d; memcpy(&d, &v, sizeof(d));
-            ((void (*)(void*, double))a->fn)(a->env, d);
+            if (a->failable) {
+                vyb_agent_fail_ret r = ((vyb_agent_fail_ret (*)(void*, double))a->fn)(a->env, d);
+                if (r.err) { vyb_agent_close_self(a, r.err); break; }
+            } else {
+                ((void (*)(void*, double))a->fn)(a->env, d);
+            }
         }
     } else if (a->kind == AGENT_KIND_BOOL) {
         for (;;) {
             int64_t v = __vyb_chan_recv(a->mailbox);
             if (v == -1) break;
-            ((void (*)(void*, int))a->fn)(a->env, (int)(v != 0));
+            if (a->failable) {
+                vyb_agent_fail_ret r = ((vyb_agent_fail_ret (*)(void*, int))a->fn)(a->env, (int)(v != 0));
+                if (r.err) { vyb_agent_close_self(a, r.err); break; }
+            } else {
+                ((void (*)(void*, int))a->fn)(a->env, (int)(v != 0));
+            }
         }
     } else { // AGENT_KIND_INT
         for (;;) {
             int64_t v = __vyb_chan_recv(a->mailbox);
             if (v == -1) break;
-            ((void (*)(void*, int64_t))a->fn)(a->env, v);
+            if (a->failable) {
+                vyb_agent_fail_ret r = ((vyb_agent_fail_ret (*)(void*, int64_t))a->fn)(a->env, v);
+                if (r.err) { vyb_agent_close_self(a, r.err); break; }
+            } else {
+                ((void (*)(void*, int64_t))a->fn)(a->env, v);
+            }
         }
     }
     if (a->env) __vyb_closure_release(a->env);  // drop the agent's reference
@@ -1412,8 +1477,10 @@ static void* vyb_agent_loop(void* arg) {
 }
 
 // Core spawn: create the mailbox (int-slot or string), allocate a table slot,
-// and start the behavior loop thread. Returns a handle (>= 1) or 0 on failure.
-static int64_t vyb_agent_spawn(void* env, void* fn, int kind) {
+// and start the behavior loop thread. `failable` selects the behavior calling
+// convention ({i1, i8*} fail-propagating vs. plain Void). Returns a handle
+// (>= 1) or 0 on failure.
+static int64_t vyb_agent_spawn(void* env, void* fn, int kind, int failable) {
     if (!fn) return 0;
     int64_t mailbox = (kind == AGENT_KIND_STRING) ? __vyb_strchan_new(0) : __vyb_chan_new(0);
     if (!mailbox) return 0;
@@ -1427,7 +1494,9 @@ static int64_t vyb_agent_spawn(void* env, void* fn, int kind) {
         return 0; // table full
     }
     vyb_agent* a = &vyb_agents[idx];
+    a->idx = idx;
     a->fn = fn; a->env = env; a->mailbox = mailbox; a->kind = kind;
+    a->failable = failable; a->failed = 0; a->error = 0; a->dead_letter = 0;
     a->used = 1; a->done = 0;
     // Retain before the worker can run so it can never be reaped before spawn
     // returns.
@@ -1445,10 +1514,10 @@ static int64_t vyb_agent_spawn(void* env, void* fn, int kind) {
 }
 
 // Start an agent running `fn`, a Vyb `fn(Payload) -> Void` closure (as { env, fn }).
-VYB_WEAK int64_t __vyb_agent_start(void* env, void* fn)          { return vyb_agent_spawn(env, fn, AGENT_KIND_INT); }
-VYB_WEAK int64_t __vyb_agent_start_bool(void* env, void* fn)     { return vyb_agent_spawn(env, fn, AGENT_KIND_BOOL); }
-VYB_WEAK int64_t __vyb_agent_start_float(void* env, void* fn)    { return vyb_agent_spawn(env, fn, AGENT_KIND_FLOAT); }
-VYB_WEAK int64_t __vyb_agent_start_string(void* env, void* fn)   { return vyb_agent_spawn(env, fn, AGENT_KIND_STRING); }
+VYB_WEAK int64_t __vyb_agent_start(void* env, void* fn, int64_t failable)          { return vyb_agent_spawn(env, fn, AGENT_KIND_INT, (int)failable); }
+VYB_WEAK int64_t __vyb_agent_start_bool(void* env, void* fn, int64_t failable)     { return vyb_agent_spawn(env, fn, AGENT_KIND_BOOL, (int)failable); }
+VYB_WEAK int64_t __vyb_agent_start_float(void* env, void* fn, int64_t failable)    { return vyb_agent_spawn(env, fn, AGENT_KIND_FLOAT, (int)failable); }
+VYB_WEAK int64_t __vyb_agent_start_string(void* env, void* fn, int64_t failable)   { return vyb_agent_spawn(env, fn, AGENT_KIND_STRING, (int)failable); }
 
 // 1 while the agent's worker is running (or draining), 0 once it has exited.
 static int vyb_agent_valid(int64_t handle) {
@@ -1541,12 +1610,80 @@ VYB_WEAK int64_t __vyb_agent_free(int64_t handle) {
         else __vyb_chan_close(a->mailbox);
     }
     pthread_join(a->tid, NULL);          // worker exits once closed & drained
+    if (a->error) {
+        __vyb_runtime_free_error((void*)(intptr_t)a->error);
+        a->error = 0;
+    }
     if (a->kind == AGENT_KIND_STRING) __vyb_strchan_free(a->mailbox);
     else __vyb_chan_free(a->mailbox);
     pthread_mutex_lock(&vyb_agents_lock);
     a->used = 0; a->fn = NULL; a->env = NULL; a->mailbox = 0; a->done = 0;
     pthread_mutex_unlock(&vyb_agents_lock);
     return 0;
+}
+
+// --- failure channeling (Stage 4) -------------------------------------------
+
+// Agent state: 0 running/draining, 1 stopped (normal), 2 failed.
+VYB_WEAK int64_t __vyb_agent_status(int64_t handle) {
+    int idx = (int)handle - 1;
+    if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return -1;
+    vyb_agent* a = &vyb_agents[idx];
+    pthread_mutex_lock(&vyb_agents_lock);
+    int failed = a->failed, done = a->done;
+    pthread_mutex_unlock(&vyb_agents_lock);
+    if (failed) return 2;
+    if (done) return 1;
+    return 0;
+}
+
+// Backlog/payload of the captured failure: the `fail<Int>(n)` value for Int
+// failures, otherwise -1 (non-Int payload or no failure).
+VYB_WEAK int64_t __vyb_agent_error_code(int64_t handle) {
+    int idx = (int)handle - 1;
+    if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return -1;
+    vyb_agent* a = &vyb_agents[idx];
+    pthread_mutex_lock(&vyb_agents_lock);
+    int failed = a->failed; int64_t err = a->error;
+    pthread_mutex_unlock(&vyb_agents_lock);
+    if (!failed || !err) return -1;
+    vyb_agent_err* e = (vyb_agent_err*)(intptr_t)err;
+    if (e->data_size == 8 && e->type_name && strcmp(e->type_name, "Int") == 0) {
+        int64_t v; memcpy(&v, e->data, 8); return v;
+    }
+    return -1;
+}
+
+// Human-readable descriptor of the captured failure: "TypeName @ file:line".
+// Returns a registry-owned String buffer (empty when the agent hasn't failed).
+VYB_WEAK char* __vyb_agent_error(int64_t handle) {
+    int idx = (int)handle - 1;
+    bool ok = false;
+    if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used)
+        return __vyb_string_from_string("", &ok);
+    vyb_agent* a = &vyb_agents[idx];
+    pthread_mutex_lock(&vyb_agents_lock);
+    int failed = a->failed; int64_t err = a->error;
+    pthread_mutex_unlock(&vyb_agents_lock);
+    if (!failed || !err) return __vyb_string_from_string("", &ok);
+    vyb_agent_err* e = (vyb_agent_err*)(intptr_t)err;
+    char buf[512];
+    const char* tn = e->type_name ? e->type_name : "Error";
+    const char* fl = e->file ? e->file : "<unknown>";
+    snprintf(buf, sizeof(buf), "%s @ %s:%u", tn, fl, e->line);
+    return __vyb_string_from_string(buf, &ok);
+}
+
+// Register an int-slot channel to be notified with the agent's handle when its
+// behavior fails. Returns 1, or -1 on a bad handle.
+VYB_WEAK int64_t __vyb_agent_set_dead_letter(int64_t handle, int64_t ch) {
+    int idx = (int)handle - 1;
+    if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return -1;
+    vyb_agent* a = &vyb_agents[idx];
+    pthread_mutex_lock(&vyb_agents_lock);
+    a->dead_letter = ch;
+    pthread_mutex_unlock(&vyb_agents_lock);
+    return 1;
 }
 // String channels. A distinct pthread/Mutex+CondVar ring buffer whose slots are
 // Vyb String values `{ ptr, len }`. On send, the data pointer is RETAINED so the

@@ -22,12 +22,10 @@
 # cooperative and loses no buffered messages. agent_free closes the mailbox if
 # it was never closed, then waits for the worker before reclaiming.
 
-# Start an agent running `behavior`, which receives each Int message. Returns a
-# handle (>= 1), or 0 on failure (table full / worker create failed).
-share(all)
-agent_start(behavior<fn(Int) -> Void>)<Int> -> {
-    return vyb_agent_start(behavior)
-}
+# `agent_start` / `agent_start_bool` / `agent_start_float` / `agent_start_string`
+# are compiler-native: the behavior closure's failable flag is unpacked there, so
+# a behavior that `fail`s is captured (Stage 4) rather than dropped. They return
+# a handle (>= 1) or 0 on failure (table full / worker create failed).
 
 # Post a message (non-blocking). Returns 1 on accepted, or 0 if the agent is
 # stopped/closed or its bounded mailbox is full.
@@ -69,24 +67,6 @@ agent_free(a<Int>)<Int> -> {
 # alive and is handed to the behavior as an owned transfer. The lifecycle
 # functions (len/close/free/alive) are payload-agnostic.
 
-# Start a Bool-message agent; `behavior` receives each Bool.
-share(all)
-agent_start_bool(behavior<fn(Bool) -> Void>)<Int> -> {
-    return vyb_agent_start_bool(behavior)
-}
-
-# Start a Float-message agent; `behavior` receives each Float.
-share(all)
-agent_start_float(behavior<fn(Float) -> Void>)<Int> -> {
-    return vyb_agent_start_float(behavior)
-}
-
-# Start a String-message agent; `behavior` receives each String (owned).
-share(all)
-agent_start_string(behavior<fn(String) -> Void>)<Int> -> {
-    return vyb_agent_start_string(behavior)
-}
-
 # Post a Bool message (non-blocking). 1 on accepted, 0 if stopped/full.
 share(all)
 agent_send_bool(a<Int>, b<Bool>)<Int> -> {
@@ -119,4 +99,38 @@ agent_send_string(a<Int>, s<String>)<Int> -> {
 share(all)
 agent_mailbox(a<Int>)<Int> -> {
     return vyb_agent_mailbox(a)
+}
+
+# --- Failure channeling (Stage 4) --------------------------------------------
+# A behavior may `fail<T>(...)`. Because the compiler compiles such a behavior
+# with the failable return ABI, the runtime captures the propagated VybError
+# instead of dropping it: it stops the agent (the mailbox is closed, so senders
+# see 0), records the failure, and optionally notifies a dead-letter channel.
+
+# Agent state: 0 running/draining, 1 stopped (normal), 2 failed. -1 on a bad
+# handle.
+share(all)
+agent_status(a<Int>)<Int> -> {
+    return vyb_agent_status(a)
+}
+
+# The `fail<Int>(n)` payload when an Int-typed failure was captured, else -1.
+share(all)
+agent_error_code(a<Int>)<Int> -> {
+    return vyb_agent_error_code(a)
+}
+
+# A human-readable descriptor of the captured failure ("kind @ file:line"), or
+# "" when the agent hasn't failed.
+share(all)
+agent_error(a<Int>)<String> -> {
+    return vyb_agent_error(a)
+}
+
+# Register an int-slot reply channel as a dead-letter: on failure the runtime
+# sends the agent's own handle into `ch` so a supervisor can react, then query
+# agent_status / agent_error for details. Returns 1, or -1 on a bad handle.
+share(all)
+agent_dead_letter(a<Int>, ch<Int>)<Int> -> {
+    return vyb_agent_set_dead_letter(a, ch)
 }

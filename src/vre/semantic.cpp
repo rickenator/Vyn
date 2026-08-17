@@ -2045,6 +2045,10 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_agent_len" || name == "vyb_agent_alive" ||
             name == "vyb_agent_close" || name == "vyb_agent_free" ||
             name == "vyb_agent_mailbox" ||
+            name == "vyb_agent_status" || name == "vyb_agent_error_code" ||
+            name == "vyb_agent_error" || name == "vyb_agent_set_dead_letter" ||
+            name == "agent_start" || name == "agent_start_bool" ||
+            name == "agent_start_float" || name == "agent_start_string" ||
             name == "vyb_mutex_new" || name == "vyb_mutex_lock" ||
             name == "vyb_mutex_unlock" || name == "vyb_mutex_free" ||
             name == "vyb_cond_new" || name == "vyb_cond_wait" ||
@@ -2458,6 +2462,19 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 }
                 return;
             }
+        }
+
+        // Agents: `agent_start*` are native (the behavior closure is unpacked in
+        // codegen, where its failable flag selects the calling convention), so
+        // they are typed here as returning an Int handle. The closure argument
+        // was already visited above.
+        if (name == "agent_start" || name == "agent_start_bool" ||
+            name == "agent_start_float" || name == "agent_start_string") {
+            auto* resTy = new ast::TypeName(node->loc,
+                std::make_unique<ast::Identifier>(node->loc, "Int"));
+            expressionTypes[node] = retainType(resTy);
+            node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+            return;
         }
 
         // File I/O intrinsics (io stdlib module). Arity/diagnostic detail is left
@@ -4970,9 +4987,11 @@ void SemanticAnalyzer::visit(ast::FunctionExpression* node) {
     }
 
     // Visit body to detect captures and validate inner expressions
+    lambdaStack.push_back(node);
     if (node->body) {
         node->body->accept(*this);
     }
+    lambdaStack.pop_back();
 
     exitScope();
 
@@ -6884,6 +6903,11 @@ void SemanticAnalyzer::visit(ast::FailStatement* node) {
     if (currentFunction) {
         currentFunction->canFail = true;
         currentFunction->needsErrorReturn = true;
+    }
+    // If we're inside a lambda body, flag the lambda too so codegen can select
+    // the failable () -> Void ABI for it (used by agent behaviors).
+    if (!lambdaStack.empty() && lambdaStack.back()) {
+        lambdaStack.back()->canFail = true;
     }
 
     // Verify error expression is present

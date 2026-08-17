@@ -116,6 +116,7 @@ private:
     // Scope and symbol management
     llvm::Function* currentFunction = nullptr; // Initialize
     vyb::ast::FunctionDeclaration* currentFunctionAST = nullptr; // Track AST node for error propagation
+    bool m_currentFunctionFailable = false; // True inside a failable lambda body
     size_t m_functionScopeBaseline = 0;   // Scope-stack depth at function entry
     llvm::StructType* currentClassType = nullptr; // Initialize
     LoopContext currentLoopContext;

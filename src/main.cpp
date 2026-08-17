@@ -153,10 +153,10 @@ extern "C" {
     int64_t __vyb_thread_spawn(void* env, void* fn);
     int64_t __vyb_thread_join(int64_t handle);
     int64_t __vyb_thread_detach(int64_t handle);
-    int64_t __vyb_agent_start(void* env, void* fn);
-    int64_t __vyb_agent_start_bool(void* env, void* fn);
-    int64_t __vyb_agent_start_float(void* env, void* fn);
-    int64_t __vyb_agent_start_string(void* env, void* fn);
+    int64_t __vyb_agent_start(void* env, void* fn, int64_t failable);
+    int64_t __vyb_agent_start_bool(void* env, void* fn, int64_t failable);
+    int64_t __vyb_agent_start_float(void* env, void* fn, int64_t failable);
+    int64_t __vyb_agent_start_string(void* env, void* fn, int64_t failable);
     int64_t __vyb_agent_send(int64_t handle, int64_t v);
     int64_t __vyb_agent_send_bool(int64_t handle, int64_t b);
     int64_t __vyb_agent_send_float(int64_t handle, int64_t bits);
@@ -166,6 +166,10 @@ extern "C" {
     int64_t __vyb_agent_close(int64_t handle);
     int64_t __vyb_agent_free(int64_t handle);
     int64_t __vyb_agent_mailbox(int64_t handle);
+    int64_t __vyb_agent_status(int64_t handle);
+    int64_t __vyb_agent_error_code(int64_t handle);
+    char* __vyb_agent_error(int64_t handle);
+    int64_t __vyb_agent_set_dead_letter(int64_t handle, int64_t ch);
     int64_t __vyb_mutex_new(void);
     int64_t __vyb_mutex_lock(int64_t mh);
     int64_t __vyb_mutex_unlock(int64_t mh);
@@ -987,6 +991,14 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_free), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_agent_mailbox")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_mailbox), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_agent_status")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_status), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_agent_error_code")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_error_code), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_agent_error")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_error), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_agent_set_dead_letter")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_set_dead_letter), llvm::JITSymbolFlags::Exported);
 
         // Register toString functions
         if (toStringIntFunc) {

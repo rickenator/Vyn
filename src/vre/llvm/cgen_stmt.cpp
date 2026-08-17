@@ -107,7 +107,7 @@ void LLVMCodegen::emitDeferredStatementsForCurrentFunction() {
 }
 
 void LLVMCodegen::emitPropagatingErrorReturn(llvm::Value* errorPtr) {
-    if (!currentFunction || !currentFunctionAST || !currentFunctionAST->needsErrorReturn) {
+    if (!currentFunction || ((!currentFunctionAST || !currentFunctionAST->needsErrorReturn) && !m_currentFunctionFailable)) {
         return;
     }
 
@@ -416,7 +416,7 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                 // CRITICAL: Phase 2 wrapping must happen BEFORE type checking
                 // If this is a failable function, we need to wrap the return value
                 // in {T, ptr} BEFORE checking type compatibility
-                if (currentFunctionAST && currentFunctionAST->needsErrorReturn) {
+                if ((currentFunctionAST && currentFunctionAST->needsErrorReturn) || m_currentFunctionFailable) {
                     
 
                     // Create null pointer for error (success case)
@@ -785,7 +785,7 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
         exitToFunctionBaseline();
         // Phase 6.4: Pop call frame before return
         generatePopFrameCall();
-        if (currentFunctionAST && currentFunctionAST->needsErrorReturn) {
+        if ((currentFunctionAST && currentFunctionAST->needsErrorReturn) || m_currentFunctionFailable) {
             // Failable void functions use a uniform 2-field tuple ABI: {i1 dummy, i8* err}.
             llvm::StructType* returnStructType = llvm::cast<llvm::StructType>(currentFunction->getReturnType());
             llvm::Value* nullErrorPtr = llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0));
@@ -2229,7 +2229,7 @@ void LLVMCodegen::visit(vyb::ast::FailStatement* node) {
         // No trap handler in current scope
 
         // Phase 3: Check if we're in a failable function that can propagate errors
-        if (currentFunctionAST && currentFunctionAST->needsErrorReturn) {
+        if ((currentFunctionAST && currentFunctionAST->needsErrorReturn) || m_currentFunctionFailable) {
             
             emitPropagatingErrorReturn(errorPtr);
         } else {

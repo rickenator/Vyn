@@ -3,6 +3,21 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-17: **Agents: failure channeling (Stage 4)**. A behavior that `fail`s is
+  now captured instead of dropped. `agent_start`/`agent_start_bool`/
+  `agent_start_float`/`agent_start_string` became compiler-native so codegen can
+  pick the behavior\'s calling convention from its failable flag; a behavior that
+  can fail is compiled with the failable `{i1, i8*}` return ABI (lambda codegen
+  gained a canFail-driven path), and the runtime captures the propagated VybError
+  on the agent: it marks the agent failed, closes the mailbox (senders see 0),
+  and optionally notifies a dead-letter channel. New stdlib surface:
+  `agent_status` (0 running / 1 stopped / 2 failed), `agent_error_code` (the
+  `fail<Int>` payload, else -1), `agent_error` (a `"Type @ file:line"`
+  descriptor), and `agent_dead_letter(a, ch)` (a supervisor channel that receives
+  the failed agent\'s handle). Lifecycle queries re-run clean; the captured error
+  is freed by `agent_free`. Valgrind clean; full unit/module/milestone suites
+  pass. Test: `test/agents/test_agent_failure.vyb`.
+
 - 2026-08-17: **Agents: isolated message-passing units (Stages 1-3)**. A new `agents`
   stdlib module (`import agents`) for lightweight message-passing units, torn
   down through `test/agents/`. Stage 1 ships the core shape: `agent_start` runs a

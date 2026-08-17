@@ -3344,22 +3344,32 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             }
             m_currentLLVMValue = builder->CreateCall(f, {envPtr, fnPtr}, "thr.handle");
             return;
-        } else if (fname == "vyb_agent_start" || fname == "vyb_agent_start_bool" ||
+        } else if (fname == "agent_start" || fname == "agent_start_bool" ||
+                   fname == "agent_start_float" || fname == "agent_start_string" ||
+                   fname == "vyb_agent_start" || fname == "vyb_agent_start_bool" ||
                    fname == "vyb_agent_start_float" || fname == "vyb_agent_start_string") {
-            // Agents (agents stdlib module): `vyb_agent_start*` take a
-            // `fn(Payload) -> Void` behavior closure value `{ env, fn }`; unpack
-            // the two pointers and hand them to the runtime, which creates the
-            // mailbox (Int/Bool/Float share the int-slot channel; String uses a
-            // strchan) and runs the behavior loop on a worker thread. The agent
-            // handle is an Int (a runtime table index).
-            const char* rtName = (fname == "vyb_agent_start") ? "__vyb_agent_start"
-                              : (fname == "vyb_agent_start_bool") ? "__vyb_agent_start_bool"
-                              : (fname == "vyb_agent_start_float") ? "__vyb_agent_start_float"
+            // Agents: `agent_start*` takes a `fn(Payload) -> Void` behavior closure
+            // value `{ env, fn }`. The two pointers go to the runtime, which creates
+            // the mailbox (Int/Bool/Float share the int-slot channel; String uses a
+            // strchan) and runs the behavior loop on a worker thread. A behavior
+            // that contains `fail` is compiled with the failable `{i1, i8*}` return
+            // ABI; we pass that flag so the runtime captures (rather than drops)
+            // the propagated error (failure channeling, Stage 4). The agent handle
+            // is an Int (a runtime table index).
+            const char* rtName = (fname == "agent_start" || fname == "vyb_agent_start") ? "__vyb_agent_start"
+                              : (fname == "agent_start_bool" || fname == "vyb_agent_start_bool") ? "__vyb_agent_start_bool"
+                              : (fname == "agent_start_float" || fname == "vyb_agent_start_float") ? "__vyb_agent_start_float"
                               : "__vyb_agent_start_string";
             std::string rt(rtName);
             if (node->arguments.size() != 1) {
                 logError(node->loc, fname + " expects 1 argument (fn(Payload) -> Void)");
                 m_currentLLVMValue = nullptr; return;
+            }
+            // The failable flag is a compile-time property of the behavior lambda
+            // (1 when it can propagate a failure, 0 for a plain Void behavior).
+            int failable = 0;
+            if (auto* fe = dynamic_cast<ast::FunctionExpression*>(node->arguments[0].get())) {
+                failable = fe->canFail ? 1 : 0;
             }
             node->arguments[0]->accept(*this);
             llvm::Value* cl = m_currentLLVMValue;
@@ -3380,11 +3390,12 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             }
             llvm::Function* f = module->getFunction(rt);
             if (!f) {
-                llvm::FunctionType* ft = llvm::FunctionType::get(
-                    int64Type, {llvm::PointerType::get(*context, 0), llvm::PointerType::get(*context, 0)}, false);
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type,
+                    {llvm::PointerType::get(*context, 0), llvm::PointerType::get(*context, 0), int64Type}, false);
                 f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, rt, module.get());
             }
-            m_currentLLVMValue = builder->CreateCall(f, {envPtr, fnPtr}, "agent.handle");
+            llvm::Value* failableV = llvm::ConstantInt::get(int64Type, failable);
+            m_currentLLVMValue = builder->CreateCall(f, {envPtr, fnPtr, failableV}, "agent.handle");
             return;
         } else if (fname == "vyb_task_spawn") {
             // Tasks (tasks stdlib module): same closure { env, fn } unpack as
@@ -3628,6 +3639,42 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             return;
         } else if (fname == "vyb_agent_mailbox") {
             emitHandleIntrinsic("__vyb_agent_mailbox", 1);
+            return;
+        } else if (fname == "vyb_agent_status") {
+            emitHandleIntrinsic("__vyb_agent_status", 1);
+            return;
+        } else if (fname == "vyb_agent_error_code") {
+            emitHandleIntrinsic("__vyb_agent_error_code", 1);
+            return;
+        } else if (fname == "vyb_agent_set_dead_letter") {
+            emitHandleIntrinsic("__vyb_agent_set_dead_letter", 2);
+            return;
+        } else if (fname == "vyb_agent_error") {
+            // Failure descriptor: the runtime returns a registry-owned char*
+            // buffer; wrap it (with strlen) as a Vyb String, mirroring the
+            // net/tls error-message handling.
+            if (node->arguments.size() != 1) {
+                logError(node->loc, "vyb_agent_error expects 1 argument (agent)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this);
+            llvm::Value* h = m_currentLLVMValue;
+            if (!h) return;
+            if (h->getType()->isIntegerTy() && !h->getType()->isIntegerTy(64))
+                h = builder->CreateSExt(h, int64Type, "agenterr.toi64");
+            llvm::FunctionType* ft = llvm::FunctionType::get(int8PtrType, {int64Type}, false);
+            llvm::Function* f = module->getFunction("__vyb_agent_error");
+            if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_agent_error", module.get());
+            llvm::Value* msgPtr = builder->CreateCall(f, {h}, "agent.errmsg");
+            llvm::FunctionType* strlenTy = llvm::FunctionType::get(int64Type, {int8PtrType}, false);
+            llvm::Function* strlenFn = module->getFunction("strlen");
+            if (!strlenFn) strlenFn = llvm::Function::Create(strlenTy, llvm::Function::ExternalLinkage, "strlen", module.get());
+            llvm::Value* msgLen = builder->CreateCall(strlenFn, {msgPtr}, "agent.errlen");
+            llvm::StructType* agentStrTy = llvm::StructType::get(*context, {int8PtrType, int64Type}, false);
+            llvm::Value* out = llvm::UndefValue::get(agentStrTy);
+            out = builder->CreateInsertValue(out, msgPtr, 0, "agent.err.data");
+            out = builder->CreateInsertValue(out, msgLen, 1, "agent.err.len");
+            m_currentLLVMValue = out;
             return;
         } else if (fname == "vyb_chan_new") {
             emitHandleIntrinsic("__vyb_chan_new", 1);   // capacity (0 = unbounded)
@@ -5064,7 +5111,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                     TrapContext& trap = trapStack.back();
                     builder->CreateStore(errorPtr, trap.errorSlot);
                     builder->CreateBr(trap.landingPad);
-                } else if (currentFunctionAST && currentFunctionAST->needsErrorReturn) {
+                } else if ((currentFunctionAST && currentFunctionAST->needsErrorReturn) || m_currentFunctionFailable) {
                     // No trap but we're in a failable function - propagate to our caller
                     emitPropagatingErrorReturn(errorPtr);
                 } else {
@@ -7151,6 +7198,17 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
     llvm::FunctionType* userFuncType = llvm::FunctionType::get(returnType, paramTypes, false);
     lastLambdaFuncType = userFuncType;
 
+    // A failable Void lambda (an agent behavior that can `fail`) implements the
+    // failable return ABI `{ i1 dummy, i8* err }`. The user-facing signature
+    // above stays plain Void; only the implemented function return becomes the
+    // two-field tuple, so the runtime can distinguish a propagated failure.
+    const bool lambdaFailable = node->canFail && returnType->isVoidTy();
+    llvm::Type* implReturnType = returnType;
+    if (lambdaFailable) {
+        implReturnType = llvm::StructType::get(*context,
+            {llvm::Type::getInt1Ty(*context), llvm::PointerType::get(*context, 0)}, false);
+    }
+
     // Determine the captures to bake into the environment: variables the body
     // references that are visible in the enclosing scope at creation time.
     // Mutable captures store the *address* of the outer variable in the env and
@@ -7217,7 +7275,7 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
     std::vector<llvm::Type*> fullParamTypes;
     fullParamTypes.push_back(llvm::PointerType::get(*context, 0));
     for (auto* t : paramTypes) fullParamTypes.push_back(t);
-    llvm::FunctionType* funcType = llvm::FunctionType::get(returnType, fullParamTypes, false);
+    llvm::FunctionType* funcType = llvm::FunctionType::get(implReturnType, fullParamTypes, false);
 
     llvm::Function* function = llvm::Function::Create(funcType, llvm::Function::InternalLinkage, funcName, module.get());
 
@@ -7234,8 +7292,10 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
     llvm::BasicBlock* savedBlock = builder->GetInsertBlock();
     std::map<std::string, llvm::Value*> savedNamedValues = namedValues;
     std::map<std::string, llvm::Value*> savedMutableCaptureOuterPointers = mutableCaptureOuterPointers;
+    const bool savedFunctionFailable = m_currentFunctionFailable;
 
     currentFunction = function;
+    m_currentFunctionFailable = lambdaFailable;
     builder->SetInsertPoint(entryBB);
     // Give the lambda its own runtime call-stack frame so explicit `return`
     // statements inside its body (which emit a matching pop) stay balanced and
@@ -7303,6 +7363,15 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
         node->body->accept(*this);
         llvm::Value* bodyValue = m_currentLLVMValue;
         if (!builder->GetInsertBlock()->getTerminator()) {
+            if (lambdaFailable) {
+                // Implicit success of a failable Void lambda: `{ false, null }`.
+                generatePopFrameCall();
+                llvm::StructType* st = llvm::cast<llvm::StructType>(implReturnType);
+                llvm::Value* sv = llvm::UndefValue::get(st);
+                sv = builder->CreateInsertValue(sv, builder->getFalse(), 0, "lambda.fail.ok");
+                sv = builder->CreateInsertValue(sv, llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)), 1, "lambda.fail.okerr");
+                builder->CreateRet(sv);
+            } else
             if (returnType->isVoidTy()) {
                 generatePopFrameCall();
                 builder->CreateRetVoid();
@@ -7359,6 +7428,14 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
             }
         }
     } else {
+        if (lambdaFailable) {
+            generatePopFrameCall();
+            llvm::StructType* st = llvm::cast<llvm::StructType>(implReturnType);
+            llvm::Value* sv = llvm::UndefValue::get(st);
+            sv = builder->CreateInsertValue(sv, builder->getFalse(), 0, "lambda.fail.ok");
+            sv = builder->CreateInsertValue(sv, llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)), 1, "lambda.fail.okerr");
+            builder->CreateRet(sv);
+        } else
         if (returnType->isVoidTy()) {
             generatePopFrameCall();
             builder->CreateRetVoid();
@@ -7382,6 +7459,7 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
         function->eraseFromParent();
         m_currentLLVMValue = nullptr;
         currentFunction = savedFunction;
+        m_currentFunctionFailable = savedFunctionFailable;
         builder->SetInsertPoint(savedBlock);
         namedValues = savedNamedValues;
         mutableCaptureOuterPointers = savedMutableCaptureOuterPointers;
@@ -7394,6 +7472,7 @@ void LLVMCodegen::visit(ast::FunctionExpression* node) {
     // current value of each captured variable (copy by value), then build the
     // closure struct value { env, fn }.
     currentFunction = savedFunction;
+    m_currentFunctionFailable = savedFunctionFailable;
     builder->SetInsertPoint(savedBlock);
     namedValues = savedNamedValues;
     mutableCaptureOuterPointers = savedMutableCaptureOuterPointers;
@@ -8006,7 +8085,7 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
         builder->SetInsertPoint(unmatchedBB);
 
         // PHASE 6.3: Propagate unmatched error to caller if in failable function
-        if (currentFunctionAST && currentFunctionAST->needsErrorReturn) {
+        if ((currentFunctionAST && currentFunctionAST->needsErrorReturn) || m_currentFunctionFailable) {
             emitPropagatingErrorReturn(errorPtr);
         } else {
             // Not in failable function - call untrapped error handler
@@ -8593,7 +8672,7 @@ void LLVMCodegen::visit(ast::AwaitExpression* node) {
                     TrapContext& trap = trapStack.back();
                     builder->CreateStore(errPtr, trap.errorSlot);
                     builder->CreateBr(trap.landingPad);
-                } else if (currentFunctionAST && currentFunctionAST->needsErrorReturn) {
+                } else if ((currentFunctionAST && currentFunctionAST->needsErrorReturn) || m_currentFunctionFailable) {
                     emitPropagatingErrorReturn(errPtr);
                 } else {
                     llvm::Function* untrappedFn = getVybUntrappedErrorFunction();
