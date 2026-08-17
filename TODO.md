@@ -27,19 +27,19 @@ is the working audit for what needs to be implemented next.
 | Type system (primitives + generics) | ~75% | Higher-kinded types |
 | Struct system | ~85% | repr(C) for FFI |
 | Ownership types (syntax + parsing) | ~80% | Semantic enforcement |
-| Ownership types (runtime enforcement) | ~60% | Full move/copy/drop checking; compile-time move/use-after-move checking and `our<T>` copy/assignment/parameter refcounting done; full drop semantics for every exit path remain |
-| `mild<T>` weak references | ~75% | Control blocks, failed `grab()` (native `our<T>?`), and `our<T>` copy/assignment/parameter refcounting done; full copy/drop semantics remain |
-| Aspect/bind system | ~78% | Aspect objects/dyn dispatch |
+| Ownership types (runtime enforcement) | ~90% | Borrow checking, `my<T>` moves, `our<T>` refcounting, `their<T>`/by-ref receivers, struct-owned cleanup shipped (`test/ownership`); edge-case drop paths remain |
+| `mild<T>` weak references | ~90% | `soft()`/`grab()`/`released()`, failed `grab()` → `our<T>?`, weak copy/drop accounting shipped (`test/ownership/mild_*.vyb`) |
+| Aspect/bind system | ~92% | Static dispatch complete (associated types, inheritance, disambiguation, bound dispatch); `dyn` aspect objects are a marked future experiment |
 | Generic monomorphization | ~85% | **SEALED**: Compile-time only. See doc/MONOMORPHIZATION_DESIGN.md |
-| Async/await | ~98% | agents |
+| Async/await | ~98% | agents (message-passing units) |
 | Error propagation (`fail`/`trap`) | ~80% | Standard error aspects, `rethrow`, ensure contracts |
-| Lambda/closure codegen | ~70% | Capture-by-value closure env structs shipped; move/mutable/`our` capture planned |
-| Module system (`import`/`smuggle`/`bundle`) | ~70% | Local/module-path resolution, aliases, bundle/share visibility done; stdlib modules/package integration pending |
-| FFI (`extern "C"`) | ~35% | Extern blocks, C aliases, freedom-gated JIT calls done; repr(C), variadics, linker flow pending |
-| Standard library | ~70% | Vec, String, HashMap/HashSet, BTreeMap, File I/O, Math, TCP socket + UDP I/O, time, HTTP server + client, TLS, HTTPS client, async socket I/O, `TcpStream`/`TcpListener`/`UdpSocket` done |
+| Lambda/closure codegen | ~90% | Closure env structs, mutable/move/`our` capture, returned-closure env release shipped; rare receiver edge cases remain |
+| Module system (`import`/`smuggle`/`bundle`) | ~90% | Phases 1.1–1.5 shipped (`ModuleRegistry`, aliases, `share`/bundle visibility, path resolution); stdlib package integration / `vyb.toml` pending |
+| FFI (`extern "C"`) | ~55% | Extern blocks, ABI aliases, `#[repr(C)]`, native `--link`, OpenSSL binding shipped; variadics, broader C ABI validation, bindgen/libclang pending |
+| Standard library | ~85% | Vec, String, HashMap/HashSet, BTreeMap, File I/O, Math, `threads`, `channels`, `tasks`, `asyncs`, `time`, `network` (TCP/UDP/`TcpStream`/`TcpListener`/`UdpSocket`), HTTP server + client, TLS, verified HTTPS client shipped |
 | Introspection (`typeof`/`typename`) | ~75% | Downcasting, type assertions |
 | Auto-serialization | ~80% | Edge cases remain |
-| Pattern matching | ~60% | Destructuring, guards, enum variants |
+| Pattern matching | ~85% | Struct destructuring, guards, range/`?`/comparison patterns, data-enum variants, `match`-as-expression shipped |
 | Package manager / `vyb.toml` | ~0% | Not started |
 | Language server (LSP) | ~0% | Not started |
 | REPL | ~0% | Not started |
@@ -962,20 +962,20 @@ For Vyb to be considered production-ready at 1.0, **all of the following must be
 
 ### Must-Have for 1.0
 - [x] Module system core working (`import`, `smuggle`, `bundle`, `share`, module paths, stdlib discovery)
-- [ ] Lambda/closure codegen complete
-- [ ] Ownership types runtime-enforced (borrow checking, move semantics)
+- [x] Lambda/closure codegen complete (env structs, mutable/move/`our` capture, returned-closure release)
+- [x] Ownership types runtime-enforced (borrow checking, move semantics, `mild<T>` weak refs)
 - [x] Minimal `mild<T>` control block implemented with `soft()`, `grab()`, and `released()`
 - [x] Error propagation (Phases 2-5) complete
 - [x] `Result<T, E>` built-in enum (and native `T?` optional; the `Option<T>` enum is removed)
 - [x] Core aspects (`Display`, `Debug`, `Clone`, `Equatable`, `Comparable`, `Hashable`)
-- [ ] Iterator aspect with `for` loop desugaring
-- [ ] Enum/sum types with pattern matching
+- [x] Iterator aspect with `for` loop desugaring (identifier, range, and non-identifier iterable forms)
+- [x] Enum/sum types with pattern matching (data variants, exhaustiveness, guards, destructuring, `match`-as-expression)
 - [x] String methods complete (`split` and formatting done; see `.split()`/`.format()`)
-- [ ] `HashMap<K, V>` and basic collections
-- [ ] FFI (`extern "C"`) working
+- [x] `HashMap<K, V>` and basic collections (HashMap/HashSet/BTreeMap, `Vec` iterators, growth)
+- [x] FFI (`extern "C"`) working — extern blocks, ABI aliases, `#[repr(C)]`, native `--link` (variadics/bindgen still open)
 - [ ] `vyb.toml` and `vyb build` project system
-- [ ] Wildcard trap handler (`trap (e<?>)`) with `typeof` discrimination
-- [ ] All open contradictions resolved (see section above)
+- [x] Wildcard trap handler (`trap (e<?>)`) with `typeof` discrimination
+- [ ] All open contradictions resolved (see section above; 4 pre-existing trap/vec failures remain)
 
 ### Should-Have for 1.0
 - [ ] REPL (`vyb repl`)
@@ -988,7 +988,7 @@ For Vyb to be considered production-ready at 1.0, **all of the following must be
 - [ ] Debugger integration validated end-to-end with `gdb`/`lldb`
 
 ### Post-1.0 Roadmap
-- [ ] Channels + agents (design doc first!)
+- [ ] Agents (lightweight isolated message-passing units — design doc first; channels are shipped)
 - [x] **Network/socket MVP** — synchronous TCP/IP sockets shipped via the `network`
   stdlib module (`socket_open/bind/listen/accept/connect/send/recv/local_port/close`,
   `AF_INET`/`SOCK_STREAM`/`IPPROTO_TCP`; loopback echo
@@ -1114,7 +1114,7 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 ---
 
-*Last Updated: August 2026*
-*Current Version: Vyb v0.5.4 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 855 tests passing (full --execute-jit directory sweep; 4 pre-existing trap/vec failures remain)*
+*Last Updated: 2026-08-17 (doc-reconciliation)*
+*Current Version: Vyb v0.6.2 (freedom-1.0 series)*
+*Overall Status: ~60-65% complete toward 1.0 — 993 tests, 989 passing (full --execute-jit directory sweep; 4 pre-existing trap/vec failures remain)*
 *SUGGESTIONS.md merged into this document.*

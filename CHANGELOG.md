@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.2] - 2026-08-17
+
+### Changed
+- Version bumped to 0.6.2 to match the shipped stdlib/async/network/TLS/HTTPS
+  feature set (`CMakeLists.txt`, `README.md`, `doc/FEATURE_STATUS.md`,
+  `TODO.md`).
+- Reconciliation pass aligns `TODO.md` and `UPDATE_LOG.md` with the current
+  source: full-suite status is now **993 tests, 989 passing** (4 pre-existing
+  trap/vec failures), completed 1.0 criteria are checked off, and the
+  implementation-audit backlog rows are marked SHIPPED where landed.
+
+### Fixed
+- Refman generator now preserves doc-comment indentation and full
+  `Name<K, V>` declarations; regenerated module pages and graph.
+- `PROGRAMMERS_GUIDE.md`: expanded `;`/`/`-crammed listings, de-blockquoted
+  the teardown note, and placed each EBNF key feature on its own line.
+
 ## [Unreleased]
 
 ### Added

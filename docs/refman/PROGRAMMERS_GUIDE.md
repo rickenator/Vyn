@@ -34,7 +34,7 @@ x<Int> = 5            # the type leads, the value follows
 
 **Monomorphized generics.** `Vec<T>`, `HashMap<K, V>`, and every generic
 function are specialized per concrete type at compile time — no vtable, no
-boxed trait object, no runtime dispatch:
+boxed aspect object, no runtime dispatch:
 
 ```vyb
 first<T>(v<Vec<T>>)<T> -> { … }

@@ -587,30 +587,45 @@ Source areas checked:
 
 ## Highest Priority Implementation Backlog
 
+> **2026-08-17 reconciliation.** This table is the original
+> implementation-audit-2026-05-23 backlog. Since then, most P0/P1 items have
+> shipped (see `git log`, `CHANGELOG.md`, and `docs/refman/`); rows marked
+> **SHIPPED** below are done and their "Evidence" should be read as historical.
+> Open work is tracked forward in `TODO.md` (agents, FFI variadics/bindgen,
+> `vyb.toml`/build/tooling, and the 4 pre-existing trap/vec test failures).
+> Rows **not** marked SHIPPED (I-005/6, I-014/15/17/18/19) remain open —
+> either genuinely incomplete or only partially resolved.
+
 | ID | Area | Priority | What needs to be implemented | Evidence |
 |----|------|----------|------------------------------|----------|
-| I-001 | Module system | P0 | Formalize the source-level module resolver into a `ModuleRegistry`/AST metadata model, add module path search (`VYB_MODULE_PATH`, CLI), stdlib auto-discovery, and better duplicate-import caching. Local loading, cycle checks, `bundle(...)`, `share(...)`, selective aliases, and explicit re-exports now work. | `doc/MODULE_FFI_BINARY_ROADMAP.md`; source resolver lives in `src/main.cpp`; semantic/codegen import visitors remain no-ops after pre-resolution. |
-| I-002 | FFI | P0 | Continue FFI after extern block/ABI alias support: variadic calls, explicit `String::as_c_str()`, richer C ABI layout validation, and broader end-to-end native/JIT FFI tests. | Source now supports extern C blocks, host process symbol lookup, freedom-gated direct calls, C scalar/pointer aliases, `#[repr(C)]` structs with conservative ABI diagnostics, a minimal native `--link <lib-or-path>` flow, and a narrow String-to-C-string call path. |
-| I-003 | Ownership runtime | P0 | Extend lexical borrow checks and the initial `our<T>`/`mild<T>` control-block runtime into full ownership: `my<T>` moves, complete `our<T>` copy/assignment/parameter strong-count semantics, deeper `their<T>` lifetime analysis, and comprehensive cleanup. | `TODO.md`; `doc/archive/mem_RFC.md`; current semantic pass checks lvalue borrows, overlapping mutable/view borrows, and assignment while borrowed; current codegen supports minimal control blocks for `our()`, `soft()`, `released()`, and live `grab()`. |
-| I-004 | `mild<T>` weak references | P0 | Complete the remaining weak-reference contract: Option-like failed `grab()`, full weak handle copy/drop accounting across all assignment paths, and final control-block cleanup once strong/weak counts reach zero. | `doc/OWNERSHIP_MILD.md`; `test/ownership/mild_released_live.vyb`; `test/ownership/mild_released_after_drop_or_scope.vyb`; `test/ownership/mild_grab_live.vyb`; `test/ownership/mild_grab_released.vyb`. |
+| I-001 | Module system | P0 | **SHIPPED** — `ModuleRegistry` metadata model, `bundle(...)`/`share(...)` visibility, selective aliases + re-exports, `VYB_MODULE_PATH` + CLI `--module-path` + stdlib discovery, and namespace-scoped per-module resolution (cross-module direct-call leaks closed). | Not yet implemented at audit time; see `src/module_registry.cpp`, `test/modules/test_{import,nested,namespace}*.vyb` (all pass). |
+| I-002 | FFI | P0 | **SHIPPED (partial)** — extern C blocks, ABI scalar/pointer aliases, `#[repr(C)]`, native `--link`, and OpenSSL binding shipped; variadic calls, `String::as_c_str()`, broader C ABI validation, and bindgen/libclang remain open. | See `src/bindgen.cpp`, `test/ffi/`, and `stdlib/{tls,https}` (linked OpenSSL). |
+| I-003 | Ownership runtime | P0 | **SHIPPED** — borrow checking, `my<T>` moves + temporary-owner semantics, `our<T>` refcounted copy/assignment/params, `their<T>`/by-ref receivers (incl. nested field + member-expression), and struct-owned cleanup. | `test/ownership/` (46/46 pass), `test/lambda/test_closure_{move,our}_capture.vyb`. |
+| I-004 | `mild<T>` weak references | P0 | **SHIPPED** — `soft()`/`grab()`/`released()`, failed `grab()` returns native `our<T>?`, and weak handle copy/drop/cleanup accounting. | See `test/ownership/mild_*.vyb` (all pass). |
 | I-005 | Error propagation/runtime errors | P0 | Finish cross-function error propagation, construct real `VybError` objects at `fail`, preserve type/data/source location, print detailed untrapped errors, and settle Result-vs-fail/trap design conflict. | `doc/archive/ERROR_PROPAGATION_DESIGN.md`; `test/trap/TEST_RESULTS.md`; `src/runtime/error_handling.cpp` says error structure is not implemented. |
 | I-006 | Defer/runtime cleanup | P0 | Decide whether runtime defer/ensure stacks are needed; implement runtime defer stack if `defer` must survive fail/unwind paths. | `src/runtime/error_handling.cpp` has defer/ensure stubs; `src/vre/llvm/cgen_stmt.cpp` stores defers in a codegen stack. |
-| I-007 | Aspect completion | P0 | Remaining work after associated types, receiver shorthand, ambiguity diagnostics, and executable generic bind method monomorphization: aspect objects/dynamic dispatch, aspect inheritance, bounded bind selection precedence, and qualified disambiguation syntax for same-name aspect methods. | `TODO.md`; `doc/ASPECT_BOUNDS.md`; `doc/TRAIT_SYSTEM_DESIGN.md`; `test/aspect/PHASE_6_ROADMAP.md`. |
-| I-008 | Stdlib foundation | P0 | Implement `Option<T>`, decide and implement/document `Result<T,E>`, core aspects (`Display`, `Debug`, `Clone`, `Equatable`, `Comparable`, `Hashable`), `Iterator`, File I/O, maps/sets, and remaining String/Vec helpers. | `TODO.md`; `doc/STRING_IMPLEMENTATION.md`; `test/future_features/test_option_type.vyb`, `test_result_type.vyb`; FFI is a blocker for File I/O. |
-| I-009 | Async runtime semantics | P1 | Replace placeholder await behavior with real scheduling, future value storage, suspension/resumption, task spawning, and eventually async I/O integration. | `TODO.md`; `src/vre/llvm/cgen_expr.cpp` awaits with dummy task id and returns the input future; `src/runtime/async_runtime.cpp` stores value support as future work. |
-| I-010 | Lambda/closures | P1 | Implement real lambda return type inference, non-void lambda returns, function value/call semantics, closure capture structs, capture extraction, move/mutable captures, generic and async lambdas. | `doc/LAMBDAS.md`; `test/future_features/test_lambda_codegen.vyb`; `src/vre/llvm/cgen_expr.cpp` defaults lambda return type to void and lacks capture handling. |
-| I-011 | Pattern matching/select polish | P1 | Struct/tuple destructuring, enum variant patterns, range patterns, guards, exhaustiveness, match-as-expression, and better select type inference. | `TODO.md`; `doc/AST_Roadmap.md`; source warns that complex patterns and select inference are incomplete. |
-| I-012 | Enums/sum types | P1 | Implement tagged enum variants with payloads, enum construction, enum methods via bind, pattern matching on variants, and stdlib `Option`/`Result` support. | `test/future_features/test_enum_basic.vyb`; `src/vre/llvm/cgen_decl.cpp` reports enum codegen is not fully implemented. |
-| I-013 | Vec correctness/polish | P1 | Add bounds checking to `get`, implement `concat`, `push_array`, `to_array`, `get_array`, `get_vec`, and improve element type tracking for `Vec<Struct>`. `contains` and primitive `pop` return values are now covered. | `src/vre/llvm/cgen_vec.cpp`; `doc/VEC_ITERATION.md` notes `Vec<Struct>`/complex-expression limitations. |
-| I-014 | Tuple completion | P1 | Tuple serialization/output, tuple variables, `.0`/`.1` element access, destructuring assignment, and tuple pattern matching. | `test/tuples/README.md`; `TODO.md`. |
+| I-007 | Aspect completion | P0 | **SHIPPED** (static dispatch) — associated types, aspect inheritance with super-aspect validation, qualified `Aspect::method` disambiguation, unqualified dispatch on bounded type params, bound-bind precedence; AST teardown leaks fixed. | See `test/aspect/` (82/82 pass); runtime `dyn` dispatch is a deliberate non-goal (`TODO.md` "Aspect objects/dyn dispatch"). |
+| I-008 | Stdlib foundation | P0 | **SHIPPED** — native `T?` replaced `Option`; `Result<T,E>`; core aspects; `Iterator` + `for` desugaring; File I/O; maps/sets (`HashMap`/`HashSet`/`BTreeMap`); String/Vec helpers; collections iterators. | See `stdlib/{core,io,collections}`, `docs/refman/collections.md`, `test/modules/`. |
+| I-009 | Async runtime semantics | P1 | **SHIPPED** — real cooperative executor, future storage, suspension/resumption, task spawning, async lambdas, closures-as-async-params, `async for` over channels, multi-threaded workers, async socket I/O. | Not yet implemented at audit time; now `stdlib/asyncs` + `src/runtime/async_runtime.cpp`, covered by `test/async/`. |
+| I-010 | Lambda/closures | P1 | **SHIPPED** — return-type inference, closure env structs, indirect calls, mutable/move/`our` capture, owned/member-receiver capture, returned-closure env release. | Not yet implemented at audit time; see `test/lambda/` and `test/*/test_closure*`. |
+| I-011 | Pattern matching/select polish | P1 | **SHIPPED** — struct destructuring, enum-variant + range + guard patterns, exhaustiveness, `match`-as-expression. | Not yet implemented at audit time; see `test/select_match/` and `test/enum/`. |
+| I-012 | Enums/sum types | P1 | **SHIPPED** — tagged data enums with variants, pattern matching, exhaustiveness, and native `T?` replacing `Option`; `Result<T,E>` shipped. | Not yet implemented at audit time; see `test/enum/` and `docs/refman/types.md`. |
+| I-013 | Vec correctness/polish | P1 | **SHIPPED (partial)** — bounds-checked `get`, `contains`, `pop` returns, `find`/`first`/`last`/`reversed`/`sorted`/`min`/`max`, higher-order + in-place combinators, `VecIter`. | See `test/modules/test_vec_*.vyb`; element-type edge cases remain (see the 4 pre-existing failures). |
+| I-014 | Tuple completion | P1 | **IN PROGRESS** — tuple element access/serialization remain partial. | See `test/tuples/` and `docs/refman/types.md`. |
 | I-015 | Generic/template monomorphization | P1 | Finish template instantiation, AST clone/substitution, constructor inference, nested generics, member template instantiation, and bounds-checked instantiation. | `src/vre/semantic.cpp` has monomorphization stubs; `test/template/generics_examples.vyb`; `doc/archive/SELF_RESOLUTION_COMPLETE.md` lists constructor/Vec issues. |
-| I-016 | Introspection completion | P1 | First-class `Type`, type registry initialization, type equality assertions, downcasting/as operator, and `typeof` in wildcard trap handlers. | `TODO.md`; `doc/INTROSPECTION_DESIGN.md`. |
+| I-016 | Introspection completion | P1 | **SHIPPED (partial)** — `typeof`/`typename` and `as` downcasting present; first-class `Type` registry still open. | See `test/introspection/` and the wildcard-trap handling in `src/vre/llvm/cgen_expr.cpp`. |
 | I-017 | Auto-serialization/metadata edges | P1 | Re-enable/fix main auto-serialization where disabled, handle nested structs and Vec in metadata serialization/deserialization, and dynamic buffer sizing. | `src/main.cpp`; `src/vre/llvm/cgen_decl.cpp`; `runtime/vyb_type_metadata.c`. |
 | I-018 | Build optimization pipeline | P2 | Complete LLVM pass pipeline for all optimization levels, add LTO/ThinLTO, bitcode flows, benchmarks, and linker/library flag handling. | `TODO.md`; `doc/MODULE_FFI_BINARY_ROADMAP.md`. |
 | I-019 | Developer tooling | P2 | `vyb.toml`, `vyb build` project mode, `vyb test`, package resolution/lockfile, formatter, linter, LSP, REPL, and `vyb doc`. | `TODO.md`; `doc/Development_Guide.md`. |
-| I-020 | Networking | P2 | Implement raw socket FFI bindings, `TcpStream`, `UdpSocket`, listener APIs, async socket I/O, and HTTP client after FFI and async runtime are real. | `TODO.md` networking section; depends on I-002 and I-009. |
+| I-020 | Networking | P2 | **SHIPPED** — sockets, `TcpStream`/`TcpListener`/`UdpSocket`, async socket I/O, pure-Vyb HTTP client+server, TLS, verified HTTPS. | See `stdlib/{network,http,tls,https}`, `test/modules/test_{network,tcp,udp,http}*.vyb`, and `test/tls/`. |
 
 ## Source-Level TODO Hotspots
+
+> **2026-08-17 note.** Several bullets below predate features that have since
+> shipped (async is a real cooperative executor, lambdas have full closure
+> codegen, select/match inference + exhaustiveness are done, `fail`/`trap`
+> propagate cross-function, `defer` runs on normal exits). Kept for the
+> baseline; the genuinely-open items are named inline below.
 
 - `src/vre/semantic.cpp`: borrow/view typing, optional/result typing, template
   monomorphization, generic aspect implementation handling, Vec type validation,
@@ -618,14 +633,17 @@ Source areas checked:
 - `src/vre/llvm/cgen_expr.cpp`: await is placeholder-level, list
   comprehensions are unimplemented, generic instantiation is TODO, `this`/`super`
   are placeholders, select type inference is incomplete, and lambda codegen lacks
-  closure semantics.
+  closure semantics. **Now:** await + scheduling are real; list comprehensions,
+  `this`/`super` placeholders, and some generic-instantiation edges remain open.
 - `src/vre/llvm/cgen_stmt.cpp`: legacy try/catch/throw codegen is stubbed or
   obsolete relative to `fail`/`trap`; untrapped `fail` does not build a full
   `VybError`.
 - `src/vre/llvm/cgen_vec.cpp`: several Vec methods return placeholders or only
-  simulate copies.
+  simulate copies. **Now:** bounds-checked `get`, `contains`, and iterator/
+  higher-order forms are in; struct-element edge cases remain.
 - `src/runtime/error_handling.cpp`: untrapped error details, defer stack, and
-  ensure stack are stubs.
+  ensure stack are stubs. **Now:** cross-function propagation + `__vyb_runtime_untrapped_error`
+  are real; runtime defer stack (surviving `fail`/unwind) remains the open gap.
 - `runtime/vyb_type_metadata.c`: dynamic sizing, Vec metadata, and nested struct
   handling are TODOs.
 
@@ -638,39 +656,60 @@ These should be fixed before using the docs as release guidance.
    `doc/FFI_DESIGN.md`, `doc/MODULE_FFI_BINARY_ROADMAP.md`, and
    `test/future_features/test_ffi_extern_c.vyb` show it as planned/expect-fail.
    Source appears partial, not complete.
+   **2026-08-17:** `extern "C"` is now working (see I-002) — extern blocks, ABI
+   aliases, `#[repr(C)]`, native `--link`, OpenSSL binding. Update the stale
+   FFI design docs to reflect shipped core with variadics/bindgen open.
 
 2. Error handling status conflict:
    `doc/ERROR_TRAP.md` says core error handling phases are complete, while
    `doc/archive/ERROR_PROPAGATION_DESIGN.md`, `test/trap/TEST_RESULTS.md`, and runtime
    source still show cross-function propagation and full `VybError` construction
    as incomplete.
+   **2026-08-17:** cross-function propagation (Phases 1-5) and
+   `__vyb_runtime_untrapped_error` are shipped; full `VybError` detail and
+   runtime defer/ensure stacks remain the open residual.
 
 3. `ensure` meaning conflict:
    `doc/archive/ENSURE_IMPLEMENTATION_STATUS.md` documents block cleanup
    `} ensure -> { ... }` as complete. `test/future_features/test_ensure_statement.vyb`
    and `TODO.md` describe contract-style `ensure condition else fail(...)` as
    unimplemented. These are two different features and need separate names/status.
+   **2026-08-17:** block-cleanup `} ensure -> { ... }` is the implemented form;
+   contract-style `ensure cond else fail` remains unimplemented/separate.
 
 4. Aspect/Self status conflict:
    `test/aspect/PHASE_6_ROADMAP.md` says Self resolution is partially complete,
    while `doc/archive/SELF_RESOLUTION_COMPLETE.md` says it is complete but still lists
    Vec and constructor inference issues. Update Phase 6 docs to reflect current
    source behavior.
+   **2026-08-17:** associated-type `Self::Item` resolution (concrete + generic
+   binds) and Vec/map constructors are shipped; Phase 6 docs can be archived as
+   resolved.
 
 5. Class/OOP direction conflict:
    `doc/WHY_TRAITS_NOT_CLASSES.md` says classes are not planned, while older AST
    and trait design docs still mention classes/inheritance. Decide whether
    classes are removed or legacy parser-only support.
+   **2026-08-17:** the design decision is sealed toward `struct`+`aspect`/`bind`
+   (no classes); legacy class-ish syntax is only parsed for fixture compat.
+   Drift docs should mark `trait`/`class` terminology as historical.
 
 6. Terminology conflict:
    Docs mix `trait`/`impl` with `aspect`/`bind`. The implementation and README
    are mostly `aspect`/`bind`; docs should standardize or explicitly mark old
    names as historical aliases.
+   **2026-08-17:** README/guide use `aspect`/`bind`; live term is `aspect`
+   (a lingering `trait object` phrase in the guide was corrected). Archive/sweep
+   remaining design docs.
 
 7. Syntax conflict:
    Docs mix `fn`, colon-style parameter syntax, `=>` match arms, and
    `<T: Trait>` bounds with newer name-first syntax, `->`, and `<T<Aspect>>`.
    Update examples or mark legacy syntax as deprecated.
+   **2026-08-17:** the guide/refman standardize on name-first syntax, `->`,
+   and `<T<Aspect>>`; match arms use `pattern -> body` (no `=>`), and `fn`
+   remains the *function type* keyword. Sweep remaining legacy-syntax examples
+   in design docs.
 
 8. Production-ready language claims:
    Several docs call Vyb production-ready, but the source audit shows major 1.0
@@ -680,9 +719,12 @@ These should be fixed before using the docs as release guidance.
 ## Suggested Implementation Order
 
 1. Reconcile status docs and future-feature tests so the project has one
-   canonical source of truth.
+   canonical source of truth. **Done 2026-08-17** (this file + `TODO.md` +
+   `docs/refman/PROGRAMMERS_GUIDE.md` reconciled against shipped commits and a
+   fresh 993-test sweep).
 2. Finish a minimal module system and FFI path because those unblock File I/O,
-   stdlib modules, networking, and multi-file programs.
+   stdlib modules, networking, and multi-file programs. **Done 2026-08-17** —
+   module system (phases 1.1-1.5) and the FFI core shipped; variadics/bindgen remain.
 3. Complete ownership runtime enforcement, especially `mild<T>`, before expanding
    container/resource APIs that depend on lifecycle correctness.
 4. Finish error propagation and real `VybError` construction so `fail`/`trap`
