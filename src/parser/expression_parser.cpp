@@ -52,8 +52,8 @@ namespace vyb {
     }
 
     // Constructor
-    ExpressionParser::ExpressionParser(const std::vector<token::Token>& tokens, size_t& pos, const std::string& file_path)
-        : BaseParser(tokens, pos, file_path) {}
+    ExpressionParser::ExpressionParser(const std::vector<token::Token>& tokens, size_t& pos, const std::string& file_path, std::set<std::string>& knownTypeNames)
+        : BaseParser(tokens, pos, file_path), knownTypeNames_(knownTypeNames) {}
 
     // Public method to start parsing an expression
     vyb::ast::ExprPtr ExpressionParser::parse_expression() {
@@ -410,11 +410,16 @@ namespace vyb {
                 identifier_pos++;
             }
 
-            // Check for simple function call: identifier()
-            // Use the identifier_pos to find the next token after the identifier
+            // Check for simple construction/call: identifier(...). A plain
+            // `StructName(...)` where the identifier names a user-declared struct/
+            // class/type-alias must keep type parsing on so it parses as a
+            // ConstructionExpression (otherwise codegen fails as "Function not
+            // found"). Any other identifier followed by `(` is a function call.
             size_t after_identifier_pos = find_next_token(identifier_pos + 1);
             if (after_identifier_pos < tokens_.size() && tokens_[after_identifier_pos].type == TokenType::LPAREN) {
-                skip_type_parsing = true;
+                if (!is_known_type_name(identifier_name)) {
+                    skip_type_parsing = true;
+                }
             }
             // Find positions of next significant tokens for chained member access patterns
             size_t token_pos = find_next_token(identifier_pos + 1);  // Start after identifier

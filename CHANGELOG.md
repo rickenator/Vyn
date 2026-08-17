@@ -441,6 +441,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   call-result, or struct/array-field receiver by materializing the receiver's
   `{ ptr, len }` struct, and String-bound aspect methods (e.g. `.split()`)
   dispatch too. Covered by `test/string/test_str_method_on_value.vyb`.
+- **Plain `StructName(...)` constructs correctly** — a non-generic struct
+  built with bare parens (`Pt(1, 2)`, or `Pt()` for defaults) no longer parses as
+  a function call. Previously any `Ident(...)` was treated as a call, so a plain
+  struct constructor reached codegen as `Function Pt not found.`, yielded a null
+  value, and default-constructed (`Pt()`) fields were left as uninitialized stack
+  memory (reading one in a branch crashed the JIT). The parser now recognizes
+  user-declared struct/class/type-alias names and emits a `ConstructionExpression`,
+  and construction zero-initializes fields before filling them positionally.
+  Covered by `test/new_features/test_struct_plain_construct.vyb` and
+  `test/modules/test_chan_nonident.vyb`.
 - **`Vec(n)` no longer emits untrackable `malloc`/`memset` symbols** —
   `emitVecConstructor` previously called `llvm::Function::Create` for a fresh
   `ExternalLinkage` `malloc`/`memset` on *every* `Vec(n)` (pre-sized) call. With

@@ -1,0 +1,43 @@
+// @test: plain struct construction via `TypeName(...)`
+// @description: a non-generic struct is constructed with plain parens —
+//   `Pt(1, 2)` positionally fills fields and `Pt()` defaults to a zeroed
+//   struct. A bare `StructName(...)` (no explicit type args, no declared
+//   constructor, no `{}` literal) must parse as a ConstructionExpression,
+//   not a function call (which used to surface as codegen "Function Pt not
+//   found" + a null value). Default-constructed fields are zero-initialized
+//   so reading one in a branch is well-defined.
+// @category: structs, construction
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+
+struct Pt {
+    x<Int>,
+    y<Int>
+}
+
+struct Single {
+    v<Int>
+}
+
+main()<Int> -> {
+    # Positional constructor fills fields in declaration order.
+    a<Pt> = Pt(1, 2)
+    if (a.x != 1 || a.y != 2) { return 1 }
+
+    # No-arg constructor zero-defaults fields, and branching on the field is safe.
+    b<Pt> = Pt()
+    if (b.x != 0 || b.y != 0) { return 2 }
+
+    s<Single> = Single()
+    if (s.v != 0) { return 3 }
+    if (s.v) { return 4 }
+
+    # Default construct with args then a field write.
+    c<Pt> = Pt()
+    c.x = 9
+    if (c.x != 9) { return 5 }
+
+    println("ok")
+    return 0
+}

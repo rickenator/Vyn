@@ -16,10 +16,10 @@ Parser::Parser(const std::vector<vyb::token::Token>& tokens, std::string file_pa
       current_pos_(0),
       file_path_(file_path),
       base_parser_(tokens_, current_pos_, file_path_),
-      expression_parser_(tokens_, current_pos_, file_path_),
+      expression_parser_(tokens_, current_pos_, file_path_, declaredTypeNames_),
       type_parser_(tokens_, current_pos_, file_path_, expression_parser_),
       statement_parser_(tokens_, current_pos_, 0, file_path_, type_parser_, expression_parser_, &declaration_parser_ ),
-      declaration_parser_(tokens_, current_pos_, file_path_, type_parser_, expression_parser_, statement_parser_),
+      declaration_parser_(tokens_, current_pos_, file_path_, type_parser_, expression_parser_, statement_parser_, declaredTypeNames_),
       module_parser_(tokens_, current_pos_, file_path_, declaration_parser_) {}
 
 std::unique_ptr<vyb::ast::Module> Parser::parse_module() { // Corrected return type

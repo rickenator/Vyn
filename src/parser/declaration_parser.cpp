@@ -20,8 +20,8 @@
 namespace vyb {
 
 // Constructor updated to accept TypeParser, ExpressionParser, and StatementParser references
-DeclarationParser::DeclarationParser(const std::vector<token::Token>& tokens, size_t& pos, const std::string& file_path, TypeParser& type_parser, ExpressionParser& expr_parser, StatementParser& stmt_parser)
-    : BaseParser(tokens, pos, file_path), type_parser_(type_parser), expr_parser_(expr_parser), stmt_parser_(stmt_parser) {
+DeclarationParser::DeclarationParser(const std::vector<token::Token>& tokens, size_t& pos, const std::string& file_path, TypeParser& type_parser, ExpressionParser& expr_parser, StatementParser& stmt_parser, std::set<std::string>& knownTypeNames)
+    : BaseParser(tokens, pos, file_path), type_parser_(type_parser), expr_parser_(expr_parser), stmt_parser_(stmt_parser), knownTypeNames_(knownTypeNames) {
     stmt_parser_.set_declaration_parser(this); // Set the back-reference
 }
 
@@ -52,6 +52,10 @@ vyb::ast::DeclPtr DeclarationParser::parse() {
     } else if (current_token.type == vyb::TokenType::KEYWORD_STRUCT ||
                current_token.type == vyb::TokenType::HASH) {
         auto struct_decl = this->parse_struct();
+        if (struct_decl) {
+            auto* sd = dynamic_cast<ast::StructDeclaration*>(struct_decl.get());
+            if (sd && sd->name) register_type_name(sd->name->name);
+        }
         return struct_decl;
     } else if (current_token.type == vyb::TokenType::KEYWORD_ASPECT) {
         auto trait_decl = this->parse_trait_declaration();
@@ -61,12 +65,22 @@ vyb::ast::DeclPtr DeclarationParser::parse() {
         return impl_decl;
     } else if (current_token.type == vyb::TokenType::KEYWORD_CLASS) { // Changed this line
         auto class_decl = this->parse_class_declaration();
+        if (class_decl) {
+            auto* cd = dynamic_cast<ast::ClassDeclaration*>(class_decl.get());
+            if (cd && cd->name) register_type_name(cd->name->name);
+        }
         return class_decl;
     } else if (current_token.type == vyb::TokenType::KEYWORD_ENUM) {
         auto enum_decl = this->parse_enum_declaration();
+        if (enum_decl) {
+            auto* ed = dynamic_cast<ast::EnumDeclaration*>(enum_decl.get());
+            if (ed && ed->name) register_type_name(ed->name->name);
+        }
         return enum_decl;
     } else if (current_token.type == vyb::TokenType::KEYWORD_TYPE) { // Fixed to use KEYWORD_TYPE
-        return this->parse_type_alias_declaration();
+        auto alias_decl = this->parse_type_alias_declaration();
+        if (alias_decl && alias_decl->name) register_type_name(alias_decl->name->name);
+        return alias_decl;
     } else if (current_token.type == vyb::TokenType::KEYWORD_LET ||
                current_token.type == vyb::TokenType::KEYWORD_MUT || // Changed from KEYWORD_VAR
                current_token.type == vyb::TokenType::KEYWORD_CONST ||

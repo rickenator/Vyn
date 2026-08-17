@@ -6259,6 +6259,20 @@ void LLVMCodegen::visit(ast::ConstructionExpression* node) {
         // Allocate memory for the struct
         llvm::AllocaInst* structAlloca = builder->CreateAlloca(structType, nullptr, "struct.tmp");
 
+        // Zero-initialize the whole struct first so fields not covered by the
+        // provided arguments are well-defined (0 / null) rather than left as
+        // uninitialized stack memory. Reading an uninitialized field is UB and
+        // crashes the JIT when the value is branched on.
+        {
+            llvm::DataLayout dl(module.get());
+            llvm::Align structAlign(dl.getPrefTypeAlign(structType).value());
+            builder->CreateMemSet(
+                structAlloca,
+                llvm::ConstantInt::get(builder->getInt8Ty(), 0),
+                llvm::ConstantInt::get(builder->getInt64Ty(), dl.getTypeAllocSize(structType)),
+                structAlign);
+        }
+
         // Initialize with default values or provided arguments
         for (unsigned i = 0; i < structType->getNumElements() && i < node->arguments.size(); ++i) {
             if (node->arguments[i]) {
@@ -6271,7 +6285,10 @@ void LLVMCodegen::visit(ast::ConstructionExpression* node) {
             }
         }
 
-        m_currentLLVMValue = structAlloca;
+        // Return the loaded struct value (value semantics), matching struct
+        // literals so `a<Pt> = Pt(1, 2)` assigns a value rather than the alloca
+        // pointer (which otherwise surfaces as a ptr-to-Pt cast mismatch).
+        m_currentLLVMValue = builder->CreateLoad(structType, structAlloca, "struct.val");
     } else {
         // For primitive types, just use the first argument or default value
         if (!node->arguments.empty() && node->arguments[0]) {
