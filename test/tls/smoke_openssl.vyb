@@ -1,0 +1,32 @@
+// @test: OpenSSL FFI smoke test (tls module foundation)
+// @description: Prove the ORC JIT can resolve libssl/libcrypto symbols from the
+//   host process (now that OpenSSL is linked into `vyb`). Initializes the SSL
+//   library, builds and frees an SSL_CTX, all inside a freedom block.
+// @expect: pass
+// @expect-output: openssl-ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+extern "C" {
+    OPENSSL_init_ssl(opts<Int>, settings<loc<Void>>)<Int>
+    TLS_client_method()<loc<Void>>
+    SSL_CTX_new(method<loc<Void>>)<loc<Void>>
+    SSL_CTX_free(ctx<loc<Void>>)<Void>
+}
+
+main()<Int> -> {
+    r<Int> = 0
+    freedom {
+        i<Int> = OPENSSL_init_ssl(0, null)
+        m<loc<Void>> = TLS_client_method()
+        if (m != null) {
+            ctx<loc<Void>> = SSL_CTX_new(m)
+            if (ctx != null) { r = 1 }
+            SSL_CTX_free(ctx)
+        }
+        if (i != 1) { r = 0 }
+    }
+    if (r != 1) { return 1 }
+    println("openssl-ok")
+    return 0
+}

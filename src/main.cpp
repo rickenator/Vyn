@@ -227,6 +227,7 @@ extern "C" {
 }
 
 // LLVM includes for ORC JIT compilation
+#include <dlfcn.h>
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
@@ -792,6 +793,19 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             throw std::runtime_error("Module verification failed: " + verifyErrors);
         }
         VYB_CDBG << "Module verified successfully" << std::endl;
+
+
+        // Force libssl/libcrypto into the global symbol scope so the ORC JIT's
+        // process-symbol generator can resolve OpenSSL symbols for the stdlib
+        // `tls` module. They are linked into the binary, but under the default
+        // linker's --as-needed the objects may be dropped (nothing native
+        // references them), so dlopen(RTLD_GLOBAL) guarantees reachability.
+        // Best-effort: ignore failures so builds without OpenSSL still work.
+        for (const char* lib : {"libssl.so", "libssl.so.3", "libcrypto.so", "libcrypto.so.3"}) {
+            if (void* h = dlopen(lib, RTLD_NOW | RTLD_GLOBAL)) {
+                if (dlsym(h, "SSL_CTX_new")) { VYB_CDBG << "OpenSSL symbols loaded from " << lib << std::endl; }
+            }
+        }
 
         // Create the ORC JIT execution engine
         auto jitOrErr = llvm::orc::LLJITBuilder().create();

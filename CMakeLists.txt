@@ -8,6 +8,19 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Catch2 REQUIRED)
 
+# OpenSSL: powers the stdlib `tls` module (TLS over the extern "C" FFI). Linked
+# into the `vyb` binary so the ORC JIT's process-symbol lookup can resolve the
+# libssl/libcrypto symbols at JIT link time.
+option(VYB_USE_OPENSSL "Build with OpenSSL support (stdlib tls module)" ON)
+if(VYB_USE_OPENSSL)
+    find_package(OpenSSL)
+    if(OpenSSL_FOUND)
+        message(STATUS "OpenSSL: ${OPENSSL_VERSION} (tls module enabled)")
+    else()
+        message(WARNING "OpenSSL not found; stdlib tls / https modules disabled")
+    endif()
+endif()
+
 # Find LLVM
 find_package(LLVM 18.1.3 REQUIRED CONFIG)
 message(STATUS "LLVM package version: ${LLVM_PACKAGE_VERSION}")
@@ -174,6 +187,13 @@ target_link_libraries(vyb PRIVATE
     Catch2::Catch2WithMain
     ${LLVM_LIBS} # Link against the mapped LLVM libraries
 )
+
+# TLS: link OpenSSL into the binary so the JIT's process-symbol generator can
+# resolve libssl/libcrypto symbols for the stdlib `tls` module.
+if(VYB_USE_OPENSSL AND OpenSSL_FOUND)
+    target_link_libraries(vyb PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+    target_compile_definitions(vyb PRIVATE VYB_HAVE_OPENSSL)
+endif()
 if(VYB_HAVE_LIBCLANG)
     add_executable(vyb-libclang
         src/bindgen_libclang_main.cpp
