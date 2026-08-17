@@ -6,6 +6,7 @@
 #include "vyb/vre/llvm/codegen.hpp"
 #include <algorithm>
 #include <functional>
+#include <stdexcept>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/GlobalVariable.h>
 
@@ -24,6 +25,20 @@ void LLVMCodegen::generateTypeMetadata(const std::string& typeName, ast::StructD
         return;
     }
     llvm::StructType* structType = structIt->second;
+
+    // Guard against by-value-cyclic struct types (e.g. `struct Node { next<Node?> }`,
+    // where the optional embeds Node by value). LLVM cannot size such a type and
+    // DataLayout::getTypeSizeInBits recurses forever -> stack overflow. isSized() with
+    // a visited set terminates and reports "not sized", so turn it into a clean error
+    // instead of a hard crash. Recursive/self-referential structs are not supported yet.
+    {
+        llvm::SmallPtrSet<llvm::Type*, 8> visited;
+        if (structType && !structType->isSized(&visited)) {
+            throw std::runtime_error("struct '" + typeName +
+                "' embeds itself by value (recursive/self-referential struct field); "
+                "recursive struct types are not supported yet");
+        }
+    }
 
     // Create arrays for field metadata
     std::vector<llvm::Constant*> fieldMetadataArray;

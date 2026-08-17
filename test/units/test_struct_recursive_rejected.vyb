@@ -1,0 +1,16 @@
+// @test: by-value recursive struct is rejected gracefully (no crash)
+// @description: a struct that embeds itself by value (e.g. `next<Node?>`) must be
+//   rejected with a clean error, not a hard crash in LLVM type sizing.
+// @category: struct, serialization, error, codegen
+// @expect: fail
+// @expect-error: recursive/self-referential struct
+// @execute-jit: true
+
+struct Node {
+    val<Int>,
+    next<Node?>
+}
+
+main()<Int> -> {
+    return 0
+}
