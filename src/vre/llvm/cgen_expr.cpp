@@ -3344,6 +3344,41 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             }
             m_currentLLVMValue = builder->CreateCall(f, {envPtr, fnPtr}, "thr.handle");
             return;
+        } else if (fname == "vyb_agent_start") {
+            // Agents (agents stdlib module): `vyb_agent_start` takes a
+            // `fn(Int) -> Void` behavior closure value `{ env, fn }`; unpack the
+            // two pointers and hand them to the runtime, which creates the
+            // mailbox and runs the behavior loop on a worker thread. The agent
+            // handle is an Int (a runtime table index).
+            if (node->arguments.size() != 1) {
+                logError(node->loc, "vyb_agent_start expects 1 argument (fn(Int) -> Void)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this);
+            llvm::Value* cl = m_currentLLVMValue;
+            if (!cl) return;
+            llvm::StructType* closureTy = getClosureStructType();
+            llvm::Value* envPtr = nullptr;
+            llvm::Value* fnPtr = nullptr;
+            if (cl->getType()->isStructTy()) {
+                envPtr = builder->CreateExtractValue(cl, 0, "agent.env");
+                fnPtr = builder->CreateExtractValue(cl, 1, "agent.fn");
+            } else if (cl->getType()->isPointerTy()) {
+                llvm::Value* closureVal = builder->CreateLoad(closureTy, cl, "agent.closure");
+                envPtr = builder->CreateExtractValue(closureVal, 0, "agent.env");
+                fnPtr = builder->CreateExtractValue(closureVal, 1, "agent.fn");
+            } else {
+                logError(node->loc, "vyb_agent_start argument is not a fn() closure");
+                m_currentLLVMValue = nullptr; return;
+            }
+            llvm::Function* f = module->getFunction("__vyb_agent_start");
+            if (!f) {
+                llvm::FunctionType* ft = llvm::FunctionType::get(
+                    int64Type, {llvm::PointerType::get(*context, 0), llvm::PointerType::get(*context, 0)}, false);
+                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_agent_start", module.get());
+            }
+            m_currentLLVMValue = builder->CreateCall(f, {envPtr, fnPtr}, "agent.handle");
+            return;
         } else if (fname == "vyb_task_spawn") {
             // Tasks (tasks stdlib module): same closure { env, fn } unpack as
             // thread_spawn, but the task delivers its result to a private
@@ -3501,6 +3536,22 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             return;
         } else if (fname == "vyb_atomic_cas") {
             emitHandleIntrinsic("__vyb_atomic_cas", 3);
+            return;
+        } else if (fname == "vyb_agent_send") {
+            // agents: post a message (non-blocking).
+            emitHandleIntrinsic("__vyb_agent_send", 2);
+            return;
+        } else if (fname == "vyb_agent_len") {
+            emitHandleIntrinsic("__vyb_agent_len", 1);
+            return;
+        } else if (fname == "vyb_agent_alive") {
+            emitHandleIntrinsic("__vyb_agent_alive", 1);
+            return;
+        } else if (fname == "vyb_agent_close") {
+            emitHandleIntrinsic("__vyb_agent_close", 1);
+            return;
+        } else if (fname == "vyb_agent_free") {
+            emitHandleIntrinsic("__vyb_agent_free", 1);
             return;
         } else if (fname == "vyb_chan_new") {
             emitHandleIntrinsic("__vyb_chan_new", 1);   // capacity (0 = unbounded)

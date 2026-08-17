@@ -153,6 +153,12 @@ extern "C" {
     int64_t __vyb_thread_spawn(void* env, void* fn);
     int64_t __vyb_thread_join(int64_t handle);
     int64_t __vyb_thread_detach(int64_t handle);
+    int64_t __vyb_agent_start(void* env, void* fn);
+    int64_t __vyb_agent_send(int64_t handle, int64_t v);
+    int64_t __vyb_agent_len(int64_t handle);
+    int64_t __vyb_agent_alive(int64_t handle);
+    int64_t __vyb_agent_close(int64_t handle);
+    int64_t __vyb_agent_free(int64_t handle);
     int64_t __vyb_mutex_new(void);
     int64_t __vyb_mutex_lock(int64_t mh);
     int64_t __vyb_mutex_unlock(int64_t mh);
@@ -948,6 +954,18 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
         // The detached-thread reaper (always export — the `threads` module may emit it).
         runtimeSymbols[mangle("__vyb_thread_detach")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_thread_detach), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_agent_start")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_start), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_agent_send")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_send), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_agent_len")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_len), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_agent_alive")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_alive), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_agent_close")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_close), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_agent_free")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_free), llvm::JITSymbolFlags::Exported);
 
         // Register toString functions
         if (toStringIntFunc) {

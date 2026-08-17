@@ -2038,6 +2038,8 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_time_nanos" || name == "vyb_time_mono_millis" ||
             name == "vyb_time_sleep_ms" ||
             name == "vyb_thread_spawn" || name == "vyb_thread_join" || name == "vyb_thread_detach" ||
+            name == "vyb_agent_start" || name == "vyb_agent_send" || name == "vyb_agent_len" ||
+            name == "vyb_agent_alive" || name == "vyb_agent_close" || name == "vyb_agent_free" ||
             name == "vyb_mutex_new" || name == "vyb_mutex_lock" ||
             name == "vyb_mutex_unlock" || name == "vyb_mutex_free" ||
             name == "vyb_cond_new" || name == "vyb_cond_wait" ||

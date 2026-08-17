@@ -44,6 +44,7 @@ Obsolete, superseded, and phase-complete documents live in [`archive/`](archive/
 | [`MODULE_FFI_BINARY_ROADMAP.md`](MODULE_FFI_BINARY_ROADMAP.md) | Module system / FFI / binary roadmap |
 | [`INTROSPECTION_DESIGN.md`](INTROSPECTION_DESIGN.md) | `typeof` / `typename` introspection |
 | [`Async_Programming_Debug_System.md`](Async_Programming_Debug_System.md) | Async/await design and debugging |
+| [`AGENTS_DESIGN.md`](AGENTS_DESIGN.md) | Lightweight isolated message-passing units (agents) |
 | [`Auto_Serialization_Main_Returns.md`](Auto_Serialization_Main_Returns.md) | Typeful JSON serialization of returns |
 | [`VRE.md`](VRE.md) | Vyb Runtime Environment internals |
 | [`RUNTIME.md`](RUNTIME.md) | Runtime design (mutability, ownership, references) |

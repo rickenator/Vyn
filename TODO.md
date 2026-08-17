@@ -31,7 +31,7 @@ is the working audit for what needs to be implemented next.
 | `mild<T>` weak references | ~90% | `soft()`/`grab()`/`released()`, failed `grab()` → `our<T>?`, weak copy/drop accounting shipped (`test/ownership/mild_*.vyb`) |
 | Aspect/bind system | ~92% | Static dispatch complete (associated types, inheritance, disambiguation, bound dispatch); `dyn` aspect objects are a marked future experiment |
 | Generic monomorphization | ~85% | **SEALED**: Compile-time only. See doc/MONOMORPHIZATION_DESIGN.md |
-| Async/await | ~98% | agents (message-passing units) |
+| Async/await | ~98% | agents (message-passing units) — design doc (`doc/AGENTS_DESIGN.md`); Stage 1 (core shape, Int payloads) shipped (`test/agents/`); Stages 2-5 pending |
 | Error propagation (`fail`/`trap`) | ~80% | Standard error aspects, `rethrow`, ensure contracts |
 | Lambda/closure codegen | ~90% | Closure env structs, mutable/move/`our` capture, returned-closure env release shipped; rare receiver edge cases remain |
 | Module system (`import`/`smuggle`/`bundle`) | ~90% | Phases 1.1–1.5 shipped (`ModuleRegistry`, aliases, `share`/bundle visibility, path resolution); stdlib package integration / `vyb.toml` pending |
@@ -790,13 +790,16 @@ Types that `bind Iterator` become usable in `for` loops. The compiler desugars
 `for (item in col)` to repeated `Iterator::next()` calls. Depends on associated types
 being implemented in the aspect system first (tracked separately).
 
-### [DECIDED] Channels / Agents — Channels Partially Shipped; Agents Post-1.0
+### [DECIDED] Channels / Agents — Channels Shipped; Agents in Design
 
-**Decision:** Typed `chan<T>`/`strchan` channels are now partially shipped
-(typed send/recv/poll/len, `select` over handles, `channel close`, and
-`async for` streams over channels). The heavier agent model (lightweight
-isolated message-passing units) remains deferred to post-1.0, and still wants a
-full design document before implementation.
+**Decision:** Typed `chan<T>`/`strchan` channels are shipped (typed
+send/recv/poll/len, `select` over handles, `channel close`, and `async for`
+streams over channels). The agent model (lightweight isolated message-passing
+units) sits on top of them: a built-in generic `agent<M>` handle owning a
+mailbox + behavior task + lifecycle. Brought forward from post-1.0 for design
+first — see `doc/AGENTS_DESIGN.md` (draft); implementation staging (mailbox +
+Int payloads, payload breadth, request/reply, failure channeling, backpressure)
+is proposed there.
 
 ### [DECIDED] Dynamic Dispatch (`dyn Aspect`) — Marked as Future Experiment
 

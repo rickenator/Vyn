@@ -1,0 +1,63 @@
+# agents - lightweight isolated message-passing units.
+#
+# An agent is a unit of concurrency that owns a mailbox (an unbounded Int
+# channel) and runs a behavior loop on its own worker thread: it blocks on recv
+# and hands each message to the behavior closure. Only messages cross the
+# boundary -- the agent's internal state stays private to its behavior. Handle
+# an Int (a runtime table index).
+#
+# Usage:
+#   import agents
+#
+#   counter = agent_start(|v<Int>| -> {
+#       println("got " + v.to_string())
+#   })
+#
+#   ok = agent_send(counter, 42)   // 1
+#   agent_send(counter, 43)
+#   agent_close(counter)           // drain then stop (lossless)
+#   agent_free(counter)            // wait for the worker and reclaim
+#
+# A behavior loop exits once the mailbox is closed and drained, so shutdown is
+# cooperative and loses no buffered messages. agent_free closes the mailbox if
+# it was never closed, then waits for the worker before reclaiming.
+
+# Start an agent running `behavior`, which receives each Int message. Returns a
+# handle (>= 1), or 0 on failure (table full / worker create failed).
+share(all)
+agent_start(behavior<fn(Int) -> Void>)<Int> -> {
+    return vyb_agent_start(behavior)
+}
+
+# Post a message (non-blocking). Returns 1 on accepted, or 0 if the agent is
+# stopped/closed or its bounded mailbox is full.
+share(all)
+agent_send(a<Int>, v<Int>)<Int> -> {
+    return vyb_agent_send(a, v)
+}
+
+# Number of buffered-but-unhandled messages (-1 on a bad handle).
+share(all)
+agent_len(a<Int>)<Int> -> {
+    return vyb_agent_len(a)
+}
+
+# 1 while the agent's worker is running (or draining), 0 once it has exited.
+share(all)
+agent_alive(a<Int>)<Int> -> {
+    return vyb_agent_alive(a)
+}
+
+# Gracefully stop: close the mailbox; the agent drains buffered messages then
+# stops. Returns 1, or -1 on a bad handle.
+share(all)
+agent_close(a<Int>)<Int> -> {
+    return vyb_agent_close(a)
+}
+
+# Reclaim an agent: waits for the worker to exit (closing first if needed), then
+# frees the mailbox and slot. Returns 0, or -1 on a bad handle.
+share(all)
+agent_free(a<Int>)<Int> -> {
+    return vyb_agent_free(a)
+}

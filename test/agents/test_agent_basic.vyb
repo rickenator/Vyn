@@ -1,0 +1,42 @@
+# Agents - core shape (Stage 1): a behavior loop over an Int mailbox.
+#   - agent_start runs `behavior(v)` on a worker thread for each message
+#   - agent_send posts messages; agent_len reports buffered-but-unhandled
+#   - agent_close drains then stops (lossless); agent_free waits then reclaims
+// @test: Agents - basic lifecycle with Int payloads
+// @category: agents,concurrency
+// @expect: pass
+// @expect-return: 0
+
+import agents
+import channels
+
+main()<Int> -> {
+    replies<Int> = chan_new()
+    # The behavior doubles each message back into a reply channel.
+    a<Int> = agent_start(|v<Int>| -> {
+        chan_send(replies, v * 2)
+    })
+    println("started alive=" + agent_alive(a).to_string())
+
+    ok<Int> = agent_send(a, 21)
+    println("send1 ok=" + ok.to_string())
+    ok = agent_send(a, 50)
+    println("send2 ok=" + ok.to_string())
+    println("len=" + agent_len(a).to_string())
+
+    r1<Int> = chan_recv(replies)   # 21 * 2
+    r2<Int> = chan_recv(replies)   # 50 * 2
+    println("r1=" + r1.to_string())
+    println("r2=" + r2.to_string())
+
+    # Closing is lossless: post one more, then close; the agent drains it.
+    agent_send(a, 7)
+    rc<Int> = agent_close(a)
+    println("close rc=" + rc.to_string())
+    r3<Int> = chan_recv(replies)   # 7 * 2
+    println("r3=" + r3.to_string())
+
+    agent_free(a)
+    chan_free(replies)
+    return 0
+}

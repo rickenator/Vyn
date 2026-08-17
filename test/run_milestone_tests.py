@@ -29,6 +29,7 @@ class Suite:
 
 MILESTONE_SUITES = [
     Suite("new_features", "test/new_features"),
+    Suite("agents", "test/agents"),
     Suite("modules", "test/modules"),
     Suite("ffi", "test/ffi"),
     Suite("ownership", "test/ownership"),
