@@ -4,6 +4,12 @@
 
 ## Vyb Programming Guide
 
+> **Looking for the deep reference?** The hand-written
+> **[`docs/refman/PROGRAMMERS_GUIDE.md`](docs/refman/PROGRAMMERS_GUIDE.md)**
+> covers every language feature, the ownership and polymorphism model, and a
+> full standard-library tour. This README is the project overview; the
+> per-symbol auto-generated manual lives under `docs/refman/`.
+
 ---
 
 ## 1. Introduction

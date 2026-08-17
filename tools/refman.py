@@ -539,7 +539,8 @@ def render_index(g):
          "runtime calls, and prose references.", "",
          "Cross-indexes: [functions](functions.md) · [types](types.md) · "
          "[aspects & binds](aspects.md) · [shared types & consumers](interfaces.md) "
-         "· [runtime intrinsics](runtime.md).", "",
+         "· [runtime intrinsics](runtime.md). Start with the "
+         "[Programmer's Guide](PROGRAMMERS_GUIDE.md).", "",
          "## Modules", "",
          "| Module | Files | Exported | Imports | Fan-in | Fan-out | Edges |",
          "|---|---|---|---|---|---|---|"]

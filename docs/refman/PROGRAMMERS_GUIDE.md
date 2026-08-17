@@ -1,0 +1,1134 @@
+# Vyb Programmer's Guide
+
+> A forward-facing manual for working Vyb programmers. Where the top-level
+> `README.md` is the overview and project pitch, this guide is the working
+> reference: every language feature, the ownership model, the polymorphism
+> strategy, and a full tour of the standard library.
+
+This manual sits alongside the auto-generated reference under
+`docs/refman/`:
+
+- `index.md` — module map with fan-in / fan-out.
+- `<module>.md` — one page per stdlib module with every exported symbol,
+  signature, and its inter-relationship list.
+- `interfaces.md` — shared cross-module types and who consumes them.
+- `functions.md`, `types.md`, `aspects.md`, `runtime.md` — cross-indexes.
+
+Throughout this guide, `[Module →](http.md)` style links jump to those pages
+for the exact signature of every symbol. The code samples are real and run
+through the test harness.
+
+---
+
+## 1. Mental model
+
+Vyb's core conviction: **you should not have to choose between safety and
+power.**
+
+- **Strong, name-first typing** — `x<Int> = 5` reads type-first, values feel
+  like plain data, and the compiler checks types *before* codegen.
+- **Monomorphized generics** — `Vec<T>` / `HashMap<K, V>` and every generic
+  function are specialized per concrete type at compile time. Polymorphism is
+  dispatch-free: there is no vtable, no boxed trait object, no runtime cost.
+- **Explicit ownership** — every value knows whether it is `my`-owned,
+  `our`-shared (ref-counted), `their`-borrowed, or a `mild`/`soft` observer.
+  The allocator + compiler move and free values deterministically.
+- **Freedom when you need it** — `freedom { … }` blocks, raw `loc<T>` pointers,
+  and the FFI let you touch machine state directly. Safety is the default, not
+  the ceiling.
+- **A standard library written in Vyb** — collections, networking, TLS, HTTP,
+  threads, channels, and an async executor are all `stdlib/**/*.vyb` over a
+  small, C-level runtime. The language dogfoods itself.
+
+The result: native executables (or JIT), predictable performance, readable
+code, and zero-cost polymorphism.
+
+---
+
+## 2. Getting started
+
+```bash
+# Clone and build
+git clone https://github.com/rickenator/Vyb.git && cd Vyb
+./build.sh                      # clean configure + build
+
+# Or an incremental rebuild from the repo root
+cd build && cmake . >/dev/null && make vyb -j16
+```
+
+```vyb
+# hello.vyb
+main()<Int> -> {
+    println("Hello, Vyb")
+    return 0
+}
+```
+
+```bash
+./build/vyb hello.vyb          # compile and run
+./build/vyb --emit-obj hi.vyb  # or produce an object/binary
+```
+
+The compiler compiles `*.vyb` to LLVM IR, codegens an object, links it with
+`runtime/vyb_runtime.c` + libc/libm (and OpenSSL for TLS), and produces a
+native executable. See `README.md` §**Quick Start** for the build flags
+(`--emit-obj`, `--optimize`, static vs dynamic linking).
+
+### Running the test suite
+
+```bash
+# 900+ programs exercised through compile + run + output/return checks
+python3 test_harness.py --vyb ./build/vyb --workers 16
+```
+
+Key test knobs (see also §8): `--pattern`, `--category`, `--report`,
+`triage` for triage planning, and HTML report generation.
+
+---
+
+## 3. Language tour
+
+### 3.1 Files, `main`, and comments
+
+Every program has an entry point:
+
+```vyb
+main()<Int> -> { return 0 }
+```
+
+`main` may return `Int`, `Int64`, or a struct/`Result`-shaped type that
+auto-serializes to JSON on exit. Comments use `#` line comments (and `//` in
+some tooling/tests):
+
+```vyb
+# A doc-ish comment above a declaration becomes that symbol's doc text.
+```
+
+The standard library follows this convention so the refman can reuse prose.
+
+### 3.2 Primitives and literals
+
+| Type | Meaning |
+|---|---|
+| `Int` / `UInt` | pointer-width signed / unsigned integer |
+| `Int8`…`Int64`, `UInt8`…`UInt64` | sized integers |
+| `Float` | double-precision float |
+| `Bool` | `true` / `false` |
+| `String` | a fat-pointer, length-known byte string (immutable) |
+| `T?` | a Vyb optional: present `T?(v)` or absent `T?()` |
+
+Integer literals are concise across bases and flow into any sized type:
+
+```vyb
+h<Int> = 0xFF                // hex
+b<Int> = 0b11001110          // binary
+b0<UInt8> = 0x80             // hex into a sized unsigned type
+c<UInt32> = (b0 as UInt32) | ((1 as UInt32) << 8)
+```
+
+**Optional `T?`** is Vyb's native optional, replacing the Rust-shaped
+`Option<T>`/`Some`/`None` (which were removed from the stdlib):
+
+```vyb
+a<Int?>  = Int?(5)          // present
+b<Int?>  = Int?()           // absent
+val<Int> = b else 42        // payload when present, else the default
+
+makeopt(v<Int>)<Int?> -> {
+    if (v > 0) { return Int?(v) }
+    return Int?()
+}
+q<Int> = makeopt(9) else -1    // 9
+```
+
+Present reads are bare — no `Some(v)` wrapper and no `.unwrap()` ceremony.
+`else` is right-associative: `a else b else c` == `a else (b else c)`.
+
+### 3.3 Variables, inference, mutability
+
+```vyb
+x<Int> = 5        // explicit type
+y = 3.14          // inferred
+n<Int const> = 7  // immutable (const is a type modifier)
+```
+
+Declarations are type-first (`name<Type>`). Values default to mutable unless
+typed `const`. See `README.md` §**Variables and Types**.
+
+### 3.4 Functions and parameters
+
+Both standard and shorthand parameter syntax are supported and produce
+identical LLVM IR:
+
+```vyb
+# Standard: explicit parameter<Type>
+add(a<Int>, b<Int>)<Int> -> { return a + b }
+
+# Shorthand: type-first
+mul(a<Int>, b: Int)<Int> -> { return a * b }   # or `b<Int>`
+```
+
+Return type is always bracketed: `name(params)<Ret> -> { … }`. An early
+`return value` exits; a bare `-> { … }` may rely on trailing expressions in
+expression contexts.
+
+**`fn` types.** A function/closure type is written `fn(Args…) -> Ret`:
+
+```vyb
+apply(f<fn(Int, Int) -> Int>, a<Int>, b<Int>)<Int> -> { return f(a, b) }
+work<fn() -> Int> = || -> 42
+```
+
+This is the parameter type used by `thread_spawn`, `task_spawn`,
+`async_spawn`, and the collection higher-order methods.
+
+### 3.5 Closures and lambdas
+
+A lambda is `|| -> expr` (zero args) or `|x| -> expr`:
+
+```vyb
+double = |x| -> x * 2                     # single expression
+block   = |x| -> { y<Int> = x + 1; return y * 2 }  # block body
+```
+
+Captures are explicit and typed at the call site. `fn()`-typed parameters
+accept zero-capture closures (as used by the threading modules). Richer
+capture forms (by-value, by-reference) are supported for closure parameters
+in the collection methods (`map`, `filter`, `reduce`).
+
+```vyb
+xs.map(|x| -> x * 2)                    # fn(T) -> T
+xs.filter(|x| -> x > 3)                 # fn(T) -> Bool
+xs.reduce(0, |acc, x| -> acc + x)       # fn(T, T) -> T
+```
+
+### 3.6 Control flow
+
+`if`/`while` are expression-ish and readable; `break`/`continue` work in
+loops.
+
+```vyb
+if (ready) { go() } else { wait() }
+
+while (i < n) {
+    i = i + 1
+    if (skip) { continue }
+    if (done) { break }
+}
+```
+
+**`for` loops** come in several forms. Parentheses are mandatory:
+
+```vyb
+for (x in v) { println(x) }        # plain Vec
+for (i in 0..10) { … }             # inclusive range 0..10
+for (x in v.iter(), 2) { … }       # every 2nd element (step)
+```
+
+`for (x in <expr>)` desugars onto `.next()` for **any** non-identifier
+iterable — including custom `bind Iterator` types — so `v.iter()`, a
+`VecIter`, or a user type all work identically. An optional step
+(`, 2`) advances by a stride.
+
+### 3.7 Pattern matching: `match` and `select`
+
+`match` is a statement whose arms can `return` from the enclosing function;
+`select` is an expression that yields a value.
+
+```vyb
+# select returns a value
+status = select (code) {
+    200 -> "ok"
+    404 -> "not found"
+    ? -> "unknown"
+}
+```
+
+```vyb
+# larger arm bodies use pass (returns from the block, not the fn)
+result = select (n) {
+    1 -> 10
+    ? -> { v<Int> = n * 100; pass v }  # pass carries the arm value
+}
+```
+
+- **Naked expressions** (`1 -> 10`) auto-return without `pass`.
+- **Complex blocks** (`{ … }`) need an explicit `pass value`.
+- **Type inference** comes from the first arm; wildcard `?` (or `_`) gives the
+  default.
+
+**Comparison patterns** (range matching) work on `Int`/`Float`:
+
+```vyb
+tax = select (income) {
+    < 10000 -> 0.0
+    <= 50000 -> 0.2
+    > 50000 -> 0.4
+    ? -> 0.0
+}
+```
+
+The compiler **rejects unreachable patterns** — wildcard before an earlier
+arm, duplicate patterns, and overlapping ranges are compile errors:
+
+```vyb
+match (x) { ? -> "any", 5 -> "five" }   # ERROR: '?' must be last
+match (x) { > 10 -> "a", > 10 -> "b" }  # ERROR: duplicate
+match (x) { > 5 -> "a", >= 3 -> "b" }   # ERROR: overlapping ranges
+```
+
+### 3.8 Tuples and variadic tuples
+
+Tuples are value sequences useful for multi-return and heterogeneous groups:
+
+```vyb
+t = (1, 2)                    # two-element tuple
+u = (1, "x", true)            # mixed types
+v = (1, 2, 3, 4, 5, 6, 7)     # variadic
+```
+
+A function can return a tuple and the caller can destructure by index:
+`.0`, `.1`, … (see `README.md` §**Variadic Tuples**).
+
+### 3.9 Structs
+
+```vyb
+struct Point {
+    x<Float>
+    y<Float>
+}
+
+p<Point> = Point { x = 1.0, y = 2.0 }
+p.x = 3.0                        # field access (mutable receiver/owner)
+```
+
+Structs hold data only; behavior lives in **binds** (§3.15). Struct fields may
+be owned, `their`-borrowed, or typed generically (`struct Pair<K, V>`).
+
+### 3.10 Enums
+
+Value-less enums and **constant enums** (each member a compile-time value) are
+both supported. The constants-style enums power C-shaped interfaces:
+
+```vyb
+enum Color {
+    RED
+    GREEN
+    BLUE
+}
+
+# constant enum (value = the numeric constant)
+enum FileFlag {
+    READ = 1
+    WRITE = 2
+    RDWR = 4
+    CREATE = 128
+    TRUNC = 512
+    APPEND = 1024
+}
+
+flag<Int> = FileFlag::READ | FileFlag::WRITE   # combine with |
+```
+
+Constant members can be combined with the bitwise `|` — this is exactly how
+`Socket::AF_INET`, `SOCK_STREAM`, and `IPPROTO_TCP` and the `FileFlag` set are
+used in `network` and `io`.
+
+### 3.11 Operators
+
+```vyb
+# Arithmetic / comparison
+a + b, a - b, a * b, a / b, a % b, a == b, a != b, a < b, a > b, a <= b, a >= b
+
+# Bitwise on integers (all Int/UInt widths)
+a | b      a & b      a ^ b      ~a      a << b      a >> b
+a |= b     a &= b     a ^= b     a <<= b     a >>= b    # compound-assign
+
+# String concatenation (auto-converts numerics)
+s = "Count: " + 42
+```
+
+Bitwise operators require matching widths; literals adapt to the operand type.
+Build byte compositions with unsigned widths and `as` (§3.12), e.g. packing
+four `UInt8` bytes into a `UInt32`.
+
+### 3.12 Casts with `as`
+
+`as` converts between numeric widths and signedness with defined semantics:
+
+```vyb
+s<Int8> = -6
+n<Int64> = s as Int64          # signed widen: sign-extends -> -6
+u<UInt8> = 200
+p<Int>   = u as Int            # unsigned widen: zero-extends -> 200
+w<Int>   = 300
+q<Int8>  = w as Int8           # narrowing: 300 & 0xFF = 44
+```
+
+- Widening **signed → signed** sign-extends; **unsigned → signed/wider**
+  zero-extends. Use unsigned casts when packing bytes so you never
+  sign-extend a high bit (`0x80` stays `0x80`, not `0xFF…80`).
+- Narrowing truncates to the destination width.
+- Projection from a wider to a narrower byte lane and `as Int8` of a computed
+  expression require an explicit cast (the compiler won't silently narrow).
+
+### 3.13 Ownership and accessors
+
+Vyb's ownership model types how a value is held. The canonical accessor words
+are `my`, `our`, `their`, plus the `mild`/`soft` observers.
+
+| Accessor | What it means |
+|---|---|
+| `my<T>` | unique ownership (like `Box`): you own and must free it |
+| `our<T>` | shared, reference-counted ownership (auto `free` on last drop) |
+| `their<T>` | a borrowed, non-owning reference to someone else's value |
+| `mild<T>` | a weak reference (made with `soft(x)`); won't prevent cleanup |
+| `soft(x)` | constructs a `mild<T>` from an `our<T>` |
+| `view(x)` / `borrow(x)` | borrow a value -> `their<T>` non-owning reference |
+
+Relevant syntax and helpers:
+
+```vyb
+counter<Counter> = Counter { count = 0 }
+increment(c<their<Counter>>)<Void> -> { c.count = c.count + 1 }
+increment(borrow(counter))          # pass a borrowed reference
+
+shared_data<our<Counter>> = our(Counter { count = 1 })
+shadow<mild<Counter>> = soft(shared_data)   # weak reference
+v<our<Counter>?> = shadow.grab()            # upgrade; nil if freed
+if (shadow.released()) { … }                # true once destroyed
+```
+
+- **Primitives unwrap on read.** Reading a primitive-owned value yields the
+  value directly; no allocation or ceremony is required to use it.
+- **`my` move semantics.** An owned value moves on transfer; temporary-owner
+  paths enforce that you don't leave a dropped owner behind.
+- **`our` handles memory for you.** When the last strong reference leaves
+  scope the refcount hits zero and cleanup runs (`grab()` then returns absent,
+  `released()` becomes true).
+- **By-reference receivers (`their<Vec<T>>`).** Mutating collections in place
+  is done through `their` receivers so no copies occur —
+  e.g. `map_in_place(self<their<Vec<T>>>, …)`.
+
+`mild<T>` exists to break reference cycles (tree parents, observer
+registries, caches) without preventing cleanup — see
+`doc/OWNERSHIP_MILD.md` and `test/ownership/mild_test.vyb`.
+
+The runtime's freeing is *deterministic* (refcount/scope-driven), and
+correct teardown of owned structs and transferred values is part of the
+stdlib contract (see `runtime` pages and the test suite).
+
+### 3.14 Generics and monomorphization
+
+Generic functions and types are monomorphized — a new specialized copy is
+generated per instantiation, so dispatch has no runtime cost:
+
+```vyb
+fn first<T>(v<Vec<T>>)<T> -> { return v.get(0) }
+```
+
+Generic type parameters can be bounded by aspects with the angle-bracket form:
+
+```vyb
+cmp_lt<T<Comparable>>(a<T>, b<T>)<Bool> -> { … }
+```
+
+Bound aspects read `<T<Aspect>>` (the modern spelling, replacing the older
+`T: Aspect`). This powers the collection APIs:
+
+```vyb
+struct HashMap<K, V>
+bind<K<Hashable, Equatable>, V> MapOps -> HashMap<K, V> { … }
+```
+
+### 3.15 Aspects and binds (polymorphism)
+
+**Aspects** are behavior contracts — method signatures with no state. **Binds**
+connect an aspect to a concrete type, implementing the methods against that
+type's data. This is Vyb's polymorphism: data is dumb, behavior is bound.
+
+```vyb
+aspect Drawable {
+    draw(self)<String> -> { }
+    area(self)<Float> -> { }
+}
+
+struct Circle { r<Float> }
+
+bind Drawable -> Circle {
+    draw(self)<String> -> { return "circle" }
+    area(self)<Float> -> { return 3.14159 * self.r * self.r }
+}
+```
+
+- An aspect can refine another: `aspect Comparable : Equatable { … }`.
+- A generic bind maps an aspect onto every instantiation:
+  `<K<Hashable, Equatable>, V>`, `<T>`, etc. (`Iterator -> VecIter<T>`,
+  `MapOps -> HashMap<K, V>`).
+- The **core aspects** — `Display`, `Debug`, `Clone`, `Equatable`,
+  `Comparable`, `Hashable`, plus `StringOps` and `Iterator` — are bound to the
+  primitives and used as generic bounds throughout the stdlib (see §4.1).
+- A bind's methods write against `self` (the bound type's fields) exactly like
+  instance methods. Calling `account.transfer(...)` dispatches through the
+  type's bound aspect.
+
+This "aspect + bind" pair is the language's answer to interfaces/traits: type
+safety and dispatch at compile time, with the freedom to bind multiple aspects
+to one type.
+
+### 3.16 Error handling: `trap` / `fail` / `ensure`
+
+Functions that can fail return an `(T, error)` shape (the value plus an error
+handle/`error_ptr`); at the LLVM level this is `{ i64 result, i8* error }`.
+
+**`fail`** raises an error; **`trap`** catches it; **`ensure`** always runs.
+
+```vyb
+div(a<Int>, b<Int>)<Int> -> {
+    if (b == 0) { fail "division by zero" }
+    return a / b
+}
+
+main()<Int> -> {
+    result = trap div(10, 0) { "caught" }
+    ...
+}
+```
+
+- `trap` with a single error type, multiple error types via pattern matching,
+  a wildcard catch, or a union of types are all supported.
+- On error the matching handler runs, then the `ensure` block last, on both
+  the success and failure paths:
+
+```vyb
+handle() -> {
+    do_work()
+} ensure -> {
+    cleanup()          # always runs
+}
+```
+
+- Errors can carry rich context (`struct Error { … }` field sets), and
+  `fail` accepts primitives or structured values.
+- **Untrapped errors** propagate up the call chain; the harness and the
+  serialization path treat them explicitly.
+
+### 3.17 Strings
+
+`String` is a fat pointer (data + length), immutable, with runtime bounds
+checking. Literal assignment and concatenation are natural:
+
+```vyb
+s = "hello"
+t = s + " world"          # allocates a new String
+n<Int> = "hello".len()     # methods on literals
+c<String> = "abc"[1]       # bounds-checked indexing ("" out of range)
+```
+
+**Core method family** (all work on value receivers and non-identifier
+receivers, e.g. `"Hello".to_upper()`):
+
+```vyb
+s.len()                     # length
+s.substring(a, b?)          # substring (end optional)
+s.get(i)                    # bounds-checked String (single char) at i
+s.char_at(i)                # the ASCII code (Int) at i, 0 if out of range
+s.starts_with(p) / s.ends_with(p) / s.contains(sub)
+s.index_of(needle)          # first occurrence index; -1 if absent
+s.to_upper() / s.to_lower() # ASCII case, allocates new String
+s.trim() / s.split(sep)     # Vec<String>
+s.format(...)               # "{}" interpolation: "{a}-{b}".format(a, b)
+s.to_int() / s.to_float()   # parse to a number
+String::from_bytes(ptr, len)# build a String from C bytes (FFI)
+```
+
+Read-only operations allocate nothing; transforms allocate a fresh `String`.
+`+` concatenation and chaining work across mixed types (`"Count: " + 42`).
+Index operations are bounds-checked and return safe defaults
+(`""` for out-of-range).
+
+**C interop.** `c_str` (`…` NUL-terminated view) lets you pass `String`s to C
+`printf`, `strlen`, `strcmp`, `strstr`, etc. via the FFI.
+
+### 3.18 Collections
+
+All collections are `Vec<T>`-family structs with generic **aspect-bind**
+methods and monomorphized internals.
+
+```vyb
+v<Vec<Int>> = Vec()          # empty, growable
+v2<Vec<Int>> = Vec(8)        # preallocate capacity
+v.push(1); v.push(2)
+x<Int> = v.get(0)            # bounds-checked
+v.len(); v.isEmpty()/…
+v.iter()                     # -> VecIter<T> (Iterator bind)
+```
+
+Higher-order forms (`VecHigherOps -> Vec<T>`):
+
+```vyb
+v.map(fn(Int)->Int)          .map(|x| -> x*2)
+v.filter(|x| -> x > 3)
+v.reduce(init, |a,b| -> a+b)
+v.map_in_place(self<their<Vec<T>>>, |x| -> x+1)
+v.retain(self<their<Vec<T>>>, |x| -> keep)
+```
+
+Ordered and associative maps:
+
+```vyb
+m<HashMap<String, Int>> = HashMap()
+m.put("a", 1)
+m.get("a")                 # 1 or default
+m.contains("a"); m.keys(); m.values(); m.len(); m.iter()
+
+h<HashSet<String>> = HashSet()
+s<BTreeMap<String, Int>> = BTreeMap()   # ordered (Comparable+Equatable keys)
+```
+
+`HashMap` requires `K<Hashable, Equatable>`; `BTreeMap` requires
+`K<Comparable, Equatable>`. Enumerating key/value pairs goes through the
+iterator types (`MapIter<K,V>`, `HashIter<K>`, `BTreeIter<K,V>`).
+
+Range/`Vec` iteration, `for (x in m.iter(), step)`, and the `Iterator`
+protocol are all unified in §3.6.
+
+### 3.19 Modules and imports
+
+**`import`** pulls verified symbols in; **`share(all) import`** re-exports a
+foreign symbol from the importing module; the compiler resolves the full
+namespace/closure and the refman's `import` edges model it.
+
+```vyb
+import network::{socket_open, socket_bind, socket_listen}
+share(all) import tls::{TlsStream}          # re-export to my consumers
+import https::{HttpResponse}                # narrow symbolic import
+```
+
+- **Module identity** is the namespace directory. `core::iter::{Iterator}`
+  addresses a file+symbol inside the `core` namespace; `error` is its own
+  multi-file namespace.
+- **`prelude` is auto-imported.** The compiler injects the core contracts
+  (`Display`, `Debug`, `Clone`, `Equatable`, `Hashable`, `Comparable`) and
+  `prelude_ok` into every module unless that module imports the contracts
+  itself or locally redefines one of the core aspects.
+- **No cross-module leakage.** A user module must go through an explicit
+  import; the resolver enforces per-module scope (an `http` module cannot call
+  a `vyb_*` runtime directly unless it imports, and the stdlib itself uses
+  `network` rather than reaching under it).
+- **`smuggle`** (a looser, out-of-band import) is a separate, explicit
+  escape hatch — not a default, and never implied by `import`.
+- **`share(all)`** on a declaration exports it for consumers.
+
+The refman's `index.md` and each module page show the real import graph,
+including re-exports (e.g. `https` re-exports `HttpResponse` from `http`).
+
+### 3.20 FFI and the native bridge
+
+- **`extern "C"` + typed C aliases** let you call C functions; Vyb types map
+  onto C (`String` ↔ `char*` via `c_str`, `Int` ↔ `i64`, structs ↔ `struct`).
+- **`bindgen`** generates Vyb declarations from C headers (including
+  preprocessor/macros, `#define` constants, `u`/`union` types, and function
+  pointers). The `.ll` fluff is not committed; macros namespace to the header
+  file so different headers can't collide (e.g. `MAX_BUFSIZE` under its own
+  namespace).
+- **Runtime intrinsics** — `vyb_*` calls from stdlib map 1:1 onto
+  `runtime/vyb_runtime.c` (`__vyb_*`). `docs/refman/runtime.md` lists every
+  intrinsic the stdlib uses, with the C source line each call resolves to.
+- **`freedom` blocks** allow raw `loc<T>` pointers and relaxed guarantees;
+  `at(ptr)` dereferences, `from<loc<T>>()` converts.
+
+### 3.21 Serialization
+
+Structs and `Result`-shaped returns auto-serialize to JSON:
+
+```vyb
+struct User { name<String>, age<Int> }
+main()<User> -> { return User { name = "a", age = 1 } }
+# output: {"name":"a","age":1}
+```
+
+Automatic serialization covers structs, maps, Vecs, and nested values; the
+refman/module docs index the supported type set. `flush`/`Flush` control
+output behavior in CLI contexts.
+
+### 3.22 Introspection
+
+Vyb exposes runtime and compile-time introspection: type-of, shape/arity
+probes, and module-surface status functions (e.g. `io_status_message`,
+`collections_status_message`, `result_status_message`, `prelude_ok`) used by
+the import-surface tests. See `README.md` §**Introspection System**.
+---
+
+## 4. Standard library reference
+
+The stdlib lives in `stdlib/**/*.vyb` and is written entirely in Vyb over a
+small C runtime. Each `<module>.md` that this guide links to is generated from
+the source and lists **every** exported symbol with its exact signature,
+doc text, and relationship list. The per-module digests below are the same
+data, grouped for skimming.
+
+### 4.1 `core` — contracts, math, prelude
+
+Module page: [`core.md`](core.md).
+
+**Core aspects** (behavior contracts bound to the primitives and used as
+generic bounds): `Display`, `Debug`, `Clone`, `Equatable`, `Comparable`
+(refines `Equatable: …`), `Hashable`, plus `StringOps` and `Iterator`.
+
+Primitives get these binds (`Clone->Int`, `Display->String`,
+`Hashable->String`, `Comparable->Float`, …), so `"{}".format(x)`, `.to_string()`,
+`.hash()`, `.equals()`, and `<`/`>` comparisons all work on `Int`/`Float`/
+`Bool`/`String` via the same widening binds.
+
+**Math & helpers:**
+
+```vyb
+clamp(value<Int>, lo<Int>, hi<Int>)<Int>      # clamp into [lo, hi]
+is_close(a<Float>, b<Float>, epsilon<Float>)<Bool>
+hash_chars(s<String>)<Int>
+prelude_ok()<Int>                              # surface probe
+```
+
+### 4.2 `error` — structured domain errors
+
+Module page: [`error.md`](error.md). A multi-file namespace
+(`errable.vyb`, `display.vyb`, `error.vyb`, `io_error.vyb`,
+`network_error.vyb`, `parse_error.vyb`) providing `Display`/`Errable`
+contracts and error structs with context (file, network, parse). Pair with
+`trap` / `fail` (§3.16) for domain error types.
+
+```vyb
+# fail with a structured error carrying context
+fail FileError { operation = "open", path = p, err = code }
+```
+
+Use these as the rich-context half of error handling; see `README.md`
+§**Error Handling Best Practices**.
+
+### 4.3 `io` — files
+
+Module page: [`io.md`](io.md). `File` is a small struct (`fd`, `path`) and
+all ops live on it.
+
+```vyb
+open(path<String>, flags<Int>)<File>            # flags from FileFlag
+open_read(path<String>)<File>                   # convenience: read
+open_write(path<String>)<File>                  # create/truncate, write
+open_append(path<String>)<File>                 # append/create
+read_all(f<File>)<String>                       # whole file ("" on failure)
+write_str(f<File>, s<String>)<Int>              # bytes written or -1
+close(f<File>)<Void>
+```
+
+`enum FileFlag` constant members (`READ`, `WRITE`, `RDWR`, `CREATE`, `TRUNC`,
+`APPEND`) combine with `|`. `io_status_message()` is the import-surface probe.
+`File` with `fd == -1` signals a failed open.
+
+### 4.4 `time` — clocks and sleep
+
+Module page: [`time.md`](time.md). Thin, allocation-free wrappers over
+`clock_gettime` / `nanosleep`; all values are `Int`.
+
+```vyb
+time_epoch_secs()<Int>        time_epoch_millis()<Int>   time_nanos()<Int>
+time_mono_millis()<Int>       sleep_ms(millis<Int>)<Int>
+```
+
+### 4.5 `collections` — Vec, Map, Set, BTree
+
+Module page: [`collections.md`](collections.md). Generics are bounded by the
+core aspects; reads return `V?` optionals (use `else` to default).
+
+```vyb
+# Vec
+v<Vec<Int>> = Vec()               # or Vec(n) to preallocate
+v.push(x); v.pop()?/…; v.len(); v.get(i)
+v.first()/v.last()/v.reversed()/v.find(x)/v.min()/v.max()/v.sorted()
+v.sort_in_place()/v.reverse_in_place()/v.map_in_place(f)/v.retain(f)
+v.map(f)/v.filter(f)/v.reduce(init, f)      # higher-order over the Vec
+v.iter()<VecIter<T>>
+```
+
+```vyb
+# HashMap (K<Hashable, Equatable>)
+m<HashMap<String, Int>> = HashMap()
+m.put("a", 1); m.get("a") else -1; m.contains_key("a"); m.size()
+m.keys()/m.values(); m.iter()<MapIter<K,V>>
+
+# HashSet and ordered BTreeMap
+h<HashSet<String>> = HashSet(); h.insert("x"); h.contains("x"); h.size()
+b<BTreeMap<String, Int>> = BTreeMap()   # K<Comparable, Equatable>
+```
+
+Iterator types `VecIter`, `MapIter`, `HashIter`, `BTreeIter` bind the
+`Iterator` aspect, so they work directly in `for (x in …)` (§3.6).
+
+### 4.6 `channels` — typed channel primitives
+
+Module page: [`channels.md`](channels.md). Two payload kinds today: `Int`
+(`chan_*`) and `String` (`strchan_*`), both unbounded or bounded.
+
+```vyb
+ch<Int>    = chan_new()            # unbounded
+cb<Int>    = chan_bounded(cap)     # bounded (cap elements)
+chan_send(ch, v) / chan_recv(ch)<Int>           # blocking
+chan_try(ch)<Int> / chan_recv_opt(ch)<Int?>     # non-blocking / maybe-empty
+chan_len(ch) / chan_close(ch) / chan_free(ch)
+chan_select(handles<Vec<Int>>)<Int>             # wait on many channels
+```
+
+`chan_recv_opt` returns `Int?` (present when a value arrives, absent when the
+channel is closed and drained). `strchan_*` mirror these over `String`
+payloads (`String?` for the empty case). `chan_select` returns which handle
+is ready; see §5 for its role in the async model.
+
+### 4.7 `threads` — pthread, mutex, condvar, atomics
+
+Module page: [`threads.md`](threads.md). A thread runs a `fn() -> Int`
+closure (zero captures in the basic surface).
+
+```vyb
+h = thread_spawn(|| -> 40 + 2)<Int>     # start
+thread_join(h)<Int> / thread_detach(h)<Int>
+
+m = mutex_new(); mutex_lock(m); mutex_unlock(m); mutex_free(m)
+cv = cond_new(); cond_wait(cv, m); cond_signal(cv); cond_broadcast(cv)
+a = atomic_new(0); atomic_load(a); atomic_store(a, v)
+atomic_add(a, v); atomic_cas(a, exp, des)<Int>; atomic_free(a)
+```
+
+### 4.8 `tasks` — fire-and-forget threads
+
+Module page: [`tasks.md`](tasks.md). A lighter precursor to the async
+executor: each spawn is its own detached pthread returning a handle.
+
+```vyb
+t  = task_spawn(|| -> 99)<Int>
+task_await(t)<Int>      # block until done, return the closure result
+task_poll(t)<Int>       # non-blocking probe
+task_free(t)<Int>
+```
+
+No captures/arguments in the `fn() -> Int` surface; use `asyncs` for
+real parallelism with cooperative scheduling.
+
+### 4.9 `asyncs` — a real executor (fibers + thread pool)
+
+Module page: [`asyncs.md`](asyncs.md). Each `async_spawn` runs on its own
+stack-fiber pinned to a worker (one scheduler per core) and can suspend
+cooperatively without blocking its worker:
+
+```vyb
+import async
+a = async_spawn(|| -> { async_sleep_ms(40); return 10 })
+b = async_spawn(|| -> { async_sleep_ms(5);  return 32 })
+async_run_all()<Int>              # drive the pool to completion
+async_await(b)<Int>               # await one handle, block the caller
+async_poll(t)<Int>                # non-blocking probe
+async_sleep_ms(ms)<Int>           # cooperatively suspend (not thread sleep)
+async_yield()<Int>                # round-robin to other fibers
+```
+
+Non-`Int` futures (`Float`, `Bool`, `String`) are supported
+(`Future<T>` async functions — see `README.md` §**Async Programming**).
+
+### 4.10 `network` — sockets, TCP, UDP
+
+Module page: [`network.md`](network.md). Raw `socket_*` primitives, ergonomic
+TCP/UDP wrappers, and `async_*` variants.
+
+```vyb
+# TCP
+l = tcp_listen(ip, port, backlog)<TcpListener>
+s = tcp_connect(ip, port)<TcpStream>
+c = tcp_accept(l)<TcpStream>
+
+# UDP
+u = udp_bind(ip, port)<UdpSocket>
+udp_send_to(u, ip, port, data); udp_recv_from(u, max)<String>
+udp_last_peer_ip() / udp_last_peer_port()
+
+# raw socket (domain/type/protocol from the Socket enum constants)
+fd = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
+socket_bind(fd, "0.0.0.0", port); socket_listen(fd, backlog)
+socket_accept(fd); socket_send(fd, data); socket_recv(fd, max)
+socket_connect(fd, ip, port); socket_local_port(fd)
+socket_resolve(host)<String>    # hostname/IP -> dotted-quad IPv4
+socket_error_code()/socket_error_message()
+```
+
+`TcpStream`/`TcpListener`/`UdpSocket` are structs whose method surface comes
+from `TcpStreamOps`/`TcpListenerOps`/`UdpSocketOps` (write/read/close,
+peer/`local_ip`/`local_port`, `send_to`/`recv_from`). `enum Socket`
+(`AF_INET`, `SOCK_STREAM`, `SOCK_DGRAM`, `IPPROTO_TCP`, `IPPROTO_UDP`) holds
+the constants. `async_tcp_*`/`async_udp_*` integrate sockets with the async
+executor.
+
+### 4.11 `tls` — TLS contexts, sessions, handshakes
+
+Module page: [`tls.md`](tls.md). Layers over OpenSSL; a `TlsContext` is the
+`SSL_CTX`, a `TlsStream` is a TLS session on an already-connected fd.
+
+```vyb
+ctx = tls_server_context(cert_pem, key_pem)<TlsContext>
+ctx = tls_client_context()<TlsContext>                 # unverified
+ctx = tls_client_context_verified(ca_pem)<TlsContext>  # pinned CA
+s = tls_stream(ctx, fd, host)<TlsStream>
+tls_connect(s)<Int> / tls_accept(s)<Int>               # handshake
+tls_write(s, data)/tls_read(s, max)<Int|String>
+tls_close(s)<Int>; tls_free_context(ctx)<Void>; tls_error_code()/tls_error_message()
+```
+
+`TlsStreamOps`/`TlsContextOps` bind the method surface (`write`, `read`,
+`connect`, `accept`, `close`, `dispose`) onto the structs. `https_selfhost*`
+(§4.13) exercise the full wiring end-to-end.
+
+### 4.12 `http` — pure-Vyb HTTP/1.1 client and server
+
+Module page: [`http.md`](http.md). Layered over `network`/`threads` (not raw
+runtime calls). `HttpResponse` holds `status`, `headers`, `body`.
+
+```vyb
+# client
+body = http_get(host, port, path)<String>
+resp = http_get_full(host, port, path)<HttpResponse>
+resp.status_code(); http_header(resp, "content-type")
+
+# server
+fd = http_listen(port, backlog)<Int>      # 0 = ephemeral
+http_serve(port, backlog)<Int>            # threaded server loop
+http_response(status, body)<String>       # well-formed response
+
+# low-level request building / wire parsing
+http_request(method, path, host)<String>
+http_status_code(line)/http_index_of/.../http_parse_int(s)<Int>
+http_read_line(fd)/http_read_head(conn, max)/http_read_exact(fd, n)/http_read_all(fd, max)
+http_send_all(fd, data)<Int>
+```
+
+The threaded `http_serve` dispatches each accepted connection to its own
+detached thread (`http_serve_conn`), reading the head and echoing a
+well-formed response. This is a pure-Vyb reference implementation — start
+here before layering TLS.
+
+### 4.13 `https` — HTTPS client over tls + http
+
+Module page: [`https.md`](https.md). A client that runs the `http` request
+state machine over a `TlsStream` (reusing `http`'s parsers and the shared
+`HttpResponse` type, which it re-exports).
+
+```vyb
+https_get(host, port, path)<String>
+https_get_full(host, port, path)<HttpResponse>            # unverified ctx
+https_get_full_verified(host, port, path, ca_pem)<HttpResponse>
+https_get_verified(host, port, path, ca_pem)<String>
+
+# diagnostics: throwaway TLS server answering one request
+https_selfhost(cert_pem, key_pem)<Int>
+https_selfhost_verified(cert_pem, key_pem)<Int>
+```
+
+`https_get_full_verified` pins a CA and verifies the hostname; the
+`https_selfhost*` pair generates a self-signed cert at runtime and drives the
+whole tls+http wiring without an external server.
+
+### 4.14 `prelude` — the auto-imported re-export surface
+
+Module page: [`prelude.md`](prelude.md). Re-exports `Display`, `Debug`,
+`Clone`, `Equatable`, `Hashable`, `Comparable`, `hash_chars`, and
+`prelude_ok`. The compiler injects these into every module unless the module
+imports them itself or redefines one of the core aspects.
+
+---
+---
+
+## 5. Concurrency and async model
+
+Vyb is fully multithreaded (pthreads underneath) with a clean, layered story:
+
+| Primitive | Module | Cost model | When to use |
+|---|---|---|---|
+| `thread_spawn` + mutex/condvar/atomics | `threads` | OS thread, blocking | CPU-bound work, classic pthread patterns |
+| `task_spawn` | `tasks` | detached pthread per task | fire-and-forget jobs |
+| `async_spawn` / `async_await` | `asyncs` | fibers on a per-core worker pool | many concurrent, mostly-waiting tasks |
+| `chan_*` / `chan_select` | `channels` | typed handoff between threads | message passing, fan-out |
+
+**Shared state** is coordinated with `mutex_*`/`cond_*`/`atomic_*`
+(`threads`). `cond_wait(cv, m)` releases `m`, sleeps, and re-acquires on
+signal — the classic monitor pattern, 1:1 on pthreads.
+
+**Typed channels** so far carry `Int` and `String` payloads, unbounded or
+bounded (`chan_bounded(cap)`). Use `chan_select(handles<Vec<Int>>)` to await
+the first ready handle, then drain it with `chan_recv_opt` (absent when closed
+and drained). Non-`Int` payloads (Float/Bool/Char) are the next channel
+increments and will reuse the same async codegen.
+
+**The async executor** (`asyncs`) is not thread-per-task: a fiber suspends
+cooperatively (`async_sleep_ms`) without blocking its worker, so hundreds of
+sleeping connections run on a few cores. `async_await` blocks the *caller*
+until a handle completes; `async_poll` probes; `async_run_all` drives a batch
+to completion. `async_tcp_*`/`async_udp_*` in `network` bridge sockets into
+the executor so I/O futures fit the same await model.
+
+> **Teardown discipline.** Because ownership is deterministic, free paths must
+> be explicit: channels (`chan_free`), mutexes/condvars/atomics
+> (`mutex_free`/`cond_free`/`atomic_free`), tasks (`task_free`), sockets
+> (`close`), and TLS (`tls_free_context`/`tls_close`). `our`-owned values
+> release automatically at last drop; leaked handles are a bug in user code,
+> not the runtime.
+
+---
+
+## 6. Networking cookbook
+
+### TCP echo server
+
+```vyb
+import network
+import threads
+
+main()<Int> -> {
+    l = tcp_listen("0.0.0.0", 9000, 16)      # "" = all interfaces
+    if (l.fd == -1) { return 1 }
+    while (true) {
+        c = tcp_accept(l)
+        h = thread_spawn(|| -> { handle(c); return 0 })
+        thread_detach(h)
+    }
+    return 0
+}
+```
+
+### UDP datagram peer
+
+```vyb
+u = udp_bind("0.0.0.0", 9001)
+udp_send_to(u, "127.0.0.1", 9002, "ping")
+reply = udp_recv_from(u, 1400)
+peer = udp_last_peer_ip() + ":" + udp_last_peer_port().to_string()
+```
+
+### HTTP server
+
+```vyb
+import http
+http_serve(8080, 16)          # threaded loopback reference server
+```
+
+### HTTPS client (peer-verified)
+
+```vyb
+import https
+resp = https_get_full_verified("example.com", 443, "/", ca_pem)
+println("{} {}: {}".format(resp.status_code, resp.headers.len(), resp.body))
+```
+
+---
+
+## 7. Performance and memory model
+
+- **Codegen:** Vyb → LLVM IR → native object. Generics are monomorphized, so
+  generic call sites are direct calls, not erasure+dispatch.
+- **Layout:** `Int` sizes are exact; `String` is a fat pointer; structs are
+  plain C-layout aggregates; a function that can fail returns
+  `{ value, error }` in LLVM.
+- **GC is a policy, not a default.** The default is deterministic
+  ownership/refcounts. Optional GC coverage is a roadmap item (post-1.0), not
+  required for embedded targets where memory must be explicit.
+- **Allocation discipline:** string transforms allocate; read-only ops don't.
+  Collection growth amortizes like any growable array; `Vec(n)` preallocates.
+  Rehash vs memory on maps: deterministic growth is the embedded-friendly
+  default; you control capacity up front.
+- **Bounds checks** happen at runtime on string/`get`/`at` operations and
+  return safe defaults rather than reading out of bounds.
+- **`freedom`** is the documented escape from checked access when needed.
+
+For profiling and leak checking the project supports both **ASan** and
+**Valgrind** builds (`build-asan/`, `valgrind … ./build/vyb file.vyb`); the
+runtime points a single process at a list of tests if needed.
+
+---
+
+## 8. Testing and tooling
+
+### Build
+
+```bash
+./build.sh                        # clean build
+./build.sh --run-tests            # build + run the suite
+./build.sh --category <cat>       # filter tests by category
+./build.sh --test-pattern '*.vyb' # filter by filename pattern
+```
+
+### Test harness (`test_harness.py`)
+
+```bash
+python3 test_harness.py --vyb ./build/vyb --workers 16          # run all
+python3 test_harness.py --vyb ./build/vyb --pattern 'async*'    # filter
+python3 test_harness.py --vyb ./build/vyb --report report.md    # report
+python3 test_harness.py --vyb ./build/vyb --triage              # triage plan
+```
+
+Tests carry metadata headers (`@test:`, `@description:`, `@category:`,
+`@expect:`, `@expect-output:`, `@expect-return:`) that drive pass/fail
+automatically.
+
+### Syntax migration & triage tools
+
+```bash
+python3 migrate_syntax.py --scan            # find legacy syntax
+python3 migrate_syntax.py --apply           # apply canonical forms (backs up)
+python3 triage_tool.py --pattern 'failed*'  # analyse failures
+```
+
+### Reference manual generator (`tools/refman.py`)
+
+```bash
+python3 tools/refman.py --emit-dir docs/refman     # (re)generate
+python3 tools/refman.py --check                    # drift/unresolved CI gate
+```
+
+`--check` (also wired into `.github/workflows/refman-check.yml`) fails if:
+an imported symbol is not a `share(all)` export of its provider, a
+prose-ref/uses-type target is unresolved, or a regenerate diffs from the
+committed `docs/refman/`. The generator is deterministic, so a clean tree
+regenerates byte-identical output.
+
+---
+
+## 9. API index
+
+| Area | Module page | Cross-index |
+|---|---|---|
+| Contracts & math | [`core`](core.md) | [aspects & binds](aspects.md) |
+| Domain errors | [`error`](error.md) | — |
+| Files | [`io`](io.md) | [types](types.md) |
+| Clocks | [`time`](time.md) | — |
+| Vec/Map/Set/BTree | [`collections`](collections.md) | [functions](functions.md) |
+| Channels | [`channels`](channels.md) | [functions](functions.md) |
+| Threads & atomics | [`threads`](threads.md) | [functions](functions.md) |
+| Fire-and-forget | [`tasks`](tasks.md) | — |
+| Async executor | [`asyncs`](asyncs.md) | — |
+| Sockets/TCP/UDP | [`network`](network.md) | [shared types](interfaces.md) |
+| TLS | [`tls`](tls.md) | [shared types](interfaces.md) |
+| HTTP | [`http`](http.md) | [shared types](interfaces.md) |
+| HTTPS client | [`https`](https.md) | [shared types](interfaces.md) |
+| Auto-imported facade | [`prelude`](prelude.md) | — |
+| Runtime intrinsics | [`runtime`](runtime.md) | — |
+
+The **shared cross-module types** (`HttpResponse`, `TcpStream`, `TlsContext`,
+`TlsStream`, `Socket`) and every symbol that uses them are in
+[`interfaces.md`](interfaces.md).
+
+---
+
+## Appendix — where to go deeper
+
+- **Full grammar (EBNF):** `README.md` §**Appendix A**.
+- **Memory model reference:** `README.md` §**Appendix B**.
+- **Auto-serialization reference:** `README.md` §**Appendix C**.
+- **Glossary:** `README.md` §**Glossary**.
+- **Per-symbol signatures & relationships:** the per-module pages under
+  `docs/refman/`, e.g. [`network.md`](network.md), [`https.md`](https.md).
+- **Design/plan of the refman itself:** [`PLAN.md`](PLAN.md).
