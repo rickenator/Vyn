@@ -1,0 +1,43 @@
+// @test: typed chan<T> channels - producers/consumers across threads
+// @description: A typed `chan<Int>` shared by value across pthread producers (a
+//   chan is a single i64 runtime handle, so copies reference the same channel).
+//   Two producer threads enqueue into the shared channel; the consumer blocks on
+//   recv until every value arrives (order-independent sum). A String channel round
+//   trip shows refcounted payload transport.
+// @category: modules, threads, channels, concurrency, stdlib
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import threads
+
+main()<Int> -> {
+    ch<chan<Int>> = chan<Int>()
+    if (ch == 0) { return 1 }
+
+    p1<Int> = thread_spawn(|| -> { ch.send(10); ch.send(20); return 0 })
+    p2<Int> = thread_spawn(|| -> { ch.send(30); ch.send(40); return 0 })
+    if (p1 < 0 || p2 < 0) { return 2 }
+    s1<Int> = ch.recv()
+    s2<Int> = ch.recv()
+    s3<Int> = ch.recv()
+    s4<Int> = ch.recv()
+    if (s1 + s2 + s3 + s4 != 100) { return 3 }
+    if (thread_join(p1) != 0 || thread_join(p2) != 0) { return 4 }
+    if (ch.len() != 0) { return 5 }
+    if (ch.free() != 0) { return 6 }
+
+    sc<chan<String>> = chan<String>()
+    if (sc == 0) { return 7 }
+    q1<Int> = thread_spawn(|| -> { sc.send("alpha"); sc.send("beta"); return 0 })
+    if (q1 < 0) { return 8 }
+    a<String> = sc.recv()
+    b<String> = sc.recv()
+    if (a != "alpha" || b != "beta") { return 9 }
+    if (thread_join(q1) != 0) { return 10 }
+    if (sc.free() != 0) { return 11 }
+
+    println("ok")
+    return 0
+}

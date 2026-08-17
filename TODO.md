@@ -438,7 +438,16 @@ with only the pthread ABI beneath). The thread-safety foundation above came firs
   and **String-payload channels** (`strchan_new/send/recv/try/len/free`) that
   retain the string on send and transfer that reference on recv/try, with no
   buffer dangling unless a bounded channel is freed while still buffered
-  (`test/modules/test_strchan.vyb`). A true generic `chan<T>` type remains planned.
+  (`test/modules/test_strchan.vyb`).
+- [x] **Typed generic `chan<T>` (built-in)** — a compiler-native generic
+  thread-safe channel carrying typed payloads: `chan<T>()` (unbounded) /
+  `chan<T>(cap)` (bounded) construct a single i64 runtime handle (Intel-like
+  ABI, so sharing a chan by value across pthreads references the same channel).
+  Methods `send(v)`, `recv()` (blocking), `poll()` (non-blocking), `len()`,
+  `free()`, and `handle()` (the raw Int for `chan_select`). Int-family scalar
+  payloads use the int-slot runtime; String payloads use the refcounted string
+  runtime (`test/modules/test_chan_typed.vyb`, `test/modules/test_chan_threaded.vyb`).
+  Float/Bool/Char payloads and non-identifier receivers remain follow-ups.
 - [x] **Task spawn/await/poll (`tasks` module)** — policy-clean concurrency on
   the external pthread runtime: `task_spawn(fn() -> Int)` runs the closure on a
   detached worker whose result is delivered to a private capacity-1 channel; the
@@ -594,7 +603,8 @@ with `pass` for multi-statement case bodies. Needs polishing:
   module (`t = task_spawn(fn() -> Int)`, `task_await`/`task_poll`/`task_free`)
   for real parallel workers, and the cooperative `asyncs` module above for
   non-blocking, event-loop concurrency.
-- [ ] **Typed channels** — `chan<T>` for message passing between tasks (planned)
+- [x] **Typed channels** — `chan<T>` is a built-in generic typed channel for
+  message passing between tasks (send/recv/poll/len/handle/free; test above).
 - [ ] **Actors** — Lightweight isolated concurrency units (planned)
 - [x] **`select` over channels** — `chan_select(handles<Vec<Int>>)` waits on many
   channels at once and returns the ready index (Vyb-natural extension; blocks
