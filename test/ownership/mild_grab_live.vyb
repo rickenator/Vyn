@@ -1,5 +1,6 @@
 // @test: mild grab upgrades live owner
-// @description: mild<T>.grab() returns Option<our<T>> -- Some(our<T>) while the target is live, None once released
+// @description: mild<T>.grab() returns the native our<T>? -- present (a retained our<T>)
+//   while the target is live, absent once released; consumed with the optional match.
 // @category: ownership, mild
 // @expect: pass
 // @expect-return: 0
@@ -11,10 +12,14 @@ struct Node {
 main()<Int> -> {
     owner<our<Node>> = our(Node { value: 33 })
     weak<mild<Node>> = soft(owner)
-    grabbed<Option<our<Node>>> = weak.grab()
-    got<our<Node>> = grabbed.value   // live grab is Some(our<Node>)
-    if (got.value == 33) {
-        return 0
+    grabbed<our<Node>?> = weak.grab()
+    match (grabbed) {
+        o -> {
+            if (o.value == 33) {
+                return 0
+            }
+        }
+        ? -> { }
     }
     return 1
 }

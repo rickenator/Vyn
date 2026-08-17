@@ -1,6 +1,6 @@
 // @test: mild grab released target upgrades to None
-// @description: mild<T>.grab() on a released target returns None (the failed-upgrade
-// path), safely detectable by match without dereferencing a null handle.
+// @description: mild<T>.grab() on a released target returns absent (the native `our<T>?`
+// failed-upgrade path), safely detectable by the optional `?` arm of a match.
 // @category: ownership, mild
 // @expect: pass
 // @expect-return: 0
@@ -17,10 +17,10 @@ make_weak()<mild<Node>> -> {
 
 main()<Int> -> {
     weak<mild<Node>> = make_weak()
-    grabbed<Option<our<Node>>> = weak.grab()
-    r<Int> = match(grabbed) {
-        Some(o) -> 0
-        None -> 1
+    grabbed<our<Node>?> = weak.grab()
+    r<Int> = match (grabbed) {
+        o -> 0
+        ? -> 1
     }
     if (r == 1 && weak.released()) {
         return 0

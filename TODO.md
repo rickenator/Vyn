@@ -28,7 +28,7 @@ is the working audit for what needs to be implemented next.
 | Struct system | ~85% | repr(C) for FFI |
 | Ownership types (syntax + parsing) | ~80% | Semantic enforcement |
 | Ownership types (runtime enforcement) | ~60% | Full move/copy/drop checking; compile-time move/use-after-move checking and `our<T>` copy/assignment/parameter refcounting done; full drop semantics for every exit path remain |
-| `mild<T>` weak references | ~75% | Control blocks, `Option<our<T>>`-style failed `grab()`, and `our<T>` copy/assignment/parameter refcounting done; full copy/drop semantics remain |
+| `mild<T>` weak references | ~75% | Control blocks, failed `grab()` (native `our<T>?`), and `our<T>` copy/assignment/parameter refcounting done; full copy/drop semantics remain |
 | Aspect/bind system | ~78% | Aspect objects/dyn dispatch |
 | Generic monomorphization | ~85% | **SEALED**: Compile-time only. See doc/MONOMORPHIZATION_DESIGN.md |
 | Async/await | ~90% | Multi-threaded thread-pool executor |
@@ -883,8 +883,11 @@ exhaustiveness; the `for (x in it)` desugar emits that native-optional match
 (including the step form). Generic `T?` substitutes through binds, and the `else`
 operator tolerates an unresolved generic payload type (codegen enforces the
 concrete payload).
-Remaining call site to migrate, then drop `Option<T>`/`Some`/`None` from the
-stdlib: `mild<T>.grab()`.
+`Option<T>`/`Some`/`None` have been fully replaced by the native `T?` surface
+in every call site (chan `poll()`, map `.get()`, iterator `next()`, and
+`mild<T>.grab()`); the only remaining work is dropping the now-dead
+`Option<T>`/`Some`/`None` definitions from the stdlib
+(`stdlib/core/option.vyb` and the prelude imports).
 **Open design question (flagged before 1.0).** The `Option<T>` / `Some(v)` / `None`
 vocabulary came from Rust (via Haskell's `Maybe`). Vyb already HAS a native optional type
 in the compiler — `<Type>?` parses to `ast::OptionalType`, lowered to a
@@ -904,8 +907,9 @@ The design must cover every current `Option<T>` use, not just channels:
   (`stdlib/collections/mod.vyb`, `stdlib/core/iter.vyb`). End-of-stream matches the
   optional absent arm (`? -> break`) in both the explicit `.next()` loop and the
   `for (x in it)` desugar.
-- **Failed weak upgrade** — `mild<T>.grab()` -> `Option<our<T>>` on release
-  (`doc/FEATURE_STATUS.md` Ownership row). A distinct "already released" outcome.
+- **Failed weak upgrade** — DONE: `mild<T>.grab()` now returns the native `our<T>?`
+  (present holder while live / absent once released) (`doc/FEATURE_STATUS.md` Ownership row).
+  A distinct "already released" outcome, matched via `o ->` / `? ->` or `else`.
 Common consuming surface (vybey = sentence-like, keyword-first):
 - default with Vyb's existing `else` (as in `ensure cond else handling`):
   `v<Int> = ch.poll() else 0` ; `found<Int> = m.get("k") else fallback`.

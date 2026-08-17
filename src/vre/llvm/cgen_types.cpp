@@ -839,21 +839,15 @@ llvm::Type* LLVMCodegen::codegenType(vyb::ast::TypeNode* typeNode) {
                 logError(typeNode->loc, "Could not determine LLVM type for contained type in optional.");
                 return nullptr;
             }
-            // Represent optional<T> as a struct { T value; bool has_value; }
-            // Or, if T is a pointer, optional<T*> can be T* (where nullptr means no value).
-            // For simplicity here, let's assume T is not a pointer and use a struct.
-            // A more complex handling might be needed based on Vyb's specific semantics for optionals.
-            if (containedLlvmType->isPointerTy()) {
-                 // If T is already a pointer, optional<T*> can be represented by T* (nullptr for none)
-                llvmType = containedLlvmType;
-            } else {
-                // For non-pointer types, use a struct { value, i1 has_value }
-                // To avoid issues with recursive types if T is this optional type itself (though less common for optionals),
-                // we should ideally name this struct if it's not anonymous.
-                // For now, creating an anonymous struct.
-                llvm::StructType* optionalStructType = llvm::StructType::get(*context, {containedLlvmType, int1Type});
-                llvmType = optionalStructType;
-            }
+            // Represent optional<T> as a struct { T value; bool hasValue; } with the
+            // payload at index 0 and the i1 flag at index 1. This is the layout the whole
+            // native `T?` surface relies on (`T?(v)` / `T?()` construction, the `else`
+            // default, optional `match`, and scalar channel `poll()`), so it is used
+            // uniformly even when the contained type is itself a pointer (e.g. an `our<T>`
+            // control-block handle in `mild<T>.grab()`), rather than collapsing to a
+            // bare nullable pointer that would break field/flag extraction.
+            llvm::StructType* optionalStructType = llvm::StructType::get(*context, {containedLlvmType, int1Type});
+            llvmType = optionalStructType;
             break;
         }
         // case vyb::ast::TypeNode::Category::REFERENCE: // TODO: Add handling for REFERENCE if distinct from POINTER

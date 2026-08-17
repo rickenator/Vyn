@@ -1504,28 +1504,26 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                             llvm::BasicBlock* objFreedBlock = llvm::BasicBlock::Create(*context, "grab_freed", function);
                             llvm::BasicBlock* grabContinue = llvm::BasicBlock::Create(*context, "grab_continue", function);
 
-                            // Build the return type Option<our<T>>. node->type is the
-                            // semantic Option<our<T>> type; its single generic arg is
-                            // the our<T> payload. Recover it, monomorphize the enum so
-                            // the Some/None tags and payload layout are available.
-                            ast::TypeName* grabRet = dynamic_cast<ast::TypeName*>(node->type.get());
-                            std::string mangledOption;
-                            llvm::Type* optionLLVMTy = nullptr;
-                            if (grabRet && grabRet->genericArgs.size() == 1) {
-                                ast::TypeNodePtr optArg = grabRet->genericArgs[0]->clone();
-                                std::vector<ast::TypeNodePtr> optArgs;
-                                optArgs.push_back(std::move(optArg));
-                                mangledOption = mangleGenericTypeName("Option", optArgs);
-                                if (!taggedEnumInfo.count(mangledOption)) {
-                                    monomorphizeEnum("Option", optArgs);
-                                }
-                                optionLLVMTy = taggedEnumInfo[mangledOption].llvmType;
+                            // Native optional result `our<T>?`: a `{ our<T> value, i1 hasValue }`
+                            // struct with the value at index 0 and the flag at index 1 (the
+                            // `codegenType` layout), present while the target is live (carrying
+                            // the control-block handle) and absent once released. Consumed via
+                            // `match (m.grab()) { o -> ...; ? -> ... }` or `else`.
+                            llvm::StructType* optStruct = nullptr;
+                            if (node->type) {
+                                optStruct = llvm::dyn_cast<llvm::StructType>(codegenType(node->type.get()));
+                            }
+                            if (!optStruct || optStruct->getNumElements() != 2) {
+                                optStruct = llvm::StructType::get(
+                                    *context,
+                                    {controlBlockPtr->getType(), llvm::Type::getInt1Ty(*context)},
+                                    false);
                             }
 
                             // Branch based on object_freed flag
                             builder->CreateCondBr(isFreed, objFreedBlock, objAliveBlock);
 
-                            // Object still alive: increment strong_count and return Some(our<T>)
+                            // Object still alive: increment strong_count and return present (our<T>)
                             builder->SetInsertPoint(objAliveBlock);
 
                             // Get pointer to strong_count (field 0)
@@ -1545,23 +1543,28 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                                 llvm::AtomicOrdering::AcquireRelease
                             );
 
-                            VYB_CDBG << "DEBUG: mild<T>.grab() - incremented strong_count, returning Some(our<T>)" << std::endl;
+                            VYB_CDBG << "DEBUG: mild<T>.grab() - incremented strong_count, returning present our<T>" << std::endl;
 
-                            // Build Some(our<T>) carrying the control block handle.
-                            llvm::Value* someVal = buildTaggedEnumValue(mangledOption, "Some", {controlBlockPtr});
+                            // Build the present optional carrying the control block handle.
+                            llvm::Value* presentVal = llvm::UndefValue::get(optStruct);
+                            presentVal = builder->CreateInsertValue(presentVal, controlBlockPtr, 0, "grab.val");
+                            presentVal = builder->CreateInsertValue(presentVal, builder->getInt1(true), 1, "grab.present");
                             builder->CreateBr(grabContinue);
 
-                            // Object freed: return None
+                            // Object freed: return the absent optional (`?`)
                             builder->SetInsertPoint(objFreedBlock);
-                            VYB_CDBG << "DEBUG: mild<T>.grab() - object freed, returning None" << std::endl;
-                            llvm::Value* noneVal = buildTaggedEnumValue(mangledOption, "None", {});
+                            VYB_CDBG << "DEBUG: mild<T>.grab() - object freed, returning absent optional" << std::endl;
+                            llvm::Value* absentVal = llvm::UndefValue::get(optStruct);
+                            absentVal = builder->CreateInsertValue(
+                                absentVal, llvm::Constant::getNullValue(controlBlockPtr->getType()), 0, "grab.empty");
+                            absentVal = builder->CreateInsertValue(absentVal, builder->getInt1(false), 1, "grab.absent");
                             builder->CreateBr(grabContinue);
 
-                            // Continue block: phi node to select the Option<our<T>> result
+                            // Continue block: phi node to select the optional our<T>? result
                             builder->SetInsertPoint(grabContinue);
-                            llvm::PHINode* resultPhi = builder->CreatePHI(optionLLVMTy ? optionLLVMTy : llvm::PointerType::get(*context, 0), 2, "grab_result");
-                            resultPhi->addIncoming(someVal, objAliveBlock);
-                            resultPhi->addIncoming(noneVal, objFreedBlock);
+                            llvm::PHINode* resultPhi = builder->CreatePHI(optStruct, 2, "grab_result");
+                            resultPhi->addIncoming(presentVal, objAliveBlock);
+                            resultPhi->addIncoming(absentVal, objFreedBlock);
 
                             m_currentLLVMValue = resultPhi;
                             return;

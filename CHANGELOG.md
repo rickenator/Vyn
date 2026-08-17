@@ -41,11 +41,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now emits that native-optional match (`x -> { body }` / `? -> break`) in place
   of `Some`/`None`, including the step/skip form. Covered by
   `test/modules/test_vec_iter.vyb`, `test_iterator_protocol.vyb`,
-  `test_collections_iter.vyb`, and the `test_for_iter*` suites. `mild<T>.grab()`
-  is the one remaining `Option<T>`/Some/None call site (separate ownership task).
+  `test_collections_iter.vyb`, and the `test_for_iter*` suites.
   The `else` operator also now tolerates an unresolved generic payload type (a
   generic free function returning `T?` whose `T` isn't resolved at the call site)
   instead of rejecting it, since codegen enforces against the concrete payload.
+
+- **`mild<T>.grab()` returns the native `our<T>?`** — the last Rust-shaped
+  `Option<T>`/`Some`/`None` call site. While the `mild` object is live, `grab()`
+  yields a present optional holding the retained `our<T>` (giving the caller
+  temporary borrow-like access); once released/overwritten it yields the absent
+  value. Consumed via the native optional surface, e.g.
+  `match (m.grab()) { o -> o.value, ? -> -1 }` or `else`. Codegen builds the
+  `{ our<T> value, i1 hasValue }` optional struct, and `codegenType` now always
+  lowers any `T?` to the uniform `{ value, i1 }` struct (no more bare-pointer
+  collapse for pointer payloads), keeping `else`/`match`/chan-`poll`/`grab` on
+  the same layout. Covered by `test/ownership/mild_grab_live.vyb`,
+  `mild_grab_released.vyb`, `mild_overwrite_release.vyb`, and
+  `mild_copy_semantics.vyb`.
 
 - **Typed generic `chan<T>` channels** — a compiler-native generic,
   thread-safe channel. `chan<T>()` / `chan<T>(cap)` construct an

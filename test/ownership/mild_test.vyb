@@ -13,9 +13,9 @@ create_tree()<our<TreeNode>> -> {
 # Example 1: Using soft() to create a mild reference
 capture_parent(node<our<TreeNode>>)<Int> -> {
     weak<mild<TreeNode>> = soft(node)
-    parent_strong<Option<our<TreeNode>>> = weak.grab()
-    got<our<TreeNode>> = parent_strong.value
-    return got.value
+    parent_strong<our<TreeNode>?> = weak.grab()
+    r<Int> = match (parent_strong) { o -> o.value, ? -> -1 }
+    return r
 }
 
 # Example 2: Using released() to check status

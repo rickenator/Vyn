@@ -21,7 +21,7 @@ main()<Int> -> {
         println("  shadow.released() = false (object still alive)")
     }
 
-    grabbed<Option<our<Node>>> = shadow.grab()   // live while shared is in scope => Some
+    grabbed<our<Node>?> = shadow.grab()   // live while shared is in scope => present
     println("  shadow.grab() upgraded while object is live")
 
     println("mild<Node> methods test completed!")

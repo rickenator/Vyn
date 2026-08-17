@@ -27,8 +27,9 @@ main()<Int> -> {
         return 2
     }
 
-    g<Option<our<Node>>> = b.grab()
-    if (g.value.value != 1) {
+    g<our<Node>?> = b.grab()
+    gv<Int> = match (g) { o -> o.value, ? -> -1 }
+    if (gv != 1) {
         return 3
     }
 
