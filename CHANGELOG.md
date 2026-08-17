@@ -10,6 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`tls` stdlib module** — TLS over OpenSSL (`import tls`). Client/server
+  `SSL_CTX` from in-memory PEM (no file-path coupling), an `SSL` session bound
+  to an already-connected fd, handshake (`tls_connect`/`tls_accept`), encrypted
+  `tls_write`/`tls_read`, `tls_close`, and `tls_error_code`/`tls_error_message`
+  diagnostics. Allocation-free `TlsContext`/`TlsStream` structs with aspect/bind
+  methods. OpenSSL is linked into the binary and `dlopen`ed into global scope
+  so the ORC JIT resolves libssl/libcrypto (optional via `VYB_USE_OPENSSL`).
+  Covered by `test/tls/test_tls_loopback.vyb` (threaded handshake + echo) and
+  `test/tls/smoke_openssl.vyb` (valgrind-clean for the TLS path).
+- **`https` stdlib module** — a TLS-secured HTTP client (`import https`) that
+  layers `tls` over the pure-`http` client, reusing http's status/header/int
+  parsers and the shared `HttpResponse` type, with its own TLS-aware I/O.
+  `https_get_full`/`https_get` do a full encrypted GET round-trip, and
+  `https_selfhost` stands up a throwaway TLS server to validate the wiring from
+  a single import. Covered by `test/tls/test_https_client.vyb` (valgrind-clean).
 - **Pure-Vyb HTTP/1.1 client** — `http_get_full(host, port, path)` returns a
   parsed `HttpResponse` (`status`, `reason`, `headers` as a `Vec<String>`, and
   `body`) after a full GET round-trip: it connects over a socket, sends the

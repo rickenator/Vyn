@@ -36,7 +36,7 @@ is the working audit for what needs to be implemented next.
 | Lambda/closure codegen | ~70% | Capture-by-value closure env structs shipped; move/mutable/`our` capture planned |
 | Module system (`import`/`smuggle`/`bundle`) | ~70% | Local/module-path resolution, aliases, bundle/share visibility done; stdlib modules/package integration pending |
 | FFI (`extern "C"`) | ~35% | Extern blocks, C aliases, freedom-gated JIT calls done; repr(C), variadics, linker flow pending |
-| Standard library | ~66% | Vec, String, HashMap/HashSet, BTreeMap, File I/O, Math, TCP socket + UDP I/O, time, HTTP server + client, async socket I/O, `TcpStream`/`TcpListener`/`UdpSocket` done |
+| Standard library | ~70% | Vec, String, HashMap/HashSet, BTreeMap, File I/O, Math, TCP socket + UDP I/O, time, HTTP server + client, TLS, HTTPS client, async socket I/O, `TcpStream`/`TcpListener`/`UdpSocket` done |
 | Introspection (`typeof`/`typename`) | ~75% | Downcasting, type assertions |
 | Auto-serialization | ~80% | Edge cases remain |
 | Pattern matching | ~60% | Destructuring, guards, enum variants |
@@ -1042,7 +1042,19 @@ async tcp_connect(host<String>, port<Int>)<TcpStream> -> {
 - [x] **v0.7 — HTTP/1.1 client** — `http_get_full()` returns a parsed
   `HttpResponse` (status/reason/headers/body) over a pure-Vyb socket round-trip,
   honoring `Content-Length` and falling back to read-until-close
-- [ ] **Post-1.0 — TLS** — Via `extern "C"` bindings to OpenSSL or mbedTLS
+- [x] **TLS (`tls` stdlib module) + HTTPS client (`https`)** — OpenSSL loaded
+  and linked into the binary (dlopen'd into global scope so the ORC JIT
+  resolves libssl/libcrypto), with runtime `__vyb_tls_*` shims: client/server
+  `SSL_CTX` from in-memory PEM, `SSL` over an existing fd, handshake, encrypted
+  read/write, close, and diagnostics. `import tls` exposes `TlsContext`/
+  `TlsStream` (with `tls_client_context`, `tls_server_context`, `tls_stream`,
+  `tls_connect`, `tls_accept`, `tls_write`, `tls_read`, `tls_close`,
+  `tls_error_code`/`tls_error_message`); `import https` builds a TLS-secured
+  HTTP client on tls + http (`https_get`/`https_get_full`, plus a
+  `https_selfhost` diagnostic). Peer verification is currently off
+  (self-signed loopback); a verified variant is a follow-up. Covered by
+  `test/tls/test_tls_loopback.vyb`, `test/tls/test_https_client.vyb`, and
+  `test/tls/smoke_openssl.vyb` (valgrind-clean for the TLS path).
 - [ ] **Post-1.0 — UDP multicast, raw packets** — Advanced socket options
 
 ### Key Design Decisions
