@@ -11,7 +11,7 @@ Legend: ✅ Implemented | 🚧 Partial / Stubbed | 📋 Planned
 | Feature | Status | Notes |
 |---------|--------|-------|
 | `import <path>` | ✅ | Parses module path and resolves local `.vyb` files (`::` or `.` separated) |
-| `import <path> as <alias>` | 🚧 | Whole-module alias parses; namespace binding still planned |
+| `import <path> as <alias>` | ✅ | Whole-module namespace import: `import module as NS`, `import * as NS from "locator"`, and the `smuggle` equivalents bind the module's visible symbols under `NS` for qualified `NS.sym` access. The bare names stay out of the importer's unqualified scope (isolation), and carried symbols are mangled (`__ns_<NS>_<sym>`, non-user-writable) so exported functions keep working across transitive and re-export hops (`test/modules/namespace_*.vyb`) |
 | `import <path>::{symbol as alias}` | ✅ | Selective import specifiers filter and rename imported declarations |
 | `import <path> from "<locator>"` | ✅ | Locator string parsed and stored in AST |
 | `smuggle <path> from "<locator>"` | ✅ | Locator string parsed and stored in AST |
