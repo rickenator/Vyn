@@ -3010,6 +3010,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         const std::string& fname = identCallee->name;
         std::string rtName;
         if (fname == "vyb_tls_client_context") rtName = "__vyb_tls_client_context";
+        else if (fname == "vyb_tls_client_context_verified") rtName = "__vyb_tls_client_context_verified";
         else if (fname == "vyb_tls_server_context") rtName = "__vyb_tls_server_context";
         else if (fname == "vyb_tls_ctx_free") rtName = "__vyb_tls_ctx_free";
         else if (fname == "vyb_tls_stream") rtName = "__vyb_tls_stream";
@@ -3060,6 +3061,12 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 if (!checkArity(0)) return;
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {}, false);
                 m_currentLLVMValue = builder->CreateCall(getTlsFn(ft), {}, "tls.clientctx");
+                return;
+            } else if (fname == "vyb_tls_client_context_verified") {
+                if (!checkArity(1)) return;
+                llvm::Value* ca = needArg(0); if (!ca) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int8PtrType}, false);
+                m_currentLLVMValue = builder->CreateCall(getTlsFn(ft), {toStrPtr(ca)}, "tls.clientctxverify");
                 return;
             } else if (fname == "vyb_tls_server_context") {
                 if (!checkArity(2)) return;

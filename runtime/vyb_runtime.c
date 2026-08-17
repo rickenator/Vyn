@@ -619,6 +619,40 @@ VYB_WEAK int64_t __vyb_tls_client_context(void) {
     return (int64_t)(intptr_t)ctx;
 }
 
+// Load one CA cert given as in-memory PEM into `ctx`'s trust store.
+static int vyb_tls_load_ca_pem(SSL_CTX* ctx, const char* pem) {
+    BIO* b = BIO_new_mem_buf((void*)pem, (int)(pem ? strlen(pem) : 0));
+    X509_STORE* store = b ? SSL_CTX_get_cert_store(ctx) : NULL;
+    X509* ca = b ? PEM_read_bio_X509(b, NULL, NULL, NULL) : NULL;
+    int ok = (ca && store && X509_STORE_add_cert(store, ca) == 1);
+    if (ca) X509_free(ca);
+    if (b) BIO_free(b);
+    return ok;
+}
+
+// A client SSL_CTX that verifies the peer against `ca_pem` (or the system
+// default CA paths when `ca_pem` is empty). An in-memory CA lets a pinned/
+// self-signed server be trusted without touching the host trust store.
+VYB_WEAK int64_t __vyb_tls_client_context_verified(const char* ca_pem) {
+    OPENSSL_init_ssl(0, NULL);
+    SSL_CTX* ctx = SSL_CTX_new(TLS_client_method());
+    if (!ctx) { vyb_tls_capture_error(); return -1; }
+    SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, NULL);
+    int ok = 1;
+    if (ca_pem && *ca_pem) {
+        ok = vyb_tls_load_ca_pem(ctx, ca_pem);
+    } else {
+        ok = (SSL_CTX_set_default_verify_paths(ctx) == 1);
+    }
+    if (!ok) {
+        vyb_tls_capture_error();
+        SSL_CTX_free(ctx);
+        return -1;
+    }
+    vyb_tls_err = 0;
+    return (int64_t)(intptr_t)ctx;
+}
+
 // Build a server SSL_CTX from in-line PEM certificate and private key strings.
 VYB_WEAK int64_t __vyb_tls_server_context(const char* cert_pem, const char* key_pem) {
     OPENSSL_init_ssl(0, NULL);
@@ -657,7 +691,9 @@ VYB_WEAK void __vyb_tls_ctx_free(int64_t ctxp) {
 }
 
 // Wrap an already-connected fd (`fd`) in a new SSL from `ctxp`. `host` (if
-// non-empty) is sent as the SNI server-name extension.
+// non-empty) is sent as the SNI server-name extension and set as the expected
+// peer hostname for verification on verifying contexts (no-op when the context
+// does not verify the peer).
 VYB_WEAK int64_t __vyb_tls_stream(int64_t ctxp, int64_t fd, const char* host) {
     SSL_CTX* ctx = (SSL_CTX*)(intptr_t)ctxp;
     SSL* ssl = SSL_new(ctx);
@@ -667,7 +703,11 @@ VYB_WEAK int64_t __vyb_tls_stream(int64_t ctxp, int64_t fd, const char* host) {
         SSL_free(ssl);
         return -1;
     }
-    if (host && *host) SSL_set_tlsext_host_name(ssl, host);
+    if (host && *host) {
+        SSL_set_tlsext_host_name(ssl, host);
+        X509_VERIFY_PARAM* vp = SSL_get0_param(ssl);
+        if (vp) X509_VERIFY_PARAM_set1_host(vp, host, 0);
+    }
     vyb_tls_err = 0;
     return (int64_t)(intptr_t)ssl;
 }

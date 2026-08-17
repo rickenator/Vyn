@@ -1051,9 +1051,12 @@ async tcp_connect(host<String>, port<Int>)<TcpStream> -> {
   `tls_connect`, `tls_accept`, `tls_write`, `tls_read`, `tls_close`,
   `tls_error_code`/`tls_error_message`); `import https` builds a TLS-secured
   HTTP client on tls + http (`https_get`/`https_get_full`, plus a
-  `https_selfhost` diagnostic). Peer verification is currently off
-  (self-signed loopback); a verified variant is a follow-up. Covered by
-  `test/tls/test_tls_loopback.vyb`, `test/tls/test_https_client.vyb`, and
+  `https_selfhost` diagnostic). Peer verification is a first-class surface:
+  `tls_client_context_verified(ca_pem)` trusts an in-line-pinned CA (or the
+  system default CA paths when `ca_pem` is "") and checks the expected hostname
+  in the certificate, while `tls_client_context()` stays verification-free for
+  self-signed loopback. Covered by `test/tls/test_tls_loopback.vyb`,
+  `test/tls/test_tls_verified.vyb`, `test/tls/test_https_client.vyb`, and
   `test/tls/smoke_openssl.vyb` (valgrind-clean for the TLS path).
 - [ ] **Post-1.0 — UDP multicast, raw packets** — Advanced socket options
 

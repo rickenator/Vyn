@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so the ORC JIT resolves libssl/libcrypto (optional via `VYB_USE_OPENSSL`).
   Covered by `test/tls/test_tls_loopback.vyb` (threaded handshake + echo) and
   `test/tls/smoke_openssl.vyb` (valgrind-clean for the TLS path).
+- **Verified TLS** — `tls_client_context_verified(ca_pem)` adds peer
+  verification to the `tls` module: it trusts an in-line-pinned CA cert (or the
+  system default CA paths when `ca_pem` is "") and enforces the expected
+  hostname against the peer certificate. The `host` passed to `tls_stream`
+  doubles as the checked name. Covered by `test/tls/test_tls_verified.vyb`,
+  which proves a matching (correct) hostname succeeds over a pinned self-signed
+  cert while a mismatching hostname fails the handshake (valgrind-clean).
 - **`https` stdlib module** — a TLS-secured HTTP client (`import https`) that
   layers `tls` over the pure-`http` client, reusing http's status/header/int
   parsers and the shared `HttpResponse` type, with its own TLS-aware I/O.

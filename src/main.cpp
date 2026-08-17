@@ -127,6 +127,7 @@ extern "C" {
     // TLS runtime helpers (tls stdlib module) over OpenSSL. SSL/SSL_CTX are
     // opaque pointers carried across as Int; certs are in-line PEM strings.
     int64_t __vyb_tls_client_context(void);
+    int64_t __vyb_tls_client_context_verified(const char* ca_pem);
     int64_t __vyb_tls_server_context(const char* cert_pem, const char* key_pem);
     void    __vyb_tls_ctx_free(int64_t ctxp);
     int64_t __vyb_tls_stream(int64_t ctxp, int64_t fd, const char* host);
@@ -1090,6 +1091,8 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
         // a no-OpenSSL build simply has no tls module symbols to register.
         runtimeSymbols[mangle("__vyb_tls_client_context")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_tls_client_context), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_tls_client_context_verified")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_tls_client_context_verified), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_tls_server_context")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_tls_server_context), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_tls_ctx_free")] = llvm::orc::ExecutorSymbolDef(

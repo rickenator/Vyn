@@ -2026,7 +2026,8 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_net_error_code" || name == "vyb_net_error_message" ||
             name == "vyb_net_sendto" || name == "vyb_net_recvfrom" ||
             name == "vyb_net_last_peer_ip" || name == "vyb_net_last_peer_port" ||
-            name == "vyb_tls_client_context" || name == "vyb_tls_server_context" ||
+            name == "vyb_tls_client_context" || name == "vyb_tls_client_context_verified" ||
+            name == "vyb_tls_server_context" ||
             name == "vyb_tls_ctx_free" || name == "vyb_tls_stream" ||
             name == "vyb_tls_connect" || name == "vyb_tls_accept" ||
             name == "vyb_tls_write" || name == "vyb_tls_read" ||
@@ -2498,7 +2499,8 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             // error message return String. Arity/diagnostic detail is left to
             // codegen.
             static const std::set<std::string> tlsIntFuncs = {
-                "vyb_tls_client_context", "vyb_tls_server_context", "vyb_tls_ctx_free",
+                "vyb_tls_client_context", "vyb_tls_client_context_verified",
+                "vyb_tls_server_context", "vyb_tls_ctx_free",
                 "vyb_tls_stream", "vyb_tls_connect", "vyb_tls_accept",
                 "vyb_tls_write", "vyb_tls_close", "vyb_tls_error_code"
             };

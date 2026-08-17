@@ -4,8 +4,10 @@
 # `runtime/vyb_runtime.c`; the Vyb surface stays allocation/pointer-free. SSL
 # and SSL_CTX are opaque pointers carried as Int. Server certificates are
 # supplied as in-line PEM strings (memory BIOs - no file-path coupling), and the
-# client context verifies nothing by default (self-signed loopback tests); a
-# verified variant is a follow-up.
+# default client context verifies nothing (self-signed loopback tests). For
+# real connections use `tls_client_context_verified(ca_pem)`, which trusts an
+# in-line-pinned CA (or the system default CA paths) and checks the expected
+# hostname in the peer certificate.
 #
 # Usage (client):
 #   import network::{socket_open, socket_connect, socket_close, Socket}
@@ -78,6 +80,16 @@ bind TlsStreamOps -> TlsStream {
 share(all)
 tls_client_context()<TlsContext> -> {
     c<Int> = vyb_tls_client_context()
+    return TlsContext { ctx = c, is_server = false }
+}
+
+# A client SSL_CTX that verifies the server against a pinned CA given as in-line
+# PEM, or the system default CA paths when `ca_pem` is "". The expected hostname
+# (the `host` passed to tls_stream) is checked against the certificate. Release
+# with tls_free_context(ctx).
+share(all)
+tls_client_context_verified(ca_pem<String>)<TlsContext> -> {
+    c<Int> = vyb_tls_client_context_verified(ca_pem)
     return TlsContext { ctx = c, is_server = false }
 }
 
