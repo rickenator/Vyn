@@ -38,6 +38,69 @@ static bool chanElementIsString(const ast::TypeNode* tn) {
     return false;
 }
 
+// Resolve a built-in chan<T> method call: `send(v)` returns Int; `recv`
+// returns the element type T; `poll` returns Option<T> for scalar payloads
+// (T for String payloads); `len`/`free`/`handle` return Int. Shared by the
+// identifier-receiver and non-identifier-receiver paths; codegen dispatches by
+// element type.
+void SemanticAnalyzer::handleChanMethod(ast::CallExpression* node, ast::TypeNode* elem, const std::string& methodName) {
+    if (methodName == "send") {
+        if (node->arguments.size() != 1 || !node->arguments[0]) {
+            addError("chan<T>.send expects exactly 1 argument (the payload)", node);
+            return;
+        }
+        node->arguments[0]->accept(*this);
+        auto intType = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "Int"));
+        expressionTypes[node] = retainType(intType);
+        node->type = std::shared_ptr<ast::TypeNode>(intType->clone());
+        return;
+    }
+    if (methodName == "recv") {
+        if (!node->arguments.empty()) {
+            addError("chan<T>.recv expects no arguments", node);
+            return;
+        }
+        expressionTypes[node] = retainType(elem->clone().release());
+        node->type = std::shared_ptr<ast::TypeNode>(elem->clone());
+        return;
+    }
+    if (methodName == "poll") {
+        if (!node->arguments.empty()) {
+            addError("chan<T>.poll expects no arguments", node);
+            return;
+        }
+        bool elemIsString = chanElementIsString(elem);
+        if (elemIsString) {
+            // String payloads keep the empty-string sentinel poll.
+            expressionTypes[node] = retainType(elem->clone().release());
+            node->type = std::shared_ptr<ast::TypeNode>(elem->clone());
+        } else {
+            // Scalar payloads: non-blocking poll returns Option<T> (Some(v) /
+            // None) so an empty read is unambiguous.
+            auto optTy = std::make_unique<ast::TypeName>(
+                node->loc, std::make_unique<ast::Identifier>(node->loc, "Option"));
+            optTy->genericArgs.push_back(elem->clone());
+            optTy->accept(*this);
+            if (optTy->type) {
+                node->type = std::shared_ptr<ast::TypeNode>(optTy->type->clone());
+                expressionTypes[node] = node->type.get();
+            }
+        }
+        return;
+    }
+    if (methodName == "len" || methodName == "free" || methodName == "handle") {
+        if (!node->arguments.empty()) {
+            addError("chan<T>." + methodName + " expects no arguments", node);
+            return;
+        }
+        auto intType = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "Int"));
+        expressionTypes[node] = retainType(intType);
+        node->type = std::shared_ptr<ast::TypeNode>(intType->clone());
+        return;
+    }
+    addError("Unknown method '" + methodName + "' on type 'chan<T>'", node);
+}
+
 static bool isBuiltinVecMethodName(const std::string& methodName) {
     return methodName == "push" || methodName == "pop" || methodName == "len" ||
            methodName == "get" || methodName == "set" || methodName == "push_array" ||
@@ -2806,69 +2869,10 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                         }
                     }
 
-                    // Built-in channel methods (chan<T>): `send(v)` returns Int;
-                    // `recv` returns the element type `T`; `poll` returns `Option<T>`
-                    // for scalar payloads (String for String payloads); `len`/`free`/`handle`
-                    // return Int. Dispatch is done in codegen by element type.
                     if (auto chanTn = dynamic_cast<ast::TypeName*>(objSymbol->type)) {
                         if (chanTn->identifier && chanTn->identifier->name == "chan" &&
                             chanTn->genericArgs.size() == 1) {
-                            ast::TypeNode* elem = chanTn->genericArgs[0].get();
-                            if (methodName == "send") {
-                                if (node->arguments.size() != 1 || !node->arguments[0]) {
-                                    addError("chan<T>.send expects exactly 1 argument (the payload)", node);
-                                    return;
-                                }
-                                node->arguments[0]->accept(*this);
-                                auto intType = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "Int"));
-                                expressionTypes[node] = retainType(intType);
-                                node->type = std::shared_ptr<ast::TypeNode>(intType->clone());
-                                return;
-                            }
-                            if (methodName == "recv") {
-                                if (!node->arguments.empty()) {
-                                    addError("chan<T>.recv expects no arguments", node);
-                                    return;
-                                }
-                                expressionTypes[node] = retainType(elem->clone().release());
-                                node->type = std::shared_ptr<ast::TypeNode>(elem->clone());
-                                return;
-                            }
-                            if (methodName == "poll") {
-                                if (!node->arguments.empty()) {
-                                    addError("chan<T>.poll expects no arguments", node);
-                                    return;
-                                }
-                                bool elemIsString = chanElementIsString(elem);
-                                if (elemIsString) {
-                                    // String payloads keep the empty-string sentinel poll.
-                                    expressionTypes[node] = retainType(elem->clone().release());
-                                    node->type = std::shared_ptr<ast::TypeNode>(elem->clone());
-                                } else {
-                                    // Scalar payloads: non-blocking poll returns Option<T>
-                                    // (Some(v) / None) so an empty read is unambiguous.
-                                    auto optTy = std::make_unique<ast::TypeName>(
-                                        node->loc, std::make_unique<ast::Identifier>(node->loc, "Option"));
-                                    optTy->genericArgs.push_back(elem->clone());
-                                    optTy->accept(*this);
-                                    if (optTy->type) {
-                                        node->type = std::shared_ptr<ast::TypeNode>(optTy->type->clone());
-                                        expressionTypes[node] = node->type.get();
-                                    }
-                                }
-                                return;
-                            }
-                            if (methodName == "len" || methodName == "free" || methodName == "handle") {
-                                if (!node->arguments.empty()) {
-                                    addError("chan<T>." + methodName + " expects no arguments", node);
-                                    return;
-                                }
-                                auto intType = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "Int"));
-                                expressionTypes[node] = retainType(intType);
-                                node->type = std::shared_ptr<ast::TypeNode>(intType->clone());
-                                return;
-                            }
-                            addError("Unknown method '" + methodName + "' on type 'chan<T>'", node);
+                            handleChanMethod(node, chanTn->genericArgs[0].get(), methodName);
                             return;
                         }
                     }
@@ -3503,6 +3507,15 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 }
                 // Also handle TypeName "Vec<T>" (e.g., struct fields of Vec type)
                 if (auto tn = dynamic_cast<ast::TypeName*>(objTypeIt->second)) {
+                    // Built-in chan method reached through a non-identifier receiver
+                    // (a chan returned by a function, a chan<T> struct field, or a
+                    // chained member access). chan<T> is one i64 handle; dispatch by
+                    // element type like the identifier path.
+                    if (tn->identifier && tn->identifier->name == "chan" &&
+                        tn->genericArgs.size() == 1) {
+                        handleChanMethod(node, tn->genericArgs[0].get(), methodIdent->name);
+                        return;
+                    }
                     if (tn->identifier && tn->identifier->name == "Vec" &&
                         isBuiltinVecMethodName(methodIdent->name)) {
                         // Create a temporary VecType to pass to handleVecMethodCallOnMember

@@ -3808,6 +3808,31 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 }
             }
 
+            // Built-in channel receiver reached through a non-identifier receiver
+            // (a chan returned by a function, a chan<T> struct field, or a chained
+            // member access). chan<T> is a single i64 handle, spatially identical to
+            // Int, so evaluating the receiver yields the handle directly; dispatch
+            // by element type through emitChannelMethod exactly like the identifier
+            // path above.
+            if (memberExpr->object->type) {
+                if (auto objTn = dynamic_cast<ast::TypeName*>(memberExpr->object->type.get())) {
+                    if (objTn->identifier && objTn->identifier->name == "chan" &&
+                        objTn->genericArgs.size() == 1) {
+                        memberExpr->object->accept(*this);
+                        llvm::Value* chanHandle = m_currentLLVMValue;
+                        if (!chanHandle) {
+                            logError(memberExpr->object->loc, "Failed to evaluate channel method receiver");
+                            m_currentLLVMValue = nullptr;
+                            return;
+                        }
+                        const vyb::ast::TypeNode* chanElem = objTn->genericArgs[0].get();
+                        bool chanIsString = chanElementIsString(chanElem);
+                        emitChannelMethod(node, chanHandle, methodName, chanIsString, chanElem);
+                        return;
+                    }
+                }
+            }
+
             // Handle Vec method calls on member expressions (e.g., tree.nodes.push())
             // The object is itself a member expression
             if (methodName == "push" || methodName == "pop" || methodName == "len" || methodName == "get" || methodName == "set" ||

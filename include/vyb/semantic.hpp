@@ -388,6 +388,7 @@ public:
     void handleVecMethodCall(ast::CallExpression* node, const std::string& objectName, const std::string& methodName);
     void handleVecMethodCallOnMember(ast::CallExpression* node, ast::VecType* vecType, const std::string& methodName);
     void handleQualifiedAspectCall(ast::CallExpression* node, const std::string& aspectName, const std::string& methodName);
+    void handleChanMethod(ast::CallExpression* node, ast::TypeNode* elem, const std::string& methodName);
 
     // Statements
     void visit(ast::BlockStatement* node) override;
