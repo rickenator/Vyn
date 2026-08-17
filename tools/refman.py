@@ -877,9 +877,11 @@ def git_rev():
 
 
 def _norm_commit(text: str) -> str:
-    """Strip the provenance `commit: <rev>` line so drift-checks ignore the
-    current HEAD (a later commit must not false-positive a re-gen)."""
-    return re.sub(r"commit: [0-9a-f]{4,40}", "commit: X", text)
+    """Normalize every embedded git rev so drift-checks ignore the current
+    HEAD: the markdown provenance `commit: <rev>` lines and graph.json's
+    `"git_rev": "<rev>"` field. A later commit must not false-positive a re-gen."""
+    text = re.sub(r"commit: [0-9a-f]{4,40}", "commit: X", text)
+    return re.sub(r'"git_rev":\s*"[0-9a-f]{4,40}"', '"git_rev": "X"', text)
 
 
 def main():

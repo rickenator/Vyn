@@ -4,11 +4,14 @@
 
 ## Vyb Programming Guide
 
-> **Looking for the deep reference?** The hand-written
-> **[`docs/refman/PROGRAMMERS_GUIDE.md`](docs/refman/PROGRAMMERS_GUIDE.md)**
-> covers every language feature, the ownership and polymorphism model, and a
-> full standard-library tour. This README is the project overview; the
-> per-symbol auto-generated manual lives under `docs/refman/`.
+> **Where the docs live.** This README is the project **overview**. The
+> canonical, maintained reference for every language feature is the
+> hand-written **[`docs/refman/PROGRAMMERS_GUIDE.md`](docs/refman/PROGRAMMERS_GUIDE.md)**
+> — language tour, ownership & polymorphism, closure capture forms, async
+> (`Future<T>` / `await` / async lambdas), the memory model, and a full
+> standard-library tour, with a **core-feature registry** (§1.1) that maps each
+> feature to its section and is updated when core features change. Exact
+> per-symbol signatures live in the auto-generated pages under `docs/refman/`.
 
 ---
 

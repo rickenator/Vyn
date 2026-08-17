@@ -43,6 +43,47 @@ power.**
 The result: native executables (or JIT), predictable performance, readable
 code, and zero-cost polymorphism.
 
+### 1.1 Core feature registry
+
+This guide is the canonical home for **every core language feature**. The table
+below maps each feature to its in-depth section — keep it updated whenever a
+core feature changes, so developers and end users always know where a feature
+lives.
+
+| Area | Sections |
+|---|---|
+| Types, literals, `T?` | §3.2 |
+| Variables, mutability, `const` | §3.3 |
+| Functions & parameters, `fn` types | §3.4 |
+| Closures & lambdas, capture forms | §3.5, §3.5.1 |
+| Control flow (`for`/`while`/ranges) | §3.6 |
+| `match` / `select`, patterns, exhaustiveness | §3.7 |
+| Tuples & variadic tuples | §3.8 |
+| Structs | §3.9 |
+| Enums & constant enums | §3.10 |
+| Operators (arithmetic, bitwise, compound) | §3.11 |
+| Casts (`as`) | §3.12 |
+| Ownership & accessors (`my`/`our`/`their`/`mild`/`soft`) | §3.13 |
+| Generics & monomorphization | §3.14 |
+| Aspects & binds (polymorphism) | §3.15 |
+| Errors (`trap`/`fail`/`ensure`) | §3.16 |
+| Strings | §3.17 |
+| Collections | §3.18 |
+| Modules & imports (`import`/`share(all)`/`prelude`) | §3.19 |
+| FFI & native bridge | §3.20 |
+| Serialization | §3.21 |
+| Introspection | §3.22 |
+| Async / `await` / `Future<T>` | §3.23, §3.23.1–§3.23.3 |
+| Memory model / freedom | §7, Appendix B |
+| Standard library tour | §4 |
+| Concurrency model | §5 |
+
+**Maintenance policy.** Changes to core language features are documented
+*here* first — not scattered across README or only in tests. When you add or
+change a core feature, add it to this registry and update its section. The
+`README.md` is the project overview and points here; the auto-generated
+per-symbol pages under `docs/refman/` are the exact API surface.
+
 ---
 
 ## 2. Getting started
@@ -201,6 +242,44 @@ xs.map(|x| -> x * 2)                    # fn(T) -> T
 xs.filter(|x| -> x > 3)                 # fn(T) -> Bool
 xs.reduce(0, |acc, x| -> acc + x)       # fn(T, T) -> T
 ```
+
+### 3.5.1 Capture forms
+
+Closures capture outer state, and the capture form follows the ownership of
+the captured variable:
+
+```vyb
+# By-value (plain/scalar): a snapshot at closure creation time.
+base<Int> = 10
+adder = |x<Int>| -> x + base
+
+# Returned closures keep their own environment.
+make_adder(base<Int>)<fn(Int) -> Int> -> { return |x<Int>| -> x + base }
+
+# Mutable capture: the closure reads/writes the outer variable each call.
+counter<Int> = 0
+bump<fn(Int) -> Int> = |u<Int>| -> counter = counter + 1   # persists
+
+# our<T>: shared capture — read and write-through the shared state.
+shared<our<Int>> = our(7)
+read<fn(Int) -> Int> = |u<Int>| -> shared + 3
+
+# my<T>: move capture — ownership transfers into the closure env.
+mine<my<Counter>> = my(Counter { n: 8 })
+readMine<fn(Int) -> Int> = |x<Int>| -> mine.n + x
+```
+
+- A **`my<T>` move-capture** transfers ownership into the closure; reading the
+  variable afterward is a **use-after-move** error.
+- A **`their<T>`/`view<T>` borrow capture** reads through the held reference
+  without ownership.
+- A closure that captures an owned struct **owns its payload**: the captured
+  `String`/`Vec` fields stay alive even after the maker's scope exits (the env
+  keeps a reference to the owned buffer).
+- `|| -> …` is the zero-arg form; `|| -> { … }` a zero-arg block body; a
+  `failable` body can `fail` and the caller `trap`s it.
+
+Async closures are the §3.23.5 async-lambda form (`async |x| -> await f(x)`).
 
 ### 3.6 Control flow
 
@@ -658,6 +737,97 @@ Vyb exposes runtime and compile-time introspection: type-of, shape/arity
 probes, and module-surface status functions (e.g. `io_status_message`,
 `collections_status_message`, `result_status_message`, `prelude_ok`) used by
 the import-surface tests. See `README.md` §**Introspection System**.
+
+### 3.23 Asynchronous programming
+
+Vyb has first-class `async`/`await`: an `async` function returns a `Future<T>`
+that runs as a task on the stdlib's **multi-threaded executor** (a pool of
+worker threads, one scheduler per CPU core, each running stackful fibers
+pinned to its worker). Call an async function to *spawn* the task and get a
+`Future<T>`; `await` it to *drive* it to completion.
+
+```vyb
+async compute()<Future<Int>> -> { return 42 }
+
+main()<Int> -> {
+    future<Future<Int>> = compute()      # spawn (doesn't block)
+    value<Int> = await future            # park the caller until done
+    return value
+}
+```
+
+- **`Future<T>` payloads:** `Int`, `Float`, `Bool`, `String`, `Void`. A
+  `String` result travels back as an owned heap slot; `Float`/`Bool` ride as
+  bit patterns / 0-1 in the task's result slot.
+- **`await` forms:** expression (`x = await f()`), nested (`await f(g())`,
+  `f(await g())`), as a receiver/operand/argument, and **bare statement**
+  (`await f`) for `Future<Void>`.
+- **Context:** from `main` `await` parks the caller; inside a worker it
+  suspends the fiber (a worker can `await` a child task without blocking).
+- **Parameters:** scalar args are snapshotted into the task env; `String`
+  retains its buffer (+1), `our<T>` retains its shared block (+1), `Vec<T>` is
+  deep-copied, `struct` params are deep-copied (owning String/Vec/our/mild
+  fields), and closures retain their capture env — each released by the env's
+  per-layout dtor at task cleanup, so owned params safely outlive the caller.
+- **Debug:** async paths carry DWARF metadata.
+
+#### 3.23.1 Async lambdas
+
+An **async lambda** `async |x| -> await f(x)` compiles its body as a closure
+that runs as a task; calling it returns a `Future<T>` that `await` drives:
+
+```vyb
+async process(x<Int>)<Future<Int>> -> { return x * 2 }
+async greet(s<String>)<Future<String>> -> { return "hi " + s }
+
+f<fn(Int) -> Future<Int>> = async |x<Int>| -> await process(x)
+r<Int> = await f(10)                        # 20
+
+bonus<Int> = 7
+cap = async |x<Int>| -> await process(x + bonus)   # immutable capture
+g   = async |s<String>| -> await greet(s)          # String-returning
+seven = async || -> await process(7)               # zero-arg form
+```
+
+Async lambdas keep the same `fn(…) -> Future<T>` type as async functions, so
+they can be passed by name into a task that awaits them:
+
+```vyb
+async run_gated(f<fn(Int) -> Future<Int>>, x<Int>)<Future<Int>> -> {
+    return await f(x)
+}
+k<fn(Int) -> Future<Int>> = async |x<Int>| -> await process(x)
+out<Int> = await run_gated(k, 5)        # passes the async lambda into a task
+```
+
+#### 3.23.2 Async closures as parameters
+
+Closures can be passed into async functions; the launcher snapshots the
+closure into the task env, retaining its capture environment (+1) so it stays
+alive asynchronously and can be invoked from the worker (including nested
+`await`, and mixed with `String`/scalar params):
+
+```vyb
+make_scorer()<fn(Int) -> Int> -> {
+    bonus<Int> = 5
+    marker<String> = "!!"
+    return |v<Int>| -> (v * 2) + bonus + marker.len()
+}
+
+async async_score(f<fn(Int) -> Int>, v<Int>)<Future<Int>> -> {
+    return f(v)
+}
+
+scorer<fn(Int) -> Int> = make_scorer()
+r<Int> = await async_score(scorer, 10)    # 27
+```
+
+#### 3.23.3 The executor primitives
+
+`asyncs` (stdlib) exposes the runtime side: `async_spawn`, `async_await`,
+`async_poll`, `async_run_all`, `async_yield`, `async_sleep_ms`, and the
+network bridges `async_tcp_*` / `async_udp_*` (`network`). See [the `asyncs`
+module](asyncs.md) and §5.
 ---
 
 ## 4. Standard library reference
@@ -1123,12 +1293,59 @@ The **shared cross-module types** (`HttpResponse`, `TcpStream`, `TlsContext`,
 
 ---
 
-## Appendix — where to go deeper
 
-- **Full grammar (EBNF):** `README.md` §**Appendix A**.
-- **Memory model reference:** `README.md` §**Appendix B**.
-- **Auto-serialization reference:** `README.md` §**Appendix C**.
-- **Glossary:** `README.md` §**Glossary**.
-- **Per-symbol signatures & relationships:** the per-module pages under
-  `docs/refman/`, e.g. [`network.md`](network.md), [`https.md`](https.md).
-- **Design/plan of the refman itself:** [`PLAN.md`](PLAN.md).
+## Appendix A — Memory model
+
+**Ownership types**
+- `my<T>`: unique ownership, RAII cleanup.
+- `our<T>`: shared, reference-counted ownership (auto-free at last drop).
+- `their<T>`: non-owning borrow, lifetime-checked.
+- `mild<T>`: weak reference that can detect destruction via `grab()` / `released()`.
+
+**Borrowing operations**
+- `view(expr)`: creates a `their<T const>` immutable borrow.
+- `borrow(expr)`: creates a `their<T>` mutable borrow.
+- `soft(expr)`: creates a `mild<T>` weak reference from `our<T>`.
+
+**Freedom operations (`freedom { … }`)**
+- `loc<T>`: raw pointer type.
+- `loc(expr)`: take a pointer to an expression.
+- `at(ptr)`: dereference a pointer (read/write).
+- `from<loc<T>>(expr)`: convert a raw pointer between types.
+
+**Primitives unwrap on read**: reading a primitive that is `my`/`our`-owned
+yields the value directly, with no allocation.
+
+## Appendix B — Auto-serialization
+
+`main()` return values serialize automatically:
+
+```vyb
+main()<Int>                        # exit code
+main()<String>                     # prints the string
+main()<Int, String>                # prints [42, "hello"]
+main()<struct>                     # prints the struct as JSON
+main()<Vec<T>>                     # prints the Vec as a JSON array
+```
+
+Custom serialization is available by implementing the `Serialize` aspect.
+
+## Appendix C — Glossary
+
+- **AST** — abstract syntax tree produced by the parser.
+- **Borrow checking** — compile-time analysis ensuring references don't outlive their data.
+- **Bundle / share** — module visibility grouping via `bundle(...)` / `share(...)`.
+- **Import** — secure module inclusion from verified, signed sources.
+- **Smuggle** — flexible module inclusion from external, potentially unverified sources.
+- **JIT** — just-in-time native code compilation; LLVM is Vyb's backend.
+- **Monomorphization** — specializing generic functions/types per concrete type at compile time.
+- **Ownership** — the `my`/`our`/`their`/`mild` memory-management model.
+- **Pattern matching** — `match`/`select` that destructure and test values.
+- **`T?`** — Vyb's native optional (present `T?(v)` / absent `T?()`), used with `else`.
+- **Template → generics** — compile-time generic constructs parameterized by types.
+
+## Appendix D — Grammar (EBNF)
+
+The canonical EBNF grammar currently lives in `README.md` §**Appendix A**.
+_A separate formal grammar document is a planned follow-up_ — this guide is the
+narrative reference while the grammar is consolidated here.
