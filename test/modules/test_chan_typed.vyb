@@ -1,9 +1,10 @@
 // @test: typed chan<T> channels - Int and String payloads
 // @description: `chan<T>` is a built-in typed channel. `chan<Int>()` /
 //   `chan<Int>(cap)` construct an unbounded/bounded channel. The typed surface
-//   is `send(v)`, `recv()` (blocking), `poll()` (non-blocking -> `Option<T>`), `len()`,
-//   `handle()` (raw Int handle for select), and `free()`. A String payload uses
-//   the refcounted string-channel runtime; scalar Int uses the int-slot runtime.
+//   is `send(v)`, `recv()` (blocking), `poll()` (non-blocking -> `T?` optional,
+//   consumed via `poll() else default`), `len()`, `handle()` (raw Int handle for
+//   select), and `free()`. A String payload uses the refcounted string-channel
+//   runtime; scalar Int uses the int-slot runtime.
 // @category: modules, threads, channels, concurrency, stdlib
 // @expect: pass
 // @expect-output: ok
@@ -18,9 +19,8 @@ main()<Int> -> {
     v<Int> = ch.recv()
     if (v != 42) { return 5 }
     if (ch.send(7) != 1) { return 6 }
-    te<Option<Int>> = ch.poll()
-    if (te.tag != 0) { return 7 }          # Some
-    if (te.value != 7) { return 7 }
+    te<Int> = ch.poll() else 0
+    if (te != 7) { return 7 }
     if (ch.handle() == 0) { return 8 }
     if (ch.free() != 0) { return 9 }
 
@@ -32,9 +32,9 @@ main()<Int> -> {
     if (bc.send(3) != 0) { return 13 }        # full
     if (bc.len() != 2) { return 14 }
     if (bc.recv() != 1) { return 15 }
-    if (bc.poll().value != 2) { return 16 }
+    if ((bc.poll() else 0) != 2) { return 16 }
     if (bc.send(9) != 1) { return 17 }        # space freed by recv/poll
-    if (bc.poll().value != 9) { return 18 }
+    if ((bc.poll() else 0) != 9) { return 18 }
     if (bc.len() != 0) { return 19 }
     if (bc.free() != 0) { return 20 }
 

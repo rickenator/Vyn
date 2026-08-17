@@ -121,9 +121,13 @@ namespace vyb { // Changed Vyb to vyb
     class ExpressionParser : public BaseParser {
         StatementParser* stmt_parser_ = nullptr; // For parsing blocks in select expressions
         std::set<std::string>& knownTypeNames_; // user-declared type names (struct/class/type alias)
+        bool elseInfixEnabled_ = true; // `expr else default`; disabled in statement-level
+                                        // expression conditions that consume a trailing `else`
+                                        // (e.g. `ensure cond else handling`).
     public:
         ExpressionParser(const std::vector<token::Token>& tokens, size_t& pos, const std::string& file_path, std::set<std::string>& knownTypeNames);
         void set_statement_parser(StatementParser* sp) { stmt_parser_ = sp; }
+        void set_else_infix_enabled(bool b) { elseInfixEnabled_ = b; }
         bool is_known_type_name(const std::string& name) const { return knownTypeNames_.count(name) != 0; }
         vyb::ast::ExprPtr parse_expression(); // Removed override
         vyb::ast::ExprPtr parse_primary(); // For match patterns - parses literals, identifiers without binary ops

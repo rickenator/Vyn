@@ -76,6 +76,21 @@ namespace vyb {
     vyb::ast::ExprPtr ExpressionParser::parse_assignment_expr() {
         vyb::ast::ExprPtr left = parse_logical_or_expr(); // Precedence: logical OR is higher than assignment
 
+        // Native `T?` else-default: `expr else default`. Sits at the assignment
+        // precedence so `x = a else b` reads as `x = (a else b)`. Disabled while
+        // parsing statement-level conditions that own a trailing `else`
+        // (e.g. `ensure cond else handling`).
+        if (elseInfixEnabled_ && match(TokenType::KEYWORD_ELSE)) {
+            SourceLocation else_loc = previous_token().location;
+            vyb::ast::ExprPtr def = parse_expression();
+            if (!def) {
+                throw error(peek(), "Expected a default value after 'else' in optional expression.");
+            }
+            token::Token elseToken(TokenType::KEYWORD_ELSE, "else", else_loc);
+            left = std::make_unique<ast::BinaryExpression>(
+                else_loc, std::move(left), elseToken, std::move(def));
+        }
+
         // Check for assignment operators
         std::optional<token::Token> op;
         if ((op = match(TokenType::EQ)) || (op = match(TokenType::PLUSEQ)) || (op = match(TokenType::MINUSEQ)) ||

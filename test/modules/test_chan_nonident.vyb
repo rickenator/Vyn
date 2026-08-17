@@ -3,7 +3,8 @@
 //   identifier: a channel returned by a function (`make().send(x)`) or held as
 //   a struct field (`h.ch.recv()`). chan<T> is one i64 handle, so dispatch by
 //   element type works the same as the named-variable path, including scalar
-//   poll() -> Option<T>.
+//   poll() -> native `T?` consumed via `else`; String poll keeps its
+//   empty-string sentinel.
 // @category: modules, threads, channels, concurrency, stdlib
 // @expect: pass
 // @expect-output: ok
@@ -29,41 +30,40 @@ main()<Int> -> {
     # Function-returned chan receiver (Int payload).
     if (makeint() == 0) { return 1 }
     if (makeint().send(11) != 1) { return 2 }
-    if (makeint().poll().tag != 1) { return 3 }     # empty -> None
+    if ((makeint().poll() else 0) != 0) { return 3 }   # empty -> absent
     r<chan<Int>> = makeint()
     if (r.send(40) != 1) { return 4 }
     if (r.send(2) != 1) { return 5 }
     if (r.recv() != 40) { return 6 }
-    p<Option<Int>> = r.poll()
-    if (p.tag != 0) { return 7 }                    # Some
-    if (p.value != 2) { return 8 }
-    if (r.free() != 0) { return 9 }
+    p<Int> = r.poll() else 0
+    if (p != 2) { return 7 }
+    if (r.free() != 0) { return 8 }
 
     # Struct-field chan receiver (Int payload).
     hi<HolderInt> = HolderInt()
     hi.ch = chan<Int>()
-    if (hi.ch == 0) { return 10 }
-    if (hi.ch.send(7) != 1) { return 11 }
-    if (hi.ch.recv() != 7) { return 12 }
-    oi<Option<Int>> = hi.ch.poll()
-    if (oi.tag != 1) { return 13 }                  # empty -> None
-    if (hi.ch.free() != 0) { return 14 }
+    if (hi.ch == 0) { return 9 }
+    if (hi.ch.send(7) != 1) { return 10 }
+    if (hi.ch.recv() != 7) { return 11 }
+    oi<Int> = hi.ch.poll() else 0
+    if (oi != 0) { return 12 }                        # empty -> absent
+    if (hi.ch.free() != 0) { return 13 }
 
     # Struct-field chan receiver (String payload).
     hs<HolderStr> = HolderStr()
     hs.ch = chan<String>()
-    if (hs.ch == 0) { return 15 }
-    if (hs.ch.send("hi") != 1) { return 16 }
-    if (hs.ch.recv() != "hi") { return 17 }
+    if (hs.ch == 0) { return 14 }
+    if (hs.ch.send("hi") != 1) { return 15 }
+    if (hs.ch.recv() != "hi") { return 16 }
     s<String> = hs.ch.poll()
-    if (s.len() != 0) { return 18 }                 # empty String poll sentinel
-    if (hs.ch.free() != 0) { return 19 }
+    if (s.len() != 0) { return 17 }                   # empty String poll sentinel
+    if (hs.ch.free() != 0) { return 18 }
 
     # Function-returned chan receiver (String payload).
     g<chan<String>> = makestr()
-    if (g.send("yo") != 1) { return 20 }
-    if (g.recv() != "yo") { return 21 }
-    if (g.free() != 0) { return 22 }
+    if (g.send("yo") != 1) { return 19 }
+    if (g.recv() != "yo") { return 20 }
+    if (g.free() != 0) { return 21 }
 
     println("ok")
     return 0

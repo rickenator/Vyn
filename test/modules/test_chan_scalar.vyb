@@ -2,9 +2,8 @@
 // @description: chan<Float>, chan<Bool>, and chan<Char> carry scalar payloads
 //   through the int-slot channel runtime. A Float travels as its IEEE bit
 //   pattern, Bool as 0/1, and Char as its code unit, so send/recv round-trip
-//   exactly. Scalar poll() returns Option<T>: Some(v) when a value is buffered
-//   and None when empty -- an empty Bool poll can never read as `true`, an empty
-//   Char as 0xFF, or an empty Float as a NaN bit pattern.
+//   exactly. Scalar poll() returns the native optional `T?`: present when a
+//   value is buffered, absent when empty, consumed via `poll() else default`.
 // @category: modules, threads, channels, concurrency, stdlib
 // @expect: pass
 // @expect-output: ok
@@ -16,24 +15,26 @@ main()<Int> -> {
     if (fc.send(2.5) != 1) { return 2 }
     f<Float> = fc.recv()
     if (f != 2.5) { return 3 }
-    if (fc.poll().tag != 1) { return 4 }          # empty -> None
+    if ((fc.poll() else -999.0) != -999.0) { return 4 }   # empty -> absent
     if (fc.send(-1.25) != 1) { return 5 }
-    fo<Option<Float>> = fc.poll()
-    if (fo.tag != 0) { return 6 }                 # Some
-    if (fo.value != -1.25) { return 7 }
-    if (fc.send(0.0) != 1) { return 8 }
-    if (fc.recv() != 0.0) { return 9 }
-    if (fc.free() != 0) { return 10 }
+    fo<Float> = fc.poll() else -999.0
+    if (fo != -1.25) { return 6 }                          # present -> payload
+    if (fc.send(0.0) != 1) { return 7 }
+    if (fc.recv() != 0.0) { return 8 }
+    if (fc.free() != 0) { return 9 }
 
     bc<chan<Bool>> = chan<Bool>()
-    if (bc == 0) { return 11 }
-    if (bc.send(true) != 1) { return 12 }
-    if (bc.recv() != true) { return 13 }
-    if (bc.poll().tag != 1) { return 14 }         # empty -> None (not true)
-    if (bc.send(false) != 1) { return 15 }
-    bo<Option<Bool>> = bc.poll()
-    if (bo.tag != 0) { return 16 }
-    if (bo.value != false) { return 17 }
+    if (bc == 0) { return 10 }
+    if (bc.send(true) != 1) { return 11 }
+    if (bc.recv() != true) { return 12 }
+    # Empty poll is absent: the default is used and nothing is consumed.
+    if (bc.len() != 0) { return 13 }
+    if ((bc.poll() else true) != true) { return 14 }
+    if (bc.len() != 0) { return 15 }
+    # A present false is delivered as the bare value (not confused with absent).
+    if (bc.send(false) != 1) { return 16 }
+    bo<Bool> = bc.poll() else true
+    if (bo != false) { return 17 }
     if (bc.send(true) != 1) { return 18 }
     if (bc.recv() != true) { return 19 }
     if (bc.free() != 0) { return 20 }
@@ -42,12 +43,11 @@ main()<Int> -> {
     if (cc == 0) { return 21 }
     if (cc.send(65) != 1) { return 22 }
     if (cc.recv() != 65) { return 23 }
-    if (cc.poll().tag != 1) { return 24 }
+    if ((cc.poll() else 0) != 0) { return 24 }             # empty -> absent
     if (cc.send(66) != 1) { return 25 }
-    co<Option<Char>> = cc.poll()
-    if (co.tag != 0) { return 26 }
-    if (co.value != 66) { return 27 }
-    if (cc.free() != 0) { return 28 }
+    co<Char> = cc.poll() else 0
+    if (co != 66) { return 26 }                            # present -> payload
+    if (cc.free() != 0) { return 27 }
 
     println("ok")
     return 0

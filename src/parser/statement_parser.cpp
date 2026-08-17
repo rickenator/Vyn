@@ -349,8 +349,13 @@ std::unique_ptr<vyb::ast::IfStatement> StatementParser::parse_if() {
 std::unique_ptr<vyb::ast::IfStatement> StatementParser::parse_ensure() {
     SourceLocation loc = expect(vyb::TokenType::KEYWORD_ENSURE, "Expected 'ensure'.").location;
 
-    // Contract condition (e.g. `b != 0`). Expr parser stops at the `else` keyword.
+    // Contract condition (e.g. `b != 0`). The expression parser normally treats
+    // `else` as the native optional-default infix; disable that here so a `? :`
+    // default isn't consumed and the statement-level `else` after the condition
+    // is left for `expect(KEYWORD_ELSE)` below.
+    expr_parser_.set_else_infix_enabled(false);
     auto condition = expr_parser_.parse_expression();
+    expr_parser_.set_else_infix_enabled(true);
     expect(vyb::TokenType::KEYWORD_ELSE, "Expected 'else' after ensure condition.");
 
     // Failure handling: a block or a single statement (e.g. `return -1`,

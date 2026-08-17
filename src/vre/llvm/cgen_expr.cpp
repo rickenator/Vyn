@@ -566,6 +566,25 @@ void LLVMCodegen::visit(vyb::ast::BinaryExpression *node) {
         return;
     }
 
+    // Native `T?` default: `optional else default` picks the payload when the
+    // optional is present, otherwise the default value. The optional is a
+    // `{ bool hasValue, T value }` struct (builtin OptionalType).
+    if (node->op.type == TokenType::KEYWORD_ELSE) {
+        if (!L->getType()->isStructTy() || llvm::cast<llvm::StructType>(L->getType())->getNumElements() < 2) {
+            logError(node->loc, "'else' operator requires an optional (T?) left value.");
+            m_currentLLVMValue = nullptr;
+            return;
+        }
+        llvm::Value* present = builder->CreateExtractValue(L, 1, "opt.present");
+        llvm::Value* payload = builder->CreateExtractValue(L, 0, "opt.payload");
+        if (R->getType() != payload->getType()) {
+            R = tryCast(R, payload->getType(), node->loc);
+            if (!R) { m_currentLLVMValue = nullptr; return; }
+        }
+        m_currentLLVMValue = builder->CreateSelect(present, payload, R, "opt.elze");
+        return;
+    }
+
     bool isFloatOp = L->getType()->isFloatingPointTy() || R->getType()->isFloatingPointTy();
 
     if (L->getType()->isFloatingPointTy() && R->getType()->isIntegerTy()) {
@@ -6250,6 +6269,46 @@ void LLVMCodegen::visit(ast::ConstructionExpression* node) {
     }
 
     VYB_CDBG << "DEBUG: Successfully resolved constructed type: " << node->constructedType->toString() << std::endl;
+
+    // Native `T?` construction: `T?()` builds the absent optional and `T?(v)`
+    // builds the present one. The value is a `{ bool hasValue, T value }`
+    // struct; at most one construction argument supplies the payload.
+    if (auto* optTy = dynamic_cast<ast::OptionalType*>(node->constructedType.get())) {
+        llvm::StructType* optStruct = llvm::cast<llvm::StructType>(constructedLLVMType);
+        llvm::Value* payload = nullptr;
+        if (!node->arguments.empty()) {
+            if (node->arguments.size() > 1 || !node->arguments[0]) {
+                logError(node->loc, optTy->toString() + " expects at most one construction argument.");
+                m_currentLLVMValue = nullptr;
+                return;
+            }
+            node->arguments[0]->accept(*this);
+            payload = m_currentLLVMValue;
+            if (!payload) { m_currentLLVMValue = nullptr; return; }
+            llvm::Type* valueTy = optStruct->getElementType(0);
+            if (payload->getType() != valueTy) {
+                payload = tryCast(payload, valueTy, node->loc);
+                if (!payload) { m_currentLLVMValue = nullptr; return; }
+            }
+        }
+        llvm::AllocaInst* optAlloca = builder->CreateAlloca(optStruct, nullptr, "opt.tmp");
+        {
+            llvm::DataLayout dl(module.get());
+            builder->CreateMemSet(
+                optAlloca,
+                llvm::ConstantInt::get(builder->getInt8Ty(), 0),
+                llvm::ConstantInt::get(builder->getInt64Ty(), dl.getTypeAllocSize(optStruct)),
+                llvm::Align(dl.getPrefTypeAlign(optStruct).value()));
+        }
+        if (payload) {
+            builder->CreateStore(payload,
+                                 builder->CreateStructGEP(optStruct, optAlloca, 0, "opt.payload.ptr"));
+            builder->CreateStore(builder->getInt1(true),
+                                 builder->CreateStructGEP(optStruct, optAlloca, 1, "opt.present.ptr"));
+        }
+        m_currentLLVMValue = builder->CreateLoad(optStruct, optAlloca, "opt.val");
+        return;
+    }
 
     // For now, implement basic construction with default values
     if (constructedLLVMType->isStructTy()) {

@@ -1150,14 +1150,27 @@ void LLVMCodegen::emitChannelMethod(vyb::ast::CallExpression* node, llvm::Value*
         llvm::Value* ready = builder->CreateCall(pf, {h64, outAlloca}, "chan.poll.ready");
         llvm::Value* isReady = builder->CreateTrunc(ready, llvm::Type::getInt1Ty(*context), "chan.poll.bool");
 
-        // Materialize (monomorphize) Option<T> for the payload type.
-        std::vector<ast::TypeNodePtr> optArgs;
-        if (elem) optArgs.push_back(std::unique_ptr<ast::TypeNode>(elem->clone()));
-        std::string mangled = optArgs.empty() ? "Option" : mangleGenericTypeName("Option", optArgs);
-        if (!taggedEnumInfo.count(mangled)) {
-            monomorphizeEnum("Option", optArgs);
+        // Native `T?` result: an OptionalType struct `{ payload, bool ready }`
+        // (codegenType layout, value at 0 / flag at 1), consumed via
+        // `poll() else default` — the vybey replacement for `Option<T>`.
+        std::unique_ptr<ast::OptionalType> optNode;
+        if (elem) {
+            optNode = std::make_unique<ast::OptionalType>(
+                node->loc, std::unique_ptr<ast::TypeNode>(elem->clone()));
         }
-        llvm::Type* optionTy = taggedEnumInfo[mangled].llvmType;
+        llvm::StructType* optStruct = nullptr;
+        llvm::Type* valueTy = int64Type;
+        if (optNode) {
+            llvm::Type* t = codegenType(optNode.get());
+            if (t) optStruct = llvm::dyn_cast<llvm::StructType>(t);
+        }
+        if (!optStruct) {
+            logError(node->loc, "Failed to resolve T? type for chan poll");
+            m_currentLLVMValue = nullptr;
+            return;
+        }
+        valueTy = optStruct->getElementType(0);
+        llvm::Value* undefOpt = llvm::UndefValue::get(optStruct);
 
         llvm::Function* parent = builder->GetInsertBlock()->getParent();
         llvm::BasicBlock* rBlock = llvm::BasicBlock::Create(*context, "chan.poll.ready", parent);
@@ -1168,17 +1181,24 @@ void LLVMCodegen::emitChannelMethod(vyb::ast::CallExpression* node, llvm::Value*
         builder->SetInsertPoint(rBlock);
         llvm::Value* outVal = builder->CreateLoad(int64Type, outAlloca, "chan.poll.val");
         llvm::Value* decoded = decodeChannelScalar(outVal, elem);
-        llvm::Value* someVal = buildTaggedEnumValue(mangled, "Some", {decoded});
+        if (decoded->getType() != valueTy) {
+            decoded = tryCast(decoded, valueTy, node->loc);
+            if (!decoded) { m_currentLLVMValue = nullptr; return; }
+        }
+        llvm::Value* presentVal = builder->CreateInsertValue(undefOpt, decoded, 0, "opt.v");
+        presentVal = builder->CreateInsertValue(presentVal, builder->getInt1(true), 1, "opt.p");
         builder->CreateBr(merge);
 
         builder->SetInsertPoint(nBlock);
-        llvm::Value* noneVal = buildTaggedEnumValue(mangled, "None", {});
+        llvm::Value* absentVal = builder->CreateInsertValue(
+            undefOpt, llvm::Constant::getNullValue(valueTy), 0, "opt.empty");
+        absentVal = builder->CreateInsertValue(absentVal, builder->getInt1(false), 1, "opt.not");
         builder->CreateBr(merge);
 
         builder->SetInsertPoint(merge);
-        llvm::PHINode* phi = builder->CreatePHI(optionTy, 2, "chan.poll.option");
-        phi->addIncoming(someVal, rBlock);
-        phi->addIncoming(noneVal, nBlock);
+        llvm::PHINode* phi = builder->CreatePHI(optStruct, 2, "chan.poll.opt");
+        phi->addIncoming(presentVal, rBlock);
+        phi->addIncoming(absentVal, nBlock);
         m_currentLLVMValue = phi;
         return;
     }

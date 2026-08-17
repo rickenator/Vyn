@@ -1,0 +1,49 @@
+// @test: native T? optional type with else-default
+// @description: Vyb's native optional (`T?`) is promoted over the Rust-shaped
+//   `Option<T>`/`Some`/`None`. `T?(v)` builds a present optional, `T?()` the
+//   absent one, and `optional else default` yields the payload when present or
+//   the default otherwise (Vyb's `else`, as in `ensure ... else ...`). Present
+//   reads as the bare value + `?`, with no `Some(v)`/`.unwrap()` ceremony.
+// @category: types, optional, feature
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+
+fn_with_opt(o<String?>)<Int> -> {
+    s<String> = o else "fallback"
+    return s.len()
+}
+
+makeopt(v<Int>)<Int?> -> {
+    if (v > 0) { return Int?(v) }
+    return Int?()
+}
+
+main()<Int> -> {
+    # Int: present, absent, and else-default.
+    a<Int?> = Int?(5)
+    b<Int?> = Int?()
+    if ((a else 42) != 5) { return 1 }
+    if ((b else 42) != 42) { return 2 }
+
+    # String payload through a function parameter.
+    if (fn_with_opt(String?("hi")) != 2) { return 3 }
+    if (fn_with_opt(String?()) != 8) { return 4 }     # "fallback".len() == 8
+
+    # Float payload.
+    ff<Float> = Float?(1.5) else 0.0
+    if (ff != 1.5) { return 5 }
+    fd<Float> = Float?() else 9.5
+    if (fd != 9.5) { return 6 }
+
+    # Optional returned from a function, consumed with else.
+    if ((makeopt(7) else -1) != 7) { return 7 }
+    if ((makeopt(0) else -1) != -1) { return 8 }
+
+    # else is right-associative: a else b else c == a else (b else c).
+    q<Int> = makeopt(0) else makeopt(9) else -2
+    if (q != 9) { return 9 }
+
+    println("ok")
+    return 0
+}

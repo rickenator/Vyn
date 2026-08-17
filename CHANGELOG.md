@@ -10,12 +10,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Native `T?` optional with `else`-default** — Vyb's own optional (`<Type>?`,
+  `ast::OptionalType`) is now constructible and consumable, replacing the
+  Rust-shaped `Option<T>`/`Some`/`None` idiom one surface at a time.
+  `T?(v)` builds a present optional, `T?()` the absent one, and
+  `optional else default` yields the payload when present or the default
+  otherwise — reading as a Vyb sentence via the existing `else` keyword
+  (`ensure cond else handling`). Present is the bare value and absence is
+  `?`/`else`; no `Some(v)` / `.unwrap()` ceremony. Works for scalar, `String`,
+  and `Float` payloads, through returns, function parameters, and
+  right-associative chained defaults (`a else b else c` == `a else (b else c)`).
+  Covered by `test/new_features/test_native_optional.vyb`. The `else` infix is
+  disabled inside `ensure` conditions (which own a trailing `else`).
 
 - **Typed generic `chan<T>` channels** — a compiler-native generic,
   thread-safe channel. `chan<T>()` / `chan<T>(cap)` construct an
   unbounded/bounded channel as a single i64 runtime handle; the ergonomic
-  surface is `send(v)`, `recv()` (blocking), `poll()` (non-blocking -> `Option<T>`
-  for scalar payloads, Some/None), `len()`, `free()`, and `handle()` (raw Int for
+  surface is `send(v)`, `recv()` (blocking), `poll()` (non-blocking -> native `T?`;
+  for scalar payloads it is absent when empty, read via `poll() else default`, replacing
+  the former `Option<T>` Some/None), `len()`, `free()`, and `handle()` (raw Int for
   `chan_select`). Int-family, `Float` (IEEE bit pattern), `Bool` (0/1), and
   `Char` payloads use the int-slot channel runtime; String payloads use the
   refcounted string runtime (with the empty-string sentinel poll). A chan is

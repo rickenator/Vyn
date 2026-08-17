@@ -866,6 +866,46 @@ result<Int> = select(risky_operation()) -> {
 ```
 Unifies error handling with pattern matching in a uniquely Vyb way. No try-catch pyramid.
 
+### Promote the Native `T?` Optional Over the Rust-style `Option<T>` / `Some` / `None`
+**Status: foundation + channel `poll()` migrated.** `T?(v)` / `T?()` construction,
+`optional else default`, scalar/`String`/`Float` payloads, return/parameter/
+chained-default paths (see `test/new_features/test_native_optional.vyb`), and
+scalar `chan<T>.poll()` now returns the native `T?` (consumed via
+`poll() else default`; String poll keeps its empty-String sentinel) — see
+`test/modules/test_chan_{typed,scalar,nonident}.vyb`.
+Remaining call sites to migrate, then drop `Option<T>`/`Some`/`None` from the
+stdlib: `HashMap`/`BTreeMap.get`, the iterators' `next()`, `mild<T>.grab()`.
+**Open design question (flagged before 1.0).** The `Option<T>` / `Some(v)` / `None`
+vocabulary came from Rust (via Haskell's `Maybe`). Vyb already HAS a native optional type
+in the compiler — `<Type>?` parses to `ast::OptionalType`, lowered to a
+`{ bool hasValue, value }` struct in codegen (`src/parser/type_parser.cpp`,
+`src/vre/llvm/cgen_types.cpp`) — but nothing uses it: the stdlib and call sites grew the
+Rust-shaped `Option<T>` enum instead. **The vybey move is to promote `T?` (already Vyb's own
+syntax, mirroring the `?` wildcard) and drop `Some`/`None`, not to rename the enum.**
+The design must cover every current `Option<T>` use, not just channels:
+- **Readiness** — `chan<T>.poll()` -> `Option<T>` (`Some(v)`/`None` scalars, empty-String
+  sentinel; `test/modules/test_chan_scalar.vyb`, `test_chan_nonident.vyb`). Readiness is a
+  *flag*, best served by `?`/`else`, not a wrapped enum.
+- **Existence / lookup** — `HashMap.get(key)` -> `Option<V>`, `BTreeMap.get(key)` ->
+  `Option<V>` (`stdlib/collections/mod.vyb`, `test_collections_hashmap.vyb`). Absence is a
+  *missing key*: `m.get("k") else fallback`.
+- **Sequence exhaustion** — every iterator's `next()` -> `Option<Item>` (`Some(v)` per
+  element, `None` at end): `VecIter`, `MapIter`, `HashIter`, `BTreeIter`
+  (`stdlib/collections/mod.vyb`, `stdlib/core/iter.vyb`). The end-of-stream case is already
+  hidden behind the `for (x in it)` / `.next()` + `match` surface.
+- **Failed weak upgrade** — `mild<T>.grab()` -> `Option<our<T>>` on release
+  (`doc/FEATURE_STATUS.md` Ownership row). A distinct "already released" outcome.
+Common consuming surface (vybey = sentence-like, keyword-first):
+- default with Vyb's existing `else` (as in `ensure cond else handling`):
+  `v<Int> = ch.poll() else 0` ; `found<Int> = m.get("k") else fallback`.
+- explicit branch via `select`/`match`: present arm is the bare value
+  (`v<Int> ->`), absence is the existing `?` wildcard (`? ->`).
+- nothing is `Void` / the `?` path — no `Some(v)` constructor ceremony, and no
+  `.unwrap()`/`.expect()` method chain.
+Keep Vyb's exhaustiveness guarantee (no silent `null`/`undefined` escape hatch). Note
+`OptionalType` (the `T?` AST + codegen) predates the `Option<T>` enum and is currently
+exercised by no tests — promoting it is more a surface/plumbing change than a new type.
+
 ---
 
 ## 1.0 Release Criteria

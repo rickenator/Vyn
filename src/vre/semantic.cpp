@@ -75,16 +75,12 @@ void SemanticAnalyzer::handleChanMethod(ast::CallExpression* node, ast::TypeNode
             expressionTypes[node] = retainType(elem->clone().release());
             node->type = std::shared_ptr<ast::TypeNode>(elem->clone());
         } else {
-            // Scalar payloads: non-blocking poll returns Option<T> (Some(v) /
-            // None) so an empty read is unambiguous.
-            auto optTy = std::make_unique<ast::TypeName>(
-                node->loc, std::make_unique<ast::Identifier>(node->loc, "Option"));
-            optTy->genericArgs.push_back(elem->clone());
-            optTy->accept(*this);
-            if (optTy->type) {
-                node->type = std::shared_ptr<ast::TypeNode>(optTy->type->clone());
-                expressionTypes[node] = node->type.get();
-            }
+            // Scalar payloads: non-blocking poll reports readiness explicitly,
+            // returning the native optional `T?` (absent on empty) so an empty
+            // read is unambiguous and consumed via `poll() else default`.
+            auto* optTy = new ast::OptionalType(node->loc, elem->clone());
+            expressionTypes[node] = retainType(optTy);
+            node->type = std::shared_ptr<ast::TypeNode>(optTy->clone());
         }
         return;
     }
@@ -1910,6 +1906,26 @@ void SemanticAnalyzer::visit(ast::BinaryExpression* node) {
             resultType = (leftIsLiteral && !rightIsLiteral) ? rightType : leftType;
             break;
             }
+
+        case TokenType::KEYWORD_ELSE: {
+            // Native `T?` default: `optional_else` yields the payload when present,
+            // otherwise the default value. The left operand must be an optional
+            // (`T?`), and the default must be assignable to the payload type.
+            auto* optTy = dynamic_cast<ast::OptionalType*>(leftType);
+            if (!optTy || !optTy->containedType) {
+                addError("Operator 'else' requires an optional (T?) value on the left.", node);
+                return;
+            }
+            ast::TypeNode* contained = optTy->containedType.get();
+            if (!areTypesCompatible(contained, rightType)) {
+                addError("'else' default value type '" + rightType->toString() +
+                         "' is not assignable to the optional payload type '" +
+                         contained->toString() + "'.", node);
+                return;
+            }
+            resultType = contained;
+            break;
+        }
 
         default:
             // Unknown operator
