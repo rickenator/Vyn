@@ -843,8 +843,8 @@ r<Int> = await async_score(scorer, 10)    # 27
 
 `asyncs` (stdlib) exposes the runtime side: `async_spawn`, `async_await`,
 `async_poll`, `async_run_all`, `async_yield`, `async_sleep_ms`, and the
-network bridges `async_tcp_*` / `async_udp_*` (`network`). See [the `asyncs`
-module](asyncs.md) and §5.
+network bridges `async_tcp_*` / `async_udp_*` (`network`). See
+[the `asyncs` module](asyncs.md) and §5.
 ---
 
 ## 4. Standard library reference
