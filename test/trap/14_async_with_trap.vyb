@@ -1,6 +1,11 @@
 # Test 14: Async functions with error handling
-# Tests that errors work correctly in async/await contexts
-// @expect: fail
+# Tests that errors work correctly in async/await contexts:
+# a failable async worker's failure is transported to the `await` site and
+# recovered by the enclosing trap; a successful await hands back its value.
+// @test: Async functions with error handling (failableFuture -> trap at await)
+// @category: trap,async,error
+// @expect: pass
+// @expect-return: 0
 
 struct InvalidURL { url<String> }
 
@@ -16,7 +21,7 @@ async main()<Int> -> {
         await fetch_data("https://example.com")
     } trap (e<InvalidURL>) -> {
         println("Error: " + e.url)
-        return ""
+        ""
     }
     println(result1)
 
@@ -24,7 +29,7 @@ async main()<Int> -> {
         await fetch_data("invalid://bad")
     } trap (e<InvalidURL>) -> {
         println("Invalid URL: " + e.url)
-        return ""
+        ""
     }
     println(result2)
 

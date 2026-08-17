@@ -1529,7 +1529,7 @@ typedef struct vyb_worker vyb_worker;
 typedef struct vyb_async_task {
     ucontext_t ctx;
     int context_made;          // ctx built by this task's worker (see pinning)
-    int64_t (*fn)(void*);
+    int64_t (*fn)(void*, int64_t);
     void* env;
     int state;                 // 0 = READY, 1 = BLOCKED, 2 = DONE
     int64_t result;
@@ -1542,6 +1542,7 @@ typedef struct vyb_async_task {
     struct vyb_async_task* waiters;       // tasks waiting on me
     int64_t awaited_result;               // stashed result delivered to a waiter
     int64_t io_result;                    // poll revents delivered on fd wake
+    intptr_t error;                       // failure pointer for failable tasks (0 = ok)
     struct vyb_async_task* next_all;      // lifecycle list
 } vyb_async_task;
 
@@ -1621,7 +1622,7 @@ static int async_quiescent_locked(void) {
 
 static void vyb_async_tramp(void) {
     vyb_async_task* t = tls_cur;
-    int64_t r = t->fn ? t->fn(t->env) : 0;
+    int64_t r = t->fn ? t->fn(t->env, (int64_t)(intptr_t)t) : 0;
     pthread_mutex_lock(&g_async_lock);
     t->result = r;
     t->state = 2;
@@ -1753,7 +1754,7 @@ VYB_WEAK int64_t __vyb_async_spawn(void* env, void* fn) {
     if (!t) return 0;
     t->stack = malloc(VYB_ASYNC_STACK_SIZE);
     if (!t->stack) { free(t); return 0; }
-    t->fn = (int64_t (*)(void*))fn;
+    t->fn = (int64_t (*)(void*, int64_t))fn;
     t->wake_ms = -1;
     if (env) { __vyb_closure_retain(env); t->env = env; }
     pthread_mutex_lock(&g_async_lock);
@@ -1840,6 +1841,28 @@ VYB_WEAK int64_t __vyb_async_yield(void) {
     pthread_mutex_unlock(&g_async_lock);
     swapcontext(&self->ctx, &self->home->sched_ctx);
     return 0;
+}
+
+// Failable async tasks: the entry trampoline records a failure (a VybError
+// pointer) on its task. The awaiter retrieves it after the task completes and
+// routes it through the enclosing trap / propagation machinery, so errors from
+// a failed async worker surface at the `await` site instead of being swallowed.
+VYB_WEAK int64_t __vyb_async_set_error(int64_t task, void* err) {
+    if (!task) return 0;
+    vyb_async_task* t = (vyb_async_task*)(intptr_t)task;
+    pthread_mutex_lock(&g_async_lock);
+    t->error = (intptr_t)(err ? err : NULL);
+    pthread_mutex_unlock(&g_async_lock);
+    return (int64_t)(err != NULL);
+}
+
+VYB_WEAK int64_t __vyb_async_take_error(int64_t task) {
+    if (!task) return 0;
+    vyb_async_task* t = (vyb_async_task*)(intptr_t)task;
+    pthread_mutex_lock(&g_async_lock);
+    intptr_t e = t->error;
+    pthread_mutex_unlock(&g_async_lock);
+    return (int64_t)e;
 }
 
 // Cooperative sleep: suspend the current fiber via the timer heap so other pool

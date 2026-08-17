@@ -205,6 +205,8 @@ extern "C" {
     int64_t __vyb_async_run_all(void);
     int64_t __vyb_async_await(int64_t task);
     int64_t __vyb_async_poll(int64_t task);
+    int64_t __vyb_async_set_error(int64_t task, void* err);
+    int64_t __vyb_async_take_error(int64_t task);
     int64_t __vyb_async_yield(void);
     int64_t __vyb_async_sleep_ms(int64_t ms);
     // Async I/O (async stdlib module): suspendable non-blocking socket ops.
@@ -1212,6 +1214,10 @@ runtimeSymbols[mangle("__vyb_strchan_free")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_await), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_async_poll")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_poll), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_async_set_error")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_set_error), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_async_take_error")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_take_error), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_async_yield")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_yield), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_async_sleep_ms")] = llvm::orc::ExecutorSymbolDef(

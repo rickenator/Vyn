@@ -616,7 +616,7 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
     // runs its body as a task on the multi-threaded executor (worker + env-capture
     // + launcher split). Everything else keeps the legacy eager path. Top-level
     // non-failable declarations only.
-    if (node->isAsync && !m_currentImplTypeNode && !node->canFail &&
+    if (node->isAsync && !m_currentImplTypeNode &&
         asyncFutureResultKind(node) != AsyncResultKind::None) {
         bool paramsEnvSafe = true;
         for (const auto& p : node->params) {
@@ -1788,44 +1788,95 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
     //      Int    -> the value itself
     //      String -> a pointer to a heap slot holding the {ptr,len} String
     //      Void   -> 0
-    llvm::FunctionType* entryTy = llvm::FunctionType::get(int64Type, {int8PtrType}, false);
+    //    Failable tasks additionally receive the task-id, so a worker failure
+    //    (an error from its `{T, i8*}` return) is recorded on the task for the
+    //    awaiter to pick up via __vyb_async_take_error.
+    const bool failable = node->canFail;
+    // The async entry ABI is uniform: i64(i8* env, i64 task_id). The task handle
+    // is the same value the cooperative trampoline owns, so a failable worker's
+    // failure (an error from its `{T, i8*}` return) can be recorded on the task
+    // for the awaiter to retrieve via __vyb_async_take_error.
+    llvm::FunctionType* entryTy = llvm::FunctionType::get(int64Type, {int8PtrType, int64Type}, false);
     if (llvm::Function* old = module->getFunction(entryName)) old->eraseFromParent();
     llvm::Function* entry = llvm::Function::Create(entryTy, llvm::Function::InternalLinkage, entryName, module.get());
     {
         llvm::BasicBlock* ebb = llvm::BasicBlock::Create(*context, "entry", entry);
         llvm::IRBuilder<> b(ebb);
         llvm::Value* envCast = b.CreateBitCast(entry->getArg(0), envTy->getPointerTo(), "async.env.cast");
+        llvm::Value* taskIdArg = entry->getArg(1);
         std::vector<llvm::Value*> args;
         for (size_t i = 0; i < n; ++i) {
             llvm::Value* fp = b.CreateStructGEP(envTy, envCast, i + 2, "async.env.p" + std::to_string(i));
             args.push_back(b.CreateLoad(paramTypes[i], fp, "async.env.v" + std::to_string(i)));
         }
+
+        // Failable worker returns `{ T, i8* }`: split into success / error. On an
+        // error the entry records the failure on the task (the Future stays ready;
+        // the awaiter checks take_error before dereferencing the payload) and
+        // returns 0 so no bogus payload is fabricated. On success it encodes the
+        // payload exactly like the non-failable entry below.
+        llvm::Function* setErrFn = module->getFunction("__vyb_async_set_error");
+        if (!setErrFn) {
+            llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int8PtrType}, false);
+            setErrFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
+                                              "__vyb_async_set_error", module.get());
+        }
+        llvm::Value* errPtr = nullptr;
+        llvm::BasicBlock* ebOk = nullptr;
+        llvm::BasicBlock* ebErr = nullptr;
+        if (failable) {
+            ebOk = llvm::BasicBlock::Create(*context, "entry.err_ok", entry);
+            ebErr = llvm::BasicBlock::Create(*context, "entry.err_fail", entry);
+        }
+
+        llvm::Value* wr = nullptr;
+        if (failable) {
+            wr = b.CreateCall(worker, args, "async.worker");
+            errPtr = b.CreateBitCast(b.CreateExtractValue(wr, 1, "async.err.raw"), int8PtrType, "async.err");
+            b.CreateCondBr(b.CreateIsNull(errPtr), ebOk, ebErr);
+            b.SetInsertPoint(ebOk);
+        }
+
         if (kind == AsyncResultKind::Void) {
-            b.CreateCall(worker, args);
+            if (!failable) b.CreateCall(worker, args, "async.worker");
             b.CreateRet(llvm::ConstantInt::get(int64Type, 0));
-        } else if (kind == AsyncResultKind::Int) {
-            b.CreateRet(b.CreateCall(worker, args, "async.worker"));
-        } else if (kind == AsyncResultKind::Bool) {
-            llvm::Value* bv = b.CreateCall(worker, args, "async.worker");
-            b.CreateRet(b.CreateZExt(bv, int64Type, "async.worker.zext"));
-        } else if (kind == AsyncResultKind::Float) {
-            llvm::Value* fv = b.CreateCall(worker, args, "async.worker");
-            b.CreateRet(b.CreateBitCast(fv, int64Type, "async.worker.bitcast"));
-        } else { // String
-            llvm::Value* sv = b.CreateCall(worker, args, "async.worker");
-            llvm::DataLayout dl(module.get());
-            llvm::Value* slotBytes = llvm::ConstantInt::get(int64Type, dl.getTypeAllocSize(worker->getReturnType()));
-            llvm::Value* raw = b.CreateCall(getOrCreateMallocFunction(), {slotBytes}, "async.reslslot");
-            llvm::Value* slot = b.CreateBitCast(raw, worker->getReturnType()->getPointerTo(), "async.resslot.ptr");
-            b.CreateStore(sv, slot);
-            b.CreateRet(b.CreatePtrToInt(slot, int64Type, "async.resslot.i64"));
+        } else {
+            llvm::Value* val = failable ? b.CreateExtractValue(wr, 0, "async.worker.val")
+                                        : b.CreateCall(worker, args, "async.worker");
+            if (kind == AsyncResultKind::Int) {
+                b.CreateRet(val);
+            } else if (kind == AsyncResultKind::Bool) {
+                b.CreateRet(b.CreateZExt(val, int64Type, "async.worker.zext"));
+            } else if (kind == AsyncResultKind::Float) {
+                b.CreateRet(b.CreateBitCast(val, int64Type, "async.worker.bitcast"));
+            } else { // String
+                llvm::DataLayout dl(module.get());
+                llvm::Value* slotBytes = llvm::ConstantInt::get(int64Type, dl.getTypeAllocSize(val->getType()));
+                llvm::Value* raw = b.CreateCall(getOrCreateMallocFunction(), {slotBytes}, "async.reslslot");
+                llvm::Value* slot = b.CreateBitCast(raw, val->getType()->getPointerTo(), "async.resslot.ptr");
+                b.CreateStore(val, slot);
+                b.CreateRet(b.CreatePtrToInt(slot, int64Type, "async.resslot.i64"));
+            }
+        }
+
+        if (failable) {
+            b.SetInsertPoint(ebErr);
+            b.CreateCall(setErrFn, {taskIdArg, errPtr}, "async.err.set");
+            b.CreateRet(llvm::ConstantInt::get(int64Type, 0));
         }
     }
 
     // 4) Launcher: `fn(params...) -> Future<T>` ({T*, i32 state, i64 task,
     //    i8* runtime_data}). It builds the env, spawns the task, and hands back a
     //    Future whose `task_id` field lets `await` drive (main) / suspend (fiber).
-    llvm::StructType* futureTy = createFutureStructType(worker->getReturnType());
+    //    Note the Future is keyed on the *inner* result type (`String`, `Int`, ...),
+    //    not the failable `{T, i8*}` worker ABI, so it matches the `Future<T>`
+    //    type annotations and the await codegen's layout lookup. Failable tasks
+    //    flag readiness in the state field (1) so `await` calls take_error.
+    llvm::Type* resultSlotTy = failable
+        ? llvm::cast<llvm::StructType>(worker->getReturnType())->getElementType(0)
+        : worker->getReturnType();
+    llvm::StructType* futureTy = createFutureStructType(resultSlotTy);
     llvm::FunctionType* launcherTy = llvm::FunctionType::get(futureTy, paramTypes, false);
     llvm::Function* launcher = module->getFunction(base);
     if (launcher) {
@@ -1914,7 +1965,7 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
     llvm::Value* nullResult = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(futureTy->getElementType(0)));
     llvm::Value* fut = llvm::UndefValue::get(futureTy);
     fut = b.CreateInsertValue(fut, nullResult, {0});
-    fut = b.CreateInsertValue(fut, llvm::ConstantInt::get(int32Type, 0), {1});
+    fut = b.CreateInsertValue(fut, llvm::ConstantInt::get(int32Type, failable ? 1 : 0), {1});
     fut = b.CreateInsertValue(fut, taskId, {2});
     fut = b.CreateInsertValue(fut, nullPtr, {3});
     b.CreateRet(fut);
@@ -2054,9 +2105,11 @@ void LLVMCodegen::codegenAsyncLambda(ast::FunctionExpression* node) {
     llvm::StructType* taskEnvTy = llvm::StructType::create(*context, taskFields, taskEnvName);
     llvm::Function* taskDtor = generateAsyncEnvDtor(taskEnvTy, funcName + "_task", ownedFields);
 
-    // 2) Entry trampoline: i64(i8*) unpacks the task env, calls the worker
+    // 2) Entry trampoline: i64(i8*, i64) unpacks the task env, calls the worker
     //    closure, and encodes the result into the i64 slot the runtime returns.
-    llvm::FunctionType* entryTy = llvm::FunctionType::get(int64Type, {int8PtrType}, false);
+    //    The second (task-id) argument is a uniform part of the async entry ABI
+    //    and is unused by non-failable lambdas.
+    llvm::FunctionType* entryTy = llvm::FunctionType::get(int64Type, {int8PtrType, int64Type}, false);
     if (llvm::Function* old = module->getFunction(entryName)) old->eraseFromParent();
     llvm::Function* entry = llvm::Function::Create(entryTy, llvm::Function::InternalLinkage, entryName, module.get());
     {

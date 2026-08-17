@@ -7525,7 +7525,22 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
         if (isLastStmt) {
             if (auto* exprStmt = dynamic_cast<ast::ExpressionStatement*>(stmt.get())) {
                 if (exprStmt->expression) {
-                    exprStmt->expression->accept(*this);
+                    // A bare `await <future>` that is this block's value must be
+                    // visited as a value-producing AwaitExpression rather than
+                    // through the statement form. visit(UnaryExpression) treats
+                    // an AWAIT as a discarded statement and releases an owned
+                    // String result, which would hand the enclosing binding a
+                    // dangling buffer.
+                    if (auto* unary = dynamic_cast<ast::UnaryExpression*>(exprStmt->expression.get())) {
+                        if (unary->op.type == vyb::TokenType::KEYWORD_AWAIT && unary->operand) {
+                            ast::AwaitExpression awaitExpr(unary->loc, std::move(unary->operand));
+                            awaitExpr.accept(*this);
+                        } else {
+                            exprStmt->expression->accept(*this);
+                        }
+                    } else {
+                        exprStmt->expression->accept(*this);
+                    }
                     blockResult = m_currentLLVMValue;
                 }
             } else {
@@ -8412,6 +8427,54 @@ void LLVMCodegen::visit(ast::AwaitExpression* node) {
                 logError(node->loc, "await on a future with an unknown result layout");
                 m_currentLLVMValue = nullptr;
                 return;
+            }
+
+            // Failable future: the launcher flags a failable task in the state
+            // field (1). Awaited failures surface here rather than at the call
+            // site (the future's error is only known once the task has run), so
+            // we fetch the recorded error and route it through the same trap /
+            // propagation machinery as an ordinary failable call before the
+            // payload is read.
+            {
+                llvm::Value* stateField = builder->CreateExtractValue(futureValue, {1}, "future.state");
+                llvm::Value* isFailable = builder->CreateICmpEQ(
+                    stateField, llvm::ConstantInt::get(int32Type, 1), "future.failable");
+
+                llvm::Function* curFunc = getCurrentFunction();
+                llvm::BasicBlock* awaitOkBB = llvm::BasicBlock::Create(*context, "await.ok", curFunc);
+                llvm::BasicBlock* awaitErrBB = llvm::BasicBlock::Create(*context, "await.err", curFunc);
+                builder->CreateCondBr(isFailable, awaitErrBB, awaitOkBB);
+
+                builder->SetInsertPoint(awaitErrBB);
+                llvm::Function* takeErrFn = module->getFunction("__vyb_async_take_error");
+                if (!takeErrFn) {
+                    llvm::FunctionType* tt = llvm::FunctionType::get(int64Type, {int64Type}, false);
+                    takeErrFn = llvm::Function::Create(tt, llvm::Function::ExternalLinkage,
+                                                       "__vyb_async_take_error", module.get());
+                }
+                llvm::Value* rawErr = builder->CreateCall(takeErrFn, {taskId}, "await.err.raw");
+                llvm::Value* errPtr = builder->CreateIntToPtr(rawErr, int8PtrType, "await.err.ptr");
+                // A failable future that completed successfully records no error
+                // (NULL here), so fall through to the ordinary result path.
+                llvm::Function* curFunc2 = getCurrentFunction();
+                llvm::BasicBlock* awaitErrRealBB = llvm::BasicBlock::Create(*context, "await.err.real", curFunc2);
+                llvm::Value* errIsNull = builder->CreateIsNull(errPtr, "await.err.null");
+                builder->CreateCondBr(errIsNull, awaitOkBB, awaitErrRealBB);
+
+                builder->SetInsertPoint(awaitErrRealBB);
+                if (!trapStack.empty()) {
+                    TrapContext& trap = trapStack.back();
+                    builder->CreateStore(errPtr, trap.errorSlot);
+                    builder->CreateBr(trap.landingPad);
+                } else if (currentFunctionAST && currentFunctionAST->needsErrorReturn) {
+                    emitPropagatingErrorReturn(errPtr);
+                } else {
+                    llvm::Function* untrappedFn = getVybUntrappedErrorFunction();
+                    builder->CreateCall(untrappedFn, {errPtr});
+                    builder->CreateUnreachable();
+                }
+
+                builder->SetInsertPoint(awaitOkBB);
             }
             if (resultTy->isIntegerTy(64)) {
                 // Int future: the value itself.
