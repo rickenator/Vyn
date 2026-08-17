@@ -97,6 +97,40 @@ ast::TypeNodePtr substituteTypeParameter(ast::TypeNode* typeNode,
         }
     }
 
+    // Native optional `T?`: substitute into the contained payload type so
+    // `V?()` / `V?(v)` inside a monomorphized generic body land on the concrete
+    // payload instead of an unresolved `V`.
+    if (auto* optTy = dynamic_cast<ast::OptionalType*>(typeNode)) {
+        ast::TypeNodePtr contained = optTy->containedType
+            ? substituteTypeParameter(optTy->containedType.get(), typeParamMap)
+            : nullptr;
+        return std::make_unique<ast::OptionalType>(
+            optTy->loc, contained ? std::move(contained) : optTy->containedType->clone());
+    }
+
+    // Recurse into the other wrapper types so generic args inside them substitute too.
+    if (auto* vecTy = dynamic_cast<ast::VecType*>(typeNode)) {
+        ast::TypeNodePtr elt = vecTy->elementType
+            ? substituteTypeParameter(vecTy->elementType.get(), typeParamMap)
+            : nullptr;
+        return std::make_unique<ast::VecType>(
+            vecTy->loc, elt ? std::move(elt) : vecTy->elementType->clone());
+    }
+    if (auto* futTy = dynamic_cast<ast::FutureType*>(typeNode)) {
+        ast::TypeNodePtr res = futTy->resultType
+            ? substituteTypeParameter(futTy->resultType.get(), typeParamMap)
+            : nullptr;
+        return std::make_unique<ast::FutureType>(
+            futTy->loc, res ? std::move(res) : futTy->resultType->clone());
+    }
+    if (auto* arrTy = dynamic_cast<ast::ArrayType*>(typeNode)) {
+        ast::TypeNodePtr elt = arrTy->elementType
+            ? substituteTypeParameter(arrTy->elementType.get(), typeParamMap)
+            : nullptr;
+        return std::make_unique<ast::ArrayType>(
+            arrTy->loc, elt ? std::move(elt) : arrTy->elementType->clone());
+    }
+
     // For other types, just clone
     return typeNode->clone();
 }

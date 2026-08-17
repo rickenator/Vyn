@@ -22,6 +22,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   right-associative chained defaults (`a else b else c` == `a else (b else c)`).
   Covered by `test/new_features/test_native_optional.vyb`. The `else` infix is
   disabled inside `ensure` conditions (which own a trailing `else`).
+- **`HashMap`/`BTreeMap.get` now returns the native `V?`** — `m.get(key)` returns
+  a native optional instead of `Option<V>`/`Some`/`None`, read as
+  `m.get(key) else default` (payload when present, `default` when the key is
+  absent). Generic-optional plumbing: `concreteTypeStringToNode` parses a
+  trailing `?` into `OptionalType`, and monomorphization substitutes generic
+  parameters inside `T?` for bound-method return types and `T?()`/`T?(v)`
+  constructions (`substituteTypeParameter`, `resolveParameterTypeWithSubstitution`).
+  Covered by `test/modules/test_collections_{hashmap,btreemap,growth}.vyb` and
+  `test/modules/test_struct_constructors.vyb`.
 
 - **Typed generic `chan<T>` channels** — a compiler-native generic,
   thread-safe channel. `chan<T>()` / `chan<T>(cap)` construct an

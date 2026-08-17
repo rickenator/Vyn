@@ -4,8 +4,8 @@
 //   sorted ascending (parallel `vals`), so `get` / `contains_key` binary search and
 //   `for (kv in bt.iter())` walks entries in ascending key order via `BTreeIter`
 //   (Item = `MapEntry<K,V>`, like `MapIter`). Verifies insert/update/get/size,
-//   absent-key None, ordered iteration over Int and String keys, and iteration over
-//   a stored `BTreeIter` identifier.
+//   absent-key via `else` default, ordered iteration over Int and String keys, and
+//   iteration over a stored `BTreeIter` identifier.
 // @category: collections, iterator, stdlib, map, btree, ordered, for
 // @expect: pass
 // @expect-output: btreemap-ok
@@ -29,23 +29,19 @@ main()<Int> -> {
         println("btree-contains-fail")
         return 2
     }
-    if (bt.get(20).value != "twenty" || bt.get(30).value != "thirty") {
+    if ((bt.get(20) else "") != "twenty" || (bt.get(30) else "") != "thirty") {
         println("btree-get-fail")
         return 3
     }
-    absent<Int> = 0
-    match (bt.get(999)) {
-        Some(ign) -> { absent = 1 }
-        None -> { absent = 0 }
-    }
-    if (absent != 0) {
+    absent<String> = bt.get(999) else "absent-marker"
+    if (absent != "absent-marker") {
         println("btree-absent-fail")
         return 4
     }
 
     # 2) Updating an existing key keeps the size and changes the value.
     bt.put(20, "twenty-updated")
-    if (bt.size() != 4 || bt.get(20).value != "twenty-updated") {
+    if (bt.size() != 4 || (bt.get(20) else "") != "twenty-updated") {
         println("btree-update-fail")
         return 5
     }
@@ -82,7 +78,7 @@ main()<Int> -> {
         }
         prv = kv.value
     }
-    if (si.get("apple").value != 1 || si.get("banana").value != 2 || si.get("cherry").value != 3) {
+    if ((si.get("apple") else -1) != 1 || (si.get("banana") else -1) != 2 || (si.get("cherry") else -1) != 3) {
         println("btree-str-get-fail")
         return 9
     }

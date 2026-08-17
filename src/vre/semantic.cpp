@@ -477,9 +477,16 @@ static std::unique_ptr<ast::TypeNode> concreteTypeStringToNodeImpl(const std::st
             while (i < str.size() && str[i] != '>' && str[i] != ',') ++i;
         }
     }
-    return std::make_unique<ast::TypeName>(
+    ast::TypeNodePtr node = std::make_unique<ast::TypeName>(
         SourceLocation(), std::make_unique<ast::Identifier>(SourceLocation(), name),
         std::move(args));
+    while (i < str.size() && (str[i] == ' ' || str[i] == '\t')) ++i;
+    // A trailing `?` marks the native optional `T?` (payload present/absent).
+    if (i < str.size() && str[i] == '?') {
+        ++i;
+        node = std::make_unique<ast::OptionalType>(SourceLocation(), std::move(node));
+    }
+    return node;
 }
 
 static std::unique_ptr<ast::TypeNode> concreteTypeStringToNode(const std::string& str) {

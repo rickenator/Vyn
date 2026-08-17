@@ -26,12 +26,12 @@ main()<Int> -> {
     j<Int> = 0
     while (j < 100) {
         k2<String> = "key" + j.to_string()
-        if (m.get(k2).value != j * 3) {
+        if ((m.get(k2) else -1) != j * 3) {
             return 2
         }
         j = j + 1
     }
-    if (m.get("keyNOPE").value != 0) {
+    if ((m.get("keyNOPE") else 0) != 0) {
         return 3
     }
 

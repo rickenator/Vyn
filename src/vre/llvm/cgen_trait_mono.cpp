@@ -633,6 +633,21 @@ llvm::Type* LLVMCodegen::resolveParameterTypeWithSubstitution(vyb::ast::TypeNode
         return getClosureStructType();
     }
 
+    // Native optional `T?`: substitute the generic parameters inside the
+    // contained payload type first so `V?` resolves to a concrete optional
+    // struct (e.g. `Int?`) rather than falling through to
+    // codegenType(OptionalType<V>) and failing to resolve `V`.
+    if (auto optTy = dynamic_cast<ast::OptionalType*>(typeNode)) {
+        if (!optTy->containedType) return codegenType(typeNode);
+        std::string containedStr = optTy->containedType->toString();
+        for (const auto& kv : substitutions) {
+            containedStr = replaceTypeTokens(containedStr, kv.first, kv.second);
+        }
+        auto containedNode = typePatternToTypeNode(TypePattern::parse(containedStr), optTy->containedType->loc);
+        auto optNode = std::make_unique<ast::OptionalType>(optTy->loc, std::move(containedNode));
+        return codegenType(optNode.get());
+    }
+
     // Otherwise, use normal type resolution
     return codegenType(typeNode);
 }

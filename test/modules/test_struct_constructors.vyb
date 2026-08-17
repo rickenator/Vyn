@@ -36,7 +36,7 @@ main()<Int> -> {
     # Empty constructors (default bucket count).
     m0<HashMap<String, Int>> = HashMap<String, Int>()
     m0.put("a", 1)
-    if (m0.get("a").value != 1) {
+    if ((m0.get("a") else -1) != 1) {
         return 3
     }
 
@@ -48,7 +48,7 @@ main()<Int> -> {
         m1.put(k, i)
         i = i + 1
     }
-    if (m1.size() != 40 || m1.get("key39").value != 39) {
+    if (m1.size() != 40 || (m1.get("key39") else -1) != 39) {
         return 4
     }
 
@@ -73,7 +73,7 @@ main()<Int> -> {
     if (!f.put("a", 9)) {
         return 9
     }
-    if (f.size() != 3 || f.get("a").value != 9 || f.contains_key("d")) {
+    if (f.size() != 3 || (f.get("a") else -1) != 9 || f.contains_key("d")) {
         return 10
     }
 

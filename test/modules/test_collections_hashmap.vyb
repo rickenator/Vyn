@@ -2,11 +2,11 @@
 // @description: `import collections` brings HashMap<String, Int> / HashSet<String>
 //   via declared constructors HashMap<String, Int>() / HashSet<String>() with
 //   by-ref-binding methods. The maps use a hash-bucket (chained) key index:
-//   HashMap provides put / get (returning
-//   Option<V>) / contains_key / size and persists in-place via the by-ref
-//   receiver; get results are drained with `.value`. HashSet provides insert /
-//   contains / size with duplicate suppression. Use the whole-module import so
-//   the carried generic bind methods and their probes resolve.
+//   HashMap provides put / get (returning the native `V?` optional, read with
+//   `m.get(key) else default`) / contains_key / size and persists in-place via
+//   the by-ref receiver. HashSet provides insert / contains / size with duplicate
+//   suppression. Use the whole-module import so the carried generic bind methods
+//   and their probes resolve.
 // @category: modules, collections, aspect, bind, generics, option, hash
 // @expect: pass
 // @expect-output: ok
@@ -25,8 +25,8 @@ main()<Int> -> {
         return 1
     }
 
-    found<Option<Int>> = m.get("alpha")
-    missing<Option<Int>> = m.get("delta")
+    found<Int> = m.get("alpha") else -1
+    missing<Int> = m.get("delta") else -1
 
     s<HashSet<String>> = HashSet<String>()
     if (!s.insert("x") || !s.insert("y") || !s.insert("z") || s.insert("x")) {
@@ -36,10 +36,10 @@ main()<Int> -> {
         return 4
     }
 
-    if (found.value != 99 || missing.value != 0) {
+    if (found != 99 || missing != -1) {
         return 2
     }
-    println_int(found.value)
+    println_int(found)
     println("ok")
     return 0
 }

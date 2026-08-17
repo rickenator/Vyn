@@ -12,7 +12,8 @@
 #     hashes to instead of the whole map. Buckets start at 16 and double (with a
 #     full re-hash) once the load exceeds 2 keys per bucket, keeping average
 #     lookup O(1). Provides `put` (returns `Bool`: false only when a fixed map
-#     is at capacity and the key is new), `get` (returning `Option<V>`),
+#     is at capacity and the key is new), `get` (returning the native `V?` optional,
+#     consumed with `m.get(k) else default`),
 #     `contains_key` and `size`. Build one with `HashMap<K, V>()` (empty),
 #     `HashMap<K, V>(cap)` (pre-sized, still auto-grows), or
 #     `HashMap<K, V>(cap, true)` (fixed at `cap` entries, no re-hash, bounded
@@ -49,9 +50,9 @@
 # Import the whole module with `import collections` (the carried generic bind
 # methods reference the shared `samekey` / `hashkey` probes and `bucket_for`, so
 # a narrow named import of just `HashMap`/`MapOps` would drop those dependencies
-# and the binds would not resolve). Drain `get` results with `match` / `select`
-# on the `Option<V>`, or read the primary payload directly with `.value`
-# (returns a default when the key is absent).
+# and the binds would not resolve). `get` returns the native `V?` optional:
+# `m.get(key) else default` yields the payload when the key is present, or the
+# `default` when it is absent (no `Option`/`Some`/`None` ceremony).
 
 import core::aspects
 share(all) import core::iter::{Iterator}
@@ -199,7 +200,7 @@ bind<K<Hashable, Equatable>, V> Iterator -> MapIter<K, V> {
 share(all)
 aspect MapOps {
     put(self<their<HashMap<K, V>>>, key<K>, val<V>)<Bool>
-    get(self<their<HashMap<K, V>>>, key<K>)<Option<V>>
+    get(self<their<HashMap<K, V>>>, key<K>)<V?>
     contains_key(self<their<HashMap<K, V>>>, key<K>)<Bool>
     size(self<their<HashMap<K, V>>>)<Int>
     iter(self<their<HashMap<K, V>>>)<MapIter<K, V>>
@@ -257,17 +258,17 @@ bind<K<Hashable, Equatable>, V> MapOps -> HashMap<K, V> {
         }
         return true
     }
-    get(self<their<HashMap<K, V>>>, key<K>)<Option<V>> -> {
+    get(self<their<HashMap<K, V>>>, key<K>)<V?> -> {
         nb<Int> = self.head.len()
         b<Int> = bucket_for(hashkey(key), nb)
         i<Int> = self.head.get(b)
         while (i != -1) {
             if (samekey(self.keys.get(i), key)) {
-                return Option<V>::Some(self.vals.get(i))
+                return V?(self.vals.get(i))
             }
             i = self.next.get(i)
         }
-        return Option<V>::None
+        return V?()
     }
     contains_key(self<their<HashMap<K, V>>>, key<K>)<Bool> -> {
         nb<Int> = self.head.len()
@@ -478,7 +479,7 @@ bind<K<Comparable, Equatable>, V> Iterator -> BTreeIter<K, V> {
 share(all)
 aspect BTreeMapOps {
     put(self<their<BTreeMap<K, V>>>, key<K>, val<V>)<Bool>
-    get(self<their<BTreeMap<K, V>>>, key<K>)<Option<V>>
+    get(self<their<BTreeMap<K, V>>>, key<K>)<V?>
     contains_key(self<their<BTreeMap<K, V>>>, key<K>)<Bool>
     size(self<their<BTreeMap<K, V>>>)<Int>
     iter(self<their<BTreeMap<K, V>>>)<BTreeIter<K, V>>
@@ -521,7 +522,7 @@ bind<K<Comparable, Equatable>, V> BTreeMapOps -> BTreeMap<K, V> {
         }
         return true
     }
-    get(self<their<BTreeMap<K, V>>>, key<K>)<Option<V>> -> {
+    get(self<their<BTreeMap<K, V>>>, key<K>)<V?> -> {
         lo<Int> = 0
         hi<Int> = self.keys.len()
         while (lo < hi) {
@@ -534,10 +535,10 @@ bind<K<Comparable, Equatable>, V> BTreeMapOps -> BTreeMap<K, V> {
         }
         if (lo < self.keys.len()) {
             if (!cmp_lt(key, self.keys.get(lo))) {
-                return Option<V>::Some(self.vals.get(lo))
+                return V?(self.vals.get(lo))
             }
         }
-        return Option<V>::None
+        return V?()
     }
     contains_key(self<their<BTreeMap<K, V>>>, key<K>)<Bool> -> {
         lo<Int> = 0
