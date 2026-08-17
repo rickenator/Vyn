@@ -1040,4 +1040,92 @@ void LLVMCodegen::handleStringFormat(vyb::ast::CallExpression* node, llvm::Value
     m_currentLLVMValue = resultStr;
 }
 
+
+// Built-in channel method emitter. `handle` is the receiver's i64 channel handle
+// (already loaded). `isString` selects the refcounted string channel runtime vs.
+// the int-slot channel runtime. Covers the ergonomic `chan<T>` surface: send,
+// recv, try, len, free, and handle (the raw Int handle for `chan_select`).
+void LLVMCodegen::emitChannelMethod(vyb::ast::CallExpression* node, llvm::Value* handle,
+                                    const std::string& methodName, bool isString) {
+    if (!handle) { m_currentLLVMValue = nullptr; return; }
+    llvm::Value* h64 = handle;
+    if (h64->getType()->isIntegerTy() && !h64->getType()->isIntegerTy(64))
+        h64 = builder->CreateSExt(h64, int64Type, "chan.toi64");
+
+    if (methodName == "handle") {
+        m_currentLLVMValue = h64;
+        return;
+    }
+    if (methodName == "len" || methodName == "free") {
+        const char* rn = (methodName == "len") ?
+            (isString ? "__vyb_strchan_len" : "__vyb_chan_len") :
+            (isString ? "__vyb_strchan_free" : "__vyb_chan_free");
+        llvm::Function* f = module->getFunction(rn);
+        if (!f) {
+            llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
+            f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, rn, module.get());
+        }
+        m_currentLLVMValue = builder->CreateCall(f, {h64}, "chan.op");
+        return;
+    }
+    if (methodName == "send") {
+        if (node->arguments.size() != 1 || !node->arguments[0]) {
+            logError(node->loc, "chan<T>.send expects exactly 1 argument (the payload)");
+            m_currentLLVMValue = nullptr;
+            return;
+        }
+        node->arguments[0]->accept(*this);
+        llvm::Value* payload = m_currentLLVMValue;
+        if (!payload) return;
+        if (isString) {
+            llvm::Value* dataPtr = payload;
+            llvm::Value* dataLen = llvm::ConstantInt::get(int64Type, 0);
+            if (payload->getType()->isStructTy()) {
+                dataPtr = builder->CreateExtractValue(payload, 0, "ch.strptr");
+                dataLen = builder->CreateExtractValue(payload, 1, "ch.strlen");
+            }
+            llvm::Function* f = module->getFunction("__vyb_strchan_send");
+            if (!f) {
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int8PtrType, int64Type}, false);
+                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_strchan_send", module.get());
+            }
+            m_currentLLVMValue = builder->CreateCall(f, {h64, dataPtr, dataLen}, "chan.sent");
+        } else {
+            llvm::Function* f = module->getFunction("__vyb_chan_send");
+            if (!f) {
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type}, false);
+                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_chan_send", module.get());
+            }
+            llvm::Value* v64 = tryCast(payload, int64Type, node->loc);
+            m_currentLLVMValue = builder->CreateCall(f, {h64, v64}, "chan.sent");
+        }
+        return;
+    }
+    if (methodName == "recv" || methodName == "poll") {
+        const char* rf = (methodName == "recv") ?
+            (isString ? "__vyb_strchan_recv" : "__vyb_chan_recv") :
+            (isString ? "__vyb_strchan_try" : "__vyb_chan_try");
+        if (isString) {
+            std::vector<llvm::Type*> sf = {int8PtrType, int64Type};
+            llvm::StructType* st = llvm::StructType::get(*context, sf, false);
+            llvm::Function* f = module->getFunction(rf);
+            if (!f) {
+                llvm::FunctionType* ft = llvm::FunctionType::get(st, {int64Type}, false);
+                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, rf, module.get());
+            }
+            m_currentLLVMValue = builder->CreateCall(f, {h64}, "chan.recv");
+        } else {
+            llvm::Function* f = module->getFunction(rf);
+            if (!f) {
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
+                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, rf, module.get());
+            }
+            m_currentLLVMValue = builder->CreateCall(f, {h64}, "chan.recv");
+        }
+        return;
+    }
+    logError(node->loc, "Unknown channel method '" + methodName + "'");
+    m_currentLLVMValue = nullptr;
+}
+
 } // namespace vyb

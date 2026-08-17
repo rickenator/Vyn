@@ -269,7 +269,7 @@ static std::string reprCUnsupportedReason(ast::TypeNode* typeNode) {
             name == "mild" || name == "view" || name == "borrow") {
             return "cannot use ownership-qualified type " + typeNode->toString() + " in a C ABI layout";
         }
-        if (name == "Vec" || name == "Future" || name == "Tuple") {
+        if (name == "Vec" || name == "Future" || name == "Tuple" || name == "chan") {
             return "cannot use Vyb runtime type " + typeNode->toString() + " in a C ABI layout";
         }
 
@@ -2792,6 +2792,48 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                         }
                     }
 
+                    // Built-in channel methods: `chan<T>.send(v)` returns Int;
+                    // `recv`/`try` return the element type `T`; `len`/`free`/`handle`
+                    // return Int. Dispatch is done in codegen by element type.
+                    if (auto chanTn = dynamic_cast<ast::TypeName*>(objSymbol->type)) {
+                        if (chanTn->identifier && chanTn->identifier->name == "chan" &&
+                            chanTn->genericArgs.size() == 1) {
+                            ast::TypeNode* elem = chanTn->genericArgs[0].get();
+                            if (methodName == "send") {
+                                if (node->arguments.size() != 1 || !node->arguments[0]) {
+                                    addError("chan<T>.send expects exactly 1 argument (the payload)", node);
+                                    return;
+                                }
+                                node->arguments[0]->accept(*this);
+                                auto intType = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "Int"));
+                                expressionTypes[node] = retainType(intType);
+                                node->type = std::shared_ptr<ast::TypeNode>(intType->clone());
+                                return;
+                            }
+                            if (methodName == "recv" || methodName == "poll") {
+                                if (!node->arguments.empty()) {
+                                    addError("chan<T>." + methodName + " expects no arguments", node);
+                                    return;
+                                }
+                                expressionTypes[node] = retainType(elem->clone().release());
+                                node->type = std::shared_ptr<ast::TypeNode>(elem->clone());
+                                return;
+                            }
+                            if (methodName == "len" || methodName == "free" || methodName == "handle") {
+                                if (!node->arguments.empty()) {
+                                    addError("chan<T>." + methodName + " expects no arguments", node);
+                                    return;
+                                }
+                                auto intType = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "Int"));
+                                expressionTypes[node] = retainType(intType);
+                                node->type = std::shared_ptr<ast::TypeNode>(intType->clone());
+                                return;
+                            }
+                            addError("Unknown method '" + methodName + "' on type 'chan<T>'", node);
+                            return;
+                        }
+                    }
+
                     // Check if it's a Tuple type
                     if (auto tupleType = dynamic_cast<ast::TupleTypeNode*>(objSymbol->type)) {
                         if (methodName == "len") {
@@ -4123,7 +4165,7 @@ void SemanticAnalyzer::visit(ast::MemberExpression* node) {
     // Special handling for built-in types with methods (Vec, Future, etc.)
     // These are not user-defined structs, so they won't be in structFieldTypes
     // Their methods are handled in CallExpression visitor
-    if (baseStructName == "Vec" || baseStructName == "Future") {
+    if (baseStructName == "Vec" || baseStructName == "Future" || baseStructName == "chan") {
         // This is a built-in type - don't check struct fields
         // The actual method resolution will happen in CallExpression visitor
         return;
@@ -6995,12 +7037,20 @@ void SemanticAnalyzer::visit(ast::TypeName* node) {
         // Create a FutureType instance
         auto futureType = std::make_unique<ast::FutureType>(node->loc, node->genericArgs[0]->clone());
         node->type = std::shared_ptr<ast::TypeNode>(futureType.release());
-    } else if (typeNameStr == "Option") {
-        // Built-in generic data enum `Option<T> { Some(T), None }`.
+    } else if (typeNameStr == "chan") {
+        // Built-in thread-safe channel `chan<T>`. A `chan<T>` is a single
+        // 64-bit runtime handle (identical ABI to Int). Construction and the
+        // send/recv/poll/len/free/handle methods dispatch on the element type `T` in
+        // codegen (int-slot runtime for scalar/Bool/Char/Float payloads, the
+        // string runtime for String payloads). The element type is kept on the
+        // clone so codegen can pick the runtime path.
         if (node->genericArgs.size() != 1 || !node->genericArgs[0]) {
-            addError("Option type requires exactly one type parameter (e.g., Option<Int>).", node);
+            addError("chan type requires exactly one type parameter (e.g., chan<Int>).", node);
             return;
         }
+        node->genericArgs[0]->accept(*this);
+        node->type = std::shared_ptr<ast::TypeNode>(node->clone());
+    } else if (typeNameStr == "Option") {
         node->genericArgs[0]->accept(*this);
         registerGenericEnumConcrete("Option", node->toString(), node->genericArgs);
         node->type = std::shared_ptr<ast::TypeNode>(node->clone());

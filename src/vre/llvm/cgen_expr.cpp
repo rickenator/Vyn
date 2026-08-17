@@ -65,6 +65,20 @@ static bool objFieldTypeIsVec(const vyb::ast::TypeNode* tn) {
     return false;
 }
 
+// True when a channel's payload element type is a Vyb String. Numeric /
+// Bool / Char / Float payloads use the int-slot channel runtime; String payloads
+// use the refcounted string channel runtime.
+static bool chanElementIsString(const vyb::ast::TypeNode* tn) {
+    if (!tn) return false;
+    if (auto* nn = dynamic_cast<const vyb::ast::TypeName*>(tn)) {
+        if (nn->identifier) {
+            const std::string& n = nn->identifier->name;
+            if (n == "String" || n == "string") return true;
+        }
+    }
+    return false;
+}
+
 // The element type node of a `Vec<T>` field, or null.
 static const vyb::ast::TypeNode* objFieldVecElement(const vyb::ast::TypeNode* tn) {
     if (!tn) return nullptr;
@@ -3551,6 +3565,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 bool isStringVar = false;
                 bool isVecVar = false;
                 bool isByRefVec = false;
+                bool isChanVar = false;
+                bool chanIsString = false;
                 unsigned tupleSize = 0;
 
                 if (varIt != namedValues.end()) {
@@ -3571,6 +3587,13 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                         else if (auto typeName = dynamic_cast<vyb::ast::TypeName*>(astType)) {
                             if (typeName->identifier && typeName->identifier->name == "String") {
                                 isStringVar = true;
+                            } else if (typeName->identifier &&
+                                       typeName->identifier->name == "chan" &&
+                                       typeName->genericArgs.size() == 1) {
+                                // Built-in channel receiver `chan<T>`: a single i64
+                                // handle; the element type picks the runtime path.
+                                isChanVar = true;
+                                chanIsString = chanElementIsString(typeName->genericArgs[0].get());
                             } else if (typeName->identifier &&
                                        (typeName->identifier->name == "their" ||
                                         typeName->identifier->name == "my" ||
@@ -3617,6 +3640,13 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 }
 
                 // Handle Tuple methods first (highest priority)
+                if (isChanVar) {
+                    llvm::Value* handle = builder->CreateLoad(
+                        llvm::Type::getInt64Ty(*context), varIt->second, "chan.load");
+                    emitChannelMethod(node, handle, methodName, chanIsString);
+                    return;
+                }
+
                 if (isTupleVar && methodName == "len") {
                     m_currentLLVMValue = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), tupleSize);
                     return;
@@ -6104,6 +6134,36 @@ void LLVMCodegen::visit(ast::ConstructionExpression* node) {
             auto callExpr = std::make_unique<ast::CallExpression>(node->loc, std::move(calleeId), std::move(node->arguments));
             emitVecConstructor(callExpr.get());
             node->arguments = std::move(callExpr->arguments);
+            return;
+        }
+    }
+
+    // Built-in channel constructor: `chan<T>()` (unbounded) / `chan<T>(cap)`
+    // (bounded). The payload element type picks the runtime channel table
+    // (int-slot vs String), while the resulting value is always a single i64
+    // handle. Limited to 0 or 1 argument: the capacity (0 = unbounded).
+    if (auto* tname = dynamic_cast<ast::TypeName*>(node->constructedType.get())) {
+        if (tname->identifier && tname->identifier->name == "chan" && tname->genericArgs.size() == 1) {
+            const bool isString = chanElementIsString(tname->genericArgs[0].get());
+            llvm::Value* cap = nullptr;
+            if (node->arguments.size() > 1) {
+                logError(node->loc, "chan<T> constructor accepts at most one argument (capacity)");
+                m_currentLLVMValue = nullptr;
+                return;
+            }
+            if (!node->arguments.empty() && node->arguments[0]) {
+                node->arguments[0]->accept(*this);
+                cap = m_currentLLVMValue;
+            } else {
+                cap = llvm::ConstantInt::get(int64Type, 0);
+            }
+            llvm::Function* f = module->getFunction(isString ? "__vyb_strchan_new" : "__vyb_chan_new");
+            if (!f) {
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
+                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
+                                           isString ? "__vyb_strchan_new" : "__vyb_chan_new", module.get());
+            }
+            m_currentLLVMValue = builder->CreateCall(f, {cap}, "chan.new");
             return;
         }
     }

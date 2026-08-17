@@ -492,6 +492,17 @@ llvm::Type* LLVMCodegen::codegenType(vyb::ast::TypeNode* typeNode) {
                 break;
             }
 
+            // Built-in channel `chan<T>`: a single 64-bit runtime handle into the
+            // channel tables (indistinguishable from Int at the ABI level).
+            if (typeNameStr == "chan") {
+                if (typeNameNode->genericArgs.size() != 1 || !typeNameNode->genericArgs[0]) {
+                    logError(typeNode->loc, "chan type requires a type parameter (e.g., chan<Int>)");
+                    return nullptr;
+                }
+                llvmType = llvm::Type::getInt64Ty(*context);
+                break;
+            }
+
             // Handle ownership types: my<T>, our<T>, their<T>, mild<T>, view<T>, borrow<T>
             if (typeNameStr == "my" || typeNameStr == "our" || typeNameStr == "their" ||
                 typeNameStr == "mild" || typeNameStr == "view" || typeNameStr == "borrow") {

@@ -407,6 +407,7 @@ private:
     // String type methods
     void handleStringMethod(vyb::ast::CallExpression* node, const std::string& objectName, const std::string& methodName);
     void handleStringMethodOnValue(vyb::ast::CallExpression* node, llvm::Value* strPtr, const std::string& methodName);
+    void emitChannelMethod(vyb::ast::CallExpression* node, llvm::Value* handle, const std::string& methodName, bool isString);
     void dispatchStringMethod(vyb::ast::CallExpression* node, llvm::Value* strPtr, llvm::Type* strStructType, const std::string& methodName);
     void handleStringLen(vyb::ast::CallExpression* node, llvm::Value* strPtr, llvm::Type* strStructType);
     void handleStringConcat(vyb::ast::CallExpression* node, llvm::Value* strPtr, llvm::Type* strStructType);
