@@ -62,3 +62,46 @@ share(all)
 async_sleep_ms(ms<Int>)<Int> -> {
     return vyb_async_sleep_ms(ms)
 }
+
+# --- Async I/O: suspendable, non-blocking socket operations -----------------
+# These mirror the `network` module's helpers but never block a worker: when a
+# socket isn't ready, the calling fiber suspends (via a background poll pump)
+# and the pool keeps running other tasks. The socket is switched to
+# non-blocking on the first async op, so each helper may be called repeatedly.
+#
+#   srv = network::socket_open(...); network::socket_bind(...); network::socket_listen(...)
+#   # server fiber:
+#   conn = async_accept(srv)            // suspends until a connection arrives
+#   echo  = async_recv(conn, 4096)      // suspends until data is readable
+#   async_send(conn, echo)
+#   # client fiber:
+#   async_connect(cli, "127.0.0.1", port)
+#   async_send(cli, "ping"); async_recv(cli, 4096)
+
+# Accept a pending connection on a listening socket, suspending until one
+# arrives. Returns the connected descriptor (>= 0) or -1.
+share(all)
+async_accept(fd<Int>)<Int> -> {
+    return vyb_async_accept(fd)
+}
+
+# Non-blocking connect, suspending until established or refused. Returns 0 on
+# success, -1 on failure (see network::socket_error_code()).
+share(all)
+async_connect(fd<Int>, ip<String>, port<Int>)<Int> -> {
+    return vyb_async_connect(fd, ip, port)
+}
+
+# Send all of `data` on `fd`, suspending until the socket accepts it. Returns
+# the number of bytes sent (or -1).
+share(all)
+async_send(fd<Int>, data<String>)<Int> -> {
+    return vyb_async_send(fd, data)
+}
+
+# Receive up to `maxlen` bytes from `fd` as a fresh String, suspending until
+# data is readable. Empty on error or EOF.
+share(all)
+async_recv(fd<Int>, maxlen<Int>)<String> -> {
+    return vyb_async_recv(fd, maxlen)
+}

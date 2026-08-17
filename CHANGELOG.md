@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Async I/O over the event loop** — `import asyncs` gains suspendable,
+  non-blocking socket operations: `async_accept(fd)`, `async_connect(fd, ip,
+  port)`, `async_send(fd, data)`, and `async_recv(fd, maxlen)`. When a socket
+  isn't ready, the calling fiber suspends instead of blocking a worker: a
+  dedicated poll-pump thread watches every suspended fiber's fd (plus a
+  self-pipe wake), and requeues the fiber on its home worker the moment the fd
+  becomes ready. The pair of an async echo session and three concurrent echo
+  sessions on one listener are covered by `test/async/async_io_echo.vyb` and
+  `test/async/async_io_multi.vyb` (both valgrind-clean, no leaks).
 - **`async for` over channels** — `async for (item<T> in ch)` drains a channel
   as an async stream: it receives messages (Int or `String`, chosen by the
   loop-variable type) until the channel is closed and drained, then stops. It

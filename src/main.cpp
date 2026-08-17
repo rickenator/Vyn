@@ -183,6 +183,12 @@ extern "C" {
     int64_t __vyb_async_poll(int64_t task);
     int64_t __vyb_async_yield(void);
     int64_t __vyb_async_sleep_ms(int64_t ms);
+    // Async I/O (async stdlib module): suspendable non-blocking socket ops.
+    int64_t __vyb_async_io_wait(int64_t fd, int64_t write);
+    int64_t __vyb_async_accept(int64_t fd);
+    vyb_file_str __vyb_async_recv(int64_t fd, int64_t maxlen);
+    int64_t __vyb_async_send(int64_t fd, const char* data, int64_t len);
+    int64_t __vyb_async_connect(int64_t fd, const char* ip, int64_t port);
 
     // JSON serialization for complex types
     char* __vyb_complex_to_json(void* instance, const char* type_name);
@@ -1131,6 +1137,16 @@ runtimeSymbols[mangle("__vyb_strchan_free")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_yield), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_async_sleep_ms")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_sleep_ms), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_async_io_wait")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_io_wait), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_async_accept")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_accept), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_async_recv")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_recv), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_async_send")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_send), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_async_connect")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_connect), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_task_free")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_task_free), llvm::JITSymbolFlags::Exported);
 

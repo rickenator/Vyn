@@ -2957,6 +2957,97 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         }
     }
 
+    // Async I/O intrinsics (async stdlib module): non-blocking socket ops that
+    // suspend the calling fiber until the fd is ready. accept / send / connect /
+    // io_wait return Int; recv returns a String. Mirrors the net mapping: IPs
+    // and payloads arrive as Vyb String structs and their data ptr (and len for
+    // send) is extracted at the boundary.
+    if (identCallee) {
+        const std::string& fname = identCallee->name;
+        std::string rtAsync;
+        if (fname == "vyb_async_io_wait") rtAsync = "__vyb_async_io_wait";
+        else if (fname == "vyb_async_accept") rtAsync = "__vyb_async_accept";
+        else if (fname == "vyb_async_connect") rtAsync = "__vyb_async_connect";
+        else if (fname == "vyb_async_send") rtAsync = "__vyb_async_send";
+        else if (fname == "vyb_async_recv") rtAsync = "__vyb_async_recv";
+        if (!rtAsync.empty()) {
+            auto asyncFn = [&](llvm::FunctionType* ft) -> llvm::Function* {
+                llvm::Function* f = module->getFunction(rtAsync);
+                if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, rtAsync, module.get());
+                return f;
+            };
+            auto aToI64 = [&](llvm::Value* v) -> llvm::Value* {
+                if (!v) return v;
+                if (v->getType()->isIntegerTy(64)) return v;
+                if (v->getType()->isIntegerTy())
+                    return builder->CreateSExt(v, int64Type, "aio.toi64");
+                return v;
+            };
+            auto aStrPtr = [&](llvm::Value* v) -> llvm::Value* {
+                if (v && v->getType()->isStructTy())
+                    return builder->CreateExtractValue(v, 0, "aio.strptr");
+                return v;
+            };
+            auto aStrType = [&]() {
+                std::vector<llvm::Type*> f = {int8PtrType, int64Type};
+                return llvm::StructType::get(*context, f, false);
+            };
+            auto aNeed = [&](size_t idx) -> llvm::Value* {
+                if (idx >= node->arguments.size()) { m_currentLLVMValue = nullptr; return nullptr; }
+                node->arguments[idx]->accept(*this);
+                return m_currentLLVMValue;
+            };
+            auto aArity = [&](size_t n) -> bool {
+                if (node->arguments.size() != n) {
+                    logError(node->loc, rtAsync + " expects " + std::to_string(n) + " argument(s)");
+                    m_currentLLVMValue = nullptr;
+                    return false;
+                }
+                return true;
+            };
+
+            if (fname == "vyb_async_io_wait") {
+                if (!aArity(2)) return;
+                llvm::Value* fd = aNeed(0); llvm::Value* write = aNeed(1);
+                if (!fd || !write) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(asyncFn(ft), {aToI64(fd), aToI64(write)}, "aio.wait");
+                return;
+            } else if (fname == "vyb_async_accept") {
+                if (!aArity(1)) return;
+                llvm::Value* fd = aNeed(0); if (!fd) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(asyncFn(ft), {aToI64(fd)}, "aio.accepted");
+                return;
+            } else if (fname == "vyb_async_connect") {
+                if (!aArity(3)) return;
+                llvm::Value* fd = aNeed(0); llvm::Value* ip = aNeed(1); llvm::Value* port = aNeed(2);
+                if (!fd || !ip || !port) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(asyncFn(ft), {aToI64(fd), aStrPtr(ip), aToI64(port)}, "aio.connected");
+                return;
+            } else if (fname == "vyb_async_send") {
+                if (!aArity(2)) return;
+                llvm::Value* fd = aNeed(0); llvm::Value* data = aNeed(1);
+                if (!fd || !data) return;
+                llvm::Value* dp = aStrPtr(data);
+                llvm::Value* dl = llvm::ConstantInt::get(int64Type, 0);
+                if (data->getType()->isStructTy())
+                    dl = builder->CreateExtractValue(data, 1, "aio.strlen");
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(asyncFn(ft), {aToI64(fd), dp, dl}, "aio.sent");
+                return;
+            } else { // vyb_async_recv
+                if (!aArity(2)) return;
+                llvm::Value* fd = aNeed(0); llvm::Value* maxlen = aNeed(1);
+                if (!fd || !maxlen) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(aStrType(), {int64Type, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(asyncFn(ft), {aToI64(fd), aToI64(maxlen)}, "aio.recved");
+                return;
+            }
+        }
+    }
+
     // Time module intrinsics: each vyb_time_* maps to a no-arg (or one-arg
     // sleep) Int-returning runtime symbol in `runtime/vyb_runtime.c`.
     if (identCallee) {

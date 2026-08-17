@@ -1,0 +1,59 @@
+// Async I/O over the event-loop executor: a server fiber and a client fiber
+// exchange a message through a non-blocking echo socket. Each fiber drives the
+// pool cooperatively -- async_accept / async_connect / async_recv / async_send
+// suspend the calling fiber (via a background poll pump) rather than blocking a
+// worker thread, while async_sleep_ms keeps the pool busy on its own timeline.
+// @env: VYB_STDLIB=stdlib
+// @expect: pass
+
+import network::{socket_open, socket_bind, socket_listen, socket_local_port,
+                 socket_close, socket_error_code, Socket}
+import asyncs::{async_spawn, async_await, async_run_all, async_accept,
+                async_connect, async_send, async_recv, async_sleep_ms}
+import time::{time_mono_millis}
+
+MSG<String> = "ping from vyb async io"
+
+main()<Int> -> {
+    srv<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
+    if (socket_bind(srv, "127.0.0.1", 0) != 0) { return 1 }
+    if (socket_listen(srv, 1) != 0) { return 2 }
+    port<Int> = socket_local_port(srv)
+
+    # Server fiber: async-accept a connection, async-recv one message, echo it
+    # back, then close.
+    srv_task<Int> = async_spawn(|| -> {
+        conn<Int> = async_accept(srv)
+        if (conn < 0) { return 1 }
+        msg<String> = async_recv(conn, 4096)
+        n<Int> = async_send(conn, msg)
+        socket_close(conn)
+        return n
+    })
+
+    # Client fiber: sleep briefly so the server is async-accepting, then
+    # async-connect and async-send a message, read the echo back.
+    cli_task<Int> = async_spawn(|| -> {
+        async_sleep_ms(10)
+        cli<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
+        if (async_connect(cli, "127.0.0.1", port) != 0) {
+            socket_close(cli)
+            return socket_error_code()
+        }
+        async_send(cli, MSG)
+        back<String> = async_recv(cli, 4096)
+        socket_close(cli)
+        if (back == MSG) { return 0 }
+        return 2
+    })
+
+    srv_n<Int> = async_await(srv_task)
+    cli_n<Int> = async_await(cli_task)
+    socket_close(srv)
+    async_run_all()
+
+    if (srv_n != MSG.len()) { return 3 }
+    if (cli_n != 0) { return 4 }
+    println("ok")
+    return 0
+}

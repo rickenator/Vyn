@@ -31,12 +31,12 @@ is the working audit for what needs to be implemented next.
 | `mild<T>` weak references | ~75% | Control blocks, failed `grab()` (native `our<T>?`), and `our<T>` copy/assignment/parameter refcounting done; full copy/drop semantics remain |
 | Aspect/bind system | ~78% | Aspect objects/dyn dispatch |
 | Generic monomorphization | ~85% | **SEALED**: Compile-time only. See doc/MONOMORPHIZATION_DESIGN.md |
-| Async/await | ~97% | agents |
+| Async/await | ~98% | agents |
 | Error propagation (`fail`/`trap`) | ~80% | Standard error aspects, `rethrow`, ensure contracts |
 | Lambda/closure codegen | ~70% | Capture-by-value closure env structs shipped; move/mutable/`our` capture planned |
 | Module system (`import`/`smuggle`/`bundle`) | ~70% | Local/module-path resolution, aliases, bundle/share visibility done; stdlib modules/package integration pending |
 | FFI (`extern "C"`) | ~35% | Extern blocks, C aliases, freedom-gated JIT calls done; repr(C), variadics, linker flow pending |
-| Standard library | ~60% | Vec, String, HashMap/HashSet, BTreeMap, File I/O, Math, TCP socket I/O, time, HTTP done; async/higher-level networking pending |
+| Standard library | ~62% | Vec, String, HashMap/HashSet, BTreeMap, File I/O, Math, TCP socket I/O, time, HTTP, async socket I/O done; `TcpStream`/`UdpSocket` wrappers, HTTP client pending |
 | Introspection (`typeof`/`typename`) | ~75% | Downcasting, type assertions |
 | Auto-serialization | ~80% | Edge cases remain |
 | Pattern matching | ~60% | Destructuring, guards, enum variants |
@@ -629,6 +629,11 @@ with `pass` for multi-statement case bodies. Needs polishing:
 - [x] **`async for`** — Iterate over async streams (drains a `chan<T>` /
   `strchan` as an async stream via lossless `recv_opt` + `close`;
   `test/async/async_for_chan.vyb`)
+- [x] **Async I/O (event-loop sockets)** — non-blocking `async_accept` /
+  `async_connect` / `async_send` / `async_recv` suspend the calling fiber (via
+  a background poll pump that watches every waiting fd) instead of blocking a
+  worker. Echo + 3-way concurrent echo on one listener:
+  `test/async/async_io_echo.vyb` / `test/async/async_io_multi.vyb`
 
 ---
 
@@ -1026,7 +1031,9 @@ async tcp_connect(host<String>, port<Int>)<TcpStream> -> {
 - [ ] **v0.5 — Raw socket FFI bindings** — `stdlib/net/raw.vyb` wrapping POSIX socket API
 - [ ] **v0.6 — `TcpStream` / `UdpSocket`** — Safe Vyb wrappers with `fail`/`trap` error handling
 - [ ] **v0.6 — `TcpListener`** — Server-side accept loop integrated with async runtime
-- [ ] **v0.6 — Async I/O** — Non-blocking socket I/O using the async executor (requires real event loop)
+- [x] **v0.6 — Async I/O** — Non-blocking socket I/O on the real executor
+  (`asyncs::async_accept`/`async_connect`/`async_send`/`async_recv` suspend the
+  fiber via the poll pump; no worker is ever blocked)
 - [ ] **v0.7 — HTTP/1.1 client** — Built on `TcpStream`, pure Vyb implementation
 - [ ] **Post-1.0 — TLS** — Via `extern "C"` bindings to OpenSSL or mbedTLS
 - [ ] **Post-1.0 — UDP multicast, raw packets** — Advanced socket options

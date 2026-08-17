@@ -17,6 +17,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <poll.h>
 
 #if defined(__GNUC__) || defined(__clang__)
 #define VYB_WEAK __attribute__((weak))
@@ -1252,6 +1253,7 @@ typedef struct vyb_async_task {
     struct vyb_async_task* next_waiter;   // I am waiting on a task
     struct vyb_async_task* waiters;       // tasks waiting on me
     int64_t awaited_result;               // stashed result delivered to a waiter
+    int64_t io_result;                    // poll revents delivered on fd wake
     struct vyb_async_task* next_all;      // lifecycle list
 } vyb_async_task;
 
@@ -1277,6 +1279,11 @@ static int g_nworkers = 0;       // worker threads actually spawned
 static int g_spin = 0;           // spawn round-robin cursor
 static int g_nready = 0;         // tasks queued across all workers
 static int g_ntimers = 0;        // timers pending on the heap
+static int g_iowait_count = 0;   // fibers waiting on socket readiness
+static int g_selfpipe[2] = { -1, -1 };
+static pthread_t g_pump_thread;
+static int g_pump_started = 0;
+static int g_pump_down = 0;
 static int g_shutdown = 0;       // set at atexit: stop + join workers
 static __thread vyb_async_task* tls_cur = NULL;   // fiber currently running on this thread
 
@@ -1318,7 +1325,7 @@ static void async_fire_due(int64_t now) {
 // True when no worker is executing a fiber and no work (ready/timer) remains,
 // i.e. run_all may safely reclaim every task. Lock held.
 static int async_quiescent_locked(void) {
-    if (g_nready != 0 || g_ntimers != 0) return 0;
+    if (g_nready != 0 || g_ntimers != 0 || g_iowait_count != 0) return 0;
     for (int i = 0; i < g_nworkers; i++)
         if (g_workers[i].busy) return 0;
     return 1;
@@ -1560,17 +1567,268 @@ VYB_WEAK int64_t __vyb_async_sleep_ms(int64_t ms) {
     swapcontext(&self->ctx, &self->home->sched_ctx);
     return 0;
 }
+
+// ============================================================================
+// Async I/O: non-blocking socket waits on the fiber pool.
+// ============================================================================
+// A fiber suspends on socket readiness instead of blocking a worker: a
+// dedicated I/O pump thread sits in poll(2) over the set of fds that suspended
+// fibers are waiting on, plus a self-pipe used to wake it whenever a new wait
+// is registered or shutdown is requested. When an fd becomes ready the pump
+// marks the suspended fiber READY and requeues it on its home worker; the
+// resumed fiber re-runs the (non-blocking) syscall -- so a non-blocking socket
+// is never operated on by two workers at once. The pump is a normal pthread
+// (no ucontext), so it cannot migrate fibers; it only requeues them.
+
+typedef struct vyb_async_iowait {
+    int fd;
+    short events;          // POLLIN or POLLOUT
+    int active;            // 1 while registered and waiting
+    int64_t revents;       // readiness flags delivered on wake
+    vyb_async_task* task;  // the suspended fiber
+    struct vyb_async_iowait* next;
+} vyb_async_iowait;
+
+static vyb_async_iowait* g_iowait = NULL;
+
+static void async_selfpipe_ensure(void) {
+    if (g_selfpipe[0] < 0) {
+        if (pipe2(g_selfpipe, O_NONBLOCK) != 0) g_selfpipe[0] = g_selfpipe[1] = -1;
+    }
+}
+
+// Wake the pump (a new wait was registered, or shutdown). Not a lock-bearer.
+static void async_pump_wake(void) {
+    if (g_selfpipe[1] >= 0) { char b = 1; ssize_t w_ = write(g_selfpipe[1], &b, 1); (void)w_; }
+}
+
+// Unlink + free a wait entry from the global list. Lock held.
+static void iowait_unlink(vyb_async_iowait* e) {
+    vyb_async_iowait** pp = &g_iowait;
+    while (*pp) {
+        if (*pp == e) { *pp = e->next; g_iowait_count--; break; }
+        pp = &(*pp)->next;
+    }
+    free(e);
+}
+
+static void* async_pump_main(void* arg) {
+    (void)arg;
+    struct pollfd* pfds = NULL;
+    vyb_async_iowait** em = NULL;
+    int cap = 0;
+    pthread_mutex_lock(&g_async_lock);
+    for (;;) {
+        if (g_pump_down && g_iowait_count == 0) { pthread_mutex_unlock(&g_async_lock); break; }
+        long need = (long)g_iowait_count + 1;
+        if (cap < (int)need) {
+            cap = (int)(need * 2);
+            free(pfds);
+            free(em);
+            pfds = (struct pollfd*)malloc((size_t)cap * sizeof(*pfds));
+            em = (vyb_async_iowait**)malloc((size_t)cap * sizeof(*em));
+        }
+        int n = 0;
+        pfds[n].fd = g_selfpipe[0]; pfds[n].events = POLLIN; pfds[n].revents = 0; n++;
+        vyb_async_iowait* e;
+        for (e = g_iowait; e; e = e->next) {
+            em[n] = e; pfds[n].fd = e->fd; pfds[n].events = e->events; pfds[n].revents = 0; n++;
+        }
+        pthread_mutex_unlock(&g_async_lock);
+
+        int pr = poll(pfds, (nfds_t)n, -1);
+
+        pthread_mutex_lock(&g_async_lock);
+        if (pr > 0 && (pfds[0].revents & (POLLIN | POLLERR | POLLHUP))) {
+            // Self-pipe woke us (new registration or shutdown): drain it and let
+            // the loop rebuild the full set before re-polling.
+            char b[64];
+            while (read(g_selfpipe[0], b, sizeof(b)) > 0) {}
+            continue;
+        }
+        if (pr > 0) {
+            for (int i = 1; i < n; i++) {
+                if (pfds[i].revents & (POLLIN | POLLOUT | POLLERR | POLLHUP | POLLNVAL)) {
+                    vyb_async_iowait* w = em[i];
+                    if (w->active) {
+                        w->active = 0;
+                        w->revents = (int64_t)pfds[i].revents;
+                        iowait_unlink(w);
+                        w->task->state = 0;
+                        async_ready_push(w->task);   // requeue on home worker
+                    }
+                }
+            }
+        }
+        // poll() error (pr<0) or spurious wake: loop and rebuild.
+    }
+    free(pfds);
+    free(em);
+    return NULL;
+}
+
+// Register the current fiber to wait for `events` on `fd` and suspend it. Under
+// the pump, `self->io_result` is delivered when the fd is ready.
+static void iowait_register(int fd, short events) {
+    vyb_async_task* self = tls_cur;
+    int ok = 0;
+    pthread_mutex_lock(&g_async_lock);
+    async_ensure_workers();
+    async_selfpipe_ensure();
+    if (!g_pump_started && g_selfpipe[0] >= 0) {
+        if (pthread_create(&g_pump_thread, NULL, async_pump_main, NULL) == 0)
+            g_pump_started = 1;
+    }
+    if (g_pump_started && fd >= 0) {
+        vyb_async_iowait* e = (vyb_async_iowait*)calloc(1, sizeof(*e));
+        if (e) {
+            e->fd = fd; e->events = events; e->active = 1; e->task = self;
+            e->next = g_iowait; g_iowait = e; g_iowait_count++;
+            ok = 1;
+        }
+    }
+    self->io_result = 0;
+    if (ok) self->state = 1;            // BLOCKED until the pump requeues us
+    else async_ready_push(self);        // pump unavailable / bad fd: retry now
+    pthread_mutex_unlock(&g_async_lock);
+    async_pump_wake();
+}
+
+// Core suspend intrinsic: yield the current fiber until `fd` is readable
+// (`write` == 0) or writable (`write` != 0). Off the loop it falls back to a
+// blocking poll so callers keep correct readiness semantics.
+VYB_WEAK int64_t __vyb_async_io_wait(int64_t fd, int64_t write) {
+    if (!tls_cur) {
+        struct pollfd p;
+        p.fd = (int)fd; p.events = write ? POLLOUT : POLLIN; p.revents = 0;
+        poll(&p, 1, -1);
+        return 0;
+    }
+    vyb_async_task* self = tls_cur;
+    iowait_register((int)fd, write ? (short)POLLOUT : (short)POLLIN);
+    swapcontext(&self->ctx, &self->home->sched_ctx);
+    return self->io_result;
+}
+
+static int vyb_net_set_nonblock(int fd) {
+    int fl = fcntl(fd, F_GETFL, 0);
+    if (fl < 0) return -1;
+    return fcntl(fd, F_SETFL, fl | O_NONBLOCK);
+}
+
+// Non-blocking accept on a listening socket, suspending the fiber until a
+// connection is pending. Returns the connected descriptor or -1.
+VYB_WEAK int64_t __vyb_async_accept(int64_t fd) {
+    vyb_net_set_nonblock((int)fd);
+    for (;;) {
+        struct sockaddr_in addr;
+        socklen_t len = (socklen_t)sizeof(addr);
+        int c = accept((int)fd, (struct sockaddr*)&addr, &len);
+        if (c >= 0) { vyb_net_err = 0; return (int64_t)c; }
+        if (errno == EINTR) continue;
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            if (__vyb_async_io_wait(fd, 0) < 0) { vyb_net_err = EIO; return -1; }
+            continue;
+        }
+        vyb_net_err = errno;
+        return -1;
+    }
+}
+
+// Non-blocking recv into a fresh, registry-registered buffer, suspending until
+// data is available. { NULL, 0 } on error or EOF.
+VYB_WEAK vyb_file_str __vyb_async_recv(int64_t fd, int64_t maxlen) {
+    vyb_file_str r = { NULL, 0 };
+    if (maxlen <= 0) maxlen = 4096;
+    vyb_net_set_nonblock((int)fd);
+    char* buf = (char*)malloc((size_t)maxlen);
+    if (!buf) { vyb_net_err = errno; return r; }
+    for (;;) {
+        ssize_t n = recv((int)fd, buf, (size_t)maxlen, 0);
+        if (n > 0) { __vyb_string_register(buf); r.ptr = buf; r.len = (int64_t)n; vyb_net_err = 0; return r; }
+        if (n == 0) { free(buf); return r; }   // EOF
+        if (errno == EINTR) continue;
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            if (__vyb_async_io_wait(fd, 0) < 0) { vyb_net_err = EIO; free(buf); return r; }
+            continue;
+        }
+        vyb_net_err = errno;
+        free(buf);
+        return r;
+    }
+}
+
+// Non-blocking send of `len` bytes, suspending until the socket accepts them.
+// Returns the number of bytes sent (or -1).
+VYB_WEAK int64_t __vyb_async_send(int64_t fd, const char* data, int64_t len) {
+    if (len < 0) len = 0;
+    vyb_net_set_nonblock((int)fd);
+    size_t off = 0;
+    while (off < (size_t)len) {
+        ssize_t n = send((int)fd, data + off, (size_t)(len - off), 0);
+        if (n > 0) { off += (size_t)n; continue; }
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                if (__vyb_async_io_wait(fd, 1) < 0) { vyb_net_err = EIO; return -1; }
+                continue;
+            }
+            vyb_net_err = errno;
+            return -1;
+        }
+        break;   // n == 0 is unusual for a stream socket; stop cleanly
+    }
+    vyb_net_err = 0;
+    return (int64_t)off;
+}
+
+// Non-blocking connect, suspending until the connection is established or
+// refused. Returns 0 on success, -1 on failure (see socket_error_code()).
+VYB_WEAK int64_t __vyb_async_connect(int64_t fd, const char* ip, int64_t port) {
+    vyb_net_set_nonblock((int)fd);
+    struct sockaddr_in addr;
+    if (vyb_net_fill_addr(ip, port, &addr) != 0) { vyb_net_err = EINVAL; return -1; }
+    int r = connect((int)fd, (struct sockaddr*)&addr, (socklen_t)sizeof(addr));
+    if (r == 0) { vyb_net_err = 0; return 0; }
+    if (errno == EINPROGRESS) {
+        if (__vyb_async_io_wait(fd, 1) < 0) { vyb_net_err = EIO; return -1; }
+        int soerr = 0;
+        socklen_t sl = (socklen_t)sizeof(soerr);
+        if (getsockopt((int)fd, SOL_SOCKET, SO_ERROR, &soerr, &sl) < 0) {
+            vyb_net_err = errno;
+            return -1;
+        }
+        vyb_net_err = soerr;
+        return soerr ? -1 : 0;
+    }
+    vyb_net_err = errno;
+    return -1;
+}
+
 // Stop + join the worker pool at process exit, then reclaim any leftover tasks
 // so a forgotten async_run_all never leaks (runs once, before main()).
 static void vyb_async_atexit(void) {
     pthread_mutex_lock(&g_async_lock);
     g_shutdown = 1;
+    g_pump_down = 1;
+    // Cancel any in-flight socket waits so the pump can exit and no blocked
+    // fiber is left dangling after the workers are joined.
+    vyb_async_iowait* e = g_iowait;
+    g_iowait = NULL;
+    g_iowait_count = 0;
+    while (e) {
+        vyb_async_iowait* nxt = e->next;
+        if (e->task) { e->task->state = 2; e->task->result = -1; e->task->io_result = -1; }
+        free(e);
+        e = nxt;
+    }
     for (int i = 0; i < g_nworkers; i++) pthread_cond_broadcast(&g_workers[i].cv);
     pthread_mutex_unlock(&g_async_lock);
+    async_pump_wake();
     for (int i = 0; i < g_nworkers; i++)
         if (g_workers[i].started) pthread_join(g_workers[i].thread, NULL);
+    if (g_pump_started) pthread_join(g_pump_thread, NULL);
     async_cleanup_all();
 }
 static void vyb_async_atexit_reg(void) __attribute__((constructor));
 static void vyb_async_atexit_reg(void) { atexit(vyb_async_atexit); }
-

@@ -2047,6 +2047,9 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_async_spawn" || name == "vyb_async_run_all" ||
             name == "vyb_async_await" || name == "vyb_async_poll" ||
             name == "vyb_async_yield" || name == "vyb_async_sleep_ms" ||
+            name == "vyb_async_io_wait" || name == "vyb_async_accept" ||
+            name == "vyb_async_recv" || name == "vyb_async_send" ||
+            name == "vyb_async_connect" ||
             name == "vyb_strchan_new" || name == "vyb_strchan_send" ||
             name == "vyb_strchan_recv" || name == "vyb_strchan_try" ||
             name == "vyb_strchan_recv_opt" ||
@@ -2543,10 +2546,22 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 name == "vyb_async_spawn" || name == "vyb_async_run_all" ||
                 name == "vyb_async_await" || name == "vyb_async_poll" ||
                 name == "vyb_async_yield" || name == "vyb_async_sleep_ms" ||
+                name == "vyb_async_io_wait" || name == "vyb_async_accept" ||
+                name == "vyb_async_send" || name == "vyb_async_connect" ||
                 name == "vyb_strchan_new" || name == "vyb_strchan_send" ||
                 name == "vyb_strchan_len" || name == "vyb_strchan_free") {
                 auto* resTy = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "Int"));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+
+            // Async I/O (async stdlib module): the non-blocking socket recv
+            // hands back a String; its siblings return Ints.
+            if (name == "vyb_async_recv") {
+                auto* resTy = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "String"));
                 expressionTypes[node] = retainType(resTy);
                 node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
                 return;
