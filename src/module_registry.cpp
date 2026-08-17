@@ -328,6 +328,439 @@ public:
     void visit(ast::TupleTypeNode* node) override { if (node) tys(node->memberTypes); }
 };
 
+// A module's namespace bindings: namespace identifier (`GV`) -> the set of
+// origin symbol names it exposes. `import module as GV` (or `import * as GV`)
+// binds the whole module's visible exports under `GV`; qualified access
+// `GV.sym` is rewritten to the plain symbol `sym` during module resolution so
+// the rest of the compiler (semantic analysis and codegen) needs no awareness
+// of namespaces. Plainly imported symbols are untouched.
+using ModuleNSMap = std::unordered_map<std::string, std::unordered_map<std::string, std::string>>;
+
+static std::string mangledNamespaceName(const std::string& ns, const std::string& symbol) {
+    return "__ns_" + ns + "_" + symbol;
+}
+
+static void rewriteNamespaceRawStmt(ast::Statement* stmt, const ModuleNSMap& localNS);
+static void rewriteNamespaceStmt(ast::StmtPtr& stmt, const ModuleNSMap& localNS) {
+    rewriteNamespaceRawStmt(stmt.get(), localNS);
+}
+static void rewriteNamespaceExpr(ast::ExprPtr& expr, const ModuleNSMap& localNS);
+
+// Replace `NS.sym` (a non-computed member expression whose object is a
+// namespace bound locally and whose property is one of that namespace's
+// symbols) with a bare identifier for `sym`. Returns true if replaced.
+static bool foldNamespaceMember(ast::ExprPtr& e, const ModuleNSMap& localNS) {
+    auto* member = dynamic_cast<ast::MemberExpression*>(e.get());
+    if (!member || member->computed) {
+        return false;
+    }
+    auto* objId = dynamic_cast<ast::Identifier*>(member->object.get());
+    auto* propId = dynamic_cast<ast::Identifier*>(member->property.get());
+    if (!objId || !propId) {
+        return false;
+    }
+    auto nsIt = localNS.find(objId->name);
+    if (nsIt == localNS.end()) {
+        return false;
+    }
+    auto symIt = nsIt->second.find(propId->name);
+    if (symIt == nsIt->second.end()) {
+        return false;
+    }
+    ast::ExprPtr replacement = std::make_unique<ast::Identifier>(member->loc, symIt->second);
+    e = std::move(replacement);
+    return true;
+}
+
+static void rewriteBlockBody(std::vector<ast::StmtPtr>& body, const ModuleNSMap& localNS) {
+    for (auto& st : body) {
+        if (st) rewriteNamespaceStmt(st, localNS);
+    }
+}
+
+// Root-only fold for a shared_ptr<Expression> initializer (VariableDeclaration).
+static void foldVariableInit(std::shared_ptr<ast::Expression>& init, const ModuleNSMap& localNS) {
+    if (!init) return;
+    if (auto* mem = dynamic_cast<ast::MemberExpression*>(init.get())) {
+        if (mem->computed) return;
+        auto* objId = dynamic_cast<ast::Identifier*>(mem->object.get());
+        auto* propId = dynamic_cast<ast::Identifier*>(mem->property.get());
+        if (!objId || !propId) return;
+        auto nsIt = localNS.find(objId->name);
+        if (nsIt != localNS.end()) {
+            auto symIt = nsIt->second.find(propId->name);
+            if (symIt != nsIt->second.end()) {
+                init = std::make_shared<ast::Identifier>(mem->loc, symIt->second);
+            }
+        }
+    }
+}
+
+// --- Statement traversal (raw pointer; recurses into owned children by ref) ---
+static void rewriteNamespaceRawStmt(ast::Statement* stmt, const ModuleNSMap& localNS) {
+    if (!stmt) return;
+    if (auto* n = dynamic_cast<ast::BlockStatement*>(stmt)) {
+        rewriteBlockBody(n->body, localNS);
+    } else if (auto* n = dynamic_cast<ast::ExpressionStatement*>(stmt)) {
+        rewriteNamespaceExpr(n->expression, localNS);
+    } else if (auto* n = dynamic_cast<ast::IfStatement*>(stmt)) {
+        rewriteNamespaceExpr(n->test, localNS);
+        rewriteNamespaceStmt(n->consequent, localNS);
+        rewriteNamespaceStmt(n->alternate, localNS);
+    } else if (auto* n = dynamic_cast<ast::WhileStatement*>(stmt)) {
+        rewriteNamespaceExpr(n->test, localNS);
+        rewriteNamespaceStmt(n->body, localNS);
+    } else if (auto* n = dynamic_cast<ast::ForStatement*>(stmt)) {
+        if (n->init) {
+            if (auto* es = dynamic_cast<ast::ExpressionStatement*>(n->init.get())) {
+                rewriteNamespaceExpr(es->expression, localNS);
+            } else if (auto* vd = dynamic_cast<ast::VariableDeclaration*>(n->init.get())) {
+                foldVariableInit(vd->init, localNS);
+            }
+        }
+        rewriteNamespaceExpr(n->test, localNS);
+        rewriteNamespaceExpr(n->update, localNS);
+        rewriteNamespaceStmt(n->body, localNS);
+    } else if (auto* n = dynamic_cast<ast::ReturnStatement*>(stmt)) {
+        rewriteNamespaceExpr(n->argument, localNS);
+    } else if (auto* n = dynamic_cast<ast::PassStatement*>(stmt)) {
+        rewriteNamespaceExpr(n->argument, localNS);
+    } else if (auto* n = dynamic_cast<ast::TryStatement*>(stmt)) {
+        if (n->tryBlock) rewriteBlockBody(n->tryBlock->body, localNS);
+        if (n->catchBlock) rewriteBlockBody(n->catchBlock->body, localNS);
+        if (n->finallyBlock) rewriteBlockBody(n->finallyBlock->body, localNS);
+    } else if (auto* n = dynamic_cast<ast::UnsafeStatement*>(stmt)) {
+        if (n->block) rewriteBlockBody(n->block->body, localNS);
+    } else if (auto* n = dynamic_cast<ast::ThrowStatement*>(stmt)) {
+        rewriteNamespaceExpr(n->expr, localNS);
+    } else if (auto* n = dynamic_cast<ast::MatchStatement*>(stmt)) {
+        rewriteNamespaceExpr(n->expr, localNS);
+        for (auto& c : n->cases) {
+            rewriteNamespaceExpr(c.first, localNS);
+            rewriteNamespaceExpr(c.second, localNS);
+        }
+        for (auto& g : n->guards) rewriteNamespaceExpr(g, localNS);
+    } else if (auto* n = dynamic_cast<ast::YieldStatement*>(stmt)) {
+        rewriteNamespaceExpr(n->expression, localNS);
+    } else if (auto* n = dynamic_cast<ast::YieldReturnStatement*>(stmt)) {
+        rewriteNamespaceExpr(n->expression, localNS);
+    } else if (auto* n = dynamic_cast<ast::AssertStatement*>(stmt)) {
+        rewriteNamespaceExpr(n->condition, localNS);
+        rewriteNamespaceExpr(n->message, localNS);
+    } else if (auto* n = dynamic_cast<ast::FailStatement*>(stmt)) {
+        rewriteNamespaceExpr(n->error, localNS);
+    } else if (auto* n = dynamic_cast<ast::RethrowStatement*>(stmt)) {
+        rewriteNamespaceExpr(n->transformedError, localNS);
+    } else if (auto* n = dynamic_cast<ast::PanicStatement*>(stmt)) {
+        rewriteNamespaceExpr(n->message, localNS);
+    } else if (auto* n = dynamic_cast<ast::ExitStatement*>(stmt)) {
+        rewriteNamespaceExpr(n->code, localNS);
+    } else if (auto* n = dynamic_cast<ast::DeferStatement*>(stmt)) {
+        rewriteNamespaceStmt(n->statement, localNS);
+    } else if (auto* n = dynamic_cast<ast::TupleDestructureAssignment*>(stmt)) {
+        rewriteNamespaceExpr(n->expression, localNS);
+    } else if (auto* n = dynamic_cast<ast::VariableDeclaration*>(stmt)) {
+        foldVariableInit(n->init, localNS);
+    } else if (auto* n = dynamic_cast<ast::FunctionDeclaration*>(stmt)) {
+        if (n->body) rewriteBlockBody(n->body->body, localNS);
+    } else if (auto* n = dynamic_cast<ast::StructDeclaration*>(stmt)) {
+        for (const auto& f : n->fields) {
+            if (f) rewriteNamespaceExpr(f->initializer, localNS);
+        }
+        for (const auto& ctor : n->constructors) {
+            if (ctor && ctor->body) rewriteBlockBody(ctor->body->body, localNS);
+        }
+    } else if (auto* n = dynamic_cast<ast::AspectDeclaration*>(stmt)) {
+        for (const auto& method : n->methods) {
+            if (method && method->body) rewriteBlockBody(method->body->body, localNS);
+        }
+    } else if (auto* n = dynamic_cast<ast::BindDeclaration*>(stmt)) {
+        for (const auto& method : n->methods) {
+            if (method && method->body) rewriteBlockBody(method->body->body, localNS);
+        }
+    } else if (auto* n = dynamic_cast<ast::ClassDeclaration*>(stmt)) {
+        for (const auto& m : n->members) {
+            if (!m) continue;
+            if (auto* f = dynamic_cast<ast::FieldDeclaration*>(m.get())) {
+                rewriteNamespaceExpr(f->initializer, localNS);
+            } else if (auto* fn = dynamic_cast<ast::FunctionDeclaration*>(m.get())) {
+                if (fn->body) rewriteBlockBody(fn->body->body, localNS);
+            }
+        }
+    }
+}
+
+// --- Expression traversal (fold a namespace root, else recurse) ---
+static void rewriteNamespaceExpr(ast::ExprPtr& expr, const ModuleNSMap& localNS) {
+    if (!expr) return;
+    if (foldNamespaceMember(expr, localNS)) {
+        return;
+    }
+    if (auto* n = dynamic_cast<ast::CallExpression*>(expr.get())) {
+        rewriteNamespaceExpr(n->callee, localNS);
+        for (auto& a : n->arguments) rewriteNamespaceExpr(a, localNS);
+    } else if (auto* n = dynamic_cast<ast::MemberExpression*>(expr.get())) {
+        rewriteNamespaceExpr(n->object, localNS);
+        rewriteNamespaceExpr(n->property, localNS);
+    } else if (auto* n = dynamic_cast<ast::AssignmentExpression*>(expr.get())) {
+        rewriteNamespaceExpr(n->left, localNS);
+        rewriteNamespaceExpr(n->right, localNS);
+    } else if (auto* n = dynamic_cast<ast::ObjectLiteral*>(expr.get())) {
+        for (auto& prop : n->properties) rewriteNamespaceExpr(prop.value, localNS);
+    } else if (auto* n = dynamic_cast<ast::UnaryExpression*>(expr.get())) {
+        rewriteNamespaceExpr(n->operand, localNS);
+    } else if (auto* n = dynamic_cast<ast::BinaryExpression*>(expr.get())) {
+        rewriteNamespaceExpr(n->left, localNS);
+        rewriteNamespaceExpr(n->right, localNS);
+    } else if (auto* n = dynamic_cast<ast::LogicalExpression*>(expr.get())) {
+        rewriteNamespaceExpr(n->left, localNS);
+        rewriteNamespaceExpr(n->right, localNS);
+    } else if (auto* n = dynamic_cast<ast::ConditionalExpression*>(expr.get())) {
+        rewriteNamespaceExpr(n->condition, localNS);
+        rewriteNamespaceExpr(n->thenExpr, localNS);
+        rewriteNamespaceExpr(n->elseExpr, localNS);
+    } else if (auto* n = dynamic_cast<ast::SequenceExpression*>(expr.get())) {
+        for (auto& x : n->expressions) rewriteNamespaceExpr(x, localNS);
+    } else if (auto* n = dynamic_cast<ast::ArrayLiteral*>(expr.get())) {
+        for (auto& x : n->elements) rewriteNamespaceExpr(x, localNS);
+    } else if (auto* n = dynamic_cast<ast::BorrowExpression*>(expr.get())) {
+        rewriteNamespaceExpr(n->expression, localNS);
+    } else if (auto* n = dynamic_cast<ast::PointerDerefExpression*>(expr.get())) {
+        rewriteNamespaceExpr(n->pointer, localNS);
+    } else if (auto* n = dynamic_cast<ast::AddrOfExpression*>(expr.get())) {
+        rewriteNamespaceExpr(n->getLocation(), localNS);
+    } else if (auto* n = dynamic_cast<ast::ArrayElementExpression*>(expr.get())) {
+        rewriteNamespaceExpr(n->array, localNS);
+        rewriteNamespaceExpr(n->index, localNS);
+    } else if (auto* n = dynamic_cast<ast::LocationExpression*>(expr.get())) {
+        rewriteNamespaceExpr(n->expression, localNS);
+    } else if (auto* n = dynamic_cast<ast::ListComprehension*>(expr.get())) {
+        rewriteNamespaceExpr(n->elementExpr, localNS);
+        rewriteNamespaceExpr(n->iterableExpr, localNS);
+        rewriteNamespaceExpr(n->conditionExpr, localNS);
+    } else if (auto* n = dynamic_cast<ast::IfExpression*>(expr.get())) {
+        rewriteNamespaceExpr(n->condition, localNS);
+        rewriteNamespaceExpr(n->thenBranch, localNS);
+        rewriteNamespaceExpr(n->elseBranch, localNS);
+    } else if (auto* n = dynamic_cast<ast::ConstructionExpression*>(expr.get())) {
+        for (auto& a : n->arguments) rewriteNamespaceExpr(a, localNS);
+    } else if (auto* n = dynamic_cast<ast::ArrayInitializationExpression*>(expr.get())) {
+        rewriteNamespaceExpr(n->sizeExpression, localNS);
+    } else if (auto* n = dynamic_cast<ast::GenericInstantiationExpression*>(expr.get())) {
+        rewriteNamespaceExpr(n->baseExpression, localNS);
+    } else if (auto* n = dynamic_cast<ast::FunctionExpression*>(expr.get())) {
+        rewriteNamespaceExpr(n->body, localNS);
+    } else if (auto* n = dynamic_cast<ast::AwaitExpression*>(expr.get())) {
+        rewriteNamespaceExpr(n->expr, localNS);
+    } else if (auto* n = dynamic_cast<ast::RangeExpression*>(expr.get())) {
+        rewriteNamespaceExpr(n->start, localNS);
+        rewriteNamespaceExpr(n->end, localNS);
+        rewriteNamespaceExpr(n->step, localNS);
+    } else if (auto* n = dynamic_cast<ast::BlockExpression*>(expr.get())) {
+        if (n->block) rewriteBlockBody(n->block->body, localNS);
+        for (const auto& tc : n->trapClauses) {
+            if (tc) rewriteNamespaceRawStmt(tc->handler.get(), localNS);
+        }
+        if (n->ensureClause) rewriteNamespaceRawStmt(n->ensureClause->cleanupBlock.get(), localNS);
+    } else if (auto* n = dynamic_cast<ast::SelectExpression*>(expr.get())) {
+        rewriteNamespaceExpr(n->expr, localNS);
+        for (auto& c : n->cases) {
+            rewriteNamespaceExpr(c.first, localNS);
+            rewriteNamespaceExpr(c.second, localNS);
+        }
+    } else if (auto* n = dynamic_cast<ast::ComparisonPattern*>(expr.get())) {
+        rewriteNamespaceExpr(n->value, localNS);
+    } else if (auto* n = dynamic_cast<ast::TypeofExpression*>(expr.get())) {
+        rewriteNamespaceExpr(n->operand, localNS);
+    } else if (auto* n = dynamic_cast<ast::TypenameExpression*>(expr.get())) {
+        rewriteNamespaceExpr(n->operand, localNS);
+    } else if (auto* n = dynamic_cast<ast::AsExpression*>(expr.get())) {
+        rewriteNamespaceExpr(n->operand, localNS);
+    } else if (auto* n = dynamic_cast<ast::MatchExpression*>(expr.get())) {
+        rewriteNamespaceRawStmt(n->match.get(), localNS);
+    }
+}
+
+// Maps a namespace's carried origin symbol name to its mangled name.
+using NSSymbolMap = std::unordered_map<std::string, std::string>;
+
+// Rewrites, within a carried namespace declaration's subtree, every bare
+// identifier that names another symbol of the same namespace to its mangled form
+// (and, transitively, inside the statements/expressions of that declaration). This
+// keeps a module's own cross-references consistent once its top-level names are
+// mangled. A function-local variable that happens to shadow a namespace symbol is
+// treated as a reference (an accepted corner case for unusual naming).
+static void mangleBareExpr(ast::ExprPtr& expr, const NSSymbolMap& symbolToMangled);
+static void mangleBareRawStmt(ast::Statement* stmt, const NSSymbolMap& symbolToMangled);
+static void mangleBareStmt(ast::StmtPtr& stmt, const NSSymbolMap& symbolToMangled) {
+    if (!stmt) return;
+    mangleBareRawStmt(stmt.get(), symbolToMangled);
+}
+static void mangleBareBlock(std::vector<ast::StmtPtr>& body, const NSSymbolMap& m) {
+    for (auto& st : body) if (st) mangleBareStmt(st, m);
+}
+static void foldBareInit(std::shared_ptr<ast::Expression>& init, const NSSymbolMap& symbolToMangled) {
+    if (!init) return;
+    if (auto* id = dynamic_cast<ast::Identifier*>(init.get())) {
+        auto it = symbolToMangled.find(id->name);
+        if (it != symbolToMangled.end()) {
+            init = std::make_shared<ast::Identifier>(id->loc, it->second);
+        }
+    }
+}
+
+#define MANGLE_MEMBER(NAME) if (!foldIdentifierMember(NAME, symbolToMangled)) mangleBareExpr(NAME, symbolToMangled)
+
+static bool foldIdentifierMember(ast::ExprPtr& e, const NSSymbolMap& symbolToMangled) {
+    auto* id = dynamic_cast<ast::Identifier*>(e.get());
+    if (!id) return false;
+    auto it = symbolToMangled.find(id->name);
+    if (it == symbolToMangled.end()) return false;
+    ast::ExprPtr replacement = std::make_unique<ast::Identifier>(id->loc, it->second);
+    e = std::move(replacement);
+    return true;
+}
+
+static void mangleBareExpr(ast::ExprPtr& expr, const NSSymbolMap& symbolToMangled) {
+    if (!expr) return;
+    if (foldIdentifierMember(expr, symbolToMangled)) return;
+    if (auto* n = dynamic_cast<ast::CallExpression*>(expr.get())) {
+        MANGLE_MEMBER(n->callee);
+        for (auto& a : n->arguments) MANGLE_MEMBER(a);
+    } else if (auto* n = dynamic_cast<ast::MemberExpression*>(expr.get())) {
+        MANGLE_MEMBER(n->object);
+        MANGLE_MEMBER(n->property);
+    } else if (auto* n = dynamic_cast<ast::AssignmentExpression*>(expr.get())) {
+        MANGLE_MEMBER(n->left);
+        MANGLE_MEMBER(n->right);
+    } else if (auto* n = dynamic_cast<ast::ObjectLiteral*>(expr.get())) {
+        for (auto& prop : n->properties) MANGLE_MEMBER(prop.value);
+    } else if (auto* n = dynamic_cast<ast::UnaryExpression*>(expr.get())) {
+        MANGLE_MEMBER(n->operand);
+    } else if (auto* n = dynamic_cast<ast::BinaryExpression*>(expr.get())) {
+        MANGLE_MEMBER(n->left); MANGLE_MEMBER(n->right);
+    } else if (auto* n = dynamic_cast<ast::LogicalExpression*>(expr.get())) {
+        MANGLE_MEMBER(n->left); MANGLE_MEMBER(n->right);
+    } else if (auto* n = dynamic_cast<ast::ConditionalExpression*>(expr.get())) {
+        MANGLE_MEMBER(n->condition); MANGLE_MEMBER(n->thenExpr); MANGLE_MEMBER(n->elseExpr);
+    } else if (auto* n = dynamic_cast<ast::SequenceExpression*>(expr.get())) {
+        for (auto& x : n->expressions) MANGLE_MEMBER(x);
+    } else if (auto* n = dynamic_cast<ast::ArrayLiteral*>(expr.get())) {
+        for (auto& x : n->elements) MANGLE_MEMBER(x);
+    } else if (auto* n = dynamic_cast<ast::BorrowExpression*>(expr.get())) {
+        MANGLE_MEMBER(n->expression);
+    } else if (auto* n = dynamic_cast<ast::PointerDerefExpression*>(expr.get())) {
+        MANGLE_MEMBER(n->pointer);
+    } else if (auto* n = dynamic_cast<ast::AddrOfExpression*>(expr.get())) {
+        MANGLE_MEMBER(n->getLocation());
+    } else if (auto* n = dynamic_cast<ast::ArrayElementExpression*>(expr.get())) {
+        MANGLE_MEMBER(n->array); MANGLE_MEMBER(n->index);
+    } else if (auto* n = dynamic_cast<ast::LocationExpression*>(expr.get())) {
+        MANGLE_MEMBER(n->expression);
+    } else if (auto* n = dynamic_cast<ast::ListComprehension*>(expr.get())) {
+        MANGLE_MEMBER(n->elementExpr); MANGLE_MEMBER(n->iterableExpr); MANGLE_MEMBER(n->conditionExpr);
+    } else if (auto* n = dynamic_cast<ast::IfExpression*>(expr.get())) {
+        MANGLE_MEMBER(n->condition); MANGLE_MEMBER(n->thenBranch); MANGLE_MEMBER(n->elseBranch);
+    } else if (auto* n = dynamic_cast<ast::ConstructionExpression*>(expr.get())) {
+        for (auto& a : n->arguments) MANGLE_MEMBER(a);
+    } else if (auto* n = dynamic_cast<ast::ArrayInitializationExpression*>(expr.get())) {
+        MANGLE_MEMBER(n->sizeExpression);
+    } else if (auto* n = dynamic_cast<ast::GenericInstantiationExpression*>(expr.get())) {
+        MANGLE_MEMBER(n->baseExpression);
+    } else if (auto* n = dynamic_cast<ast::FunctionExpression*>(expr.get())) {
+        MANGLE_MEMBER(n->body);
+    } else if (auto* n = dynamic_cast<ast::AwaitExpression*>(expr.get())) {
+        MANGLE_MEMBER(n->expr);
+    } else if (auto* n = dynamic_cast<ast::RangeExpression*>(expr.get())) {
+        MANGLE_MEMBER(n->start); MANGLE_MEMBER(n->end); MANGLE_MEMBER(n->step);
+    } else if (auto* n = dynamic_cast<ast::BlockExpression*>(expr.get())) {
+        if (n->block) mangleBareBlock(n->block->body, symbolToMangled);
+    } else if (auto* n = dynamic_cast<ast::SelectExpression*>(expr.get())) {
+        MANGLE_MEMBER(n->expr);
+        for (auto& c : n->cases) { MANGLE_MEMBER(c.first); MANGLE_MEMBER(c.second); }
+    } else if (auto* n = dynamic_cast<ast::ComparisonPattern*>(expr.get())) {
+        MANGLE_MEMBER(n->value);
+    } else if (auto* n = dynamic_cast<ast::TypeofExpression*>(expr.get())) {
+        MANGLE_MEMBER(n->operand);
+    } else if (auto* n = dynamic_cast<ast::TypenameExpression*>(expr.get())) {
+        MANGLE_MEMBER(n->operand);
+    } else if (auto* n = dynamic_cast<ast::AsExpression*>(expr.get())) {
+        MANGLE_MEMBER(n->operand);
+    } else if (auto* n = dynamic_cast<ast::MatchExpression*>(expr.get())) {
+        if (n->match) mangleBareRawStmt(n->match.get(), symbolToMangled);
+    }
+}
+
+static void mangleBareRawStmt(ast::Statement* stmt, const NSSymbolMap& symbolToMangled) {
+    if (!stmt) return;
+    if (auto* n = dynamic_cast<ast::BlockStatement*>(stmt)) {
+        mangleBareBlock(n->body, symbolToMangled);
+    } else if (auto* n = dynamic_cast<ast::ExpressionStatement*>(stmt)) {
+        MANGLE_MEMBER(n->expression);
+    } else if (auto* n = dynamic_cast<ast::IfStatement*>(stmt)) {
+        MANGLE_MEMBER(n->test); mangleBareRawStmt(n->consequent.get(), symbolToMangled); mangleBareRawStmt(n->alternate.get(), symbolToMangled);
+    } else if (auto* n = dynamic_cast<ast::WhileStatement*>(stmt)) {
+        MANGLE_MEMBER(n->test); mangleBareRawStmt(n->body.get(), symbolToMangled);
+    } else if (auto* n = dynamic_cast<ast::ForStatement*>(stmt)) {
+        if (n->init) {
+            if (auto* es = dynamic_cast<ast::ExpressionStatement*>(n->init.get())) MANGLE_MEMBER(es->expression);
+            else if (auto* vd = dynamic_cast<ast::VariableDeclaration*>(n->init.get())) foldBareInit(vd->init, symbolToMangled);
+        }
+        MANGLE_MEMBER(n->test); MANGLE_MEMBER(n->update); mangleBareRawStmt(n->body.get(), symbolToMangled);
+    } else if (auto* n = dynamic_cast<ast::ReturnStatement*>(stmt)) {
+        MANGLE_MEMBER(n->argument);
+    } else if (auto* n = dynamic_cast<ast::PassStatement*>(stmt)) {
+        MANGLE_MEMBER(n->argument);
+    } else if (auto* n = dynamic_cast<ast::TryStatement*>(stmt)) {
+        if (n->tryBlock) mangleBareBlock(n->tryBlock->body, symbolToMangled);
+        if (n->catchBlock) mangleBareBlock(n->catchBlock->body, symbolToMangled);
+        if (n->finallyBlock) mangleBareBlock(n->finallyBlock->body, symbolToMangled);
+    } else if (auto* n = dynamic_cast<ast::UnsafeStatement*>(stmt)) {
+        if (n->block) mangleBareBlock(n->block->body, symbolToMangled);
+    } else if (auto* n = dynamic_cast<ast::ThrowStatement*>(stmt)) {
+        MANGLE_MEMBER(n->expr);
+    } else if (auto* n = dynamic_cast<ast::MatchStatement*>(stmt)) {
+        MANGLE_MEMBER(n->expr);
+        for (auto& c : n->cases) { MANGLE_MEMBER(c.first); MANGLE_MEMBER(c.second); }
+        for (auto& g : n->guards) MANGLE_MEMBER(g);
+    } else if (auto* n = dynamic_cast<ast::YieldStatement*>(stmt)) {
+        MANGLE_MEMBER(n->expression);
+    } else if (auto* n = dynamic_cast<ast::YieldReturnStatement*>(stmt)) {
+        MANGLE_MEMBER(n->expression);
+    } else if (auto* n = dynamic_cast<ast::AssertStatement*>(stmt)) {
+        MANGLE_MEMBER(n->condition); MANGLE_MEMBER(n->message);
+    } else if (auto* n = dynamic_cast<ast::FailStatement*>(stmt)) {
+        MANGLE_MEMBER(n->error);
+    } else if (auto* n = dynamic_cast<ast::RethrowStatement*>(stmt)) {
+        MANGLE_MEMBER(n->transformedError);
+    } else if (auto* n = dynamic_cast<ast::PanicStatement*>(stmt)) {
+        MANGLE_MEMBER(n->message);
+    } else if (auto* n = dynamic_cast<ast::ExitStatement*>(stmt)) {
+        MANGLE_MEMBER(n->code);
+    } else if (auto* n = dynamic_cast<ast::DeferStatement*>(stmt)) {
+        mangleBareRawStmt(n->statement.get(), symbolToMangled);
+    } else if (auto* n = dynamic_cast<ast::TupleDestructureAssignment*>(stmt)) {
+        MANGLE_MEMBER(n->expression);
+    } else if (auto* n = dynamic_cast<ast::VariableDeclaration*>(stmt)) {
+        foldBareInit(n->init, symbolToMangled);
+    } else if (auto* n = dynamic_cast<ast::FunctionDeclaration*>(stmt)) {
+        if (n->body) mangleBareBlock(n->body->body, symbolToMangled);
+    } else if (auto* n = dynamic_cast<ast::StructDeclaration*>(stmt)) {
+        for (const auto& ctor : n->constructors) if (ctor && ctor->body) mangleBareBlock(ctor->body->body, symbolToMangled);
+    } else if (auto* n = dynamic_cast<ast::AspectDeclaration*>(stmt)) {
+        for (const auto& method : n->methods) if (method && method->body) mangleBareBlock(method->body->body, symbolToMangled);
+    } else if (auto* n = dynamic_cast<ast::BindDeclaration*>(stmt)) {
+        for (const auto& method : n->methods) if (method && method->body) mangleBareBlock(method->body->body, symbolToMangled);
+    } else if (auto* n = dynamic_cast<ast::ClassDeclaration*>(stmt)) {
+        for (const auto& m : n->members) {
+            if (!m) continue;
+            if (auto* fn = dynamic_cast<ast::FunctionDeclaration*>(m.get())) { if (fn->body) mangleBareBlock(fn->body->body, symbolToMangled); }
+        }
+    }
+}
+
+#undef MANGLE_MEMBER
+
 std::string trimCopy(const std::string& text) {
     size_t start = 0;
     while (start < text.size() && std::isspace(static_cast<unsigned char>(text[start]))) {
@@ -654,6 +1087,12 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                     std::make_unique<ast::StringLiteral>(SourceLocation{}, "core::aspects")));
         }
 
+        // Per-module namespace bindings (ns name -> carried symbol origin names)
+        // and the indices of this module's own (non-import, non-spliced) top-level
+        // statements, which are the only ones rewritten for qualified `NS.sym`.
+        ModuleNSMap localNamespaces;
+        std::vector<size_t> ownStmtIndices;
+
         for (auto& stmt : module->body) {
             if (auto* importDecl = dynamic_cast<ast::ImportDeclaration*>(stmt.get())) {
                 std::vector<std::string> importShare;
@@ -662,13 +1101,27 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                 }
                 ++importIndex;
 
+                // Whole-module namespace import: `import module as NS`,
+                // `import * as NS from "..."`, or the legacy `as`-alias encoding
+                // (a specifier carrying a null imported name). The namespace binds
+                // the origin module's visible exports under `NS` for qualified
+                // `NS.sym` access instead of importing them into the module's
+                // unqualified scope.
+                std::string nsName = importDecl->namespaceImport ? importDecl->namespaceImport->name : "";
                 for (const auto& specifier : importDecl->specifiers) {
                     if (!specifier.importedName) {
+                        if (specifier.localName && nsName.empty()) {
+                            nsName = specifier.localName->name;
+                        }
+                        continue;
+                    }
+                    if (!nsName.empty()) {
                         throw std::runtime_error(
                             "Module resolution error in " + currentKey +
-                            ": whole-module aliases are not supported; use import module::{symbol as alias}");
+                            ": cannot combine a namespace alias with an import list");
                     }
                 }
+                const bool isNamespaceImport = !nsName.empty();
 
                 if (!options_.skipImportResolution) {
                 ResolvedImportPath importPath = resolveImportPath(importDecl, currentPath);
@@ -746,8 +1199,9 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                 // `smuggle` grants whatever is smuggled; `share(...)` also adds
                 // the granted names back to this module's exports. Computed even
                 // for an already-emitted module so every importer's scope is
-                // correct regardless of splice order.
-                {
+                // correct regardless of splice order. A namespace import adds
+                // nothing to the unqualified scope (access is via `NS.sym` only).
+                if (!isNamespaceImport) {
                     const bool isSmuggle = importDecl->kind == ast::ImportKind::Smuggle;
                     const std::unordered_set<std::string>& importedExports = exports_[importedKey];
                     const std::unordered_set<std::string>& importedScope =
@@ -790,6 +1244,23 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                 // as aspects are spliced, but binds must not leak in just because the
                 // requested set emptied mid-splice.
                 const std::unordered_set<std::string> requestedForBinds = requestedNames;
+
+                // Namespace symbol map collected from splicing (origin name -> mangled
+                // name) exposed under `nsName`. Only genuine non-bind declarations
+                // participate. Precomputed so bare cross-references inside any carried
+                // declaration can be re-mapped to their mangled names consistently.
+                std::unordered_map<std::string, std::string> namespaceMangled;
+                if (isNamespaceImport) {
+                    for (const auto& decl : importedRecord.module->body) {
+                        if (!decl || isMainFunction(decl)) continue;
+                        if (dynamic_cast<ast::BindDeclaration*>(decl.get())) continue;
+                        std::string n = declarationName(decl);
+                        if (n.empty()) continue;
+                        if (declarationVisible(n, importedRecord, metadata.bundles, importDecl)) {
+                            namespaceMangled[n] = mangledNamespaceName(nsName, n);
+                        }
+                    }
+                }
 
                 // A carried declaration keeps the visibility it had in its origin
                 // module (e.g. a `share(all)` dependency symbol stays share(all))
@@ -876,6 +1347,31 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                                                  importPath.importerFile + ":" + std::to_string(importPath.line));
                     }
 
+                    if (isNamespaceImport) {
+                        std::string mangled = mangledNamespaceName(nsName, originName);
+                        if (!renameDeclaration(importedStmt, mangled)) {
+                            throw std::runtime_error("Cannot mangle namespace import '" + originName +
+                                                     "' from " + importedRecord.sourcePath.string());
+                        }
+                        // Re-map the carried declaration's own cross-references to the
+                        // mangled names so its internal calls/reads stay consistent.
+                        mangleBareStmt(importedStmt, namespaceMangled);
+                        if (seenNames.find(mangled) != seenNames.end()) {
+                            throw std::runtime_error("Duplicate symbol after splice: '" + mangled +
+                                                     "' while importing '" + importPath.importSpelling + "' from " +
+                                                     importPath.importerFile + ":" + std::to_string(importPath.line));
+                        }
+                        seenNames.insert(mangled);
+                        // The mangled symbol keeps share visibility from its origin so
+                        // it can follow an exported function onto the next import hop
+                        // (the mangled name is not user-writeable, so this never
+                        // exposes the plain symbol unqualified).
+                        carryShare(originName, mangled);
+                        namespaceMangled[originName] = mangled;
+                        resolvedBody.push_back(std::move(importedStmt));
+                        continue;
+                    }
+
                     seenNames.insert(name);
                     carryShare(originName, name);
                     resolvedBody.push_back(std::move(importedStmt));
@@ -889,6 +1385,10 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                                              std::to_string(importPath.line) + ")");
                 }
 
+                if (isNamespaceImport) {
+                    localNamespaces[nsName] = std::move(namespaceMangled);
+                }
+
                 importedRecord.emitted = true;
                 continue;
                 }
@@ -898,7 +1398,23 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
             if (!name.empty()) {
                 seenNames.insert(name);
             }
+            ownStmtIndices.push_back(resolvedBody.size());
             resolvedBody.push_back(std::move(stmt));
+        }
+
+        // Register this module's namespace bindings and rewrite its own qualified
+        // `NS.sym` references to the plain symbols they name. Declarations spliced
+        // in from other modules are not rewritten here - each module rewrote its
+        // own references during its own resolution.
+        for (const auto& nsPair : localNamespaces) {
+            namespaces_[currentKey][nsPair.first] = nsPair.second;
+        }
+        if (!localNamespaces.empty()) {
+            for (size_t idx : ownStmtIndices) {
+                if (idx < resolvedBody.size() && resolvedBody[idx]) {
+                    rewriteNamespaceRawStmt(resolvedBody[idx].get(), localNamespaces);
+                }
+            }
         }
 
         // Every name present in the module's (now fully spliced) scope - its own
@@ -936,8 +1452,8 @@ ModuleRegistry::ResolvedImportPath ModuleRegistry::resolveImportPath(const ast::
         throw std::runtime_error("Malformed import declaration");
     }
 
-    if (importDecl->defaultImport || importDecl->namespaceImport) {
-        throw std::runtime_error("Unsupported import form: default and namespace imports are not yet supported (" +
+    if (importDecl->defaultImport) {
+        throw std::runtime_error("Unsupported import form: default imports are not yet supported (" +
                                  importDecl->toString() + ")");
     }
 

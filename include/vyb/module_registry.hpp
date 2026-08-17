@@ -58,6 +58,8 @@ public:
     const std::unordered_map<std::string, std::unordered_set<std::string>>& effectiveScope() const { return effectiveScope_; }
     const std::unordered_map<std::string, std::unordered_set<std::string>>& exportsPerModule() const { return exports_; }
     const std::unordered_map<std::string, std::unordered_set<std::string>>& allNamesPerModule() const { return allNames_; }
+    // Namespace imports: module key -> (namespace identifier -> (symbol name -> mangled name)).
+    const std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<std::string, std::string>>>& namespacesPerModule() const { return namespaces_; }
 
 private:
     struct SourceMetadata {
@@ -85,6 +87,7 @@ private:
     std::unordered_map<std::string, std::unordered_set<std::string>> effectiveScope_;
     std::unordered_map<std::string, std::unordered_set<std::string>> exports_;
     std::unordered_map<std::string, std::unordered_set<std::string>> allNames_;
+    std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<std::string, std::string>>> namespaces_;
 
     std::string resolveModule(const std::string& source,
                               const std::filesystem::path& sourcePath,

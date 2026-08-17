@@ -1343,6 +1343,30 @@ std::unique_ptr<vyb::ast::Declaration> DeclarationParser::parse_template_declara
 std::unique_ptr<vyb::ast::ImportDeclaration> DeclarationParser::parse_import_declaration() {
     vyb::SourceLocation loc = this->current_location();
     this->expect(vyb::TokenType::KEYWORD_IMPORT);
+
+    // Namespace import: `import * as NS from "path"` binds the whole module's
+    // visible exports under the identifier `NS` for qualified access (`NS.sym`).
+    if (this->peek().type == vyb::TokenType::MULTIPLY) {
+        this->consume(); // '*'
+        if (!this->match(vyb::TokenType::KEYWORD_AS)) {
+            throw std::runtime_error("Expected 'as' after '*' in namespace import at " + location_to_string(this->current_location()));
+        }
+        if (this->peek().type != vyb::TokenType::IDENTIFIER) {
+            throw std::runtime_error("Expected identifier after '*' in namespace import at " + location_to_string(this->current_location()));
+        }
+        auto nsAlias = std::make_unique<ast::Identifier>(this->current_location(), this->consume().lexeme);
+        if (!this->match(vyb::TokenType::KEYWORD_FROM)) {
+            throw std::runtime_error("Expected 'from' after namespace alias in import at " + location_to_string(this->current_location()));
+        }
+        if (this->peek().type != vyb::TokenType::STRING_LITERAL) {
+            throw std::runtime_error("Expected string literal after 'from' in namespace import at " + location_to_string(this->current_location()));
+        }
+        auto nsSource = std::make_unique<ast::StringLiteral>(this->current_location(), this->consume().lexeme);
+        this->match(vyb::TokenType::SEMICOLON);
+        return std::make_unique<vyb::ast::ImportDeclaration>(loc, vyb::ast::ImportKind::TrustedImport,
+            std::move(nsSource), nullptr, std::vector<ast::ImportSpecifier>{}, nullptr, std::move(nsAlias));
+    }
+
     if (this->peek().type != vyb::TokenType::IDENTIFIER) {
         throw std::runtime_error("Expected identifier after \'import\' at " + location_to_string(this->current_location()));
     }
@@ -1396,7 +1420,13 @@ std::unique_ptr<vyb::ast::ImportDeclaration> DeclarationParser::parse_import_dec
     this->match(vyb::TokenType::SEMICOLON);
     auto source = std::make_unique<ast::StringLiteral>(loc, path);
     if (alias) {
-        specifiers.emplace_back(nullptr, std::move(alias));
+        if (specifiers.empty()) {
+            // `import module as NS` -> whole-module namespace import.
+            return std::make_unique<vyb::ast::ImportDeclaration>(loc, vyb::ast::ImportKind::TrustedImport,
+                std::move(source), std::move(locator), std::vector<ast::ImportSpecifier>{}, nullptr, std::move(alias));
+        }
+        throw std::runtime_error("Namespace alias on an import list is not supported; use `import module as NS` or `import module::{a, b}` at " +
+            location_to_string(this->current_location()));
     }
     return std::make_unique<vyb::ast::ImportDeclaration>(loc, vyb::ast::ImportKind::TrustedImport, std::move(source), std::move(locator), std::move(specifiers));
 }
@@ -1404,6 +1434,29 @@ std::unique_ptr<vyb::ast::ImportDeclaration> DeclarationParser::parse_import_dec
 std::unique_ptr<vyb::ast::ImportDeclaration> DeclarationParser::parse_smuggle_declaration() {
     vyb::SourceLocation loc = this->current_location();
     this->expect(vyb::TokenType::KEYWORD_SMUGGLE);
+
+    // Namespace import: `smuggle * as NS from "path"`.
+    if (this->peek().type == vyb::TokenType::MULTIPLY) {
+        this->consume(); // '*'
+        if (!this->match(vyb::TokenType::KEYWORD_AS)) {
+            throw std::runtime_error("Expected 'as' after '*' in smuggle namespace import at " + location_to_string(this->current_location()));
+        }
+        if (this->peek().type != vyb::TokenType::IDENTIFIER) {
+            throw std::runtime_error("Expected identifier after '*' in smuggle namespace import at " + location_to_string(this->current_location()));
+        }
+        auto nsAlias = std::make_unique<ast::Identifier>(this->current_location(), this->consume().lexeme);
+        if (!this->match(vyb::TokenType::KEYWORD_FROM)) {
+            throw std::runtime_error("Expected 'from' after namespace alias in smuggle import at " + location_to_string(this->current_location()));
+        }
+        if (this->peek().type != vyb::TokenType::STRING_LITERAL) {
+            throw std::runtime_error("Expected string literal after 'from' in smuggle namespace import at " + location_to_string(this->current_location()));
+        }
+        auto nsSource = std::make_unique<ast::StringLiteral>(this->current_location(), this->consume().lexeme);
+        this->match(vyb::TokenType::SEMICOLON);
+        return std::make_unique<vyb::ast::ImportDeclaration>(loc, vyb::ast::ImportKind::Smuggle,
+            std::move(nsSource), nullptr, std::vector<ast::ImportSpecifier>{}, nullptr, std::move(nsAlias));
+    }
+
     if (this->peek().type != vyb::TokenType::IDENTIFIER) {
         throw std::runtime_error("Expected identifier after \'smuggle\' at " + location_to_string(this->current_location()));
     }
@@ -1459,7 +1512,13 @@ std::unique_ptr<vyb::ast::ImportDeclaration> DeclarationParser::parse_smuggle_de
     this->match(vyb::TokenType::SEMICOLON);
     auto source = std::make_unique<ast::StringLiteral>(loc, path);
     if (alias) {
-        specifiers.emplace_back(nullptr, std::move(alias));
+        if (specifiers.empty()) {
+            // `smuggle module as NS` -> whole-module namespace import.
+            return std::make_unique<vyb::ast::ImportDeclaration>(loc, vyb::ast::ImportKind::Smuggle,
+                std::move(source), std::move(locator), std::vector<ast::ImportSpecifier>{}, nullptr, std::move(alias));
+        }
+        throw std::runtime_error("Namespace alias on a smuggle list is not supported; use `smuggle module as NS` or `smuggle module::{a, b}` at " +
+            location_to_string(this->current_location()));
     }
     return std::make_unique<vyb::ast::ImportDeclaration>(loc, vyb::ast::ImportKind::Smuggle, std::move(source), std::move(locator), std::move(specifiers));
 }
