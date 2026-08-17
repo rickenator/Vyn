@@ -607,8 +607,8 @@ std::unique_ptr<vyb::ast::ForStatement> StatementParser::buildForLoopIteratorDes
             loc, std::move(member), std::vector<vyb::ast::ExprPtr>());
     };
 
-    // None -> { break }
-    auto none_pattern = std::make_unique<vyb::ast::Identifier>(loc, "None");
+    // ? -> { break }  (absent case of the native `T?` next() result)
+    vyb::ast::ExprPtr none_pattern = nullptr;
     std::vector<vyb::ast::StmtPtr> break_block_stmts;
     break_block_stmts.push_back(std::make_unique<vyb::ast::BreakStatement>(loc));
     auto break_block = std::make_unique<vyb::ast::BlockStatement>(loc, std::move(break_block_stmts));
@@ -644,14 +644,9 @@ std::unique_ptr<vyb::ast::ForStatement> StatementParser::buildForLoopIteratorDes
         token::Token lt_op(vyb::TokenType::LT, "<", loc);
         auto cond = std::make_unique<vyb::ast::BinaryExpression>(loc, std::move(lt_s), lt_op, std::move(lt_step));
 
-        // inner match: Some(__v_<item>) -> { __s_ += 1 } | None -> { __s_ = __step_ }
+        // inner match: __v_<item> -> { __s_ += 1 } | ? -> { __s_ = __step_ }
         auto v_binding = std::make_unique<vyb::ast::Identifier>(loc, v_name);
-        auto v_some_type_id = std::make_unique<vyb::ast::Identifier>(loc, "Some");
-        auto v_some_name = std::make_unique<vyb::ast::TypeName>(loc, std::move(v_some_type_id));
-        std::vector<vyb::ast::ExprPtr> v_some_args;
-        v_some_args.push_back(std::move(v_binding));
-        auto v_some_pattern = std::make_unique<vyb::ast::ConstructionExpression>(
-            loc, std::move(v_some_name), std::move(v_some_args));
+        auto v_some_pattern = std::move(v_binding);
         auto s_inc_l = std::make_unique<vyb::ast::Identifier>(loc, s_name);
         auto s_inc_rl = std::make_unique<vyb::ast::Identifier>(loc, s_name);
         auto s_one2 = std::make_unique<vyb::ast::IntegerLiteral>(loc, 1);
@@ -672,7 +667,7 @@ std::unique_ptr<vyb::ast::ForStatement> StatementParser::buildForLoopIteratorDes
         inner_none_stmts.push_back(std::make_unique<vyb::ast::ExpressionStatement>(loc, std::move(s_reset)));
         auto inner_none_block = std::make_unique<vyb::ast::BlockStatement>(loc, std::move(inner_none_stmts));
         auto inner_none_body = std::make_unique<vyb::ast::BlockExpression>(loc, std::move(inner_none_block));
-        auto inner_none_pattern = std::make_unique<vyb::ast::Identifier>(loc, "None");
+        vyb::ast::ExprPtr inner_none_pattern = nullptr;
         std::vector<std::pair<vyb::ast::ExprPtr, vyb::ast::ExprPtr>> inner_cases;
         inner_cases.emplace_back(std::move(v_some_pattern), std::move(v_arm_body));
         inner_cases.emplace_back(std::move(inner_none_pattern), std::move(inner_none_body));
@@ -690,13 +685,9 @@ std::unique_ptr<vyb::ast::ForStatement> StatementParser::buildForLoopIteratorDes
         }
     }
 
-    // Some(<item>) -> { body }   (body may absorb the skip prologue above)
-    auto some_type_id = std::make_unique<vyb::ast::Identifier>(loc, "Some");
-    auto some_name = std::make_unique<vyb::ast::TypeName>(loc, std::move(some_type_id));
-    std::vector<vyb::ast::ExprPtr> some_args;
-    some_args.push_back(std::move(some_binding));
-    auto outer_some_pattern = std::make_unique<vyb::ast::ConstructionExpression>(
-        loc, std::move(some_name), std::move(some_args));
+    // <item> -> { body }  (present arm binds the element; body may absorb the
+    // skip prologue above). The `?` arm below handles the absent case.
+    auto outer_some_pattern = std::move(some_binding);
     auto some_body_expr = std::make_unique<vyb::ast::BlockExpression>(loc, std::move(body));
 
     std::vector<std::pair<vyb::ast::ExprPtr, vyb::ast::ExprPtr>> cases;

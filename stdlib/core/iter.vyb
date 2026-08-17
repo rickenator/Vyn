@@ -2,24 +2,25 @@
 #
 # `Iterator` is Vyb's single iteration contract (see the [DECIDED] aspect-based
 # design in TODO.md). A type binds it, assigns the associated `type Item` (what
-# the iterator yields), and implements `next`, which returns `Some(value)` for
-# each element and `None` once the sequence is exhausted. The receiver is taken
-# by reference (`self<their<Self>>`) so `next` can advance internal cursor state
-# in place on the caller's object.
+# the iterator yields), and implements `next`, which returns the native optional
+# `Self::Item?` -- present (the bare payload) for each element, absent when the
+# sequence is exhausted. The receiver is taken by reference
+# (`self<their<Self>>`) so `next` can advance internal cursor state in place on
+# the caller's object.
 #
-# A bound iterator is consumed by calling `.next()` in a loop:
+# A bound iterator is consumed by calling `.next()` in a loop with the native
+# optional surface (present binds the bare value, `?` is the absent arm):
 #
 #   import core::iter
 #
 #   while (true) {
 #       match (it.next()) {
-#           Some(v) -> { ... use v ... }
-#           None   -> { break }
+#           v -> { ... use v ... }
+#           ?  -> { break }
 #       }
 #   }
 #
-# `for (item in it)` desugaring over this protocol is a compiler follow-up; until
-# it ships, use the explicit `.next()` / `match` loop above.
+# `for (item in it)` desugars to exactly that `.next()` / `match` loop.
 #
 # This module is explicitly imported (`import core::iter`) — it is not part of the
 # auto-imported core contracts module (`core::aspects`), so bind authors keep full
@@ -28,5 +29,5 @@
 share(all)
 aspect Iterator {
     type Item
-    next(self<their<Self>>)<Option<Self::Item>> -> { }
+    next(self<their<Self>>)<Self::Item ?> -> { }
 }

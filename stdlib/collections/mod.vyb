@@ -59,7 +59,8 @@ share(all) import core::iter::{Iterator}
 
 # VecIter<T> - a cursor-based iterator over a `Vec<T>`. Holds the Vec by
 # reference (a `their<Vec<T>>` view) and a next index, implementing `core::iter`:
-# `next(self)<Option<Item>>` yields `Some(v)` per element and `None` when done,
+# `next(self)<Item?>` yields the native optional: present (a bare value) per
+# element and absent when done,
 # advancing the cursor in place through the by-ref receiver. Build one with
 # `v.iter()` (from `VecHigherOps`) or construct it directly. Consume with an
 # explicit `.next()` / `match` loop until the `for`-loop desugar ships.
@@ -72,13 +73,13 @@ struct VecIter<T> {
 share(all)
 bind<T> Iterator -> VecIter<T> {
     type Item = T
-    next(self<their<VecIter<T>>>)<Option<T>> -> {
+    next(self<their<VecIter<T>>>)<T?> -> {
         if (self.index < self.data.len()) {
             v<T> = self.data.get(self.index)
             self.index = self.index + 1
-            return Some(v)
+            return T?(v)
         }
-        return None
+        return T?()
     }
 
     # Iterators are themselves iterable: `it.iter()` yields a fresh iterator over
@@ -165,8 +166,9 @@ struct HashMap<K, V> {
 
 # MapIter<K, V> - cursor iterator over a `HashMap<K, V>`, bound to
 # `core::iter::Iterator`. Holds the map by reference (a `their<HashMap<K, V>>`
-# view) and a next index; `next` yields `Some(MapEntry<K, V>)` per slot (in
-# insertion order) / `None`. Each entry carries the pair's `key` and `value`.
+# view) and a next index; `next` yields the native `MapEntry<K, V>?` -- present
+# (a bare entry) per slot in insertion order / absent when done. Each entry
+# carries the pair's `key` and `value`.
 share(all)
 struct MapEntry<K, V> {
     key<K>,
@@ -182,13 +184,13 @@ struct MapIter<K, V> {
 share(all)
 bind<K<Hashable, Equatable>, V> Iterator -> MapIter<K, V> {
     type Item = MapEntry<K, V>
-    next(self<their<MapIter<K, V>>>)<Option<MapEntry<K, V>>> -> {
+    next(self<their<MapIter<K, V>>>)<MapEntry<K, V>?> -> {
         if (self.index < self.map.keys.len()) {
             e<MapEntry<K, V>> = MapEntry<K, V> { key = self.map.keys.get(self.index), value = self.map.vals.get(self.index) }
             self.index = self.index + 1
-            return Some(e)
+            return MapEntry<K, V>?(e)
         }
-        return None
+        return MapEntry<K, V>?()
     }
 
     # Iterators are themselves iterable over the same underlying map.
@@ -331,7 +333,7 @@ struct HashSet<K> {
 
 # HashIter<K> - cursor iterator over a `HashSet<K>`, bound to
 # `core::iter::Iterator`. Holds the set by reference and a next index; `next`
-# yields `Some(value)` per element / `None`.
+# yields the native `K?` -- present (a bare value) per element / absent.
 share(all)
 struct HashIter<K> {
     set<their<HashSet<K>>>,
@@ -341,13 +343,13 @@ struct HashIter<K> {
 share(all)
 bind<K<Hashable, Equatable>> Iterator -> HashIter<K> {
     type Item = K
-    next(self<their<HashIter<K>>>)<Option<K>> -> {
+    next(self<their<HashIter<K>>>)<K?> -> {
         if (self.index < self.set.values.len()) {
             v<K> = self.set.values.get(self.index)
             self.index = self.index + 1
-            return Some(v)
+            return K?(v)
         }
-        return None
+        return K?()
     }
 
     # Iterators are themselves iterable over the same underlying set.
@@ -461,13 +463,13 @@ struct BTreeIter<K, V> {
 share(all)
 bind<K<Comparable, Equatable>, V> Iterator -> BTreeIter<K, V> {
     type Item = MapEntry<K, V>
-    next(self<their<BTreeIter<K, V>>>)<Option<MapEntry<K, V>>> -> {
+    next(self<their<BTreeIter<K, V>>>)<MapEntry<K, V>?> -> {
         if (self.index < self.map.keys.len()) {
             e<MapEntry<K, V>> = MapEntry<K, V> { key = self.map.keys.get(self.index), value = self.map.vals.get(self.index) }
             self.index = self.index + 1
-            return Some(e)
+            return MapEntry<K, V>?(e)
         }
-        return None
+        return MapEntry<K, V>?()
     }
 
     # Iterators are themselves iterable over the same underlying map.

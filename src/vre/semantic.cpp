@@ -1925,10 +1925,31 @@ void SemanticAnalyzer::visit(ast::BinaryExpression* node) {
             }
             ast::TypeNode* contained = optTy->containedType.get();
             if (!areTypesCompatible(contained, rightType)) {
-                addError("'else' default value type '" + rightType->toString() +
-                         "' is not assignable to the optional payload type '" +
-                         contained->toString() + "'.", node);
-                return;
+                // A dangling generic payload (e.g. the `T?` return of a generic
+                // free function whose `T` isn't resolved to a concrete type at
+                // this call site) can't be checked for assignability here; codegen
+                // enforces it against the concrete monomorphized payload. Only bail
+                // when the payload is a concrete, resolvable type, so genuine
+                // mismatch errors are still reported.
+                auto* containedTn = dynamic_cast<ast::TypeName*>(contained);
+                static const std::set<std::string> primTypes = {
+                    "Int", "Int8", "Int16", "Int32", "Int64",
+                    "UInt", "UInt8", "UInt16", "UInt32", "UInt64",
+                    "Float", "Float32", "Float64", "Bool", "Char", "String", "Void"};
+                bool concrete = containedTn &&
+                    (!containedTn->genericArgs.empty() ||
+                     structFieldTypes.count(containedTn->identifier->name) ||
+                     primTypes.count(containedTn->identifier->name));
+                if (concrete) {
+                    addError("'else' default value type '" + rightType->toString() +
+                             "' is not assignable to the optional payload type '" +
+                             contained->toString() + "'.", node);
+                    return;
+                }
+                // Unresolved generic payload: accept and let the default's type
+                // carry through semantic propagation (codegen uses LLVM types).
+                resultType = rightType;
+                break;
             }
             resultType = contained;
             break;
@@ -5731,6 +5752,19 @@ void SemanticAnalyzer::visit(ast::MatchStatement* node) {
     // `Some(x)` / `None` resolve below.
     if (node->expr) materializeConcreteEnum(node->expr->type.get());
 
+    // A match over a native optional `T?`: the present arm binds the bare payload
+    // (`v ->`) and the `?` wildcard is the absent arm, so a bare identifier in a
+    // pattern is a payload binding rather than a plain value reference.
+    ast::OptionalType* matchedOptionalType =
+        (node->expr && node->expr->type)
+            ? dynamic_cast<ast::OptionalType*>(node->expr->type.get()) : nullptr;
+    if (!matchedOptionalType && node->expr) {
+        auto eIt = expressionTypes.find(node->expr.get());
+        if (eIt != expressionTypes.end() && eIt->second) {
+            matchedOptionalType = dynamic_cast<ast::OptionalType*>(eIt->second);
+        }
+    }
+
     // Track comparison patterns for unreachable detection
     struct ComparisonInfo {
         vyb::TokenType op;
@@ -5970,18 +6004,37 @@ void SemanticAnalyzer::visit(ast::MatchStatement* node) {
                 ctor->accept(*this);
             }
         } else if (auto* vid = dynamic_cast<ast::Identifier*>(pattern.get())) {
-            // Enum unit-variant pattern: `Unit`, `None`. When matching a tagged
-            // enum and the identifier names one of its variants, it binds no
-            // payload; otherwise it is a plain literal/identifier pattern.
-            bool handled = false;
-            if (!matchTypeStr.empty()) {
-                auto variantsIt = enumVariantPayloadTypes.find(matchTypeStr);
-                if (variantsIt != enumVariantPayloadTypes.end() && variantsIt->second.count(vid->name)) {
-                    handled = true;
+            if (matchedOptionalType) {
+                // Native optional present arm: bind the payload as a variable in
+                // the case scope.
+                if (currentScope->lookupDirect(vid->name)) {
+                    addError("Redefinition of variable \"" + vid->name +
+                             "\" in optional present pattern.", vid);
+                    vid->type = nullptr;
+                } else if (!matchedOptionalType->containedType) {
+                    addError("Optional present arm has no payload type.", vid);
+                } else {
+                    ast::TypeNode* optPayload = matchedOptionalType->containedType.get();
+                    currentScope->add(SymbolInfo{SymbolInfo::Kind::Variable, vid->name, false,
+                        ast::OwnershipKind::MY,
+                        optPayload ? retainType(optPayload->clone().release()) : nullptr});
+                    vid->type = optPayload
+                        ? std::shared_ptr<ast::TypeNode>(optPayload->clone().release()) : nullptr;
                 }
-            }
-            if (!handled) {
-                vid->accept(*this);
+            } else {
+                // Enum unit-variant pattern: `Unit`, `None`. When matching a tagged
+                // enum and the identifier names one of its variants, it binds no
+                // payload; otherwise it is a plain literal/identifier pattern.
+                bool handled = false;
+                if (!matchTypeStr.empty()) {
+                    auto variantsIt = enumVariantPayloadTypes.find(matchTypeStr);
+                    if (variantsIt != enumVariantPayloadTypes.end() && variantsIt->second.count(vid->name)) {
+                        handled = true;
+                    }
+                }
+                if (!handled) {
+                    vid->accept(*this);
+                }
             }
         } else {
             // Other pattern types
@@ -6040,6 +6093,23 @@ void SemanticAnalyzer::visit(ast::MatchStatement* node) {
                          uncovered + " are not covered by an unguarded arm " +
                          "(add an unguarded arm or a wildcard '?')", node);
             }
+        }
+    }
+
+    // Exhaustiveness for the native optional: an optional has exactly two states,
+    // so a match must cover the present payload (a binding arm) and the absent
+    // case (the `?` wildcard).
+    if (matchedOptionalType && wildcardIndex == SIZE_MAX) {
+        addError("Match on optional " + matchTypeStr +
+                 " must include the '?' arm for the absent case.", node);
+    } else if (matchedOptionalType && wildcardIndex != SIZE_MAX) {
+        bool hasPresentArm = false;
+        for (size_t i = 0; i < node->cases.size(); ++i) {
+            if (node->cases[i].first) { hasPresentArm = true; break; }
+        }
+        if (!hasPresentArm) {
+            addError("Match on optional " + matchTypeStr +
+                     " must include a present/value arm; a '?' arm alone is not exhaustive.", node);
         }
     }
 }

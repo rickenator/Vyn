@@ -1395,6 +1395,20 @@ void LLVMCodegen::codegenMatch(vyb::ast::MatchStatement* node, llvm::AllocaInst*
         matchedEnum = findTaggedEnum(matchValue->getType());
     }
 
+    // A match over a native optional `T?` (a `{ value, hasValue }` struct): the
+    // present arm is a bare binding pattern and the `?` wildcard is the absent
+    // arm. Detect it from the scrutinee's AST type, or structurally from the
+    // two-field struct whose second element is an i1 flag.
+    bool matchedOptional =
+        (node->expr && node->expr->type) &&
+        dynamic_cast<ast::OptionalType*>(node->expr->type.get()) != nullptr;
+    if (!matchedOptional && matchValue && matchValue->getType()->isStructTy()) {
+        auto* st = llvm::dyn_cast<llvm::StructType>(matchValue->getType());
+        if (st && st->getNumElements() == 2 && st->getElementType(1)->isIntegerTy(1)) {
+            matchedOptional = true;
+        }
+    }
+
     // Exhaustiveness: a match is exhaustive when it has an unguarded wildcard or,
     // for a tagged-union enum, arms that cover every variant. An exhaustive match
     // has an impossible default (no-match) path, so its default block is marked
@@ -1440,7 +1454,36 @@ void LLVMCodegen::codegenMatch(vyb::ast::MatchStatement* node, llvm::AllocaInst*
         llvm::StructType* pendingVariantPayloadTy = nullptr;
         std::vector<std::string> pendingVariantBindings;
         std::vector<std::shared_ptr<vyb::ast::TypeNode>> pendingVariantBindTypes;
-        if (!casePattern) {
+        std::string pendingOptionalPayload;
+        std::shared_ptr<vyb::ast::TypeNode> pendingOptionalPayloadType;
+        llvm::Value* isMatch = nullptr;
+        if (matchedOptional) {
+            // Native `T?`: a bare binding pattern is the present arm (binds the
+            // payload), and the `?` wildcard is the absent arm.
+            llvm::Value* hasVal = builder->CreateExtractValue(matchValue, 1, "opt.present");
+            if (!casePattern) {
+                isMatch = builder->CreateNot(hasVal, "opt.absent");
+            } else {
+                isMatch = hasVal;
+                auto* pid = dynamic_cast<ast::Identifier*>(casePattern.get());
+                if (!pid) {
+                    logError(casePattern->loc, "An optional match present arm must bind a bare value.");
+                    isMatch = llvm::ConstantInt::getFalse(*context);
+                } else {
+                    pendingOptionalPayload = pid->name;
+                    if (node->expr && node->expr->type) {
+                        if (auto* ot = dynamic_cast<ast::OptionalType*>(node->expr->type.get())) {
+                            if (ot->containedType) {
+                                pendingOptionalPayloadType =
+                                    std::shared_ptr<vyb::ast::TypeNode>(ot->containedType->clone());
+                            }
+                        }
+                    }
+                }
+            }
+            llvm::BasicBlock* nextBlock = (i < node->cases.size() - 1) ? caseBBs[i+1] : defaultBB;
+            builder->CreateCondBr(isMatch, caseBodyBBs[i], nextBlock);
+        } else if (!casePattern) {
             builder->CreateBr(caseBodyBBs[i]);
         } else {
             // Check if this is a comparison pattern (e.g., >= 18, < 0)
@@ -1654,6 +1697,15 @@ void LLVMCodegen::codegenMatch(vyb::ast::MatchStatement* node, llvm::AllocaInst*
                 if (fi < pendingVariantBindTypes.size() && pendingVariantBindTypes[fi]) {
                     valueTypeMap[alloca] = std::shared_ptr<vyb::ast::TypeNode>(pendingVariantBindTypes[fi]->clone().release());
                 }
+            }
+        } else if (!pendingOptionalPayload.empty()) {
+            // Optional present arm: bind the payload (struct field 0).
+            llvm::Value* payload = builder->CreateExtractValue(matchValue, 0, "opt.payload");
+            llvm::AllocaInst* alloca = createEntryBlockAlloca(payload->getType(), pendingOptionalPayload);
+            builder->CreateStore(payload, alloca);
+            namedValues[pendingOptionalPayload] = alloca;
+            if (pendingOptionalPayloadType) {
+                valueTypeMap[alloca] = pendingOptionalPayloadType;
             }
         }
 

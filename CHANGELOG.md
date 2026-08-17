@@ -31,6 +31,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   constructions (`substituteTypeParameter`, `resolveParameterTypeWithSubstitution`).
   Covered by `test/modules/test_collections_{hashmap,btreemap,growth}.vyb` and
   `test/modules/test_struct_constructors.vyb`.
+- **Iterator `next()` returns the native `Item?`** — every `core::iter::Iterator`
+  `next()` (the stdlib `VecIter`, `MapIter`, `HashIter`, `BTreeIter`, and the
+  protocol itself) now returns a native optional (present bare payload / absent)
+  instead of `Option<Item>`/`Some`/`None`. `match`/`select` gained the optional
+  surface: the present arm binds the bare value (`v -> ...`) and the `?` wildcard
+  is the absent arm (`? -> break`), with exhaustiveness enforced (a match must
+  cover the present value and the `?` absent case). The `for (x in it)` desugar
+  now emits that native-optional match (`x -> { body }` / `? -> break`) in place
+  of `Some`/`None`, including the step/skip form. Covered by
+  `test/modules/test_vec_iter.vyb`, `test_iterator_protocol.vyb`,
+  `test_collections_iter.vyb`, and the `test_for_iter*` suites. `mild<T>.grab()`
+  is the one remaining `Option<T>`/Some/None call site (separate ownership task).
+  The `else` operator also now tolerates an unresolved generic payload type (a
+  generic free function returning `T?` whose `T` isn't resolved at the call site)
+  instead of rejecting it, since codegen enforces against the concrete payload.
 
 - **Typed generic `chan<T>` channels** — a compiler-native generic,
   thread-safe channel. `chan<T>()` / `chan<T>(cap)` construct an

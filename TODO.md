@@ -867,20 +867,24 @@ result<Int> = select(risky_operation()) -> {
 Unifies error handling with pattern matching in a uniquely Vyb way. No try-catch pyramid.
 
 ### Promote the Native `T?` Optional Over the Rust-style `Option<T>` / `Some` / `None`
-**Status: foundation + channel `poll()` + map `get` migrated.** `T?(v)` / `T?()`
-construction, `optional else default`, scalar/`String`/`Float` payloads,
-return/parameter/chained-default paths (see
+**Status: foundation + channel `poll()` + map `get` + iterator `next()` migrated.**
+`T?(v)` / `T?()` construction, `optional else default`, scalar/`String`/`Float`
+payloads, return/parameter/chained-default paths (see
 `test/new_features/test_native_optional.vyb`), scalar `chan<T>.poll()` (via
-`poll() else default`; String poll keeps its empty-String sentinel), and
-`HashMap.get`/`BTreeMap.get` reading `m.get(key) else default` (see
+`poll() else default`; String poll keeps its empty-String sentinel),
+`HashMap.get`/`BTreeMap.get` reading `m.get(key) else default`, and every
+iterator `next()` returning the native `Item?` (see
 `test/modules/test_chan_{typed,scalar,nonident}.vyb`,
 `test/modules/test_collections_{hashmap,btreemap,growth}.vyb`,
-`test/modules/test_struct_constructors.vyb`). Generic `T?` now substitutes
-through binds: `concreteTypeStringToNode` parses a trailing `?`, and
-monomorphization substitutes parameters inside `T?` return types and `T?()`
-constructions.
-Remaining call sites to migrate, then drop `Option<T>`/`Some`/`None` from the
-stdlib: the iterators' `next()`, `mild<T>.grab()`.
+`test/modules/test_struct_constructors.vyb`, `test_vec_iter.vyb`,
+`test_iterator_protocol.vyb`). `match`/`select` gained the optional surface:
+present arm binds the bare value (`v -> ...`), `?` is the absent arm, with
+exhaustiveness; the `for (x in it)` desugar emits that native-optional match
+(including the step form). Generic `T?` substitutes through binds, and the `else`
+operator tolerates an unresolved generic payload type (codegen enforces the
+concrete payload).
+Remaining call site to migrate, then drop `Option<T>`/`Some`/`None` from the
+stdlib: `mild<T>.grab()`.
 **Open design question (flagged before 1.0).** The `Option<T>` / `Some(v)` / `None`
 vocabulary came from Rust (via Haskell's `Maybe`). Vyb already HAS a native optional type
 in the compiler — `<Type>?` parses to `ast::OptionalType`, lowered to a
@@ -895,10 +899,11 @@ The design must cover every current `Option<T>` use, not just channels:
 - **Existence / lookup** — DONE: `HashMap.get(key)` / `BTreeMap.get(key)` now return the
   native `V?`, read as `m.get("k") else fallback` (`stdlib/collections/mod.vyb`,
   `test_collections_hashmap.vyb`).
-- **Sequence exhaustion** — every iterator's `next()` -> `Option<Item>` (`Some(v)` per
-  element, `None` at end): `VecIter`, `MapIter`, `HashIter`, `BTreeIter`
-  (`stdlib/collections/mod.vyb`, `stdlib/core/iter.vyb`). The end-of-stream case is already
-  hidden behind the `for (x in it)` / `.next()` + `match` surface.
+- **Sequence exhaustion** — DONE: every iterator's `next()` now returns the native
+  `Item?` (present bare payload / absent): `VecIter`, `MapIter`, `HashIter`, `BTreeIter`
+  (`stdlib/collections/mod.vyb`, `stdlib/core/iter.vyb`). End-of-stream matches the
+  optional absent arm (`? -> break`) in both the explicit `.next()` loop and the
+  `for (x in it)` desugar.
 - **Failed weak upgrade** — `mild<T>.grab()` -> `Option<our<T>>` on release
   (`doc/FEATURE_STATUS.md` Ownership row). A distinct "already released" outcome.
 Common consuming surface (vybey = sentence-like, keyword-first):

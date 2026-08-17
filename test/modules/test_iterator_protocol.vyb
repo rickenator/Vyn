@@ -1,8 +1,9 @@
 // @test: Iterator aspect protocol (core::iter)
 // @description: a type that binds core::iter::Iterator (setting associated type
-//   Item) is consumable by repeated .next() calls returning Option<Item>; a by-ref
-//   receiver advances internal cursor state in place. This is the protocol the
-//   `for`-loop desugar will target (pending).
+//   Item) is consumable by repeated .next() calls returning the native optional
+//   `Item?` (present bare value / absent); a by-ref receiver advances internal
+//   cursor state in place. Consumed with the optional match surface
+//   (`v -> ...; ? -> break`), and the surface the `for`-loop desugar targets.
 // @category: stdlib, iterator, aspect, modules
 // @expect: pass
 // @expect-output: iter-ok
@@ -18,13 +19,13 @@ struct RangeIter {
 
 bind Iterator -> RangeIter {
     type Item = Int
-    next(self<their<RangeIter>>)<Option<Int>> -> {
+    next(self<their<RangeIter>>)<Int?> -> {
         if (self.cur < self.end) {
             v<Int> = self.cur
             self.cur = self.cur + 1
-            return Some(v)
+            return Int?(v)
         }
-        return None
+        return Int?()
     }
 }
 
@@ -36,13 +37,13 @@ struct FloatStepIter {
 
 bind Iterator -> FloatStepIter {
     type Item = Float
-    next(self<their<FloatStepIter>>)<Option<Float>> -> {
+    next(self<their<FloatStepIter>>)<Float?> -> {
         if (self.cur < self.end) {
             v<Float> = self.cur
             self.cur = self.cur + self.step
-            return Some(v)
+            return Float?(v)
         }
-        return None
+        return Float?()
     }
 }
 
@@ -51,8 +52,8 @@ main()<Int> -> {
     total<Int> = 0
     while (true) {
         match (r.next()) {
-            Some(v) -> { total = total + v }
-            None -> { break }
+            v -> { total = total + v }
+            ? -> { break }
         }
     }
     s<Int> = total
@@ -65,8 +66,8 @@ main()<Int> -> {
     fsum<Float> = 0.0
     while (true) {
         match (f.next()) {
-            Some(x) -> { fsum = fsum + x }
-            None -> { break }
+            x -> { fsum = fsum + x }
+            ? -> { break }
         }
     }
     if (fsum != 3.0) {
