@@ -1,2 +1,13 @@
+# prelude - a shared re-export surface for the core contracts.
+#
+# The compiler auto-imports the core aspects into every module unless a module
+# imports the contracts itself or locally redefines one of them (see
+# `core::aspects`). `prelude` collects that default surface in one place: the
+# canonical core aspects plus `prelude_ok`, so tooling and modules can treat
+# "the built-in contracts" as a single importable namespace.
+#
+# The definitions live in `core::aspects` / `core::prelude`; this module is a
+# convenience facade rather than a second home for the symbols.
+
 share(all)
 import core::prelude::{prelude_ok, Display, Debug, Clone, Equatable, Hashable, Comparable, hash_chars}

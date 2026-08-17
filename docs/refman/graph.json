@@ -1,5 +1,5 @@
 {
-  "git_rev": "0a4c87ef9226128802fa9a20a78163f9901a36f0",
+  "git_rev": "5486af8d8c1ff7d535326b1e3562dd88e398cdbf",
   "modules": [
     "asyncs",
     "channels",
@@ -16,6 +16,2586 @@
     "time",
     "tls"
   ],
+  "nodes": {
+    "modules": [
+      {
+        "name": "asyncs",
+        "files": [
+          "stdlib/asyncs/mod.vyb"
+        ],
+        "exported": 10,
+        "fan_in": 0,
+        "fan_out": 0
+      },
+      {
+        "name": "channels",
+        "files": [
+          "stdlib/channels/mod.vyb"
+        ],
+        "exported": 19,
+        "fan_in": 0,
+        "fan_out": 0
+      },
+      {
+        "name": "collections",
+        "files": [
+          "stdlib/collections/mod.vyb"
+        ],
+        "exported": 27,
+        "fan_in": 0,
+        "fan_out": 1
+      },
+      {
+        "name": "core",
+        "files": [
+          "stdlib/core/aspects.vyb",
+          "stdlib/core/iter.vyb",
+          "stdlib/core/math.vyb",
+          "stdlib/core/prelude.vyb",
+          "stdlib/core/result.vyb"
+        ],
+        "exported": 32,
+        "fan_in": 2,
+        "fan_out": 0
+      },
+      {
+        "name": "error",
+        "files": [
+          "stdlib/error/display.vyb",
+          "stdlib/error/errable.vyb",
+          "stdlib/error/error.vyb",
+          "stdlib/error/io_error.vyb",
+          "stdlib/error/network_error.vyb",
+          "stdlib/error/parse_error.vyb"
+        ],
+        "exported": 14,
+        "fan_in": 0,
+        "fan_out": 0
+      },
+      {
+        "name": "http",
+        "files": [
+          "stdlib/http/mod.vyb"
+        ],
+        "exported": 24,
+        "fan_in": 1,
+        "fan_out": 2
+      },
+      {
+        "name": "https",
+        "files": [
+          "stdlib/https/mod.vyb"
+        ],
+        "exported": 10,
+        "fan_in": 0,
+        "fan_out": 4
+      },
+      {
+        "name": "io",
+        "files": [
+          "stdlib/io/mod.vyb"
+        ],
+        "exported": 12,
+        "fan_in": 0,
+        "fan_out": 0
+      },
+      {
+        "name": "network",
+        "files": [
+          "stdlib/network/mod.vyb"
+        ],
+        "exported": 37,
+        "fan_in": 2,
+        "fan_out": 0
+      },
+      {
+        "name": "prelude",
+        "files": [
+          "stdlib/prelude.vyb"
+        ],
+        "exported": 0,
+        "fan_in": 0,
+        "fan_out": 1
+      },
+      {
+        "name": "tasks",
+        "files": [
+          "stdlib/tasks/mod.vyb"
+        ],
+        "exported": 4,
+        "fan_in": 0,
+        "fan_out": 0
+      },
+      {
+        "name": "threads",
+        "files": [
+          "stdlib/threads/mod.vyb"
+        ],
+        "exported": 18,
+        "fan_in": 2,
+        "fan_out": 0
+      },
+      {
+        "name": "time",
+        "files": [
+          "stdlib/time/mod.vyb"
+        ],
+        "exported": 5,
+        "fan_in": 0,
+        "fan_out": 0
+      },
+      {
+        "name": "tls",
+        "files": [
+          "stdlib/tls/mod.vyb"
+        ],
+        "exported": 18,
+        "fan_in": 1,
+        "fan_out": 0
+      }
+    ],
+    "files": [
+      {
+        "path": "stdlib/asyncs/mod.vyb",
+        "module": "asyncs",
+        "symbols": [
+          "async_spawn",
+          "async_run_all",
+          "async_await",
+          "async_poll",
+          "async_yield",
+          "async_sleep_ms",
+          "async_accept",
+          "async_connect",
+          "async_send",
+          "async_recv"
+        ]
+      },
+      {
+        "path": "stdlib/channels/mod.vyb",
+        "module": "channels",
+        "symbols": [
+          "chan_new",
+          "chan_bounded",
+          "chan_send",
+          "chan_recv",
+          "chan_recv_opt",
+          "chan_try",
+          "chan_len",
+          "chan_close",
+          "chan_free",
+          "chan_select",
+          "strchan_new",
+          "strchan_bounded",
+          "strchan_send",
+          "strchan_recv",
+          "strchan_recv_opt",
+          "strchan_try",
+          "strchan_len",
+          "strchan_close",
+          "strchan_free"
+        ]
+      },
+      {
+        "path": "stdlib/collections/mod.vyb",
+        "module": "collections",
+        "symbols": [
+          "VecIter<T>",
+          "Iterator->VecIter",
+          "samekey<K<Equatable>>",
+          "hashkey<K<Hashable>>",
+          "cmp_lt<T<Comparable>>",
+          "bucket_for",
+          "HashMap<K,",
+          "MapEntry<K,",
+          "MapIter<K,",
+          "Iterator->MapIter",
+          "MapOps",
+          "MapOps->HashMap",
+          "HashSet<K>",
+          "HashIter<K>",
+          "Iterator->HashIter",
+          "SetOps",
+          "SetOps->HashSet",
+          "BTreeMap<K,",
+          "BTreeIter<K,",
+          "Iterator->BTreeIter",
+          "BTreeMapOps",
+          "BTreeMapOps->BTreeMap",
+          "VecOps",
+          "VecOps->Vec",
+          "VecHigherOps",
+          "VecHigherOps->Vec",
+          "collections_status_message"
+        ]
+      },
+      {
+        "path": "stdlib/core/aspects.vyb",
+        "module": "core",
+        "symbols": [
+          "Display",
+          "Debug",
+          "Clone",
+          "Equatable",
+          "Hashable",
+          "Comparable",
+          "Display->Int",
+          "Display->Float",
+          "Display->Bool",
+          "Display->String",
+          "Clone->Int",
+          "Clone->String",
+          "Equatable->Int",
+          "Equatable->Float",
+          "Equatable->Bool",
+          "Equatable->String",
+          "Comparable->Int",
+          "Comparable->Float",
+          "Comparable->Bool",
+          "Comparable->String",
+          "Hashable->Int",
+          "Hashable->Bool",
+          "hash_chars",
+          "Hashable->String",
+          "Hashable->Float",
+          "StringOps",
+          "StringOps->String"
+        ]
+      },
+      {
+        "path": "stdlib/core/iter.vyb",
+        "module": "core",
+        "symbols": [
+          "Iterator"
+        ]
+      },
+      {
+        "path": "stdlib/core/math.vyb",
+        "module": "core",
+        "symbols": [
+          "clamp",
+          "is_close"
+        ]
+      },
+      {
+        "path": "stdlib/core/prelude.vyb",
+        "module": "core",
+        "symbols": [
+          "prelude_ok"
+        ]
+      },
+      {
+        "path": "stdlib/core/result.vyb",
+        "module": "core",
+        "symbols": [
+          "result_status_message"
+        ]
+      },
+      {
+        "path": "stdlib/error/display.vyb",
+        "module": "error",
+        "symbols": [
+          "Display"
+        ]
+      },
+      {
+        "path": "stdlib/error/errable.vyb",
+        "module": "error",
+        "symbols": [
+          "Errable"
+        ]
+      },
+      {
+        "path": "stdlib/error/error.vyb",
+        "module": "error",
+        "symbols": [
+          "Error",
+          "Errable->Error",
+          "Display->Error"
+        ]
+      },
+      {
+        "path": "stdlib/error/io_error.vyb",
+        "module": "error",
+        "symbols": [
+          "IOError",
+          "Errable->IOError",
+          "Display->IOError"
+        ]
+      },
+      {
+        "path": "stdlib/error/network_error.vyb",
+        "module": "error",
+        "symbols": [
+          "NetworkError",
+          "Errable->NetworkError",
+          "Display->NetworkError"
+        ]
+      },
+      {
+        "path": "stdlib/error/parse_error.vyb",
+        "module": "error",
+        "symbols": [
+          "ParseError",
+          "Errable->ParseError",
+          "Display->ParseError"
+        ]
+      },
+      {
+        "path": "stdlib/http/mod.vyb",
+        "module": "http",
+        "symbols": [
+          "http_listen",
+          "http_local_port",
+          "http_accept",
+          "http_read_head",
+          "http_request_path",
+          "http_send_all",
+          "http_close",
+          "http_response",
+          "http_request",
+          "http_read_rest",
+          "http_get",
+          "http_serve_conn",
+          "http_serve",
+          "HttpResponse",
+          "http_index_of",
+          "http_key_eq",
+          "http_parse_int",
+          "http_status_code",
+          "http_header_value",
+          "http_read_line",
+          "http_read_exact",
+          "http_read_all",
+          "http_get_full",
+          "http_header"
+        ]
+      },
+      {
+        "path": "stdlib/https/mod.vyb",
+        "module": "https",
+        "symbols": [
+          "tls_read_line",
+          "tls_read_exact",
+          "tls_read_all",
+          "Vec<String>",
+          "https_get_full",
+          "https_get_full_verified",
+          "https_get",
+          "https_get_verified",
+          "https_selfhost",
+          "https_selfhost_verified"
+        ]
+      },
+      {
+        "path": "stdlib/io/mod.vyb",
+        "module": "io",
+        "symbols": [
+          "FileFlag",
+          "File",
+          "open",
+          "open_read",
+          "open_write",
+          "open_append",
+          "close",
+          "write_str",
+          "read_all",
+          "error_code",
+          "error_message",
+          "io_status_message"
+        ]
+      },
+      {
+        "path": "stdlib/network/mod.vyb",
+        "module": "network",
+        "symbols": [
+          "Socket",
+          "socket_open",
+          "socket_close",
+          "socket_bind",
+          "socket_listen",
+          "socket_accept",
+          "socket_connect",
+          "socket_send",
+          "socket_recv",
+          "socket_local_port",
+          "socket_resolve",
+          "socket_error_code",
+          "socket_error_message",
+          "TcpStream",
+          "TcpListener",
+          "UdpSocket",
+          "TcpStreamOps",
+          "TcpStreamOps->TcpStream",
+          "TcpListenerOps",
+          "TcpListenerOps->TcpListener",
+          "UdpSocketOps",
+          "UdpSocketOps->UdpSocket",
+          "tcp_connect",
+          "tcp_listen",
+          "tcp_accept",
+          "udp_bind",
+          "udp_send_to",
+          "udp_recv_from",
+          "udp_last_peer_ip",
+          "udp_last_peer_port",
+          "udp_close",
+          "async_tcp_accept",
+          "async_tcp_connect",
+          "async_tcp_write",
+          "async_tcp_read",
+          "async_udp_send_to",
+          "async_udp_recv_from"
+        ]
+      },
+      {
+        "path": "stdlib/prelude.vyb",
+        "module": "prelude",
+        "symbols": []
+      },
+      {
+        "path": "stdlib/tasks/mod.vyb",
+        "module": "tasks",
+        "symbols": [
+          "task_spawn",
+          "task_await",
+          "task_poll",
+          "task_free"
+        ]
+      },
+      {
+        "path": "stdlib/threads/mod.vyb",
+        "module": "threads",
+        "symbols": [
+          "thread_spawn",
+          "thread_join",
+          "thread_detach",
+          "mutex_new",
+          "mutex_lock",
+          "mutex_unlock",
+          "mutex_free",
+          "cond_new",
+          "cond_wait",
+          "cond_signal",
+          "cond_broadcast",
+          "cond_free",
+          "atomic_new",
+          "atomic_load",
+          "atomic_store",
+          "atomic_add",
+          "atomic_cas",
+          "atomic_free"
+        ]
+      },
+      {
+        "path": "stdlib/time/mod.vyb",
+        "module": "time",
+        "symbols": [
+          "time_epoch_secs",
+          "time_epoch_millis",
+          "time_nanos",
+          "time_mono_millis",
+          "sleep_ms"
+        ]
+      },
+      {
+        "path": "stdlib/tls/mod.vyb",
+        "module": "tls",
+        "symbols": [
+          "TlsContext",
+          "TlsStream",
+          "TlsContextOps",
+          "TlsContextOps->TlsContext",
+          "TlsStreamOps",
+          "TlsStreamOps->TlsStream",
+          "tls_client_context",
+          "tls_client_context_verified",
+          "tls_server_context",
+          "tls_free_context",
+          "tls_stream",
+          "tls_connect",
+          "tls_accept",
+          "tls_write",
+          "tls_read",
+          "tls_close",
+          "tls_error_code",
+          "tls_error_message"
+        ]
+      }
+    ],
+    "symbols": [
+      {
+        "name": "async_accept",
+        "module": "asyncs",
+        "file": "stdlib/asyncs/mod.vyb",
+        "kind": "fn",
+        "signature": "async_accept(fd<Int>)<Int> ->",
+        "summary": "Accept a pending connection on a listening socket, suspending until one",
+        "fan_in": 0
+      },
+      {
+        "name": "async_await",
+        "module": "asyncs",
+        "file": "stdlib/asyncs/mod.vyb",
+        "kind": "fn",
+        "signature": "async_await(t<Int>)<Int> ->",
+        "summary": "Block until task `t` completes and return its closure result. From the entry",
+        "fan_in": 0
+      },
+      {
+        "name": "async_connect",
+        "module": "asyncs",
+        "file": "stdlib/asyncs/mod.vyb",
+        "kind": "fn",
+        "signature": "async_connect(fd<Int>, ip<String>, port<Int>)<Int> ->",
+        "summary": "Non-blocking connect, suspending until established or refused. Returns 0 on",
+        "fan_in": 0
+      },
+      {
+        "name": "async_poll",
+        "module": "asyncs",
+        "file": "stdlib/asyncs/mod.vyb",
+        "kind": "fn",
+        "signature": "async_poll(t<Int>)<Int> ->",
+        "summary": "Non-blocking: the task's result if it is done, else -1.",
+        "fan_in": 0
+      },
+      {
+        "name": "async_recv",
+        "module": "asyncs",
+        "file": "stdlib/asyncs/mod.vyb",
+        "kind": "fn",
+        "signature": "async_recv(fd<Int>, maxlen<Int>)<String> ->",
+        "summary": "Receive up to `maxlen` bytes from `fd` as a fresh String, suspending until",
+        "fan_in": 0
+      },
+      {
+        "name": "async_run_all",
+        "module": "asyncs",
+        "file": "stdlib/asyncs/mod.vyb",
+        "kind": "fn",
+        "signature": "async_run_all()<Int> ->",
+        "summary": "Run the pool until no queued work or pending timer remain, then reclaim tasks.",
+        "fan_in": 0
+      },
+      {
+        "name": "async_send",
+        "module": "asyncs",
+        "file": "stdlib/asyncs/mod.vyb",
+        "kind": "fn",
+        "signature": "async_send(fd<Int>, data<String>)<Int> ->",
+        "summary": "Send all of `data` on `fd`, suspending until the socket accepts it. Returns",
+        "fan_in": 0
+      },
+      {
+        "name": "async_sleep_ms",
+        "module": "asyncs",
+        "file": "stdlib/asyncs/mod.vyb",
+        "kind": "fn",
+        "signature": "async_sleep_ms(ms<Int>)<Int> ->",
+        "summary": "Cooperative sleep: suspend the current fiber for `ms` on a timer so other loop",
+        "fan_in": 0
+      },
+      {
+        "name": "async_spawn",
+        "module": "asyncs",
+        "file": "stdlib/asyncs/mod.vyb",
+        "kind": "fn",
+        "signature": "async_spawn(work<fn() -> Int>)<Int> ->",
+        "summary": "Enqueue `work` (a fn() -> Int) on the worker pool; returns a task handle (>= 1)",
+        "fan_in": 0
+      },
+      {
+        "name": "async_yield",
+        "module": "asyncs",
+        "file": "stdlib/asyncs/mod.vyb",
+        "kind": "fn",
+        "signature": "async_yield()<Int> ->",
+        "summary": "Cooperative yield: suspend the current fiber and reschedule it (a no-op if",
+        "fan_in": 0
+      },
+      {
+        "name": "chan_bounded",
+        "module": "channels",
+        "file": "stdlib/channels/mod.vyb",
+        "kind": "fn",
+        "signature": "chan_bounded(cap<Int>)<Int> ->",
+        "summary": "A fresh bounded channel holding at most `cap` values (0 on failure).",
+        "fan_in": 0
+      },
+      {
+        "name": "chan_close",
+        "module": "channels",
+        "file": "stdlib/channels/mod.vyb",
+        "kind": "fn",
+        "signature": "chan_close(ch<Int>)<Int> ->",
+        "summary": "Mark `ch` closed and wake any blocked receivers. After close, receivers see",
+        "fan_in": 0
+      },
+      {
+        "name": "chan_free",
+        "module": "channels",
+        "file": "stdlib/channels/mod.vyb",
+        "kind": "fn",
+        "signature": "chan_free(ch<Int>)<Int> ->",
+        "summary": "Destroy and free `ch`; returns 0 or -1.",
+        "fan_in": 0
+      },
+      {
+        "name": "chan_len",
+        "module": "channels",
+        "file": "stdlib/channels/mod.vyb",
+        "kind": "fn",
+        "signature": "chan_len(ch<Int>)<Int> ->",
+        "summary": "Number of values currently buffered (-1 on an invalid handle).",
+        "fan_in": 0
+      },
+      {
+        "name": "chan_new",
+        "module": "channels",
+        "file": "stdlib/channels/mod.vyb",
+        "kind": "fn",
+        "signature": "chan_new()<Int> ->",
+        "summary": "A fresh unbounded channel; returns a handle (0 on allocation failure).",
+        "fan_in": 0
+      },
+      {
+        "name": "chan_recv",
+        "module": "channels",
+        "file": "stdlib/channels/mod.vyb",
+        "kind": "fn",
+        "signature": "chan_recv(ch<Int>)<Int> ->",
+        "summary": "Dequeue a value, blocking until one is available (or the channel is closed).",
+        "fan_in": 0
+      },
+      {
+        "name": "chan_recv_opt",
+        "module": "channels",
+        "file": "stdlib/channels/mod.vyb",
+        "kind": "fn",
+        "signature": "chan_recv_opt(ch<Int>)<Int?> ->",
+        "summary": "Lossless blocking recv for `async for` / draining: returns the value wrapped",
+        "fan_in": 0
+      },
+      {
+        "name": "chan_select",
+        "module": "channels",
+        "file": "stdlib/channels/mod.vyb",
+        "kind": "fn",
+        "signature": "chan_select(handles<Vec<Int>>)<Int> ->",
+        "summary": "Block until at least one of the channels in `handles` has a value (or is",
+        "fan_in": 0
+      },
+      {
+        "name": "chan_send",
+        "module": "channels",
+        "file": "stdlib/channels/mod.vyb",
+        "kind": "fn",
+        "signature": "chan_send(ch<Int>, v<Int>)<Int> ->",
+        "summary": "Enqueue `v` (non-blocking). Returns 1 on success, or 0 if the channel is",
+        "fan_in": 0
+      },
+      {
+        "name": "chan_try",
+        "module": "channels",
+        "file": "stdlib/channels/mod.vyb",
+        "kind": "fn",
+        "signature": "chan_try(ch<Int>)<Int> ->",
+        "summary": "Non-blocking dequeue. Returns a buffered value, or -1 if the channel is empty",
+        "fan_in": 0
+      },
+      {
+        "name": "strchan_bounded",
+        "module": "channels",
+        "file": "stdlib/channels/mod.vyb",
+        "kind": "fn",
+        "signature": "strchan_bounded(cap<Int>)<Int> ->",
+        "summary": "A bounded String channel holding at most `cap` strings (0 on failure).",
+        "fan_in": 0
+      },
+      {
+        "name": "strchan_close",
+        "module": "channels",
+        "file": "stdlib/channels/mod.vyb",
+        "kind": "fn",
+        "signature": "strchan_close(ch<Int>)<Int> ->",
+        "summary": "Reclaim and free `ch` (call after draining so no reference leaks); 0 or -1.",
+        "fan_in": 0
+      },
+      {
+        "name": "strchan_free",
+        "module": "channels",
+        "file": "stdlib/channels/mod.vyb",
+        "kind": "fn",
+        "signature": "strchan_free(ch<Int>)<Int> ->",
+        "summary": "Reclaim and free `ch` (call after draining so no reference leaks); 0 or -1.",
+        "fan_in": 0
+      },
+      {
+        "name": "strchan_len",
+        "module": "channels",
+        "file": "stdlib/channels/mod.vyb",
+        "kind": "fn",
+        "signature": "strchan_len(ch<Int>)<Int> ->",
+        "summary": "Number of Strings currently buffered (-1 on an invalid handle).",
+        "fan_in": 0
+      },
+      {
+        "name": "strchan_new",
+        "module": "channels",
+        "file": "stdlib/channels/mod.vyb",
+        "kind": "fn",
+        "signature": "strchan_new()<Int> ->",
+        "summary": "A fresh unbounded String channel (0 on allocation failure).",
+        "fan_in": 0
+      },
+      {
+        "name": "strchan_recv",
+        "module": "channels",
+        "file": "stdlib/channels/mod.vyb",
+        "kind": "fn",
+        "signature": "strchan_recv(ch<Int>)<String> ->",
+        "summary": "Dequeue a String, blocking until one is available (or closed -> \"\").",
+        "fan_in": 0
+      },
+      {
+        "name": "strchan_recv_opt",
+        "module": "channels",
+        "file": "stdlib/channels/mod.vyb",
+        "kind": "fn",
+        "signature": "strchan_recv_opt(ch<Int>)<String?> ->",
+        "summary": "Lossless blocking String recv for `async for` / draining, returning a native",
+        "fan_in": 0
+      },
+      {
+        "name": "strchan_send",
+        "module": "channels",
+        "file": "stdlib/channels/mod.vyb",
+        "kind": "fn",
+        "signature": "strchan_send(ch<Int>, s<String>)<Int> ->",
+        "summary": "Enqueue `s` (non-blocking); retains it under the hood. 1 on success, 0 if",
+        "fan_in": 0
+      },
+      {
+        "name": "strchan_try",
+        "module": "channels",
+        "file": "stdlib/channels/mod.vyb",
+        "kind": "fn",
+        "signature": "strchan_try(ch<Int>)<String> ->",
+        "summary": "Non-blocking dequeue; returns a buffered String or \"\" if none is ready.",
+        "fan_in": 0
+      },
+      {
+        "name": "BTreeIter<K,",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "struct",
+        "signature": "struct BTreeIter<K, V> {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "BTreeMap<K,",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "struct",
+        "signature": "struct BTreeMap<K, V> {",
+        "summary": "BTreeMap<K, V> - an ordered map keyed by `Comparable`, bound to `BTreeMapOps`.",
+        "fan_in": 0
+      },
+      {
+        "name": "BTreeMapOps",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "aspect",
+        "signature": "aspect BTreeMapOps {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "BTreeMapOps->BTreeMap",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "bind",
+        "signature": "bind<K<Comparable, Equatable>, V> BTreeMapOps -> BTreeMap<K, V> {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "HashIter<K>",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "struct",
+        "signature": "struct HashIter<K> {",
+        "summary": "HashIter<K> - cursor iterator over a `HashSet<K>`, bound to",
+        "fan_in": 0
+      },
+      {
+        "name": "HashMap<K,",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "struct",
+        "signature": "struct HashMap<K, V> {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "HashSet<K>",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "struct",
+        "signature": "struct HashSet<K> {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Iterator->BTreeIter",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "bind",
+        "signature": "bind<K<Comparable, Equatable>, V> Iterator -> BTreeIter<K, V> {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Iterator->HashIter",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "bind",
+        "signature": "bind<K<Hashable, Equatable>> Iterator -> HashIter<K> {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Iterator->MapIter",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "bind",
+        "signature": "bind<K<Hashable, Equatable>, V> Iterator -> MapIter<K, V> {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Iterator->VecIter",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "bind",
+        "signature": "bind<T> Iterator -> VecIter<T> {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "MapEntry<K,",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "struct",
+        "signature": "struct MapEntry<K, V> {",
+        "summary": "MapIter<K, V> - cursor iterator over a `HashMap<K, V>`, bound to",
+        "fan_in": 0
+      },
+      {
+        "name": "MapIter<K,",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "struct",
+        "signature": "struct MapIter<K, V> {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "MapOps",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "aspect",
+        "signature": "aspect MapOps {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "MapOps->HashMap",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "bind",
+        "signature": "bind<K<Hashable, Equatable>, V> MapOps -> HashMap<K, V> {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "SetOps",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "aspect",
+        "signature": "aspect SetOps {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "SetOps->HashSet",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "bind",
+        "signature": "bind<K<Hashable, Equatable>> SetOps -> HashSet<K> {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "VecHigherOps",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "aspect",
+        "signature": "aspect VecHigherOps {",
+        "summary": "---------------------------------------------------------------------------",
+        "fan_in": 0
+      },
+      {
+        "name": "VecHigherOps->Vec",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "bind",
+        "signature": "bind<T> VecHigherOps -> Vec<T> {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "VecIter<T>",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "struct",
+        "signature": "struct VecIter<T> {",
+        "summary": "VecIter<T> - a cursor-based iterator over a `Vec<T>`. Holds the Vec by",
+        "fan_in": 0
+      },
+      {
+        "name": "VecOps",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "aspect",
+        "signature": "aspect VecOps {",
+        "summary": "---------------------------------------------------------------------------",
+        "fan_in": 0
+      },
+      {
+        "name": "VecOps->Vec",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "bind",
+        "signature": "bind<T<Comparable, Equatable>> VecOps -> Vec<T> {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "bucket_for",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "fn",
+        "signature": "bucket_for(h<Int>, nb<Int>)<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "cmp_lt<T<Comparable>>",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "fn",
+        "signature": "cmp_lt<T<Comparable>>(a<T>, b<T>)<Bool> ->",
+        "summary": "Map an arbitrary (possibly negative) hash onto a bucket index in [0, nb).",
+        "fan_in": 0
+      },
+      {
+        "name": "collections_status_message",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "fn",
+        "signature": "collections_status_message()<String> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "hashkey<K<Hashable>>",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "fn",
+        "signature": "hashkey<K<Hashable>>(k<K>)<Int> ->",
+        "summary": "Hash probe for bounded key types, mirroring `samekey`: `hash` resolves through",
+        "fan_in": 0
+      },
+      {
+        "name": "samekey<K<Equatable>>",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "fn",
+        "signature": "samekey<K<Equatable>>(a<K>, b<K>)<Bool> ->",
+        "summary": "Equality probe for bounded key types. The `equals` method is resolved via the",
+        "fan_in": 0
+      },
+      {
+        "name": "Clone",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "aspect",
+        "signature": "aspect Clone {",
+        "summary": "",
+        "fan_in": 1
+      },
+      {
+        "name": "Clone->Int",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "bind",
+        "signature": "bind Clone -> Int {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Clone->String",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "bind",
+        "signature": "bind Clone -> String {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Comparable",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "aspect",
+        "signature": "aspect Comparable : Equatable {",
+        "summary": "",
+        "fan_in": 2
+      },
+      {
+        "name": "Comparable->Bool",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "bind",
+        "signature": "bind Comparable -> Bool {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Comparable->Float",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "bind",
+        "signature": "bind Comparable -> Float {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Comparable->Int",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "bind",
+        "signature": "bind Comparable -> Int {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Comparable->String",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "bind",
+        "signature": "bind Comparable -> String {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Debug",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "aspect",
+        "signature": "aspect Debug {",
+        "summary": "",
+        "fan_in": 1
+      },
+      {
+        "name": "Display",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "aspect",
+        "signature": "aspect Display {",
+        "summary": "",
+        "fan_in": 1
+      },
+      {
+        "name": "Display->Bool",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "bind",
+        "signature": "bind Display -> Bool {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Display->Float",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "bind",
+        "signature": "bind Display -> Float {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Display->Int",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "bind",
+        "signature": "bind Display -> Int {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Display->String",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "bind",
+        "signature": "bind Display -> String {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Equatable",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "aspect",
+        "signature": "aspect Equatable {",
+        "summary": "",
+        "fan_in": 2
+      },
+      {
+        "name": "Equatable->Bool",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "bind",
+        "signature": "bind Equatable -> Bool {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Equatable->Float",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "bind",
+        "signature": "bind Equatable -> Float {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Equatable->Int",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "bind",
+        "signature": "bind Equatable -> Int {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Equatable->String",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "bind",
+        "signature": "bind Equatable -> String {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Hashable",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "aspect",
+        "signature": "aspect Hashable {",
+        "summary": "",
+        "fan_in": 2
+      },
+      {
+        "name": "Hashable->Bool",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "bind",
+        "signature": "bind Hashable -> Bool {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Hashable->Float",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "bind",
+        "signature": "bind Hashable -> Float {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Hashable->Int",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "bind",
+        "signature": "bind Hashable -> Int {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Hashable->String",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "bind",
+        "signature": "bind Hashable -> String {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Iterator",
+        "module": "core",
+        "file": "stdlib/core/iter.vyb",
+        "kind": "aspect",
+        "signature": "aspect Iterator {",
+        "summary": "",
+        "fan_in": 1
+      },
+      {
+        "name": "StringOps",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "aspect",
+        "signature": "aspect StringOps {",
+        "summary": "StringOps - String manipulation helpers layered on the built-in String methods.",
+        "fan_in": 0
+      },
+      {
+        "name": "StringOps->String",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "bind",
+        "signature": "bind StringOps -> String {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "clamp",
+        "module": "core",
+        "file": "stdlib/core/math.vyb",
+        "kind": "fn",
+        "signature": "clamp(value<Int>, lo<Int>, hi<Int>)<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "hash_chars",
+        "module": "core",
+        "file": "stdlib/core/aspects.vyb",
+        "kind": "fn",
+        "signature": "hash_chars(s<String>)<Int> ->",
+        "summary": "Shared DJB2-style hash over a string's character codes. Used by the String and",
+        "fan_in": 1
+      },
+      {
+        "name": "is_close",
+        "module": "core",
+        "file": "stdlib/core/math.vyb",
+        "kind": "fn",
+        "signature": "is_close(a<Float>, b<Float>, epsilon<Float>)<Bool> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "prelude_ok",
+        "module": "core",
+        "file": "stdlib/core/prelude.vyb",
+        "kind": "fn",
+        "signature": "prelude_ok()<Int> ->",
+        "summary": "",
+        "fan_in": 1
+      },
+      {
+        "name": "result_status_message",
+        "module": "core",
+        "file": "stdlib/core/result.vyb",
+        "kind": "fn",
+        "signature": "result_status_message()<String> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Display",
+        "module": "error",
+        "file": "stdlib/error/display.vyb",
+        "kind": "aspect",
+        "signature": "aspect Display {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Display->Error",
+        "module": "error",
+        "file": "stdlib/error/error.vyb",
+        "kind": "bind",
+        "signature": "bind Display -> Error {",
+        "summary": "Implement Display for Error",
+        "fan_in": 0
+      },
+      {
+        "name": "Display->IOError",
+        "module": "error",
+        "file": "stdlib/error/io_error.vyb",
+        "kind": "bind",
+        "signature": "bind Display -> IOError {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Display->NetworkError",
+        "module": "error",
+        "file": "stdlib/error/network_error.vyb",
+        "kind": "bind",
+        "signature": "bind Display -> NetworkError {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Display->ParseError",
+        "module": "error",
+        "file": "stdlib/error/parse_error.vyb",
+        "kind": "bind",
+        "signature": "bind Display -> ParseError {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Errable",
+        "module": "error",
+        "file": "stdlib/error/errable.vyb",
+        "kind": "aspect",
+        "signature": "aspect Errable {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Errable->Error",
+        "module": "error",
+        "file": "stdlib/error/error.vyb",
+        "kind": "bind",
+        "signature": "bind Errable -> Error {",
+        "summary": "Implement Errable for Error",
+        "fan_in": 0
+      },
+      {
+        "name": "Errable->IOError",
+        "module": "error",
+        "file": "stdlib/error/io_error.vyb",
+        "kind": "bind",
+        "signature": "bind Errable -> IOError {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Errable->NetworkError",
+        "module": "error",
+        "file": "stdlib/error/network_error.vyb",
+        "kind": "bind",
+        "signature": "bind Errable -> NetworkError {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Errable->ParseError",
+        "module": "error",
+        "file": "stdlib/error/parse_error.vyb",
+        "kind": "bind",
+        "signature": "bind Errable -> ParseError {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Error",
+        "module": "error",
+        "file": "stdlib/error/error.vyb",
+        "kind": "struct",
+        "signature": "struct Error {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "IOError",
+        "module": "error",
+        "file": "stdlib/error/io_error.vyb",
+        "kind": "struct",
+        "signature": "struct IOError {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "NetworkError",
+        "module": "error",
+        "file": "stdlib/error/network_error.vyb",
+        "kind": "struct",
+        "signature": "struct NetworkError {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "ParseError",
+        "module": "error",
+        "file": "stdlib/error/parse_error.vyb",
+        "kind": "struct",
+        "signature": "struct ParseError {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "HttpResponse",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "struct",
+        "signature": "struct HttpResponse {",
+        "summary": "A parsed HTTP response. `headers` holds the raw response header lines (minus",
+        "fan_in": 1
+      },
+      {
+        "name": "http_accept",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_accept(fd<Int>)<Int> ->",
+        "summary": "Accept one pending connection; returns the connected descriptor (>= 0) or -1.",
+        "fan_in": 0
+      },
+      {
+        "name": "http_close",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_close(fd<Int>)<Int> ->",
+        "summary": "Close a socket or connection.",
+        "fan_in": 0
+      },
+      {
+        "name": "http_get",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_get(host<String>, port<Int>, path<String>)<String> ->",
+        "summary": "Full GET round-trip against `host`:`port` for `path`; returns the body (empty",
+        "fan_in": 0
+      },
+      {
+        "name": "http_get_full",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_get_full(host<String>, port<Int>, path<String>)<HttpResponse> ->",
+        "summary": "Full HTTP/1.1 GET round-trip. Returns an HttpResponse with the parsed status,",
+        "fan_in": 0
+      },
+      {
+        "name": "http_header",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_header(resp<HttpResponse>, name<String>)<String> ->",
+        "summary": "Look a header up by (case-insensitive) name across a parsed response's headers.",
+        "fan_in": 0
+      },
+      {
+        "name": "http_header_value",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_header_value(header<String>, name<String>)<String> ->",
+        "summary": "Given one header line, the trimmed value of `name` (case-insensitive), or \"\"",
+        "fan_in": 1
+      },
+      {
+        "name": "http_index_of",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_index_of(s<String>, needle<String>)<Int> ->",
+        "summary": "Index of the first occurrence of `needle` in `s`, or -1.",
+        "fan_in": 1
+      },
+      {
+        "name": "http_key_eq",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_key_eq(a<String>, b<String>)<Bool> ->",
+        "summary": "Case-insensitive ASCII equality.",
+        "fan_in": 0
+      },
+      {
+        "name": "http_listen",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_listen(port<Int>, backlog<Int>)<Int> ->",
+        "summary": "Open + bind + listen on `port` (use 0 to let the kernel pick one). Returns the",
+        "fan_in": 0
+      },
+      {
+        "name": "http_local_port",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_local_port(fd<Int>)<Int> ->",
+        "summary": "The port a listening socket is bound to (read a 0 back after http_listen(0)).",
+        "fan_in": 0
+      },
+      {
+        "name": "http_parse_int",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_parse_int(s<String>)<Int> ->",
+        "summary": "Parse a decimal integer at the start of `s`, stopping at the first non-digit.",
+        "fan_in": 1
+      },
+      {
+        "name": "http_read_all",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_read_all(fd<Int>, max<Int>)<String> ->",
+        "summary": "Read until the peer closes (used when a response has no Content-Length).",
+        "fan_in": 0
+      },
+      {
+        "name": "http_read_exact",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_read_exact(fd<Int>, length<Int>)<String> ->",
+        "summary": "Read exactly `length` bytes from `fd`.",
+        "fan_in": 0
+      },
+      {
+        "name": "http_read_head",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_read_head(conn<Int>, max<Int>)<String> ->",
+        "summary": "Read an HTTP head (everything up to and including the blank line) into a fresh",
+        "fan_in": 0
+      },
+      {
+        "name": "http_read_line",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_read_line(fd<Int>)<String> ->",
+        "summary": "Read one CRLF-terminated line (without the CRLF) from `fd`. One byte is read",
+        "fan_in": 0
+      },
+      {
+        "name": "http_read_rest",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_read_rest(conn<Int>, max<Int>)<String> ->",
+        "summary": "Read everything available on a connection until the peer closes (or `max`",
+        "fan_in": 0
+      },
+      {
+        "name": "http_request",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_request(method<String>, path<String>, host<String>)<String> ->",
+        "summary": "Build a request head for `method` (e.g. \"GET\"), `path`, and `host`.",
+        "fan_in": 0
+      },
+      {
+        "name": "http_request_path",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_request_path(head<String>)<String> ->",
+        "summary": "The request target from a head line, e.g. \"GET /a/b?x=1 HTTP/1.1\" -> \"/a/b?x=1\".",
+        "fan_in": 0
+      },
+      {
+        "name": "http_response",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_response(status<Int>, body<String>)<String> ->",
+        "summary": "A well-formed HTTP/1.1 text/plain response with a Content-Length. A handful of",
+        "fan_in": 0
+      },
+      {
+        "name": "http_send_all",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_send_all(fd<Int>, data<String>)<Int> ->",
+        "summary": "Send the whole of `data` on `fd` (loops over partial sends); returns bytes sent.",
+        "fan_in": 0
+      },
+      {
+        "name": "http_serve",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_serve(port<Int>, backlog<Int>)<Int> ->",
+        "summary": "Start a threaded HTTP/1.1 server: bind+listen on `port` (0 = ephemeral; read",
+        "fan_in": 0
+      },
+      {
+        "name": "http_serve_conn",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_serve_conn(conn<Int>)<Int> ->",
+        "summary": "Serve one accepted connection on a fresh detached thread: read its head,",
+        "fan_in": 0
+      },
+      {
+        "name": "http_status_code",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_status_code(line<String>)<Int> ->",
+        "summary": "Status code from a status line like \"HTTP/1.1 200 OK\" (-1 if unparseable).",
+        "fan_in": 1
+      },
+      {
+        "name": "Vec<String>",
+        "module": "https",
+        "file": "stdlib/https/mod.vyb",
+        "kind": "fn",
+        "signature": "headers = Vec<String>(), body = \"\" }",
+        "summary": "Full HTTPS/1.1 GET round-trip. Returns an HttpResponse with the parsed status,",
+        "fan_in": 0
+      },
+      {
+        "name": "https_get",
+        "module": "https",
+        "file": "stdlib/https/mod.vyb",
+        "kind": "fn",
+        "signature": "https_get(host<String>, port<Int>, path<String>)<String> ->",
+        "summary": "Convenience wrapper returning just the response body (\"\" on failure).",
+        "fan_in": 0
+      },
+      {
+        "name": "https_get_full",
+        "module": "https",
+        "file": "stdlib/https/mod.vyb",
+        "kind": "fn",
+        "signature": "https_get_full(host<String>, port<Int>, path<String>)<HttpResponse> ->",
+        "summary": "Full HTTPS/1.1 GET round-trip over an unverified client context (self-signed",
+        "fan_in": 0
+      },
+      {
+        "name": "https_get_full_verified",
+        "module": "https",
+        "file": "stdlib/https/mod.vyb",
+        "kind": "fn",
+        "signature": "https_get_full_verified(host<String>, port<Int>, path<String>, ca_pem<String>)<HttpResponse> ->",
+        "summary": "Full HTTPS/1.1 GET round-trip with peer verification. `host` is a hostname:",
+        "fan_in": 0
+      },
+      {
+        "name": "https_get_verified",
+        "module": "https",
+        "file": "stdlib/https/mod.vyb",
+        "kind": "fn",
+        "signature": "https_get_verified(host<String>, port<Int>, path<String>, ca_pem<String>)<String> ->",
+        "summary": "Verified convenience wrapper returning just the response body (\"\" on failure).",
+        "fan_in": 0
+      },
+      {
+        "name": "https_selfhost",
+        "module": "https",
+        "file": "stdlib/https/mod.vyb",
+        "kind": "fn",
+        "signature": "https_selfhost(cert_pem<String>, key_pem<String>)<Int> ->",
+        "summary": "Diagnostics: stand up a throwaway TLS server that answers one request with a",
+        "fan_in": 0
+      },
+      {
+        "name": "https_selfhost_verified",
+        "module": "https",
+        "file": "stdlib/https/mod.vyb",
+        "kind": "fn",
+        "signature": "https_selfhost_verified(cert_pem<String>, key_pem<String>)<Int> ->",
+        "summary": "Diagnostics like https_selfhost, but the client uses a verified context pinned",
+        "fan_in": 0
+      },
+      {
+        "name": "tls_read_all",
+        "module": "https",
+        "file": "stdlib/https/mod.vyb",
+        "kind": "fn",
+        "signature": "tls_read_all(s<TlsStream>, max<Int>)<String> ->",
+        "summary": "Read until the peer closes (used when a response has no Content-Length).",
+        "fan_in": 0
+      },
+      {
+        "name": "tls_read_exact",
+        "module": "https",
+        "file": "stdlib/https/mod.vyb",
+        "kind": "fn",
+        "signature": "tls_read_exact(s<TlsStream>, length<Int>)<String> ->",
+        "summary": "Read exactly `length` bytes from a TLS stream.",
+        "fan_in": 0
+      },
+      {
+        "name": "tls_read_line",
+        "module": "https",
+        "file": "stdlib/https/mod.vyb",
+        "kind": "fn",
+        "signature": "tls_read_line(s<TlsStream>)<String> ->",
+        "summary": "Read one CRLF-terminated line (without the CRLF) from a TLS stream. One byte",
+        "fan_in": 0
+      },
+      {
+        "name": "File",
+        "module": "io",
+        "file": "stdlib/io/mod.vyb",
+        "kind": "struct",
+        "signature": "struct File {",
+        "summary": "An open file. `fd` is -1 when the last open failed; `path` records the target.",
+        "fan_in": 0
+      },
+      {
+        "name": "FileFlag",
+        "module": "io",
+        "file": "stdlib/io/mod.vyb",
+        "kind": "enum",
+        "signature": "enum FileFlag {",
+        "summary": "Open-mode helper flags (a portable bitmask understood by the runtime helper).",
+        "fan_in": 0
+      },
+      {
+        "name": "close",
+        "module": "io",
+        "file": "stdlib/io/mod.vyb",
+        "kind": "fn",
+        "signature": "close(f<File>)<Int> ->",
+        "summary": "Close an open file. Returns 0 on success, -1 on failure.",
+        "fan_in": 0
+      },
+      {
+        "name": "error_code",
+        "module": "io",
+        "file": "stdlib/io/mod.vyb",
+        "kind": "fn",
+        "signature": "error_code()<Int> ->",
+        "summary": "Numeric error code of the last file operation (0 = no error).",
+        "fan_in": 0
+      },
+      {
+        "name": "error_message",
+        "module": "io",
+        "file": "stdlib/io/mod.vyb",
+        "kind": "fn",
+        "signature": "error_message()<String> ->",
+        "summary": "Human-readable message for the last file operation error.",
+        "fan_in": 0
+      },
+      {
+        "name": "io_status_message",
+        "module": "io",
+        "file": "stdlib/io/mod.vyb",
+        "kind": "fn",
+        "signature": "io_status_message()<String> ->",
+        "summary": "Compatibility status probe (kept for the module-surface import test).",
+        "fan_in": 0
+      },
+      {
+        "name": "open",
+        "module": "io",
+        "file": "stdlib/io/mod.vyb",
+        "kind": "fn",
+        "signature": "open(path<String>, flags<Int>)<File> ->",
+        "summary": "Open (or create) `path` with the given `FileFlag` flags. Returns the `File`; test",
+        "fan_in": 0
+      },
+      {
+        "name": "open_append",
+        "module": "io",
+        "file": "stdlib/io/mod.vyb",
+        "kind": "fn",
+        "signature": "open_append(path<String>)<File> ->",
+        "summary": "Convenience: open for appending, creating the file if absent.",
+        "fan_in": 0
+      },
+      {
+        "name": "open_read",
+        "module": "io",
+        "file": "stdlib/io/mod.vyb",
+        "kind": "fn",
+        "signature": "open_read(path<String>)<File> ->",
+        "summary": "Convenience: open an existing file for reading.",
+        "fan_in": 0
+      },
+      {
+        "name": "open_write",
+        "module": "io",
+        "file": "stdlib/io/mod.vyb",
+        "kind": "fn",
+        "signature": "open_write(path<String>)<File> ->",
+        "summary": "Convenience: create/truncate a file for writing.",
+        "fan_in": 0
+      },
+      {
+        "name": "read_all",
+        "module": "io",
+        "file": "stdlib/io/mod.vyb",
+        "kind": "fn",
+        "signature": "read_all(f<File>)<String> ->",
+        "summary": "Read the whole file into a `String`. Returns an empty String on failure (check",
+        "fan_in": 0
+      },
+      {
+        "name": "write_str",
+        "module": "io",
+        "file": "stdlib/io/mod.vyb",
+        "kind": "fn",
+        "signature": "write_str(f<File>, s<String>)<Int> ->",
+        "summary": "Write `s` to the file. Returns the number of bytes written, or -1 on failure.",
+        "fan_in": 0
+      },
+      {
+        "name": "Socket",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "enum",
+        "signature": "enum Socket {",
+        "summary": "Domain / socket-type constants. A constant enum: each member is a compile-time",
+        "fan_in": 1
+      },
+      {
+        "name": "TcpListener",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "struct",
+        "signature": "struct TcpListener {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "TcpListenerOps",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "aspect",
+        "signature": "aspect TcpListenerOps {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "TcpListenerOps->TcpListener",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "bind",
+        "signature": "bind TcpListenerOps -> TcpListener {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "TcpStream",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "struct",
+        "signature": "struct TcpStream {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "TcpStreamOps",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "aspect",
+        "signature": "aspect TcpStreamOps {",
+        "summary": "The behavior contracts that give each type its method surface, so",
+        "fan_in": 0
+      },
+      {
+        "name": "TcpStreamOps->TcpStream",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "bind",
+        "signature": "bind TcpStreamOps -> TcpStream {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "UdpSocket",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "struct",
+        "signature": "struct UdpSocket {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "UdpSocketOps",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "aspect",
+        "signature": "aspect UdpSocketOps {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "UdpSocketOps->UdpSocket",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "bind",
+        "signature": "bind UdpSocketOps -> UdpSocket {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "async_tcp_accept",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "async_tcp_accept(listener<TcpListener>)<TcpStream> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "async_tcp_connect",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "async_tcp_connect(ip<String>, port<Int>)<TcpStream> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "async_tcp_read",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "async_tcp_read(s<TcpStream>, max<Int>)<String> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "async_tcp_write",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "async_tcp_write(s<TcpStream>, data<String>)<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "async_udp_recv_from",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "async_udp_recv_from(s<UdpSocket>, max<Int>)<String> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "async_udp_send_to",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "async_udp_send_to(s<UdpSocket>, ip<String>, port<Int>, data<String>)<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "socket_accept",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "socket_accept(fd<Int>)<Int> ->",
+        "summary": "Accept a pending connection on a listening socket; returns the connected",
+        "fan_in": 2
+      },
+      {
+        "name": "socket_bind",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "socket_bind(fd<Int>, ip<String>, port<Int>)<Int> ->",
+        "summary": "Bind `fd` to the given IP / port. Use \"0.0.0.0\" or \"\" to bind any interface.",
+        "fan_in": 2
+      },
+      {
+        "name": "socket_close",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "socket_close(fd<Int>)<Int> ->",
+        "summary": "",
+        "fan_in": 2
+      },
+      {
+        "name": "socket_connect",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "socket_connect(fd<Int>, ip<String>, port<Int>)<Int> ->",
+        "summary": "",
+        "fan_in": 2
+      },
+      {
+        "name": "socket_error_code",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "socket_error_code()<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "socket_error_message",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "socket_error_message()<String> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "socket_listen",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "socket_listen(fd<Int>, backlog<Int>)<Int> ->",
+        "summary": "",
+        "fan_in": 2
+      },
+      {
+        "name": "socket_local_port",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "socket_local_port(fd<Int>)<Int> ->",
+        "summary": "The local port a socket is bound to (useful after binding port 0).",
+        "fan_in": 2
+      },
+      {
+        "name": "socket_open",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "socket_open(domain<Int>, st<Int>, pr<Int>)<Int> ->",
+        "summary": "Create a socket in the given domain/type/protocol; returns the descriptor",
+        "fan_in": 2
+      },
+      {
+        "name": "socket_recv",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "socket_recv(fd<Int>, maxlen<Int>)<String> ->",
+        "summary": "Receive up to `maxlen` bytes from `fd` as a fresh String.",
+        "fan_in": 1
+      },
+      {
+        "name": "socket_resolve",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "socket_resolve(host<String>)<String> ->",
+        "summary": "Resolve `host` (a hostname or IP literal) to a dotted-quad IPv4 address",
+        "fan_in": 1
+      },
+      {
+        "name": "socket_send",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "socket_send(fd<Int>, data<String>)<Int> ->",
+        "summary": "Send the whole of `data` on `fd`; returns the number of bytes sent (or -1).",
+        "fan_in": 1
+      },
+      {
+        "name": "tcp_accept",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "tcp_accept(listener<TcpListener>)<TcpStream> ->",
+        "summary": "Accept the next pending connection on `listener`. Returns the new TcpStream,",
+        "fan_in": 0
+      },
+      {
+        "name": "tcp_connect",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "tcp_connect(ip<String>, port<Int>)<TcpStream> ->",
+        "summary": "Connect to `ip:port`. Returns an established TcpStream, or one with fd == -1 on",
+        "fan_in": 0
+      },
+      {
+        "name": "tcp_listen",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "tcp_listen(ip<String>, port<Int>, backlog<Int>)<TcpListener> ->",
+        "summary": "Listen on `ip:port` (\"\" or \"0.0.0.0\" = all interfaces; port 0 = ephemeral,",
+        "fan_in": 0
+      },
+      {
+        "name": "udp_bind",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "udp_bind(ip<String>, port<Int>)<UdpSocket> ->",
+        "summary": "Bind a datagram socket on `ip:port` (\"\" / \"0.0.0.0\" = all interfaces; port 0 =",
+        "fan_in": 0
+      },
+      {
+        "name": "udp_close",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "udp_close(s<UdpSocket>)<Int> ->",
+        "summary": "Close a socket (stream, listener, or datagram). Returns 0 on success.",
+        "fan_in": 0
+      },
+      {
+        "name": "udp_last_peer_ip",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "udp_last_peer_ip()<String> ->",
+        "summary": "The peer that sent the last received datagram.",
+        "fan_in": 0
+      },
+      {
+        "name": "udp_last_peer_port",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "udp_last_peer_port()<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "udp_recv_from",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "udp_recv_from(s<UdpSocket>, max<Int>)<String> ->",
+        "summary": "Receive one datagram as a String. Records the sender, read with",
+        "fan_in": 0
+      },
+      {
+        "name": "udp_send_to",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "udp_send_to(s<UdpSocket>, ip<String>, port<Int>, data<String>)<Int> ->",
+        "summary": "Send one datagram to `ip:port` (the socket need not be connected). Returns the",
+        "fan_in": 0
+      },
+      {
+        "name": "task_await",
+        "module": "tasks",
+        "file": "stdlib/tasks/mod.vyb",
+        "kind": "fn",
+        "signature": "task_await(h<Int>)<Int> ->",
+        "summary": "Block until `task` finishes; returns its closure result (-1 if invalid).",
+        "fan_in": 0
+      },
+      {
+        "name": "task_free",
+        "module": "tasks",
+        "file": "stdlib/tasks/mod.vyb",
+        "kind": "fn",
+        "signature": "task_free(h<Int>)<Int> ->",
+        "summary": "Reclaim the task handle; returns 0 or -1.",
+        "fan_in": 0
+      },
+      {
+        "name": "task_poll",
+        "module": "tasks",
+        "file": "stdlib/tasks/mod.vyb",
+        "kind": "fn",
+        "signature": "task_poll(h<Int>)<Int> ->",
+        "summary": "Non-blocking check: returns the result if ready, else -1 (see header note).",
+        "fan_in": 0
+      },
+      {
+        "name": "task_spawn",
+        "module": "tasks",
+        "file": "stdlib/tasks/mod.vyb",
+        "kind": "fn",
+        "signature": "task_spawn(work<fn() -> Int>)<Int> ->",
+        "summary": "Start `work` on a detached task thread; returns a task handle (>= 1) or 0/ -1",
+        "fan_in": 0
+      },
+      {
+        "name": "atomic_add",
+        "module": "threads",
+        "file": "stdlib/threads/mod.vyb",
+        "kind": "fn",
+        "signature": "atomic_add(a<Int>, v<Int>)<Int> ->",
+        "summary": "Atomically add `v` to the stored value; returns the *new* value after the add.",
+        "fan_in": 0
+      },
+      {
+        "name": "atomic_cas",
+        "module": "threads",
+        "file": "stdlib/threads/mod.vyb",
+        "kind": "fn",
+        "signature": "atomic_cas(a<Int>, expected<Int>, desired<Int>)<Int> ->",
+        "summary": "Atomically set the value to `desired` if it is currently `expected`; returns",
+        "fan_in": 0
+      },
+      {
+        "name": "atomic_free",
+        "module": "threads",
+        "file": "stdlib/threads/mod.vyb",
+        "kind": "fn",
+        "signature": "atomic_free(a<Int>)<Int> ->",
+        "summary": "Destroy and free `a`; returns 0 or -1 on error.",
+        "fan_in": 0
+      },
+      {
+        "name": "atomic_load",
+        "module": "threads",
+        "file": "stdlib/threads/mod.vyb",
+        "kind": "fn",
+        "signature": "atomic_load(a<Int>)<Int> ->",
+        "summary": "Atomically read and return the stored value.",
+        "fan_in": 0
+      },
+      {
+        "name": "atomic_new",
+        "module": "threads",
+        "file": "stdlib/threads/mod.vyb",
+        "kind": "fn",
+        "signature": "atomic_new(init<Int>)<Int> ->",
+        "summary": "A fresh atomic int initialized to `init` (0 on allocation failure).",
+        "fan_in": 0
+      },
+      {
+        "name": "atomic_store",
+        "module": "threads",
+        "file": "stdlib/threads/mod.vyb",
+        "kind": "fn",
+        "signature": "atomic_store(a<Int>, v<Int>)<Int> ->",
+        "summary": "Atomically store `v`; returns 0 or -1 on error.",
+        "fan_in": 0
+      },
+      {
+        "name": "cond_broadcast",
+        "module": "threads",
+        "file": "stdlib/threads/mod.vyb",
+        "kind": "fn",
+        "signature": "cond_broadcast(cv<Int>)<Int> ->",
+        "summary": "Wake every waiter blocked in cond_wait on `cv`; returns 0 or -1.",
+        "fan_in": 0
+      },
+      {
+        "name": "cond_free",
+        "module": "threads",
+        "file": "stdlib/threads/mod.vyb",
+        "kind": "fn",
+        "signature": "cond_free(cv<Int>)<Int> ->",
+        "summary": "Destroy and free `cv`; returns 0 or -1 on error.",
+        "fan_in": 0
+      },
+      {
+        "name": "cond_new",
+        "module": "threads",
+        "file": "stdlib/threads/mod.vyb",
+        "kind": "fn",
+        "signature": "cond_new()<Int> ->",
+        "summary": "A fresh, unlocked-pair condition variable handle (0 on allocation/init failure).",
+        "fan_in": 0
+      },
+      {
+        "name": "cond_signal",
+        "module": "threads",
+        "file": "stdlib/threads/mod.vyb",
+        "kind": "fn",
+        "signature": "cond_signal(cv<Int>)<Int> ->",
+        "summary": "Wake one waiter blocked in cond_wait on `cv` (no-op if none); returns 0 or -1.",
+        "fan_in": 0
+      },
+      {
+        "name": "cond_wait",
+        "module": "threads",
+        "file": "stdlib/threads/mod.vyb",
+        "kind": "fn",
+        "signature": "cond_wait(cv<Int>, m<Int>)<Int> ->",
+        "summary": "Atomically release `m`, block until signalled/broadcast, then reacquire `m`.",
+        "fan_in": 0
+      },
+      {
+        "name": "mutex_free",
+        "module": "threads",
+        "file": "stdlib/threads/mod.vyb",
+        "kind": "fn",
+        "signature": "mutex_free(m<Int>)<Int> ->",
+        "summary": "Destroy and free `m`; returns 0 or -1 on error.",
+        "fan_in": 0
+      },
+      {
+        "name": "mutex_lock",
+        "module": "threads",
+        "file": "stdlib/threads/mod.vyb",
+        "kind": "fn",
+        "signature": "mutex_lock(m<Int>)<Int> ->",
+        "summary": "Lock `m`, blocking until acquired; returns 0 or -1 on error.",
+        "fan_in": 0
+      },
+      {
+        "name": "mutex_new",
+        "module": "threads",
+        "file": "stdlib/threads/mod.vyb",
+        "kind": "fn",
+        "signature": "mutex_new()<Int> ->",
+        "summary": "A fresh, unlocked mutex handle (0 on allocation/init failure).",
+        "fan_in": 0
+      },
+      {
+        "name": "mutex_unlock",
+        "module": "threads",
+        "file": "stdlib/threads/mod.vyb",
+        "kind": "fn",
+        "signature": "mutex_unlock(m<Int>)<Int> ->",
+        "summary": "Unlock `m`; returns 0 or -1 on error.",
+        "fan_in": 0
+      },
+      {
+        "name": "thread_detach",
+        "module": "threads",
+        "file": "stdlib/threads/mod.vyb",
+        "kind": "fn",
+        "signature": "thread_detach(handle<Int>)<Int> ->",
+        "summary": "Detach `handle`: the thread becomes non-joinable and its slot is reclaimed",
+        "fan_in": 1
+      },
+      {
+        "name": "thread_join",
+        "module": "threads",
+        "file": "stdlib/threads/mod.vyb",
+        "kind": "fn",
+        "signature": "thread_join(handle<Int>)<Int> ->",
+        "summary": "Wait for the thread `handle` to finish and return its closure result. Returns",
+        "fan_in": 1
+      },
+      {
+        "name": "thread_spawn",
+        "module": "threads",
+        "file": "stdlib/threads/mod.vyb",
+        "kind": "fn",
+        "signature": "thread_spawn(work<fn() -> Int>)<Int> ->",
+        "summary": "Start `work` on a new thread; returns a handle (>= 1) or -1 on failure",
+        "fan_in": 2
+      },
+      {
+        "name": "sleep_ms",
+        "module": "time",
+        "file": "stdlib/time/mod.vyb",
+        "kind": "fn",
+        "signature": "sleep_ms(millis<Int>)<Int> ->",
+        "summary": "Sleep for `millis` milliseconds (thread sleeps; returns 0). A non-positive",
+        "fan_in": 0
+      },
+      {
+        "name": "time_epoch_millis",
+        "module": "time",
+        "file": "stdlib/time/mod.vyb",
+        "kind": "fn",
+        "signature": "time_epoch_millis()<Int> ->",
+        "summary": "Current Unix epoch as milliseconds since 1970-01-01.",
+        "fan_in": 0
+      },
+      {
+        "name": "time_epoch_secs",
+        "module": "time",
+        "file": "stdlib/time/mod.vyb",
+        "kind": "fn",
+        "signature": "time_epoch_secs()<Int> ->",
+        "summary": "Current Unix epoch as whole seconds (>= 0; -1 on clock error).",
+        "fan_in": 0
+      },
+      {
+        "name": "time_mono_millis",
+        "module": "time",
+        "file": "stdlib/time/mod.vyb",
+        "kind": "fn",
+        "signature": "time_mono_millis()<Int> ->",
+        "summary": "Monotonic wall time in milliseconds \u2014 the stable source for measuring elapsed",
+        "fan_in": 0
+      },
+      {
+        "name": "time_nanos",
+        "module": "time",
+        "file": "stdlib/time/mod.vyb",
+        "kind": "fn",
+        "signature": "time_nanos()<Int> ->",
+        "summary": "Current Unix epoch as nanoseconds since 1970-01-01.",
+        "fan_in": 0
+      },
+      {
+        "name": "TlsContext",
+        "module": "tls",
+        "file": "stdlib/tls/mod.vyb",
+        "kind": "struct",
+        "signature": "struct TlsContext {",
+        "summary": "A holding SSL_CTX (client or server). Handles are opaque Ints.",
+        "fan_in": 1
+      },
+      {
+        "name": "TlsContextOps",
+        "module": "tls",
+        "file": "stdlib/tls/mod.vyb",
+        "kind": "aspect",
+        "signature": "aspect TlsContextOps {",
+        "summary": "Behavior contracts giving each type its ergonomic method surface.",
+        "fan_in": 0
+      },
+      {
+        "name": "TlsContextOps->TlsContext",
+        "module": "tls",
+        "file": "stdlib/tls/mod.vyb",
+        "kind": "bind",
+        "signature": "bind TlsContextOps -> TlsContext {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "TlsStream",
+        "module": "tls",
+        "file": "stdlib/tls/mod.vyb",
+        "kind": "struct",
+        "signature": "struct TlsStream {",
+        "summary": "A TLS session bound to an already-connected fd. `ssl` is the SSL* handle;",
+        "fan_in": 1
+      },
+      {
+        "name": "TlsStreamOps",
+        "module": "tls",
+        "file": "stdlib/tls/mod.vyb",
+        "kind": "aspect",
+        "signature": "aspect TlsStreamOps {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "TlsStreamOps->TlsStream",
+        "module": "tls",
+        "file": "stdlib/tls/mod.vyb",
+        "kind": "bind",
+        "signature": "bind TlsStreamOps -> TlsStream {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "tls_accept",
+        "module": "tls",
+        "file": "stdlib/tls/mod.vyb",
+        "kind": "fn",
+        "signature": "tls_accept(s<TlsStream>)<Int> ->",
+        "summary": "Complete the server handshake. Returns 0 on success, -1 on error.",
+        "fan_in": 1
+      },
+      {
+        "name": "tls_client_context",
+        "module": "tls",
+        "file": "stdlib/tls/mod.vyb",
+        "kind": "fn",
+        "signature": "tls_client_context()<TlsContext> ->",
+        "summary": "A client SSL_CTX (no peer verification). Release with tls_free_context(ctx).",
+        "fan_in": 1
+      },
+      {
+        "name": "tls_client_context_verified",
+        "module": "tls",
+        "file": "stdlib/tls/mod.vyb",
+        "kind": "fn",
+        "signature": "tls_client_context_verified(ca_pem<String>)<TlsContext> ->",
+        "summary": "A client SSL_CTX that verifies the server against a pinned CA given as in-line",
+        "fan_in": 1
+      },
+      {
+        "name": "tls_close",
+        "module": "tls",
+        "file": "stdlib/tls/mod.vyb",
+        "kind": "fn",
+        "signature": "tls_close(s<TlsStream>)<Int> ->",
+        "summary": "Shut down the TLS session and close the underlying fd.",
+        "fan_in": 1
+      },
+      {
+        "name": "tls_connect",
+        "module": "tls",
+        "file": "stdlib/tls/mod.vyb",
+        "kind": "fn",
+        "signature": "tls_connect(s<TlsStream>)<Int> ->",
+        "summary": "Complete the client handshake. Returns 0 on success, -1 on error.",
+        "fan_in": 1
+      },
+      {
+        "name": "tls_error_code",
+        "module": "tls",
+        "file": "stdlib/tls/mod.vyb",
+        "kind": "fn",
+        "signature": "tls_error_code()<Int> ->",
+        "summary": "Diagnostic helpers: the last TLS operation's result (0 / \"no error\").",
+        "fan_in": 0
+      },
+      {
+        "name": "tls_error_message",
+        "module": "tls",
+        "file": "stdlib/tls/mod.vyb",
+        "kind": "fn",
+        "signature": "tls_error_message()<String> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "tls_free_context",
+        "module": "tls",
+        "file": "stdlib/tls/mod.vyb",
+        "kind": "fn",
+        "signature": "tls_free_context(ctx<TlsContext>)<Void> ->",
+        "summary": "Release an SSL_CTX returned by tls_client_context / tls_server_context.",
+        "fan_in": 1
+      },
+      {
+        "name": "tls_read",
+        "module": "tls",
+        "file": "stdlib/tls/mod.vyb",
+        "kind": "fn",
+        "signature": "tls_read(s<TlsStream>, max<Int>)<String> ->",
+        "summary": "Receive up to `max` decrypted bytes as a fresh String (empty on error/EOF).",
+        "fan_in": 1
+      },
+      {
+        "name": "tls_server_context",
+        "module": "tls",
+        "file": "stdlib/tls/mod.vyb",
+        "kind": "fn",
+        "signature": "tls_server_context(cert_pem<String>, key_pem<String>)<TlsContext> ->",
+        "summary": "A server SSL_CTX loaded from in-line PEM certificate / private-key strings.",
+        "fan_in": 1
+      },
+      {
+        "name": "tls_stream",
+        "module": "tls",
+        "file": "stdlib/tls/mod.vyb",
+        "kind": "fn",
+        "signature": "tls_stream(ctx<TlsContext>, fd<Int>, host<String>)<TlsStream> ->",
+        "summary": "Wrap an already-connected fd in a TLS stream under `ctx`. `host` (if non-empty)",
+        "fan_in": 1
+      },
+      {
+        "name": "tls_write",
+        "module": "tls",
+        "file": "stdlib/tls/mod.vyb",
+        "kind": "fn",
+        "signature": "tls_write(s<TlsStream>, data<String>)<Int> ->",
+        "summary": "Send the whole of `data` on the stream. Returns bytes sent (or -1).",
+        "fan_in": 1
+      }
+    ]
+  },
   "edges": [
     {
       "type": "call",

@@ -670,9 +670,10 @@ with `pass` for multi-statement case bodies. Needs polishing:
 - [x] **Refman polish (part 1)** — per-file sections on multi-file module pages
   (`core`, `error`), module + per-symbol fan-in/fan-out views, and a CI
   `--check` target (`.github/workflows/refman-check.yml`).
-- [ ] **Refman polish (part 2)** — cross-module type-consumer view (who builds /
-  handles `HttpResponse`, `TcpStream`, …), graph.json per-symbol nodes, and a
-  few hand-written short prose intros where comments are thin.
+- [x] **Refman polish (part 2)** — cross-module type-consumer view
+  (`docs/refman/interfaces.md`), fuller `graph.json` nodes (module/file/symbol
+  records), and a hand-written prose intro for the thin `stdlib/prelude.vyb`
+  header.
 
 ### Testing & Tooling
 - [ ] **`vyb test`** — Run test files alongside source (`*.test.vyb`)

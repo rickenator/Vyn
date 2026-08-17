@@ -537,6 +537,9 @@ def render_index(g):
          "Auto-generated. Each module page links every exported symbol and the "
          "edges between modules: imports, imports-by, implements/binds, uses-type, "
          "runtime calls, and prose references.", "",
+         "Cross-indexes: [functions](functions.md) · [types](types.md) · "
+         "[aspects & binds](aspects.md) · [shared types & consumers](interfaces.md) "
+         "· [runtime intrinsics](runtime.md).", "",
          "## Modules", "",
          "| Module | Files | Exported | Imports | Fan-in | Fan-out | Edges |",
          "|---|---|---|---|---|---|---|"]
@@ -747,6 +750,107 @@ def render_cross(g):
     return docs
 
 
+def shared_types(g):
+    """Cross-module structs/enums (and how each other module consumes them)."""
+    structs = {}
+    for rel, fm in g["files"].items():
+        for s in fm["symbols"]:
+            if s.get("exported") and s["kind"] in ("struct", "enum"):
+                structs[(module_of(rel), s["name"])] = s
+    consumers = {}
+    for e in g["edges"]:
+        if e["type"] not in ("usesType", "import"):
+            continue
+        key = (e.get("to_module"), e.get("to_symbol"))
+        fm, tm = e.get("from_module"), e.get("to_module")
+        if not fm or not tm or fm == tm or key not in structs:
+            continue
+        rec = (fm, e.get("from_symbol") or "module", e["type"], e.get("reexport", False))
+        consumers.setdefault(key, set()).add(rec)
+    return structs, consumers
+
+
+def render_interfaces(g):
+    structs, consumers = shared_types(g)
+    shared = {k: v for k, v in consumers.items()}
+    L = [prov(g["git_rev"]), "# Shared types & consumers", "",
+         "Cross-module structs and enums — types defined in one module but "
+         "imported, built, or handled by another. For each shared type: who "
+         "imports/re-exports it and which functions use it in a signature.", ""]
+    if not shared:
+        L.append("_No cross-module types._")
+        return "\n".join(L).rstrip() + "\n"
+    L += ["| Type | Module | Consumers | Consumer modules |", "|---|---|---|---|"]
+    rows = []
+    for (tm, name) in sorted(shared):
+        cmods = sorted({c[0] for c in shared[(tm, name)]})
+        rows.append("| [`%s`](%s#%s) | %s | %d | %s |" % (
+            name, page(tm), slug(name), module_link(tm), len(cmods),
+            ", ".join(module_link(c) for c in cmods)))
+    L += rows
+    L.append("")
+    for (tm, name) in sorted(shared):
+        s = structs[(tm, name)]
+        L.append('<a id="%s"></a>' % slug("%s-%s" % (tm, name)))
+        L.append("## `%s` · %s" % (name, s["kind"]))
+        L.append("")
+        summary = s.get("doc", "").splitlines()[0] if s.get("doc") else ""
+        if summary:
+            L.append(summary)
+            L.append("")
+        L.append("- **Defined in** %s" % module_link(tm))
+        L.append("")
+        bymod = {}
+        for (fm, fsym, etype, reex) in sorted(shared[(tm, name)]):
+            bymod.setdefault(fm, []).append((fsym, etype, reex))
+        L.append("**Consumed by %d module(s)**" % len(bymod))
+        L.append("")
+        for fm in sorted(bymod):
+            detail = []
+            for (fsym, etype, reex) in sorted(bymod[fm], key=lambda t: (t[0], t[1])):
+                if not fsym:
+                    detail.append("imports%s" % (" (re-export)" if reex else ""))
+                elif etype == "usesType":
+                    detail.append("`%s` uses it" % fsym)
+                else:
+                    detail.append("`%s` imports it%s" % (fsym, " (re-export)" if reex else ""))
+            L.append("- %s — %s" % (module_link(fm), ", ".join(detail)))
+    L.append("")
+    return "\n".join(L).rstrip() + "\n"
+
+
+def json_nodes(g):
+    """Machine-readable module/file/symbol nodes for graph.json."""
+    bymod = {}
+    for rel in g["files"]:
+        bymod.setdefault(module_of(rel), []).append(rel)
+    mods = []
+    files = []
+    syms = []
+    for m in g["module_order"]:
+        fin, fout = module_fans(g, m)
+        rels = sorted(bymod[m])
+        exported = sum(1 for rel in rels
+                       for s in g["files"][rel]["symbols"] if s.get("exported"))
+        mods.append({"name": m, "files": rels, "exported": exported,
+                     "fan_in": len(fin), "fan_out": len(fout)})
+        for rel in rels:
+            names = [s["name"] for s in g["files"][rel]["symbols"] if s.get("exported")]
+            files.append({"path": rel, "module": m, "symbols": names})
+            for s in g["files"][rel]["symbols"]:
+                if not s.get("exported"):
+                    continue
+                summary = s.get("doc", "").splitlines()[0] if s.get("doc") else ""
+                syms.append({
+                    "name": s["name"], "module": m, "file": rel, "kind": s["kind"],
+                    "signature": s.get("signature", ""), "summary": summary,
+                    "fan_in": len(symbol_fan_in(g, m, s["name"]))})
+    mods.sort(key=lambda n: n["name"])
+    files.sort(key=lambda n: n["path"])
+    syms.sort(key=lambda n: (n["module"], n["name"]))
+    return {"modules": mods, "files": files, "symbols": syms}
+
+
 def emit(outdir: Path, g):
     outdir.mkdir(parents=True, exist_ok=True)
     outdir.joinpath("index.md").write_text(render_index(g))
@@ -754,8 +858,10 @@ def emit(outdir: Path, g):
         outdir.joinpath(page(m)).write_text(render_module(m, g))
     for fname, content in render_cross(g).items():
         outdir.joinpath(fname).write_text(content)
+    outdir.joinpath("interfaces.md").write_text(render_interfaces(g))
     outdir.joinpath("graph.json").write_text(json.dumps(
-        {"git_rev": g["git_rev"], "modules": g["module_order"], "edges": g["edges"]},
+        {"git_rev": g["git_rev"], "modules": g["module_order"],
+         "nodes": json_nodes(g), "edges": g["edges"]},
         indent=2))
     outdir.joinpath("PLAN.md").write_text((ROOT / "docs" / "refman" / "PLAN.md").read_text())
 
