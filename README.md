@@ -2734,6 +2734,7 @@ println(person2.age.to_string())  # Output: 30
 - **Primitives**: Int, Float, Bool, String
 - **Vecs**: `Vec<Int>`, `Vec<String>`, and `Vec<struct>` (arrays of objects)
 - **Struct Fields**: Primitive, `Vec`, and nested struct fields
+- **Excluded**: `fn` and `Self` field types are not serializable
 - **Round-Trip**: Lossless struct → JSON → struct at arbitrary nesting depth.
   `to_string()` emits JSON with no fixed-size cap, so long strings, wide Vecs,
   and deeply nested structures never truncate; `T::from_string(json)` rebuilds

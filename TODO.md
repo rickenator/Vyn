@@ -176,6 +176,11 @@ is the working audit for what needs to be implemented next.
 - [x] **`lit()`, `notype()`, `bare()`, `deserial()` intrinsics** — Serialization control
 - [x] **JSON construction intrinsics** — `__vyb_serialize_to_json()`, struct metadata
 - [x] **JSON deserialization** — `T::from_string(json)` round-trip (v0.4.4)
+- [ ] **Ser/deser edges — `fn` / `Self` / recursive structs** — `fn`-typed and `Self`-typed
+  fields are excluded from serialization/deserialization (guarded + documented note,
+  `PROGRAMMERS_GUIDE.md` §3.21). Self-referential structs (`next<Node?>`) currently
+  **segfault** the toolchain at type registration; make that a graceful disallow or a
+  properly-supported path. Broader general recursion support remains a follow-on.
 
 ### Infrastructure
 - [x] **CMake build system** — LLVM integration

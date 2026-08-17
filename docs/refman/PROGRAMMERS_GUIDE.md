@@ -155,9 +155,10 @@ Every program has an entry point:
 main()<Int> -> { return 0 }
 ```
 
-`main` may return `Int`, `Int64`, or a struct/`Result`-shaped type that
-auto-serializes to JSON on exit. Comments use `#` line comments (and `//` in
-some tooling/tests):
+`main` may return **any** type. An integer return becomes the process exit
+code; every other value — `String`, `Float`, `Bool`, structs, `Vec`s, tuples,
+maps — auto-serializes on exit (complex values as JSON). Comments use `#` line
+comments (and `//` in some tooling/tests):
 
 ```vyb
 # A doc-ish comment above a declaration becomes that symbol's doc text.
@@ -167,14 +168,56 @@ The standard library follows this convention so the refman can reuse prose.
 
 ### 3.2 Primitives and literals
 
+Vyb's primitive catalog covers sized and unsigned integers, two float widths,
+Unicode scalars, raw bytes, and the scalar value types.
+
+**Integers**
+
 | Type | Meaning |
 |---|---|
-| `Int` / `UInt` | pointer-width signed / unsigned integer |
-| `Int8`…`Int64`, `UInt8`…`UInt64` | sized integers |
-| `Float` | double-precision float |
+| `Int` / `Int64` | signed 64-bit integer (the default) |
+| `Int32`, `Int16`, `Int8` | narrower signed integers |
+| `UInt` / `UInt64` | unsigned 64-bit integer |
+| `UInt32`, `UInt16`, `UInt8` | narrower unsigned integers |
+
+**Floating point**
+
+| Type | Meaning |
+|---|---|
+| `Float` / `Float64` | double-precision float (the default) |
+| `Float32` | single-precision float |
+
+**Other scalars**
+
+| Type | Meaning |
+|---|---|
+| `Char` | a UTF-8 code unit |
+| `Rune` | a Unicode code point |
+| `Bytes` | a fat-pointer block of raw bytes |
 | `Bool` | `true` / `false` |
 | `String` | a fat-pointer, length-known byte string (immutable) |
+| `Void` | the absence of a value |
 | `T?` | a Vyb optional: present `T?(v)` or absent `T?()` |
+
+**Integer casts** use `value as Type` between the sized integer types — widening
+sign/zero-extends from the source type and narrowing truncates. For example,
+packing eight `UInt8` into an `Int64`:
+
+```vyb
+b0<UInt8> = 0b11001110   # ... and b1..b7
+boxed<Int64> = (b0 as Int64) | ((b1 as Int64) << 8) | ((b2 as Int64) << 16) | ...
+```
+
+**Explicit integer assignment**: a variable/field may only change integer width
+or signedness through `as`. A bare in-range constant still fits (`x<Int8> = 3`),
+but an out-of-range constant or any typed value crossing width/signedness is a
+compile error — `x<Int8> = 300` and `x<Int8> = wide<Int>` are both rejected.
+
+**Type aliasing**: all numeric types accept three naming conventions.
+
+- Vyb style: `Int32`, `Float64`, `UInt8`
+- C style: `int32`, `float64`, `uint8`
+- LLVM style: `i32`, `f64`, `u8`
 
 Integer literals are concise across bases and flow into any sized type:
 
@@ -738,7 +781,8 @@ including re-exports (e.g. `https` re-exports `HttpResponse` from `http`).
 
 ### 3.21 Serialization
 
-Structs and `Result`-shaped returns auto-serialize to JSON:
+Structs auto-serialize to JSON, as do the success-path values returned by
+fallible (`fail`/`trap`) functions:
 
 ```vyb
 struct User { name<String>, age<Int> }
@@ -753,7 +797,9 @@ Serialization is **bidirectional and lossless at arbitrary depth**. A struct's
 `.to_string()` emits JSON through a growable buffer (no fixed-size cap, so long
 strings, wide `Vec<T>`, and deeply nested structs are never truncated), and a
 `T::from_string(json)` pass rebuilds the full value — including owned `String`
-and `Vec` payloads and `Vec<struct>` arrays of objects:
+and `Vec` payloads and `Vec<struct>` arrays of objects. The serializable set is
+primitives, `String`, structs, `Vec`s, maps, tuples, and data enums — **with the
+exception of `fn` and `Self` types**, which do not serialize and are excluded from ser/deser.
 
 ```vyb
 struct Point { x<Int>, y<Int> }
