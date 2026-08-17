@@ -185,8 +185,7 @@ b0<UInt8> = 0x80             // hex into a sized unsigned type
 c<UInt32> = (b0 as UInt32) | ((1 as UInt32) << 8)
 ```
 
-**Optional `T?`** is Vyb's native optional, replacing the Rust-shaped
-`Option<T>`/`Some`/`None` (which were removed from the stdlib):
+**Optional `T?`** is Vyb's native optional, built directly into the type system:
 
 ```vyb
 a<Int?>  = Int?(5)          // present
