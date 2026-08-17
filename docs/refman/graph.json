@@ -1,5 +1,5 @@
 {
-  "git_rev": "58bcbf000444eebf61ee83e95ccda85004519d73",
+  "git_rev": "eab86af152a5c44294554d6b40442b147d25c419",
   "modules": [
     "asyncs",
     "channels",
@@ -206,9 +206,9 @@
           "hashkey<K<Hashable>>",
           "cmp_lt<T<Comparable>>",
           "bucket_for",
-          "HashMap<K,",
-          "MapEntry<K,",
-          "MapIter<K,",
+          "HashMap<K, V>",
+          "MapEntry<K, V>",
+          "MapIter<K, V>",
           "Iterator->MapIter",
           "MapOps",
           "MapOps->HashMap",
@@ -217,8 +217,8 @@
           "Iterator->HashIter",
           "SetOps",
           "SetOps->HashSet",
-          "BTreeMap<K,",
-          "BTreeIter<K,",
+          "BTreeMap<K, V>",
+          "BTreeIter<K, V>",
           "Iterator->BTreeIter",
           "BTreeMapOps",
           "BTreeMapOps->BTreeMap",
@@ -786,7 +786,7 @@
         "fan_in": 0
       },
       {
-        "name": "BTreeIter<K,",
+        "name": "BTreeIter<K, V>",
         "module": "collections",
         "file": "stdlib/collections/mod.vyb",
         "kind": "struct",
@@ -795,7 +795,7 @@
         "fan_in": 0
       },
       {
-        "name": "BTreeMap<K,",
+        "name": "BTreeMap<K, V>",
         "module": "collections",
         "file": "stdlib/collections/mod.vyb",
         "kind": "struct",
@@ -831,7 +831,7 @@
         "fan_in": 0
       },
       {
-        "name": "HashMap<K,",
+        "name": "HashMap<K, V>",
         "module": "collections",
         "file": "stdlib/collections/mod.vyb",
         "kind": "struct",
@@ -885,7 +885,7 @@
         "fan_in": 0
       },
       {
-        "name": "MapEntry<K,",
+        "name": "MapEntry<K, V>",
         "module": "collections",
         "file": "stdlib/collections/mod.vyb",
         "kind": "struct",
@@ -894,7 +894,7 @@
         "fan_in": 0
       },
       {
-        "name": "MapIter<K,",
+        "name": "MapIter<K, V>",
         "module": "collections",
         "file": "stdlib/collections/mod.vyb",
         "kind": "struct",
@@ -944,7 +944,7 @@
         "file": "stdlib/collections/mod.vyb",
         "kind": "aspect",
         "signature": "aspect VecHigherOps {",
-        "summary": "---------------------------------------------------------------------------",
+        "summary": "Higher-order `Vec<T>` combinators (non-capturing lambdas):",
         "fan_in": 0
       },
       {
@@ -971,7 +971,7 @@
         "file": "stdlib/collections/mod.vyb",
         "kind": "aspect",
         "signature": "aspect VecOps {",
-        "summary": "---------------------------------------------------------------------------",
+        "summary": "Pure-Vyb `Vec<T>` extension operations.",
         "fan_in": 0
       },
       {
@@ -4343,14 +4343,14 @@
     {
       "type": "proseRef",
       "from_module": "collections",
-      "from_symbol": "BTreeMap<K,",
+      "from_symbol": "BTreeMap<K, V>",
       "to_module": "collections",
       "to_symbol": "BTreeMapOps"
     },
     {
       "type": "proseRef",
       "from_module": "collections",
-      "from_symbol": "BTreeMap<K,",
+      "from_symbol": "BTreeMap<K, V>",
       "to_module": "core",
       "to_symbol": "Comparable"
     },

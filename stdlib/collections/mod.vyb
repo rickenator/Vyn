@@ -18,21 +18,25 @@
 #     `HashMap<K, V>(cap)` (pre-sized, still auto-grows), or
 #     `HashMap<K, V>(cap, true)` (fixed at `cap` entries, no re-hash, bounded
 #     memory for embedded targets).
+#
 #   - `HashSet<K>`: a set of distinct keys backed by a `values` vector plus the
 #     same auto-growing bucket/chain index. Provides `insert` (returns `Bool`),
 #     `contains` and `size`. Build one with `HashSet<K>()`, `HashSet<K>(cap)`,
 #     or the fixed `HashSet<K>(cap, true)`.
+#
 #   - `BTreeMap<K, V>`: an ordered map keyed by `Comparable`. Keys live in a
 #     `keys` vector kept sorted ascending (with a parallel `vals` vector), so
 #     iteration walks entries in key order and `get` / `contains_key` binary
 #     search (O(log n)); `put` inserts at the sorted position (O(n) shift).
 #     Keyed methods (`put` / `get` / `contains_key` / `size` / `iter`) are bound
 #     as `BTreeMapOps`. Build one with `BTreeMap<K, V>()`.
+#
 #   - `VecOps` (on the built-in `Vec<T>`): non-mutating view helpers written in
 #     Vyb over the Vec primitives — `first` / `last` (head/tail element),
 #     `reversed` (a fresh reversed copy) and `find` (first matching index, or
 #     `-1`), and the ordering helpers `sorted` (fresh ascending copy),
 #     `min` / `max`. Bound via `Comparable` (which refines `Equatable`).
+#
 #   - `VecHigherOps` (also on the built-in `Vec<T>`): the higher-order
 #     combinators `map(f)` (element-wise transform to a fresh vector),
 #     `filter(f)` (keep only `true` results in a fresh vector) and
@@ -42,6 +46,7 @@
 #     `map_in_place(f)`, `retain(f)` and `reverse_in_place()` rewrite / compact
 #     / reverse the receiver through a by-ref `their<Vec<T>>` borrow; VecOps
 #     also provides `sort_in_place()` (Comparable-gated).
+#
 #   - `HashMap<K,V>()` / `HashSet<K>()` (and their `(cap)` / `(cap, true)`
 #     capacity forms) are declared struct constructors: they return a fully initialized
 #     (bucket-indexed) instance, keeping the `Vec()` / `Vec(n)` construction
@@ -574,17 +579,22 @@ bind<K<Comparable, Equatable>, V> BTreeMapOps -> BTreeMap<K, V> {
 # The built-in `Vec<T>` already ships the mutation/access primitives (`push`,
 # `pop`, `get`, `set`, `len`, `clear`, `is_empty`, `contains`, `remove_at`).
 # These binds layer analysis/view operations on top, written in Vyb over those
-# primitives. They are *non-mutating*: `reversed` returns a fresh vector,
-# `sorted` a fresh ascending copy, and `find` / `first` / `last` / `min` / `max`
-# only read. `find` returns the index of the first `==` match or `-1`;
-# `first` / `last` return the head/tail element. On an empty vector `reversed`
-# is a no-op, while `first` / `last` (which read via `Vec::get`) inherit `get`'s
-# current out-of-range behavior (a known compiler gap: the returned value is not
-# a clean default). Comparison order is dispatched through the
-# `Comparable`-bounded `cmp_lt` helper (mirroring the `equals`-based `samekey`),
-# because a direct `compare` call does not resolve on a generic element. The
-# higher-order combinators live in a separate unconstrained `VecHigherOps`
-# aspect so they work on any element type (see below).
+# primitives. All are *non-mutating*:
+#
+# - `reversed` returns a fresh reversed vector.
+# - `sorted` returns a fresh ascending copy.
+# - `first` / `last` return the head / tail element.
+# - `find` returns the index of the first `==` match, or `-1`.
+# - `min` / `max` read the least / greatest element.
+#
+# On an empty vector `reversed` is a no-op, while `first` / `last` (which read
+# via `Vec::get`) inherit `get`'s current out-of-range behavior (a known
+# compiler gap: the returned value is not a clean default). Comparison order is
+# dispatched through the `Comparable`-bounded `cmp_lt` helper (mirroring the
+# `equals`-based `samekey`), because a direct `compare` call does not resolve on
+# a generic element. The higher-order combinators live in a separate
+# unconstrained `VecHigherOps` aspect so they work on any element type (see
+# below).
 #
 # ---------------------------------------------------------------------------
 share(all)
@@ -691,20 +701,22 @@ bind<T<Comparable, Equatable>> VecOps -> Vec<T> {
 }
 
 # ---------------------------------------------------------------------------
-# Higher-order `Vec<T>` combinators (non-capturing lambdas).
+# Higher-order `Vec<T>` combinators (non-capturing lambdas):
 #
-# `map(f)` applies `f` to every element and returns a fresh transformed vector.
-# `filter(f)` keeps only the elements for which `f` is `true` in a fresh vector.
-# `reduce(init, f)` folds the vector left-to-right: the accumulator starts at
-# `init` and `f` is applied as `acc = f(acc, elem)` for each element in order.
-# The mutating companions share this aspect: `map_in_place(f)` rewrites each
-# element in place, `retain(f)` keeps only the elements for which `f` is `true`
-# (compacting in place, returning the surviving count), and `reverse_in_place()`
-# flips the order in place. All are bound without a `Comparable` / `Equatable`
-# bound on `T`, so they are available on any element type. The `fn` arguments
-# must be non-capturing (bare function pointers); closures with an environment
-# are a future extension. The non-mutating trio never modify the receiver; the
-# `_in_place` forms mutate the receiver's own backing store by-ref.
+# - `map(f)` applies `f` to every element and returns a fresh transformed vector.
+# - `filter(f)` keeps only the elements for which `f` is `true`, in a fresh vector.
+# - `reduce(init, f)` folds the vector left-to-right: the accumulator starts at
+#   `init` and `f` is applied as `acc = f(acc, elem)` for each element in order.
+# - `map_in_place(f)` rewrites each element in place.
+# - `retain(f)` keeps only the elements for which `f` is `true`, compacting in
+#   place and returning the surviving count.
+# - `reverse_in_place()` flips the order in place.
+#
+# All are bound without a `Comparable` / `Equatable` bound on `T`, so they are
+# available on any element type. The `fn` arguments must be non-capturing (bare
+# function pointers); closures with an environment are a future extension. The
+# non-mutating trio never modify the receiver; the `_in_place` forms mutate the
+# receiver's own backing store by-ref.
 #
 # ---------------------------------------------------------------------------
 share(all)

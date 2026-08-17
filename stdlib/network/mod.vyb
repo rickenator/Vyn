@@ -17,7 +17,8 @@
 #   cli = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, 0)
 #   socket_connect(cli, "127.0.0.1", port)
 #   conn = socket_accept(srv)
-#   socket_send(cli, "hello"); socket_recv(conn, 5)   // "hello"
+#   socket_send(cli, "hello")
+#   socket_recv(conn, 5)   // "hello"
 #
 # Diagnostics: `socket_error_code()` (0 = no error) and `socket_error_message()`
 # report the result of the last network operation.

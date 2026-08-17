@@ -654,9 +654,11 @@ methods and monomorphized internals.
 ```vyb
 v<Vec<Int>> = Vec()          # empty, growable
 v2<Vec<Int>> = Vec(8)        # preallocate capacity
-v.push(1); v.push(2)
+v.push(1)
+v.push(2)
 x<Int> = v.get(0)            # bounds-checked
-v.len(); v.isEmpty()/…
+v.len()                      # element count
+v.isEmpty()                  # true when empty
 v.iter()                     # -> VecIter<T> (Iterator bind)
 ```
 
@@ -937,23 +939,37 @@ v.push(x)                          # append
 v.pop()?                           # remove last (absent when empty)
 v.len()                            # size
 v.get(i)                           # bounds-checked read
-v.first() ; v.last()               # endpoints (optional)
-v.reversed() ; v.sorted()          # fresh copies
-v.find(x) ; v.min() ; v.max()
-v.sort_in_place() ; v.reverse_in_place()
-v.map_in_place(f) ; v.retain(f)
-v.map(f) ; v.filter(f) ; v.reduce(init, f)   # higher-order over the Vec
+v.first()                          # first element (optional)
+v.last()                           # last element (optional)
+v.reversed()                       # fresh copy, reversed
+v.sorted()                         # fresh copy, sorted
+v.find(x)                          # index of first match, -1 when absent
+v.min()
+v.max()
+v.sort_in_place()                  # in-place sort
+v.reverse_in_place()              # in-place reverse
+v.map_in_place(f)                  # in-place transform
+v.retain(f)                        # keep matching elements
+v.map(f)                           # fresh Vec of mapped values
+v.filter(f)                        # fresh Vec of matching elements
+v.reduce(init, f)                  # fold to a single value
 v.iter()<VecIter<T>>               # iterator
 ```
 
 ```vyb
 # HashMap (K<Hashable, Equatable>)
 m<HashMap<String, Int>> = HashMap()
-m.put("a", 1); m.get("a") else -1; m.contains_key("a"); m.size()
-m.keys() ; m.values() ; m.iter()<MapIter<K,V>>
+m.put("a", 1)
+m.get("a") else -1
+m.contains_key("a")
+m.size()
+m.iter()<MapIter<K, V>>
 
 # HashSet and ordered BTreeMap
-h<HashSet<String>> = HashSet(); h.insert("x"); h.contains("x"); h.size()
+h<HashSet<String>> = HashSet()
+h.insert("x")
+h.contains("x")
+h.size()
 b<BTreeMap<String, Int>> = BTreeMap()   # K<Comparable, Equatable>
 ```
 
@@ -1042,23 +1058,35 @@ c = tcp_accept(l)<TcpStream>
 
 # UDP
 u = udp_bind(ip, port)<UdpSocket>
-udp_send_to(u, ip, port, data); udp_recv_from(u, max)<String>
-udp_last_peer_ip() / udp_last_peer_port()
+udp_send_to(u, ip, port, data)
+udp_recv_from(u, max)<String>
+udp_last_peer_ip()
+udp_last_peer_port()
 
 # raw socket (domain/type/protocol from the Socket enum constants)
 fd = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
-socket_bind(fd, "0.0.0.0", port); socket_listen(fd, backlog)
-socket_accept(fd); socket_send(fd, data); socket_recv(fd, max)
-socket_connect(fd, ip, port); socket_local_port(fd)
+socket_bind(fd, "0.0.0.0", port)
+socket_listen(fd, backlog)
+socket_accept(fd)
+socket_send(fd, data)
+socket_recv(fd, max)
+socket_connect(fd, ip, port)
+socket_local_port(fd)
 socket_resolve(host)<String>    # hostname/IP -> dotted-quad IPv4
-socket_error_code()/socket_error_message()
+socket_error_code()
+socket_error_message()
 ```
 
-`TcpStream`/`TcpListener`/`UdpSocket` are structs whose method surface comes
-from `TcpStreamOps`/`TcpListenerOps`/`UdpSocketOps` (write/read/close,
-peer/`local_ip`/`local_port`, `send_to`/`recv_from`). `enum Socket`
-(`AF_INET`, `SOCK_STREAM`, `SOCK_DGRAM`, `IPPROTO_TCP`, `IPPROTO_UDP`) holds
-the constants. `async_tcp_*`/`async_udp_*` integrate sockets with the async
+`TcpStream`, `TcpListener`, and `UdpSocket` are structs; their method surface
+comes from the matching aspect:
+
+- `TcpStreamOps` — `write` / `read` / `close`, plus `peer_ip` / `peer_port` / `is_open`
+- `TcpListenerOps` — `local_ip` / `local_port` / `close`
+- `UdpSocketOps` — `send_to` / `recv_from`, plus `local_ip` / `local_port` / `close`
+
+`enum Socket` holds the constants `AF_INET`, `SOCK_STREAM`, `SOCK_DGRAM`,
+`IPPROTO_TCP`, and `IPPROTO_UDP` used by the raw `socket_*` calls. The
+`async_tcp_*` and `async_udp_*` helpers integrate sockets with the async
 executor.
 
 ### 4.11 `tls` — TLS contexts, sessions, handshakes
@@ -1071,14 +1099,20 @@ ctx = tls_server_context(cert_pem, key_pem)<TlsContext>
 ctx = tls_client_context()<TlsContext>                 # unverified
 ctx = tls_client_context_verified(ca_pem)<TlsContext>  # pinned CA
 s = tls_stream(ctx, fd, host)<TlsStream>
-tls_connect(s)<Int> / tls_accept(s)<Int>               # handshake
-tls_write(s, data)/tls_read(s, max)<Int|String>
-tls_close(s)<Int>; tls_free_context(ctx)<Void>; tls_error_code()/tls_error_message()
+tls_connect(s)<Int>                                    # client handshake
+tls_accept(s)<Int>                                     # server handshake
+tls_write(s, data)<Int>
+tls_read(s, max)<String>
+tls_close(s)<Void>
+tls_free_context(ctx)<Void>
+tls_error_code()
+tls_error_message()
 ```
 
-`TlsStreamOps`/`TlsContextOps` bind the method surface (`write`, `read`,
-`connect`, `accept`, `close`, `dispose`) onto the structs. `https_selfhost*`
-([§4.13](#413-https-https-client-over-tls-http)) exercise the full wiring end-to-end.
+`TlsStreamOps` and `TlsContextOps` bind the method surface (`write`, `read`,
+`connect`, `accept`, `close`, `dispose`) onto the structs. The
+`https_selfhost*` helpers ([§4.13](#413-https-https-client-over-tls-http))
+exercise the full wiring end-to-end.
 
 ### 4.12 `http` — pure-Vyb HTTP/1.1 client and server
 
@@ -1089,18 +1123,27 @@ runtime calls). `HttpResponse` holds `status`, `headers`, `body`.
 # client
 body = http_get(host, port, path)<String>
 resp = http_get_full(host, port, path)<HttpResponse>
-resp.status_code(); http_header(resp, "content-type")
+resp.status_code()
+http_header(resp, "content-type")
 
 # server
 fd = http_listen(port, backlog)<Int>      # 0 = ephemeral
 http_serve(port, backlog)<Int>            # threaded server loop
 http_response(status, body)<String>       # well-formed response
 
-# low-level request building / wire parsing
+# low-level request building
 http_request(method, path, host)<String>
-http_status_code(line)/http_index_of/.../http_parse_int(s)<Int>
-http_read_line(fd)/http_read_head(conn, max)/http_read_exact(fd, n)/http_read_all(fd, max)
 http_send_all(fd, data)<Int>
+
+# wire parsing
+http_status_code(line)<Int>
+http_index_of(s, needle)<Int>
+http_parse_int(s)<Int>
+http_header_value(header, name)<String>
+http_read_line(fd)<String>
+http_read_head(conn, max)<String>
+http_read_exact(fd, n)<String>
+http_read_all(fd, max)<String>
 ```
 
 The threaded `http_serve` dispatches each accepted connection to its own
@@ -1167,12 +1210,12 @@ until a handle completes; `async_poll` probes; `async_run_all` drives a batch
 to completion. `async_tcp_*`/`async_udp_*` in `network` bridge sockets into
 the executor so I/O futures fit the same await model.
 
-> **Teardown discipline.** Because ownership is deterministic, free paths must
-> be explicit: channels (`chan_free`), mutexes/condvars/atomics
-> (`mutex_free`/`cond_free`/`atomic_free`), tasks (`task_free`), sockets
-> (`close`), and TLS (`tls_free_context`/`tls_close`). `our`-owned values
-> release automatically at last drop; leaked handles are a bug in user code,
-> not the runtime.
+**Teardown discipline.** Because ownership is deterministic, free paths must
+be explicit: channels (`chan_free`), mutexes/condvars/atomics
+(`mutex_free`/`cond_free`/`atomic_free`), tasks (`task_free`), sockets
+(`close`), and TLS (`tls_free_context`/`tls_close`). `our`-owned values
+release automatically at last drop; leaked handles are a bug in user code, not
+the runtime.
 
 ---
 
@@ -1650,21 +1693,45 @@ borrow_view_expression  ::= 'view' '(' expression ')' | 'borrow' '(' expression 
 ```
 
 **Key EBNF features (all current):**
-- **Unified declarations**: everything uses the `name<Type>` pattern, including
-  return types — `main()<Int> -> { … }` and generic functions like
-  `cmp_lt<T<Comparable>>(a<T>, b<T>)<Bool> -> { … }`.
-- **Native optionals**: absence is a `T?` type — there is no null literal in the
-  documented model; `null`/`nil` are lexed but not part of the core surface.
-- **Generics with aspect bounds**: `T<Aspect>` (and `T<Comparable>`), written
-  directly as a type-parameter bound; exports use the `share(all)` marker.
-- **Errors**: `fail` / `trap` / `ensure`, plus `rethrow`; no `throw`/`throws`.
-- **Ownership wrappers**: `my<T>`, `our<T>`, `their<T>`, `mild<T>` are ordinary
-  `name<Type>` applications over the lifetime keywords `my`, `our`, `their`,
-  `mild` (all recognized as type-name starts).
-- **Async**: `async name(params)…` functions, `async |x| -> …` lambdas returning
-  `Future<T>`, `await` expressions, and `async for` over channels.
-- **Select/match**: value-returning `select(expr) -> { … }` and `match (expr) {
-  … }` over the same pattern set.
-- **Verification**: verified `import` and flexible `smuggle`, both with the
-  namespace (`* as NS from "…"`), whole-module (`as NS`), and specifier-list
-  (`::{a as b, c}`) forms.
+
+**Unified declarations**
+
+Everything uses the `name<Type>` pattern, including return types —
+`main()<Int> -> { … }` and generic functions like
+`cmp_lt<T<Comparable>>(a<T>, b<T>)<Bool> -> { … }`.
+
+**Native optionals**
+
+Absence is a `T?` type — there is no null literal in the documented model;
+`null`/`nil` are lexed but not part of the core surface.
+
+**Generics with aspect bounds**
+
+`T<Aspect>` (and `T<Comparable>`), written directly as a type-parameter
+bound; exports use the `share(all)` marker.
+
+**Errors**
+
+`fail` / `trap` / `ensure`, plus `rethrow`; no `throw`/`throws`.
+
+**Ownership wrappers**
+
+`my<T>`, `our<T>`, `their<T>`, `mild<T>` are ordinary `name<Type>`
+applications over the lifetime keywords `my`, `our`, `their`, `mild` (all
+recognized as type-name starts).
+
+**Async**
+
+`async name(params)…` functions, `async |x| -> …` lambdas returning
+`Future<T>`, `await` expressions, and `async for` over channels.
+
+**Select/match**
+
+Value-returning `select(expr) -> { … }` and `match (expr) { … }` over the
+same pattern set.
+
+**Verification**
+
+Verified `import` and flexible `smuggle`, both with the namespace
+(`* as NS from "…"`), whole-module (`as NS`), and specifier-list
+(`::{a as b, c}`) forms.

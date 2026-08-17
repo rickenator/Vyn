@@ -158,8 +158,26 @@ def extract_call(sig: str):
     return name, params, ret
 
 
+def strip_comment(ln: str) -> str:
+    """Peel a leading `#`/`//` comment marker but keep the relative indentation
+    that follows it, so nested lists and continuation lines in doc comments render
+    as valid Markdown instead of collapsing to column zero."""
+    s = ln.strip()
+    return re.sub(r"^[#/]+ ?", "", s, count=1)
+
+
 def comment_text(lines: list[str]) -> str:
-    return "\n".join(re.sub(r"^[#/]+\s*", "", ln.strip()) for ln in lines)
+    return "\n".join(strip_comment(ln) for ln in lines)
+
+
+def doc_summary(doc: str) -> str:
+    """First meaningful doc line for a one-line summary. Skips leading
+    horizontal-rule separators (e.g. a `# ----…` opener)."""
+    for ln in doc.splitlines():
+        s = ln.strip()
+        if s and not re.match(r"^-{3,}$", s):
+            return s
+    return ""
 
 
 # --------------------------------------------------------------------------
@@ -194,10 +212,28 @@ def parse_bind(header: str) -> dict:
 
 
 def parse_simple_header(header: str, kind: str) -> dict:
-    m = re.match(r"^(?:share\(all\)\s+)?%s\s+([A-Za-z_]\w*)(<.*>)?$" % kind, header)
-    name = m.group(1) if m else (header.strip().split()[1] if len(header.split()) > 1 else header.strip())
-    return {"name": name, "kind": kind, "signature": header.strip(),
-            "tvar": (m.group(2) or "") if m else "", "aspect": "", "target": "",
+    # `struct BTreeMap<K, V> {` etc. The generic span may contain spaces and
+    # commas, and the declaration ends with `{`, so a whitespace split truncates
+    # the name (e.g. `BTreeMap<K,`). Strip the brace first, then walk the generic
+    # span bracket-balanced to capture the full `Name<...>`.
+    body = header.replace("share(all)", "").strip()
+    decl = body.split("{", 1)[0].strip()
+    name = tvar = ""
+    if decl.startswith(kind):
+        rest = decl[len(kind):].strip()
+        m = re.match(r"([A-Za-z_]\w*)", rest)
+        if m:
+            name = m.group(1)
+            tail = rest[len(name):].strip()
+            if tail.startswith("<"):
+                a, b = bracket_span(tail, 0)
+                if b > a:
+                    tvar = tail[a:b + 1]
+    if not name:
+        toks = body.split()
+        name = toks[1] if len(toks) > 1 else body.strip()
+    return {"name": (name + tvar) if tvar else name, "kind": kind,
+            "signature": header.strip(), "tvar": tvar, "aspect": "", "target": "",
             "exported": True}
 
 
@@ -251,7 +287,7 @@ def parse_file(text: str) -> dict:
 
     def attach():
         nonlocal pending
-        doc = "\n".join(re.sub(r"^[#/]+\s*", "", ln.strip()) for ln in pending) if pending else ""
+        doc = "\n".join(strip_comment(ln) for ln in pending) if pending else ""
         pending = []
         return doc
 
@@ -371,7 +407,7 @@ def parse_file(text: str) -> dict:
         i += 1
 
     return {"symbols": symbols, "imports": imports,
-            "header": "\n".join(re.sub(r"^[#/]+\s*", "", ln.strip()) for ln in header),
+            "header": "\n".join(strip_comment(ln) for ln in header),
             "share": None}
 
 
@@ -495,7 +531,11 @@ def page(mod):
     return "%s.md" % mod
 
 
-def symlink(g, mod, name, text=None):
+def symlink(g, mod, name, text=None, _from=None):
+    # A same-module reference is an in-page anchor (`#sym-x`), not a jump to the
+    # page again; only cross-module refs fan out to `other.md#sym-x`.
+    if _from and _from == mod:
+        return "[`%s`](#%s)" % (text or name, slug(name))
     return "[`%s`](%s#%s)" % (text or name, page(mod), slug(name))
 
 
@@ -597,7 +637,7 @@ def render_module(m, g):
         for tgt, nm, reex in all_imports:
             tm = tgt.split("::", 1)[0]
             if nm:
-                link = symlink(g, tm, nm) if (tm, nm) in g["export_index"] else "`%s`" % nm
+                link = symlink(g, tm, nm, _from=m) if (tm, nm) in g["export_index"] else "`%s`" % nm
                 L.append("- %s `%s::%s`" % ("re-exports" if reex else "imports", tgt, link))
             else:
                 L.append("- %s %s" % ("re-exports module" if reex else "imports module",
@@ -611,7 +651,7 @@ def render_module(m, g):
         L += ["## Imported by", ""]
         for fm in sorted(importers):
             L.append("- %s imports %s" % (module_link(fm),
-                     ", ".join(symlink(g, m, s) if s else "module"
+                     ", ".join(symlink(g, m, s, _from=m) if s else "module"
                                for s in sorted(importers[fm]))))
         L.append("")
     fin, fout = module_fans(g, m)
@@ -637,7 +677,7 @@ def render_module(m, g):
         L += ["## Exported symbols", "", "| Symbol | Kind | Fan-in | Summary |",
               "|---|---|---|---|"]
     for rel, s in export_syms:
-        one = s.get("doc", "").splitlines()[0] if s.get("doc") else ""
+        one = doc_summary(s.get("doc", ""))
         fin_sym = symbol_fan_in(g, m, s["name"])
         fincell = "%d" % len(fin_sym) if fin_sym else ""
         fcell = "[`%s`](#%s)" % (rel, file_slug(rel)) if multi else ""
@@ -669,7 +709,7 @@ def render_module(m, g):
             # line carries an open brace with no closing one, so reconstruct the
             # full body from the parsed method signatures.
             L.append("```")
-            L.append("aspect %s%s {" % (s.get("name", ""), s.get("tvar", "")))
+            L.append("aspect %s {" % s.get("name", ""))
             for name, params, ret in s.get("params") or []:
                 args = ", ".join(p if not t else "%s<%s>" % (p, t) for p, t in params)
                 sig = "%s(%s)" % (name, args)
@@ -705,7 +745,8 @@ def render_module(m, g):
         if plain:
             L.append(label)
             L.append("")
-            L.append(", ".join(plain))
+            for item in plain:
+                L.append("- " + item)
             L.append("")
         if s.get("doc"):
             L += [s["doc"], ""]
@@ -718,13 +759,13 @@ def render_module(m, g):
                     rel_out.append("- calls runtime `%s`%s" % (
                         e["to_symbol"], " ([C:%d](runtime.md))" % ln if ln else ""))
                 elif e["type"] == "usesType":
-                    rel_out.append("- uses type %s" % symlink(g, e["to_module"], e["to_symbol"]))
+                    rel_out.append("- uses type %s" % symlink(g, e["to_module"], e["to_symbol"], _from=m))
                 elif e["type"] == "call":
-                    rel_out.append("- calls %s" % symlink(g, e["to_module"], e["to_symbol"]))
+                    rel_out.append("- calls %s" % symlink(g, e["to_module"], e["to_symbol"], _from=m))
                 elif e["type"] == "proseRef":
-                    rel_out.append("- mentions %s" % symlink(g, e["to_module"], e["to_symbol"]))
+                    rel_out.append("- mentions %s" % symlink(g, e["to_module"], e["to_symbol"], _from=m))
                 elif e["type"] == "implement":
-                    rel_out.append("- implements aspect %s" % symlink(g, e["to_module"], e["to_symbol"]))
+                    rel_out.append("- implements aspect %s" % symlink(g, e["to_module"], e["to_symbol"], _from=m))
         fin_sym = symbol_fan_in(g, m, s["name"])
         if fin_sym:
             rel_out.append("- referenced by %d: %s" % (
@@ -755,7 +796,7 @@ def render_cross(g):
                     continue
                 for s in g["files"][rel]["symbols"]:
                     if s.get("exported") and s["kind"] in kinds:
-                        names.append((s["name"], symlink(g, m, s["name"])))
+                        names.append((s["name"], symlink(g, m, s["name"], _from=m)))
             if names:
                 names.sort()
                 L.append("## `%s`" % m)
@@ -815,7 +856,7 @@ def render_interfaces(g):
         L.append('<a id="%s"></a>' % slug("%s-%s" % (tm, name)))
         L.append("## `%s` · %s" % (name, s["kind"]))
         L.append("")
-        summary = s.get("doc", "").splitlines()[0] if s.get("doc") else ""
+        summary = doc_summary(s.get("doc", ""))
         if summary:
             L.append(summary)
             L.append("")
@@ -861,7 +902,7 @@ def json_nodes(g):
             for s in g["files"][rel]["symbols"]:
                 if not s.get("exported"):
                     continue
-                summary = s.get("doc", "").splitlines()[0] if s.get("doc") else ""
+                summary = doc_summary(s.get("doc", ""))
                 syms.append({
                     "name": s["name"], "module": m, "file": rel, "kind": s["kind"],
                     "signature": s.get("signature", ""), "summary": summary,
