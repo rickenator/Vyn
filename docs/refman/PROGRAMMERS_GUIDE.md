@@ -747,8 +747,35 @@ main()<User> -> { return User { name = "a", age = 1 } }
 ```
 
 Automatic serialization covers structs, maps, Vecs, and nested values; the
-refman/module docs index the supported type set. `flush`/`Flush` control
-output behavior in CLI contexts.
+refman/module docs index the supported type set.
+
+Serialization is **bidirectional and lossless at arbitrary depth**. A struct's
+`.to_string()` emits JSON through a growable buffer (no fixed-size cap, so long
+strings, wide `Vec<T>`, and deeply nested structs are never truncated), and a
+`T::from_string(json)` pass rebuilds the full value — including owned `String`
+and `Vec` payloads and `Vec<struct>` arrays of objects:
+
+```vyb
+struct Point { x<Int>, y<Int> }
+struct Track { label<String>, points<Vec<Point>> }
+
+main()<Int> -> {
+    t<Track> = Track { label = "loop", points = Vec() }
+    t.points.push(Point { x = 1, y = 2 })
+    j<String> = t.to_string()          # {"label":"loop","points":[{"x":1,"y":2}]}
+    u<Track> = Track::from_string(j)   # lossless round-trip, incl. owned payloads
+    return u.points.get(0).y == 2 ? 0 : 1
+}
+```
+
+**Deserialization safety.** `T::from_string()` trusts neither lengths nor
+counts found in the input: `Vec<T>` capacity grows only as elements are actually
+parsed (never from a declared size), every allocation is OOM-guarded, owned
+`String`/`Vec` slots are zero-initialized before fill, and unknown fields are
+skipped rather than written out of bounds. Hostile or malformed JSON therefore
+cannot trigger an allocation bomb from a large declared length.
+
+`flush`/`Flush` control output behavior in CLI contexts.
 
 ### 3.22 Introspection
 

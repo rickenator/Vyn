@@ -2732,9 +2732,18 @@ println(person2.age.to_string())  # Output: 30
 ### Supported Types
 
 - **Primitives**: Int, Float, Bool, String
-- **Struct Fields**: All primitive types within structs
-- **Round-Trip**: Full struct → JSON → struct → field access
+- **Vecs**: `Vec<Int>`, `Vec<String>`, and `Vec<struct>` (arrays of objects)
+- **Struct Fields**: Primitive, `Vec`, and nested struct fields
+- **Round-Trip**: Lossless struct → JSON → struct at arbitrary nesting depth.
+  `to_string()` emits JSON with no fixed-size cap, so long strings, wide Vecs,
+  and deeply nested structures never truncate; `T::from_string(json)` rebuilds
+  the full value, including owned `String` and `Vec` payloads.
 - **Type Safety**: Runtime validation of JSON structure
+- **Deserialization safety**: `T::from_string()` never trusts lengths or counts
+  from the input. `Vec<T>` capacity grows only as elements are actually parsed
+  (never from a declared size), every allocation is OOM-guarded, and unknown
+  fields are skipped rather than written out of bounds. Cleanly-deserialized
+  input can't trigger an allocation bomb from hostile JSON.
 
 ### Auto-Serialization for main() Returns
 
@@ -2749,8 +2758,11 @@ One of Vyb's standout features is automatic serialization of complex return type
 
 The JSON system is built on:
 - **Runtime Type Metadata**: Global type registry with field information
-- **C Runtime Functions**: `__vyb_complex_to_json()` and `__vyb_complex_from_json()`
+- **C Runtime Functions**: `__vyb_complex_to_json_with_metadata()` and
+  `__vyb_complex_from_json_with_metadata()`
 - **Type Registration**: Automatic registration via global constructors
+- **Scalable Emitter**: A growable output buffer emits arbitrary-depth JSON;
+  recursive deserialization fills primitives, `Vec<T>`, and nested structs
 - **String Conversion**: Seamless char* to VybString{data, length} struct conversion
 
 See `test/json/` for comprehensive examples and `runtime/vyb_type_metadata.c` for implementation.
