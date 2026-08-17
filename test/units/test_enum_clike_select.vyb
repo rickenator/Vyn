@@ -2,6 +2,7 @@
 // @description: C-like enum variants are distinct typed values; select matches them
 //   by name and the exhaustive form needs every variant or a wildcard.
 // @category: enum, select, jit
+// @execute-jit: true
 // @expect: pass
 // @expect-output: other
 // @expect-return: 0

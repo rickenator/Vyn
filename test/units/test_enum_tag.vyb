@@ -2,6 +2,7 @@
 // @description: every enum value exposes .tag returning its positional index as
 //   an Int, for both C-like scalar enums and data-carrying tagged-union enums.
 // @category: enum, tag, jit
+// @execute-jit: true
 // @expect: pass
 // @expect-output: 2
 // @expect-output: 3
