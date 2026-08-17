@@ -1,0 +1,15 @@
+// @test: Namespace path import (import module as NS)
+// @description: import module as NS exposes symbols qualified as NS.sym without leaking the bare names
+// @category: modules
+// @expect: pass
+// @expect-output: 11
+// @tags: modules, namespace-import
+
+import namespace_helper as NS
+
+main()<Int> -> {
+    if (NS.ns_value != 5) { return 1 }
+    if (NS.ns_fn() != 6) { return 2 }
+    println_int(NS.ns_value + NS.ns_fn())
+    return 0
+}

@@ -1,0 +1,13 @@
+// @test: Namespace import keeps bare names out of scope
+// @description: Namespace-imported symbols must not resolve unqualified in the importing module
+// @category: modules
+// @expect: fail
+// @expect-error: Undefined identifier: ns_value
+// @tags: modules, namespace-import, isolation
+
+import namespace_helper as NS
+
+main()<Int> -> {
+    println_int(ns_value)
+    return 0
+}

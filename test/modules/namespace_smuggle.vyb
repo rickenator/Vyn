@@ -1,0 +1,13 @@
+// @test: Namespace smuggle (smuggle module as NS)
+// @description: smuggle module as NS exposes symbols qualified as NS.sym
+// @category: modules
+// @expect: pass
+// @expect-output: 5
+// @tags: modules, namespace-import, smuggle
+
+smuggle namespace_helper as NS
+
+main()<Int> -> {
+    println_int(NS.ns_value)
+    return 0
+}

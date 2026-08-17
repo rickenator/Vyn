@@ -1,0 +1,11 @@
+// @test: Namespace re-export helper
+// @description: Helper module that namespace-imports and re-exports a cross-referencing function
+// @category: modules
+// @expect: pass
+// @parse-only: true
+// @tags: modules, namespace-import, transitive
+
+import namespace_helper as NS
+
+share(all)
+apply()<Int> -> { return NS.ns_value + NS.ns_fn() }

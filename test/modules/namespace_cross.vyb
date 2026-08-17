@@ -1,0 +1,13 @@
+// @test: Namespace import carries internal cross-references
+// @description: A carried function that calls a sibling symbol of the namespace is remapped to the mangled form
+// @category: modules
+// @expect: pass
+// @expect-output: 6
+// @tags: modules, namespace-import, transitive
+
+import namespace_helper as NS
+
+main()<Int> -> {
+    println_int(NS.ns_fn())
+    return 0
+}

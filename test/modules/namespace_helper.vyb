@@ -1,0 +1,12 @@
+// @test: Namespace import helper module
+// @description: Helper module with a global and a cross-referencing function for namespace imports
+// @category: modules
+// @expect: pass
+// @parse-only: true
+// @tags: modules, namespace-import
+
+share(all)
+ns_value<Int> = 5
+
+share(all)
+ns_fn()<Int> -> { return ns_value + 1 }

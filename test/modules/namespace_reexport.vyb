@@ -1,0 +1,13 @@
+// @test: Namespace-imported function reaches the next import hop
+// @description: A function that namespace-imports its dependency is re-exported and callable downstream
+// @category: modules
+// @expect: pass
+// @expect-output: 11
+// @tags: modules, namespace-import, transitive
+
+import namespace_reexport_mid
+
+main()<Int> -> {
+    println_int(apply())
+    return 0
+}

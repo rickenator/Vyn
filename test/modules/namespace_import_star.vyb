@@ -1,0 +1,13 @@
+// @test: Namespace star import (import * as NS from "path")
+// @description: import * as NS from "..." exposes all visible symbols qualified as NS.sym
+// @category: modules
+// @expect: pass
+// @expect-output: 5
+// @tags: modules, namespace-import
+
+import * as NS from "./namespace_helper.vyb"
+
+main()<Int> -> {
+    println_int(NS.ns_value)
+    return 0
+}

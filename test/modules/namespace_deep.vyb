@@ -1,0 +1,13 @@
+// @test: Namespace-in-namespace two-hop import
+// @description: A namespace that wraps another namespace-imported module keeps qualified access across hops
+// @category: modules
+// @expect: pass
+// @expect-output: 11
+// @tags: modules, namespace-import, transitive
+
+import namespace_reexport_mid as M
+
+main()<Int> -> {
+    println_int(M.apply())
+    return 0
+}
