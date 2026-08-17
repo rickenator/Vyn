@@ -663,6 +663,12 @@ with `pass` for multi-statement case bodies. Needs polishing:
 - [ ] **Doc comments** — `/// comment` on declarations
 - [ ] **`vyb doc`** — Generate HTML documentation from source
 - [ ] **Online reference** — Language reference manual (derived from existing docs)
+- [x] **Hyperlinked refman generator** — `tools/refman.py` scans `stdlib/**/*.vyb`
+  and emits `docs/refman/` (module pages + cross-indexes + `graph.json`) as an
+  inter-relationship graph (import, implement, uses-type, runtime-ref, prose-ref,
+  call edges), with `--check` drift/validation. Design in `docs/refman/PLAN.md`.
+- [ ] **Refman polish** — per-file sections on multi-file module pages (`core`,
+  `error`), fan-in/out and cross-module type-consumer views, CI `--check` target.
 
 ### Testing & Tooling
 - [ ] **`vyb test`** — Run test files alongside source (`*.test.vyb`)

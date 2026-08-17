@@ -1,0 +1,2795 @@
+{
+  "git_rev": "6d8097d43f5609251a33947832ff3758a6ddbdaf",
+  "modules": [
+    "asyncs",
+    "channels",
+    "collections",
+    "core",
+    "error",
+    "http",
+    "https",
+    "io",
+    "network",
+    "prelude",
+    "tasks",
+    "threads",
+    "time",
+    "tls"
+  ],
+  "edges": [
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_accept",
+      "to_module": "network",
+      "to_symbol": "socket_accept"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_close",
+      "to_module": "network",
+      "to_symbol": "socket_close"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_get",
+      "to_module": "http",
+      "to_symbol": "http_read_head"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_get",
+      "to_module": "http",
+      "to_symbol": "http_read_rest"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_get",
+      "to_module": "http",
+      "to_symbol": "http_request"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_get",
+      "to_module": "http",
+      "to_symbol": "http_send_all"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_get",
+      "to_module": "network",
+      "to_symbol": "socket_close"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_get",
+      "to_module": "network",
+      "to_symbol": "socket_connect"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_get",
+      "to_module": "network",
+      "to_symbol": "socket_open"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_get_full",
+      "to_module": "http",
+      "to_symbol": "http_header_value"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_get_full",
+      "to_module": "http",
+      "to_symbol": "http_index_of"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_get_full",
+      "to_module": "http",
+      "to_symbol": "http_parse_int"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_get_full",
+      "to_module": "http",
+      "to_symbol": "http_read_all"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_get_full",
+      "to_module": "http",
+      "to_symbol": "http_read_exact"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_get_full",
+      "to_module": "http",
+      "to_symbol": "http_read_line"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_get_full",
+      "to_module": "http",
+      "to_symbol": "http_status_code"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_get_full",
+      "to_module": "network",
+      "to_symbol": "socket_close"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_get_full",
+      "to_module": "network",
+      "to_symbol": "socket_connect"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_get_full",
+      "to_module": "network",
+      "to_symbol": "socket_open"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_get_full",
+      "to_module": "network",
+      "to_symbol": "socket_send"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_header",
+      "to_module": "http",
+      "to_symbol": "http_header_value"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_header_value",
+      "to_module": "http",
+      "to_symbol": "http_index_of"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_header_value",
+      "to_module": "http",
+      "to_symbol": "http_key_eq"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_listen",
+      "to_module": "network",
+      "to_symbol": "socket_bind"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_listen",
+      "to_module": "network",
+      "to_symbol": "socket_close"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_listen",
+      "to_module": "network",
+      "to_symbol": "socket_listen"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_listen",
+      "to_module": "network",
+      "to_symbol": "socket_open"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_local_port",
+      "to_module": "network",
+      "to_symbol": "socket_local_port"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_read_all",
+      "to_module": "network",
+      "to_symbol": "socket_recv"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_read_exact",
+      "to_module": "network",
+      "to_symbol": "socket_recv"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_read_head",
+      "to_module": "network",
+      "to_symbol": "socket_recv"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_read_line",
+      "to_module": "network",
+      "to_symbol": "socket_recv"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_read_rest",
+      "to_module": "network",
+      "to_symbol": "socket_recv"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_send_all",
+      "to_module": "network",
+      "to_symbol": "socket_send"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_serve",
+      "to_module": "http",
+      "to_symbol": "http_accept"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_serve",
+      "to_module": "http",
+      "to_symbol": "http_close"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_serve",
+      "to_module": "http",
+      "to_symbol": "http_listen"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_serve",
+      "to_module": "http",
+      "to_symbol": "http_serve_conn"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_serve",
+      "to_module": "threads",
+      "to_symbol": "thread_detach"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_serve",
+      "to_module": "threads",
+      "to_symbol": "thread_spawn"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_serve_conn",
+      "to_module": "http",
+      "to_symbol": "http_close"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_serve_conn",
+      "to_module": "http",
+      "to_symbol": "http_read_head"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_serve_conn",
+      "to_module": "http",
+      "to_symbol": "http_request_path"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_serve_conn",
+      "to_module": "http",
+      "to_symbol": "http_response"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_serve_conn",
+      "to_module": "http",
+      "to_symbol": "http_send_all"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_serve_conn",
+      "to_module": "threads",
+      "to_symbol": "thread_detach"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_serve_conn",
+      "to_module": "threads",
+      "to_symbol": "thread_spawn"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_status_code",
+      "to_module": "http",
+      "to_symbol": "http_index_of"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_status_code",
+      "to_module": "http",
+      "to_symbol": "http_parse_int"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_get",
+      "to_module": "https",
+      "to_symbol": "https_get_full"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_get_full",
+      "to_module": "tls",
+      "to_symbol": "tls_client_context"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_get_full_verified",
+      "to_module": "network",
+      "to_symbol": "socket_resolve"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_get_full_verified",
+      "to_module": "tls",
+      "to_symbol": "tls_client_context_verified"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_get_verified",
+      "to_module": "https",
+      "to_symbol": "https_get_full_verified"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost",
+      "to_module": "https",
+      "to_symbol": "https_get_full"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost",
+      "to_module": "network",
+      "to_symbol": "socket_accept"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost",
+      "to_module": "network",
+      "to_symbol": "socket_bind"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost",
+      "to_module": "network",
+      "to_symbol": "socket_close"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost",
+      "to_module": "network",
+      "to_symbol": "socket_listen"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost",
+      "to_module": "network",
+      "to_symbol": "socket_local_port"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost",
+      "to_module": "network",
+      "to_symbol": "socket_open"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost",
+      "to_module": "threads",
+      "to_symbol": "thread_join"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost",
+      "to_module": "threads",
+      "to_symbol": "thread_spawn"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost",
+      "to_module": "tls",
+      "to_symbol": "tls_accept"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost",
+      "to_module": "tls",
+      "to_symbol": "tls_close"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost",
+      "to_module": "tls",
+      "to_symbol": "tls_free_context"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost",
+      "to_module": "tls",
+      "to_symbol": "tls_read"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost",
+      "to_module": "tls",
+      "to_symbol": "tls_server_context"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost",
+      "to_module": "tls",
+      "to_symbol": "tls_stream"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost",
+      "to_module": "tls",
+      "to_symbol": "tls_write"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost_verified",
+      "to_module": "https",
+      "to_symbol": "https_get_full_verified"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost_verified",
+      "to_module": "network",
+      "to_symbol": "socket_accept"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost_verified",
+      "to_module": "network",
+      "to_symbol": "socket_bind"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost_verified",
+      "to_module": "network",
+      "to_symbol": "socket_close"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost_verified",
+      "to_module": "network",
+      "to_symbol": "socket_listen"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost_verified",
+      "to_module": "network",
+      "to_symbol": "socket_local_port"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost_verified",
+      "to_module": "network",
+      "to_symbol": "socket_open"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost_verified",
+      "to_module": "threads",
+      "to_symbol": "thread_join"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost_verified",
+      "to_module": "threads",
+      "to_symbol": "thread_spawn"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost_verified",
+      "to_module": "tls",
+      "to_symbol": "tls_accept"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost_verified",
+      "to_module": "tls",
+      "to_symbol": "tls_close"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost_verified",
+      "to_module": "tls",
+      "to_symbol": "tls_free_context"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost_verified",
+      "to_module": "tls",
+      "to_symbol": "tls_read"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost_verified",
+      "to_module": "tls",
+      "to_symbol": "tls_server_context"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost_verified",
+      "to_module": "tls",
+      "to_symbol": "tls_stream"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost_verified",
+      "to_module": "tls",
+      "to_symbol": "tls_write"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "tls_read_all",
+      "to_module": "tls",
+      "to_symbol": "tls_read"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "tls_read_exact",
+      "to_module": "tls",
+      "to_symbol": "tls_read"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "tls_read_line",
+      "to_module": "tls",
+      "to_symbol": "tls_read"
+    },
+    {
+      "type": "call",
+      "from_module": "io",
+      "from_symbol": "open_append",
+      "to_module": "io",
+      "to_symbol": "open"
+    },
+    {
+      "type": "call",
+      "from_module": "io",
+      "from_symbol": "open_read",
+      "to_module": "io",
+      "to_symbol": "open"
+    },
+    {
+      "type": "call",
+      "from_module": "io",
+      "from_symbol": "open_write",
+      "to_module": "io",
+      "to_symbol": "open"
+    },
+    {
+      "type": "call",
+      "from_module": "network",
+      "from_symbol": "async_tcp_connect",
+      "to_module": "network",
+      "to_symbol": "socket_close"
+    },
+    {
+      "type": "call",
+      "from_module": "network",
+      "from_symbol": "async_tcp_connect",
+      "to_module": "network",
+      "to_symbol": "socket_open"
+    },
+    {
+      "type": "implement",
+      "from_module": "collections",
+      "from_symbol": "BTreeMapOps->BTreeMap",
+      "to_module": "collections",
+      "to_symbol": "BTreeMapOps"
+    },
+    {
+      "type": "implement",
+      "from_module": "collections",
+      "from_symbol": "Iterator->BTreeIter",
+      "to_module": "collections",
+      "to_symbol": "Iterator"
+    },
+    {
+      "type": "implement",
+      "from_module": "collections",
+      "from_symbol": "Iterator->HashIter",
+      "to_module": "collections",
+      "to_symbol": "Iterator"
+    },
+    {
+      "type": "implement",
+      "from_module": "collections",
+      "from_symbol": "Iterator->MapIter",
+      "to_module": "collections",
+      "to_symbol": "Iterator"
+    },
+    {
+      "type": "implement",
+      "from_module": "collections",
+      "from_symbol": "Iterator->VecIter",
+      "to_module": "collections",
+      "to_symbol": "Iterator"
+    },
+    {
+      "type": "implement",
+      "from_module": "collections",
+      "from_symbol": "MapOps->HashMap",
+      "to_module": "collections",
+      "to_symbol": "MapOps"
+    },
+    {
+      "type": "implement",
+      "from_module": "collections",
+      "from_symbol": "SetOps->HashSet",
+      "to_module": "collections",
+      "to_symbol": "SetOps"
+    },
+    {
+      "type": "implement",
+      "from_module": "collections",
+      "from_symbol": "VecHigherOps->Vec",
+      "to_module": "collections",
+      "to_symbol": "VecHigherOps"
+    },
+    {
+      "type": "implement",
+      "from_module": "collections",
+      "from_symbol": "VecOps->Vec",
+      "to_module": "collections",
+      "to_symbol": "VecOps"
+    },
+    {
+      "type": "implement",
+      "from_module": "core",
+      "from_symbol": "Clone->Int",
+      "to_module": "core",
+      "to_symbol": "Clone"
+    },
+    {
+      "type": "implement",
+      "from_module": "core",
+      "from_symbol": "Clone->String",
+      "to_module": "core",
+      "to_symbol": "Clone"
+    },
+    {
+      "type": "implement",
+      "from_module": "core",
+      "from_symbol": "Comparable->Bool",
+      "to_module": "core",
+      "to_symbol": "Comparable"
+    },
+    {
+      "type": "implement",
+      "from_module": "core",
+      "from_symbol": "Comparable->Float",
+      "to_module": "core",
+      "to_symbol": "Comparable"
+    },
+    {
+      "type": "implement",
+      "from_module": "core",
+      "from_symbol": "Comparable->Int",
+      "to_module": "core",
+      "to_symbol": "Comparable"
+    },
+    {
+      "type": "implement",
+      "from_module": "core",
+      "from_symbol": "Comparable->String",
+      "to_module": "core",
+      "to_symbol": "Comparable"
+    },
+    {
+      "type": "implement",
+      "from_module": "core",
+      "from_symbol": "Display->Bool",
+      "to_module": "core",
+      "to_symbol": "Display"
+    },
+    {
+      "type": "implement",
+      "from_module": "core",
+      "from_symbol": "Display->Float",
+      "to_module": "core",
+      "to_symbol": "Display"
+    },
+    {
+      "type": "implement",
+      "from_module": "core",
+      "from_symbol": "Display->Int",
+      "to_module": "core",
+      "to_symbol": "Display"
+    },
+    {
+      "type": "implement",
+      "from_module": "core",
+      "from_symbol": "Display->String",
+      "to_module": "core",
+      "to_symbol": "Display"
+    },
+    {
+      "type": "implement",
+      "from_module": "core",
+      "from_symbol": "Equatable->Bool",
+      "to_module": "core",
+      "to_symbol": "Equatable"
+    },
+    {
+      "type": "implement",
+      "from_module": "core",
+      "from_symbol": "Equatable->Float",
+      "to_module": "core",
+      "to_symbol": "Equatable"
+    },
+    {
+      "type": "implement",
+      "from_module": "core",
+      "from_symbol": "Equatable->Int",
+      "to_module": "core",
+      "to_symbol": "Equatable"
+    },
+    {
+      "type": "implement",
+      "from_module": "core",
+      "from_symbol": "Equatable->String",
+      "to_module": "core",
+      "to_symbol": "Equatable"
+    },
+    {
+      "type": "implement",
+      "from_module": "core",
+      "from_symbol": "Hashable->Bool",
+      "to_module": "core",
+      "to_symbol": "Hashable"
+    },
+    {
+      "type": "implement",
+      "from_module": "core",
+      "from_symbol": "Hashable->Float",
+      "to_module": "core",
+      "to_symbol": "Hashable"
+    },
+    {
+      "type": "implement",
+      "from_module": "core",
+      "from_symbol": "Hashable->Int",
+      "to_module": "core",
+      "to_symbol": "Hashable"
+    },
+    {
+      "type": "implement",
+      "from_module": "core",
+      "from_symbol": "Hashable->String",
+      "to_module": "core",
+      "to_symbol": "Hashable"
+    },
+    {
+      "type": "implement",
+      "from_module": "core",
+      "from_symbol": "StringOps->String",
+      "to_module": "core",
+      "to_symbol": "StringOps"
+    },
+    {
+      "type": "implement",
+      "from_module": "error",
+      "from_symbol": "Display->Error",
+      "to_module": "error",
+      "to_symbol": "Display"
+    },
+    {
+      "type": "implement",
+      "from_module": "error",
+      "from_symbol": "Display->IOError",
+      "to_module": "error",
+      "to_symbol": "Display"
+    },
+    {
+      "type": "implement",
+      "from_module": "error",
+      "from_symbol": "Display->NetworkError",
+      "to_module": "error",
+      "to_symbol": "Display"
+    },
+    {
+      "type": "implement",
+      "from_module": "error",
+      "from_symbol": "Display->ParseError",
+      "to_module": "error",
+      "to_symbol": "Display"
+    },
+    {
+      "type": "implement",
+      "from_module": "error",
+      "from_symbol": "Errable->Error",
+      "to_module": "error",
+      "to_symbol": "Errable"
+    },
+    {
+      "type": "implement",
+      "from_module": "error",
+      "from_symbol": "Errable->IOError",
+      "to_module": "error",
+      "to_symbol": "Errable"
+    },
+    {
+      "type": "implement",
+      "from_module": "error",
+      "from_symbol": "Errable->NetworkError",
+      "to_module": "error",
+      "to_symbol": "Errable"
+    },
+    {
+      "type": "implement",
+      "from_module": "error",
+      "from_symbol": "Errable->ParseError",
+      "to_module": "error",
+      "to_symbol": "Errable"
+    },
+    {
+      "type": "implement",
+      "from_module": "network",
+      "from_symbol": "TcpListenerOps->TcpListener",
+      "to_module": "network",
+      "to_symbol": "TcpListenerOps"
+    },
+    {
+      "type": "implement",
+      "from_module": "network",
+      "from_symbol": "TcpStreamOps->TcpStream",
+      "to_module": "network",
+      "to_symbol": "TcpStreamOps"
+    },
+    {
+      "type": "implement",
+      "from_module": "network",
+      "from_symbol": "UdpSocketOps->UdpSocket",
+      "to_module": "network",
+      "to_symbol": "UdpSocketOps"
+    },
+    {
+      "type": "implement",
+      "from_module": "tls",
+      "from_symbol": "TlsContextOps->TlsContext",
+      "to_module": "tls",
+      "to_symbol": "TlsContextOps"
+    },
+    {
+      "type": "implement",
+      "from_module": "tls",
+      "from_symbol": "TlsStreamOps->TlsStream",
+      "to_module": "tls",
+      "to_symbol": "TlsStreamOps"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "collections",
+      "from_symbol": "BTreeMapOps->BTreeMap",
+      "to_module": "collections",
+      "to_symbol": "BTreeMap"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "collections",
+      "from_symbol": "Iterator->BTreeIter",
+      "to_module": "collections",
+      "to_symbol": "BTreeIter"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "collections",
+      "from_symbol": "Iterator->HashIter",
+      "to_module": "collections",
+      "to_symbol": "HashIter"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "collections",
+      "from_symbol": "Iterator->MapIter",
+      "to_module": "collections",
+      "to_symbol": "MapIter"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "collections",
+      "from_symbol": "Iterator->VecIter",
+      "to_module": "collections",
+      "to_symbol": "VecIter"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "collections",
+      "from_symbol": "MapOps->HashMap",
+      "to_module": "collections",
+      "to_symbol": "HashMap"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "collections",
+      "from_symbol": "SetOps->HashSet",
+      "to_module": "collections",
+      "to_symbol": "HashSet"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "collections",
+      "from_symbol": "VecHigherOps->Vec",
+      "to_module": "collections",
+      "to_symbol": "Vec"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "collections",
+      "from_symbol": "VecOps->Vec",
+      "to_module": "collections",
+      "to_symbol": "Vec"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "core",
+      "from_symbol": "Clone->Int",
+      "to_module": "core",
+      "to_symbol": "Int"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "core",
+      "from_symbol": "Clone->String",
+      "to_module": "core",
+      "to_symbol": "String"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "core",
+      "from_symbol": "Comparable->Bool",
+      "to_module": "core",
+      "to_symbol": "Bool"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "core",
+      "from_symbol": "Comparable->Float",
+      "to_module": "core",
+      "to_symbol": "Float"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "core",
+      "from_symbol": "Comparable->Int",
+      "to_module": "core",
+      "to_symbol": "Int"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "core",
+      "from_symbol": "Comparable->String",
+      "to_module": "core",
+      "to_symbol": "String"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "core",
+      "from_symbol": "Display->Bool",
+      "to_module": "core",
+      "to_symbol": "Bool"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "core",
+      "from_symbol": "Display->Float",
+      "to_module": "core",
+      "to_symbol": "Float"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "core",
+      "from_symbol": "Display->Int",
+      "to_module": "core",
+      "to_symbol": "Int"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "core",
+      "from_symbol": "Display->String",
+      "to_module": "core",
+      "to_symbol": "String"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "core",
+      "from_symbol": "Equatable->Bool",
+      "to_module": "core",
+      "to_symbol": "Bool"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "core",
+      "from_symbol": "Equatable->Float",
+      "to_module": "core",
+      "to_symbol": "Float"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "core",
+      "from_symbol": "Equatable->Int",
+      "to_module": "core",
+      "to_symbol": "Int"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "core",
+      "from_symbol": "Equatable->String",
+      "to_module": "core",
+      "to_symbol": "String"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "core",
+      "from_symbol": "Hashable->Bool",
+      "to_module": "core",
+      "to_symbol": "Bool"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "core",
+      "from_symbol": "Hashable->Float",
+      "to_module": "core",
+      "to_symbol": "Float"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "core",
+      "from_symbol": "Hashable->Int",
+      "to_module": "core",
+      "to_symbol": "Int"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "core",
+      "from_symbol": "Hashable->String",
+      "to_module": "core",
+      "to_symbol": "String"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "core",
+      "from_symbol": "StringOps->String",
+      "to_module": "core",
+      "to_symbol": "String"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "error",
+      "from_symbol": "Display->Error",
+      "to_module": "error",
+      "to_symbol": "Error"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "error",
+      "from_symbol": "Display->IOError",
+      "to_module": "error",
+      "to_symbol": "IOError"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "error",
+      "from_symbol": "Display->NetworkError",
+      "to_module": "error",
+      "to_symbol": "NetworkError"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "error",
+      "from_symbol": "Display->ParseError",
+      "to_module": "error",
+      "to_symbol": "ParseError"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "error",
+      "from_symbol": "Errable->Error",
+      "to_module": "error",
+      "to_symbol": "Error"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "error",
+      "from_symbol": "Errable->IOError",
+      "to_module": "error",
+      "to_symbol": "IOError"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "error",
+      "from_symbol": "Errable->NetworkError",
+      "to_module": "error",
+      "to_symbol": "NetworkError"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "error",
+      "from_symbol": "Errable->ParseError",
+      "to_module": "error",
+      "to_symbol": "ParseError"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "network",
+      "from_symbol": "TcpListenerOps->TcpListener",
+      "to_module": "network",
+      "to_symbol": "TcpListener"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "network",
+      "from_symbol": "TcpStreamOps->TcpStream",
+      "to_module": "network",
+      "to_symbol": "TcpStream"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "network",
+      "from_symbol": "UdpSocketOps->UdpSocket",
+      "to_module": "network",
+      "to_symbol": "UdpSocket"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "tls",
+      "from_symbol": "TlsContextOps->TlsContext",
+      "to_module": "tls",
+      "to_symbol": "TlsContext"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "tls",
+      "from_symbol": "TlsStreamOps->TlsStream",
+      "to_module": "tls",
+      "to_symbol": "TlsStream"
+    },
+    {
+      "type": "import",
+      "from_module": "collections",
+      "from_symbol": "",
+      "to_module": "core",
+      "to_symbol": "",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "collections",
+      "from_symbol": "",
+      "to_module": "core",
+      "to_symbol": "Iterator",
+      "reexport": true,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "core",
+      "from_symbol": "",
+      "to_module": "core",
+      "to_symbol": "Clone",
+      "reexport": true,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "core",
+      "from_symbol": "",
+      "to_module": "core",
+      "to_symbol": "Comparable",
+      "reexport": true,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "core",
+      "from_symbol": "",
+      "to_module": "core",
+      "to_symbol": "Debug",
+      "reexport": true,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "core",
+      "from_symbol": "",
+      "to_module": "core",
+      "to_symbol": "Display",
+      "reexport": true,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "core",
+      "from_symbol": "",
+      "to_module": "core",
+      "to_symbol": "Equatable",
+      "reexport": true,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "core",
+      "from_symbol": "",
+      "to_module": "core",
+      "to_symbol": "Hashable",
+      "reexport": true,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "core",
+      "from_symbol": "",
+      "to_module": "core",
+      "to_symbol": "hash_chars",
+      "reexport": true,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "http",
+      "from_symbol": "",
+      "to_module": "network",
+      "to_symbol": "Socket",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "http",
+      "from_symbol": "",
+      "to_module": "network",
+      "to_symbol": "socket_accept",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "http",
+      "from_symbol": "",
+      "to_module": "network",
+      "to_symbol": "socket_bind",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "http",
+      "from_symbol": "",
+      "to_module": "network",
+      "to_symbol": "socket_close",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "http",
+      "from_symbol": "",
+      "to_module": "network",
+      "to_symbol": "socket_connect",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "http",
+      "from_symbol": "",
+      "to_module": "network",
+      "to_symbol": "socket_listen",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "http",
+      "from_symbol": "",
+      "to_module": "network",
+      "to_symbol": "socket_local_port",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "http",
+      "from_symbol": "",
+      "to_module": "network",
+      "to_symbol": "socket_open",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "http",
+      "from_symbol": "",
+      "to_module": "network",
+      "to_symbol": "socket_recv",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "http",
+      "from_symbol": "",
+      "to_module": "network",
+      "to_symbol": "socket_send",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "http",
+      "from_symbol": "",
+      "to_module": "threads",
+      "to_symbol": "thread_detach",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "http",
+      "from_symbol": "",
+      "to_module": "threads",
+      "to_symbol": "thread_spawn",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "http",
+      "to_symbol": "HttpResponse",
+      "reexport": true,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "http",
+      "to_symbol": "http_header_value",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "http",
+      "to_symbol": "http_index_of",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "http",
+      "to_symbol": "http_parse_int",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "http",
+      "to_symbol": "http_status_code",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "network",
+      "to_symbol": "socket_accept",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "network",
+      "to_symbol": "socket_bind",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "network",
+      "to_symbol": "socket_close",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "network",
+      "to_symbol": "socket_connect",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "network",
+      "to_symbol": "socket_listen",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "network",
+      "to_symbol": "socket_local_port",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "network",
+      "to_symbol": "socket_open",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "network",
+      "to_symbol": "socket_resolve",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "threads",
+      "to_symbol": "thread_join",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "threads",
+      "to_symbol": "thread_spawn",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "tls",
+      "to_symbol": "TlsContext",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "tls",
+      "to_symbol": "TlsStream",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "tls",
+      "to_symbol": "tls_accept",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "tls",
+      "to_symbol": "tls_client_context",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "tls",
+      "to_symbol": "tls_client_context_verified",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "tls",
+      "to_symbol": "tls_close",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "tls",
+      "to_symbol": "tls_connect",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "tls",
+      "to_symbol": "tls_free_context",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "tls",
+      "to_symbol": "tls_read",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "tls",
+      "to_symbol": "tls_server_context",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "tls",
+      "to_symbol": "tls_stream",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "tls",
+      "to_symbol": "tls_write",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "prelude",
+      "from_symbol": "",
+      "to_module": "core",
+      "to_symbol": "Clone",
+      "reexport": true,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "prelude",
+      "from_symbol": "",
+      "to_module": "core",
+      "to_symbol": "Comparable",
+      "reexport": true,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "prelude",
+      "from_symbol": "",
+      "to_module": "core",
+      "to_symbol": "Debug",
+      "reexport": true,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "prelude",
+      "from_symbol": "",
+      "to_module": "core",
+      "to_symbol": "Display",
+      "reexport": true,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "prelude",
+      "from_symbol": "",
+      "to_module": "core",
+      "to_symbol": "Equatable",
+      "reexport": true,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "prelude",
+      "from_symbol": "",
+      "to_module": "core",
+      "to_symbol": "Hashable",
+      "reexport": true,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "prelude",
+      "from_symbol": "",
+      "to_module": "core",
+      "to_symbol": "hash_chars",
+      "reexport": true,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "prelude",
+      "from_symbol": "",
+      "to_module": "core",
+      "to_symbol": "prelude_ok",
+      "reexport": true,
+      "resolved": true
+    },
+    {
+      "type": "proseRef",
+      "from_module": "channels",
+      "from_symbol": "chan_recv_opt",
+      "to_module": "channels",
+      "to_symbol": "chan_recv"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "collections",
+      "from_symbol": "BTreeMap<K,",
+      "to_module": "collections",
+      "to_symbol": "BTreeMapOps"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "collections",
+      "from_symbol": "BTreeMap<K,",
+      "to_module": "core",
+      "to_symbol": "Comparable"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "collections",
+      "from_symbol": "VecHigherOps",
+      "to_module": "core",
+      "to_symbol": "Comparable"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "collections",
+      "from_symbol": "VecHigherOps",
+      "to_module": "core",
+      "to_symbol": "Equatable"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "collections",
+      "from_symbol": "VecIter<T>",
+      "to_module": "collections",
+      "to_symbol": "VecHigherOps"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "collections",
+      "from_symbol": "VecOps",
+      "to_module": "collections",
+      "to_symbol": "VecHigherOps"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "collections",
+      "from_symbol": "VecOps",
+      "to_module": "core",
+      "to_symbol": "Comparable"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "collections",
+      "from_symbol": "hashkey<K<Hashable>>",
+      "to_module": "core",
+      "to_symbol": "Hashable"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "collections",
+      "from_symbol": "samekey<K<Equatable>>",
+      "to_module": "core",
+      "to_symbol": "Equatable"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "io",
+      "from_symbol": "open",
+      "to_module": "io",
+      "to_symbol": "File"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "io",
+      "from_symbol": "open",
+      "to_module": "io",
+      "to_symbol": "FileFlag"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "io",
+      "from_symbol": "open",
+      "to_module": "io",
+      "to_symbol": "error_code"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "io",
+      "from_symbol": "read_all",
+      "to_module": "io",
+      "to_symbol": "error_code"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "asyncs",
+      "from_symbol": "async_accept",
+      "to_symbol": "vyb_async_accept"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "asyncs",
+      "from_symbol": "async_await",
+      "to_symbol": "vyb_async_await"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "asyncs",
+      "from_symbol": "async_connect",
+      "to_symbol": "vyb_async_connect"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "asyncs",
+      "from_symbol": "async_poll",
+      "to_symbol": "vyb_async_poll"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "asyncs",
+      "from_symbol": "async_recv",
+      "to_symbol": "vyb_async_recv"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "asyncs",
+      "from_symbol": "async_run_all",
+      "to_symbol": "vyb_async_run_all"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "asyncs",
+      "from_symbol": "async_send",
+      "to_symbol": "vyb_async_send"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "asyncs",
+      "from_symbol": "async_sleep_ms",
+      "to_symbol": "vyb_async_sleep_ms"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "asyncs",
+      "from_symbol": "async_spawn",
+      "to_symbol": "vyb_async_spawn"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "asyncs",
+      "from_symbol": "async_yield",
+      "to_symbol": "vyb_async_yield"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "channels",
+      "from_symbol": "chan_bounded",
+      "to_symbol": "vyb_chan_new"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "channels",
+      "from_symbol": "chan_close",
+      "to_symbol": "vyb_chan_close"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "channels",
+      "from_symbol": "chan_free",
+      "to_symbol": "vyb_chan_free"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "channels",
+      "from_symbol": "chan_len",
+      "to_symbol": "vyb_chan_len"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "channels",
+      "from_symbol": "chan_new",
+      "to_symbol": "vyb_chan_new"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "channels",
+      "from_symbol": "chan_recv",
+      "to_symbol": "vyb_chan_recv"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "channels",
+      "from_symbol": "chan_recv_opt",
+      "to_symbol": "vyb_chan_recv_opt"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "channels",
+      "from_symbol": "chan_select",
+      "to_symbol": "vyb_chan_select"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "channels",
+      "from_symbol": "chan_send",
+      "to_symbol": "vyb_chan_send"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "channels",
+      "from_symbol": "chan_try",
+      "to_symbol": "vyb_chan_try"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "channels",
+      "from_symbol": "strchan_bounded",
+      "to_symbol": "vyb_strchan_new"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "channels",
+      "from_symbol": "strchan_close",
+      "to_symbol": "vyb_strchan_close"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "channels",
+      "from_symbol": "strchan_free",
+      "to_symbol": "vyb_strchan_free"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "channels",
+      "from_symbol": "strchan_len",
+      "to_symbol": "vyb_strchan_len"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "channels",
+      "from_symbol": "strchan_new",
+      "to_symbol": "vyb_strchan_new"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "channels",
+      "from_symbol": "strchan_recv",
+      "to_symbol": "vyb_strchan_recv"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "channels",
+      "from_symbol": "strchan_recv_opt",
+      "to_symbol": "vyb_strchan_recv_opt"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "channels",
+      "from_symbol": "strchan_send",
+      "to_symbol": "vyb_strchan_send"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "channels",
+      "from_symbol": "strchan_try",
+      "to_symbol": "vyb_strchan_try"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "io",
+      "from_symbol": "close",
+      "to_symbol": "vyb_io_close"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "io",
+      "from_symbol": "error_code",
+      "to_symbol": "vyb_io_error_code"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "io",
+      "from_symbol": "error_message",
+      "to_symbol": "vyb_io_error_message"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "io",
+      "from_symbol": "open",
+      "to_symbol": "vyb_io_open"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "io",
+      "from_symbol": "read_all",
+      "to_symbol": "vyb_io_read_all"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "io",
+      "from_symbol": "write_str",
+      "to_symbol": "vyb_io_write"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "async_tcp_accept",
+      "to_symbol": "vyb_async_accept"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "async_tcp_connect",
+      "to_symbol": "vyb_async_connect"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "async_tcp_read",
+      "to_symbol": "vyb_async_recv"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "async_tcp_write",
+      "to_symbol": "vyb_async_send"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "async_udp_recv_from",
+      "to_symbol": "vyb_async_recvfrom"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "async_udp_send_to",
+      "to_symbol": "vyb_async_sendto"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "socket_accept",
+      "to_symbol": "vyb_net_accept"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "socket_bind",
+      "to_symbol": "vyb_net_bind"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "socket_close",
+      "to_symbol": "vyb_net_close"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "socket_connect",
+      "to_symbol": "vyb_net_connect"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "socket_error_code",
+      "to_symbol": "vyb_net_error_code"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "socket_error_message",
+      "to_symbol": "vyb_net_error_message"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "socket_listen",
+      "to_symbol": "vyb_net_listen"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "socket_local_port",
+      "to_symbol": "vyb_net_local_port"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "socket_open",
+      "to_symbol": "vyb_net_open"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "socket_recv",
+      "to_symbol": "vyb_net_recv"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "socket_resolve",
+      "to_symbol": "vyb_net_resolve"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "socket_send",
+      "to_symbol": "vyb_net_send"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "tcp_accept",
+      "to_symbol": "vyb_net_accept"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "tcp_connect",
+      "to_symbol": "vyb_net_close"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "tcp_connect",
+      "to_symbol": "vyb_net_connect"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "tcp_connect",
+      "to_symbol": "vyb_net_open"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "tcp_listen",
+      "to_symbol": "vyb_net_bind"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "tcp_listen",
+      "to_symbol": "vyb_net_close"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "tcp_listen",
+      "to_symbol": "vyb_net_listen"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "tcp_listen",
+      "to_symbol": "vyb_net_local_port"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "tcp_listen",
+      "to_symbol": "vyb_net_open"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "udp_bind",
+      "to_symbol": "vyb_net_bind"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "udp_bind",
+      "to_symbol": "vyb_net_close"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "udp_bind",
+      "to_symbol": "vyb_net_local_port"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "udp_bind",
+      "to_symbol": "vyb_net_open"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "udp_close",
+      "to_symbol": "vyb_net_close"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "udp_last_peer_ip",
+      "to_symbol": "vyb_net_last_peer_ip"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "udp_last_peer_port",
+      "to_symbol": "vyb_net_last_peer_port"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "udp_recv_from",
+      "to_symbol": "vyb_net_recvfrom"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
+      "from_symbol": "udp_send_to",
+      "to_symbol": "vyb_net_sendto"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "tasks",
+      "from_symbol": "task_await",
+      "to_symbol": "vyb_task_await"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "tasks",
+      "from_symbol": "task_free",
+      "to_symbol": "vyb_task_free"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "tasks",
+      "from_symbol": "task_poll",
+      "to_symbol": "vyb_task_poll"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "tasks",
+      "from_symbol": "task_spawn",
+      "to_symbol": "vyb_task_spawn"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "threads",
+      "from_symbol": "atomic_add",
+      "to_symbol": "vyb_atomic_add"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "threads",
+      "from_symbol": "atomic_cas",
+      "to_symbol": "vyb_atomic_cas"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "threads",
+      "from_symbol": "atomic_free",
+      "to_symbol": "vyb_atomic_free"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "threads",
+      "from_symbol": "atomic_load",
+      "to_symbol": "vyb_atomic_load"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "threads",
+      "from_symbol": "atomic_new",
+      "to_symbol": "vyb_atomic_new"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "threads",
+      "from_symbol": "atomic_store",
+      "to_symbol": "vyb_atomic_store"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "threads",
+      "from_symbol": "cond_broadcast",
+      "to_symbol": "vyb_cond_broadcast"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "threads",
+      "from_symbol": "cond_free",
+      "to_symbol": "vyb_cond_free"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "threads",
+      "from_symbol": "cond_new",
+      "to_symbol": "vyb_cond_new"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "threads",
+      "from_symbol": "cond_signal",
+      "to_symbol": "vyb_cond_signal"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "threads",
+      "from_symbol": "cond_wait",
+      "to_symbol": "vyb_cond_wait"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "threads",
+      "from_symbol": "mutex_free",
+      "to_symbol": "vyb_mutex_free"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "threads",
+      "from_symbol": "mutex_lock",
+      "to_symbol": "vyb_mutex_lock"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "threads",
+      "from_symbol": "mutex_new",
+      "to_symbol": "vyb_mutex_new"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "threads",
+      "from_symbol": "mutex_unlock",
+      "to_symbol": "vyb_mutex_unlock"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "threads",
+      "from_symbol": "thread_detach",
+      "to_symbol": "vyb_thread_detach"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "threads",
+      "from_symbol": "thread_join",
+      "to_symbol": "vyb_thread_join"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "threads",
+      "from_symbol": "thread_spawn",
+      "to_symbol": "vyb_thread_spawn"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "time",
+      "from_symbol": "sleep_ms",
+      "to_symbol": "vyb_time_sleep_ms"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "time",
+      "from_symbol": "time_epoch_millis",
+      "to_symbol": "vyb_time_epoch_millis"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "time",
+      "from_symbol": "time_epoch_secs",
+      "to_symbol": "vyb_time_epoch_secs"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "time",
+      "from_symbol": "time_mono_millis",
+      "to_symbol": "vyb_time_mono_millis"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "time",
+      "from_symbol": "time_nanos",
+      "to_symbol": "vyb_time_nanos"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "tls",
+      "from_symbol": "tls_accept",
+      "to_symbol": "vyb_tls_accept"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "tls",
+      "from_symbol": "tls_client_context",
+      "to_symbol": "vyb_tls_client_context"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "tls",
+      "from_symbol": "tls_client_context_verified",
+      "to_symbol": "vyb_tls_client_context_verified"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "tls",
+      "from_symbol": "tls_close",
+      "to_symbol": "vyb_tls_close"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "tls",
+      "from_symbol": "tls_connect",
+      "to_symbol": "vyb_tls_connect"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "tls",
+      "from_symbol": "tls_error_code",
+      "to_symbol": "vyb_tls_error_code"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "tls",
+      "from_symbol": "tls_error_message",
+      "to_symbol": "vyb_tls_error_message"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "tls",
+      "from_symbol": "tls_free_context",
+      "to_symbol": "vyb_tls_ctx_free"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "tls",
+      "from_symbol": "tls_read",
+      "to_symbol": "vyb_tls_read"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "tls",
+      "from_symbol": "tls_server_context",
+      "to_symbol": "vyb_tls_server_context"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "tls",
+      "from_symbol": "tls_stream",
+      "to_symbol": "vyb_tls_stream"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "tls",
+      "from_symbol": "tls_write",
+      "to_symbol": "vyb_tls_write"
+    },
+    {
+      "type": "usesType",
+      "from_module": "http",
+      "from_symbol": "http_get_full",
+      "to_module": "http",
+      "to_symbol": "HttpResponse"
+    },
+    {
+      "type": "usesType",
+      "from_module": "http",
+      "from_symbol": "http_header",
+      "to_module": "http",
+      "to_symbol": "HttpResponse"
+    },
+    {
+      "type": "usesType",
+      "from_module": "https",
+      "from_symbol": "https_get_full",
+      "to_module": "http",
+      "to_symbol": "HttpResponse"
+    },
+    {
+      "type": "usesType",
+      "from_module": "https",
+      "from_symbol": "https_get_full_verified",
+      "to_module": "http",
+      "to_symbol": "HttpResponse"
+    },
+    {
+      "type": "usesType",
+      "from_module": "https",
+      "from_symbol": "tls_read_all",
+      "to_module": "tls",
+      "to_symbol": "TlsStream"
+    },
+    {
+      "type": "usesType",
+      "from_module": "https",
+      "from_symbol": "tls_read_exact",
+      "to_module": "tls",
+      "to_symbol": "TlsStream"
+    },
+    {
+      "type": "usesType",
+      "from_module": "https",
+      "from_symbol": "tls_read_line",
+      "to_module": "tls",
+      "to_symbol": "TlsStream"
+    },
+    {
+      "type": "usesType",
+      "from_module": "io",
+      "from_symbol": "close",
+      "to_module": "io",
+      "to_symbol": "File"
+    },
+    {
+      "type": "usesType",
+      "from_module": "io",
+      "from_symbol": "open",
+      "to_module": "io",
+      "to_symbol": "File"
+    },
+    {
+      "type": "usesType",
+      "from_module": "io",
+      "from_symbol": "open_append",
+      "to_module": "io",
+      "to_symbol": "File"
+    },
+    {
+      "type": "usesType",
+      "from_module": "io",
+      "from_symbol": "open_read",
+      "to_module": "io",
+      "to_symbol": "File"
+    },
+    {
+      "type": "usesType",
+      "from_module": "io",
+      "from_symbol": "open_write",
+      "to_module": "io",
+      "to_symbol": "File"
+    },
+    {
+      "type": "usesType",
+      "from_module": "io",
+      "from_symbol": "read_all",
+      "to_module": "io",
+      "to_symbol": "File"
+    },
+    {
+      "type": "usesType",
+      "from_module": "io",
+      "from_symbol": "write_str",
+      "to_module": "io",
+      "to_symbol": "File"
+    },
+    {
+      "type": "usesType",
+      "from_module": "network",
+      "from_symbol": "async_tcp_accept",
+      "to_module": "network",
+      "to_symbol": "TcpListener"
+    },
+    {
+      "type": "usesType",
+      "from_module": "network",
+      "from_symbol": "async_tcp_accept",
+      "to_module": "network",
+      "to_symbol": "TcpStream"
+    },
+    {
+      "type": "usesType",
+      "from_module": "network",
+      "from_symbol": "async_tcp_connect",
+      "to_module": "network",
+      "to_symbol": "TcpStream"
+    },
+    {
+      "type": "usesType",
+      "from_module": "network",
+      "from_symbol": "async_tcp_read",
+      "to_module": "network",
+      "to_symbol": "TcpStream"
+    },
+    {
+      "type": "usesType",
+      "from_module": "network",
+      "from_symbol": "async_tcp_write",
+      "to_module": "network",
+      "to_symbol": "TcpStream"
+    },
+    {
+      "type": "usesType",
+      "from_module": "network",
+      "from_symbol": "async_udp_recv_from",
+      "to_module": "network",
+      "to_symbol": "UdpSocket"
+    },
+    {
+      "type": "usesType",
+      "from_module": "network",
+      "from_symbol": "async_udp_send_to",
+      "to_module": "network",
+      "to_symbol": "UdpSocket"
+    },
+    {
+      "type": "usesType",
+      "from_module": "network",
+      "from_symbol": "tcp_accept",
+      "to_module": "network",
+      "to_symbol": "TcpListener"
+    },
+    {
+      "type": "usesType",
+      "from_module": "network",
+      "from_symbol": "tcp_accept",
+      "to_module": "network",
+      "to_symbol": "TcpStream"
+    },
+    {
+      "type": "usesType",
+      "from_module": "network",
+      "from_symbol": "tcp_connect",
+      "to_module": "network",
+      "to_symbol": "TcpStream"
+    },
+    {
+      "type": "usesType",
+      "from_module": "network",
+      "from_symbol": "tcp_listen",
+      "to_module": "network",
+      "to_symbol": "TcpListener"
+    },
+    {
+      "type": "usesType",
+      "from_module": "network",
+      "from_symbol": "udp_bind",
+      "to_module": "network",
+      "to_symbol": "UdpSocket"
+    },
+    {
+      "type": "usesType",
+      "from_module": "network",
+      "from_symbol": "udp_close",
+      "to_module": "network",
+      "to_symbol": "UdpSocket"
+    },
+    {
+      "type": "usesType",
+      "from_module": "network",
+      "from_symbol": "udp_recv_from",
+      "to_module": "network",
+      "to_symbol": "UdpSocket"
+    },
+    {
+      "type": "usesType",
+      "from_module": "network",
+      "from_symbol": "udp_send_to",
+      "to_module": "network",
+      "to_symbol": "UdpSocket"
+    },
+    {
+      "type": "usesType",
+      "from_module": "tls",
+      "from_symbol": "tls_accept",
+      "to_module": "tls",
+      "to_symbol": "TlsStream"
+    },
+    {
+      "type": "usesType",
+      "from_module": "tls",
+      "from_symbol": "tls_client_context",
+      "to_module": "tls",
+      "to_symbol": "TlsContext"
+    },
+    {
+      "type": "usesType",
+      "from_module": "tls",
+      "from_symbol": "tls_client_context_verified",
+      "to_module": "tls",
+      "to_symbol": "TlsContext"
+    },
+    {
+      "type": "usesType",
+      "from_module": "tls",
+      "from_symbol": "tls_close",
+      "to_module": "tls",
+      "to_symbol": "TlsStream"
+    },
+    {
+      "type": "usesType",
+      "from_module": "tls",
+      "from_symbol": "tls_connect",
+      "to_module": "tls",
+      "to_symbol": "TlsStream"
+    },
+    {
+      "type": "usesType",
+      "from_module": "tls",
+      "from_symbol": "tls_free_context",
+      "to_module": "tls",
+      "to_symbol": "TlsContext"
+    },
+    {
+      "type": "usesType",
+      "from_module": "tls",
+      "from_symbol": "tls_read",
+      "to_module": "tls",
+      "to_symbol": "TlsStream"
+    },
+    {
+      "type": "usesType",
+      "from_module": "tls",
+      "from_symbol": "tls_server_context",
+      "to_module": "tls",
+      "to_symbol": "TlsContext"
+    },
+    {
+      "type": "usesType",
+      "from_module": "tls",
+      "from_symbol": "tls_stream",
+      "to_module": "tls",
+      "to_symbol": "TlsContext"
+    },
+    {
+      "type": "usesType",
+      "from_module": "tls",
+      "from_symbol": "tls_stream",
+      "to_module": "tls",
+      "to_symbol": "TlsStream"
+    },
+    {
+      "type": "usesType",
+      "from_module": "tls",
+      "from_symbol": "tls_write",
+      "to_module": "tls",
+      "to_symbol": "TlsStream"
+    }
+  ]
+}

@@ -10,3 +10,7 @@ build-asan/
 # Generated LLVM IR files
 *.ll
 _codeql_build_dir/
+
+# Python tooling
+__pycache__/
+*.pyc
