@@ -978,6 +978,10 @@ For Vyb to be considered production-ready at 1.0, **all of the following must be
 - [x] Core aspects (`Display`, `Debug`, `Clone`, `Equatable`, `Comparable`, `Hashable`)
 - [x] Iterator aspect with `for` loop desugaring (identifier, range, and non-identifier iterable forms)
 - [x] Enum/sum types with pattern matching (data variants, exhaustiveness, guards, destructuring, `match`-as-expression)
+- [ ] **Ample Vyb-native examples** — a maintained corpus of idiomatic programs
+  showcasing unique *vybey* patterns (ownership keywords, aspect/bind, `fail`/
+  `trap`, native `T?`, `select`, async/agents, JIT-vs-AOT), not just raw stdlib
+  capability. Demonstrates that Vyb syntax reads naturally before 1.0.
 - [x] String methods complete (`split` and formatting done; see `.split()`/`.format()`)
 - [x] `HashMap<K, V>` and basic collections (HashMap/HashSet/BTreeMap, `Vec` iterators, growth)
 - [x] FFI (`extern "C"`) working — extern blocks, ABI aliases, `#[repr(C)]`, native `--link` (variadics/bindgen still open)
@@ -1123,6 +1127,6 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 ---
 
 *Last Updated: 2026-08-17 (doc-reconciliation)*
-*Current Version: Vyb v0.6.2 (freedom-1.0 series)*
+*Current Version: Vyb v0.7.0 (freedom-1.0 series)*
 *Overall Status: ~60-65% complete toward 1.0 — 993 tests, 989 passing (full --execute-jit directory sweep; 4 pre-existing trap/vec failures remain)*
 *SUGGESTIONS.md merged into this document.*

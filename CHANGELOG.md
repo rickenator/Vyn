@@ -7,7 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.6.2] - 2026-08-17
+## [0.7.0] - 2026-08-17
+
+### Added
+- Lossless nested-struct JSON round-trip: `.to_string()` / `T::from_string()` now
+  cover `Vec<T>`, `Vec<struct>` (array of objects), and arbitrary-depth nested
+  structs via a growable emitter with no fixed-size cap; deserialization never
+  trusts lengths/counts from input (allocation-bomb safe).
+- Native `T?` equality: `==` / `!=` compare presence and (when both present) the
+  payload (`Int`, `Float`, `Bool`, `String`); ordering on optionals is now a
+  clean semantic error.
+
+### Changed
+- By-value recursive structs (e.g. `struct Node { next<Node?> }`) are rejected
+  with a clear error instead of a stack-overflow crash.
+- `fn` / `Self` field types are documented as excluded from ser/deser.
+- Programmer's Guide: full primitive catalog, main-return model ("any type"),
+  and a Present/Absent explanation for the native `T?` optional.
+
 
 ### Changed
 - Version bumped to 0.6.2 to match the shipped stdlib/async/network/TLS/HTTPS

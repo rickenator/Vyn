@@ -1,4 +1,4 @@
-# Vyb Feature Status (v0.6.2)
+# Vyb Feature Status (v0.7.0)
 
 This document tracks the implementation status of Vyb language features.
 
@@ -130,4 +130,4 @@ Legend: ✅ Implemented | 🚧 Partial / Stubbed | 📋 Planned
 
 ---
 
-*Last updated: v0.6.2 (2026-08-17)*
+*Last updated: v0.7.0 (2026-08-17)*

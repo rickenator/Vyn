@@ -59,7 +59,7 @@ Vyb is a statically typed, compiled systems language targeting native code via L
 * **Concurrency**: `async`/`await` and `Future<T>`.
 * **Native Compilation**: Full JIT (LLVM ORC), AOT (object files), and executable generation pipeline.
 
-**Current Version:** 0.6.2 (freedom-1.0 series) 🚀 **AOT COMPILATION + CROSS-PLATFORM SUPPORT**
+**Current Version:** 0.7.0 (freedom-1.0 series) 🚀 **AOT COMPILATION + CROSS-PLATFORM SUPPORT**
 
 ## Quick Start
 
@@ -272,7 +272,7 @@ This unique `import`/`smuggle` distinction makes Vyb's module system both secure
 
 ## In This Release
 
-Vyb **v0.6.2** (freedom-1.0 series) is a mature systems programming language with **native executable generation** and a broad core feature set.
+Vyb **v0.7.0** (freedom-1.0 series) is a mature systems programming language with **native executable generation** and a broad core feature set.
 
 ### ✅ **Recent Milestones**
 These features were completed in the current release cycle and are fully tested:
