@@ -1,0 +1,111 @@
+# Agents - request/response and composition (Stage 3).
+#   - request/response: a request message carries its own reply-to channel, so a
+#     single service routes each response back to the right requester.
+#   - fan-in composition: two worker agents reply into their own channels and
+#     chan_select multiplexes over them (readiness only, then consume the
+#     selected reply).
+#   - agent_mailbox exposes a scalar agent's mailbox as a channel handle (valid
+#     in chan_select and chan_len, read-only: len/select), and reports -1 for
+#     String agents (separate mailbox type).
+// @test: Agents - request/response and composition (Stage 3)
+// @category: agents,concurrency,channels,stdlib
+// @expect: pass
+// @expect-return: 0
+
+import agents
+import channels
+
+main()<Int> -> {
+    # --- request/response with per-request reply-to channels ----------------
+    # The pinger treats each request's value as a reply-to channel handle, so a
+    # client gets its answer routed back onto its own channel. The reply is a
+    # deterministic function of the request token, so correlation is verifiable.
+    pinger<Int> = agent_start(|ch<Int>| -> {
+        chan_send(ch, (ch * 9) % 100)
+    })
+
+    ca<Int> = chan_new()
+    cb<Int> = chan_new()
+    if (ca == 0 || cb == 0 || pinger == 0) { return 1 }
+
+    agent_send(pinger, ca)
+    agent_send(pinger, cb)
+    ea<Int> = (ca * 9) % 100
+    eb<Int> = (cb * 9) % 100
+    if (chan_recv(ca) != ea) { return 2 }
+    if (chan_recv(cb) != eb) { return 3 }
+    println("reqA=" + ea.to_string() + " reqB=" + eb.to_string())
+
+    agent_close(pinger)
+    agent_free(pinger)
+    chan_free(ca)
+    chan_free(cb)
+
+    # --- fan-in composition: select over the workers' reply channels ---------
+    resA<Int> = chan_new()
+    resB<Int> = chan_new()
+    wa<Int> = agent_start(|v<Int>| -> { chan_send(resA, v) })
+    wb<Int> = agent_start(|v<Int>| -> { chan_send(resB, v) })
+    agent_send(wa, 1111)
+    agent_send(wb, 2222)
+
+    hs<Vec<Int>> = Vec<Int>()
+    hs.push(resA)
+    hs.push(resB)
+    if (hs.len() != 2) { return 4 }
+
+    # chan_select wakes as each reply arrives (readiness only); we then drain
+    # both reply channels.
+    chan_select(hs)
+    chan_select(hs)
+    va<Int> = chan_recv(resA)
+    vb<Int> = chan_recv(resB)
+    if (va != 1111 || vb != 2222) { return 5 }
+    println("fanin=" + va.to_string() + "," + vb.to_string())
+
+    agent_close(wa)
+    agent_close(wb)
+    agent_free(wa)
+    agent_free(wb)
+
+    # --- agent_mailbox: scalar mailboxes join the channel surface -------------
+    # String agents use a separate mailbox type: agent_mailbox reports -1.
+    sa<Int> = agent_start_string(|s<String>| -> { })
+    if (agent_mailbox(sa) != -1) { return 6 }
+    agent_close(sa)
+    agent_free(sa)
+
+    # Scalar agent: expose its mailbox handle and verify it is a live channel
+    # handle: it mirrors chan_len and is accepted inside a chan_select set.
+    drain<Int> = chan_new()
+    da<Int> = agent_start(|v<Int>| -> { chan_send(drain, v) })
+    mb<Int> = agent_mailbox(da)
+    if (mb <= 0) { return 7 }
+    agent_send(da, 5)
+    agent_send(da, 6)
+    if (chan_recv(drain) != 5) { return 8 }
+    if (chan_recv(drain) != 6) { return 9 }
+
+    # A guaranteed-ready channel next to the (empty) mailbox must be selected:
+    # proves the mailbox handle is a valid, order-respecting member of a set.
+    resG<Int> = chan_new()
+    chan_send(resG, 77)
+    hs2<Vec<Int>> = Vec<Int>()
+    hs2.push(mb)
+    hs2.push(resG)
+    if (chan_select(hs2) != 1) { return 10 }
+    if (chan_recv(resG) != 77) { return 11 }
+
+    chk<Int> = agent_close(da)
+    if (chk != 1) { return 12 }
+    if (chan_len(mb) != 0) { return 13 }       # drained; mailbox handle still valid
+    if (agent_len(da) != 0) { return 14 }
+    agent_free(da)
+    chan_free(drain)
+    chan_free(resG)
+
+    chan_free(resA)
+    chan_free(resB)
+    println("ok")
+    return 0
+}

@@ -3,8 +3,8 @@
 # An agent is a unit of concurrency that owns a mailbox (an unbounded Int
 # channel) and runs a behavior loop on its own worker thread: it blocks on recv
 # and hands each message to the behavior closure. Only messages cross the
-# boundary -- the agent's internal state stays private to its behavior. Handle
-# an Int (a runtime table index).
+# boundary -- the agent's internal state stays private to its behavior. The
+# handle is an Int (a runtime table index).
 #
 # Usage:
 #   import agents
@@ -104,4 +104,19 @@ agent_send_float(a<Int>, f<Float>)<Int> -> {
 share(all)
 agent_send_string(a<Int>, s<String>)<Int> -> {
     return vyb_agent_send_string(a, s)
+}
+
+# --- Request/response + composition (Stage 3) --------------------------------
+
+# Expose the agent's underlying mailbox channel handle (scalar agents only).
+# Int/Bool/Float agents ride an int-slot channel, so the returned handle can be
+# passed to chan_select (alongside reply channels) to compose agents into
+# fan-in/fan-out and watch multiple agents' readiness from one place. String
+# agents use a separate mailbox type and return -1 here. The handle aliases the
+# agent's mailbox: it is freed by agent_free and must not be closed/freed by the
+# caller; treat it as read-only (select/len observation), not a side channel for
+# consuming messages (that is the behavior's own recv loop).
+share(all)
+agent_mailbox(a<Int>)<Int> -> {
+    return vyb_agent_mailbox(a)
 }

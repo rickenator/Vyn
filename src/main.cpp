@@ -165,6 +165,7 @@ extern "C" {
     int64_t __vyb_agent_alive(int64_t handle);
     int64_t __vyb_agent_close(int64_t handle);
     int64_t __vyb_agent_free(int64_t handle);
+    int64_t __vyb_agent_mailbox(int64_t handle);
     int64_t __vyb_mutex_new(void);
     int64_t __vyb_mutex_lock(int64_t mh);
     int64_t __vyb_mutex_unlock(int64_t mh);
@@ -984,6 +985,8 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_close), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_agent_free")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_free), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_agent_mailbox")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_agent_mailbox), llvm::JITSymbolFlags::Exported);
 
         // Register toString functions
         if (toStringIntFunc) {

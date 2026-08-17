@@ -3626,6 +3626,9 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         } else if (fname == "vyb_agent_free") {
             emitHandleIntrinsic("__vyb_agent_free", 1);
             return;
+        } else if (fname == "vyb_agent_mailbox") {
+            emitHandleIntrinsic("__vyb_agent_mailbox", 1);
+            return;
         } else if (fname == "vyb_chan_new") {
             emitHandleIntrinsic("__vyb_chan_new", 1);   // capacity (0 = unbounded)
             return;

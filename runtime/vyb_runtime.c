@@ -1491,6 +1491,23 @@ VYB_WEAK int64_t __vyb_agent_len(int64_t handle) {
         : __vyb_chan_len(a->mailbox);
 }
 
+// Expose the agent's underlying mailbox channel handle so it can be composed
+// with the channel surface: select/observe readiness via __vyb_chan_select,
+// or inspect backlog via __vyb_chan_len. Only scalar agents (Int/Bool/Float)
+// ride an int-slot __vyb_chan; String agents use a separate strchan mailbox so
+// they return -1 here (no shared handle space with chan_select). The returned
+// handle is only valid while the agent is alive; it aliases the mailbox and is
+// freed by __vyb_agent_free, so the caller must not free/close it itself. A
+// caller should treat this as read-only (select/len observation): consuming
+// messages here races with the behavior's own recv loop.
+VYB_WEAK int64_t __vyb_agent_mailbox(int64_t handle) {
+    int idx = (int)handle - 1;
+    if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return -1;
+    vyb_agent* a = &vyb_agents[idx];
+    if (a->kind == AGENT_KIND_STRING) return -1;
+    return a->mailbox;
+}
+
 // 1 while the agent's worker is running (or draining), 0 once it has exited.
 VYB_WEAK int64_t __vyb_agent_alive(int64_t handle) {
     int idx = (int)handle - 1;

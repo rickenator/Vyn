@@ -3,6 +3,27 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-17: **Agents: isolated message-passing units (Stages 1-3)**. A new `agents`
+  stdlib module (`import agents`) for lightweight message-passing units, torn
+  down through `test/agents/`. Stage 1 ships the core shape: `agent_start` runs a
+  behavior loop on its own worker thread over an owned mailbox; `agent_send`,
+  `agent_len`, `agent_alive`, `agent_close` (lossless drain-then-stop) and
+  `agent_free` (join + reclaim) complete the lifecycle. Stage 2 adds payload
+  breadth: `agent_start_bool/float/string` and `agent_send_bool/float/string`;
+  Int/Bool/Float ride a shared int-slot mailbox (Bool truncates nonzero, Float
+  bitcasts i64 to double) while String messages use a refcounted strchan mailbox
+  that transfers the buffer to the behavior as an owned reference (valgrind
+  clean, 0 bytes lost). Stage 3 adds request/response and composition: a request
+  may carry its own reply-to channel (the pinger pattern routes each response
+  back to the right requester), workers fan-in through chan_select over reply
+  channels, and `agent_mailbox` exposes a scalar agent\'s mailbox as a live
+  channel handle so it can join chan_select/chan_len alongside reply channels
+  (reported -1 for String agents, which use a separate mailbox type). Runtime
+  lives in `runtime/vyb_runtime.c` (`__vyb_agent_*`), wrapped by
+  `stdlib/agents/mod.vyb`; design authority is `doc/AGENTS_DESIGN.md` with
+  Stages 4 (failure channeling) and 5 (backpressure/bounded mailboxes) pending.
+  Full unit/module/milestone suites pass.
+
 - 2026-08-15: **Module-to-module imports + capturing-worker closures**.
   Closes the two gaps that forced the threaded `http` to reach for raw
   intrinsics. (1) The module resolver now re-exposes a *plain-imported* module's

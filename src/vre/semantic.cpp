@@ -2044,6 +2044,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_agent_send_float" || name == "vyb_agent_send_string" ||
             name == "vyb_agent_len" || name == "vyb_agent_alive" ||
             name == "vyb_agent_close" || name == "vyb_agent_free" ||
+            name == "vyb_agent_mailbox" ||
             name == "vyb_mutex_new" || name == "vyb_mutex_lock" ||
             name == "vyb_mutex_unlock" || name == "vyb_mutex_free" ||
             name == "vyb_cond_new" || name == "vyb_cond_wait" ||
