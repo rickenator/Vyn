@@ -447,7 +447,10 @@ with only the pthread ABI beneath). The thread-safety foundation above came firs
   `free()`, and `handle()` (the raw Int for `chan_select`). Int-family scalar
   payloads use the int-slot runtime; String payloads use the refcounted string
   runtime (`test/modules/test_chan_typed.vyb`, `test/modules/test_chan_threaded.vyb`).
-  Float/Bool/Char payloads and non-identifier receivers remain follow-ups.
+  Float/Bool/Char payloads are supported too (a Float travels as its IEEE bit
+  pattern, Bool as 0/1, Char as its code unit), and scalar `poll()` returns
+  `Option<T>` (Some(v) / None) so an empty read is unambiguous (`test/modules/test_chan_scalar.vyb`).
+  Non-identifier method receivers remain a follow-up.
 - [x] **Task spawn/await/poll (`tasks` module)** — policy-clean concurrency on
   the external pthread runtime: `task_spawn(fn() -> Int)` runs the closure on a
   detached worker whose result is delivered to a private capacity-1 channel; the

@@ -14,11 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Typed generic `chan<T>` channels** — a compiler-native generic,
   thread-safe channel. `chan<T>()` / `chan<T>(cap)` construct an
   unbounded/bounded channel as a single i64 runtime handle; the ergonomic
-  surface is `send(v)`, `recv()` (blocking), `poll()` (non-blocking),
-  `len()`, `free()`, and `handle()` (raw Int for `chan_select`). Int-family
-  scalar payloads use the int-slot channel runtime and String payloads use the
-  refcounted string runtime; a chan is shared by value across pthreads
-  (`test/modules/test_chan_typed.vyb`, `test/modules/test_chan_threaded.vyb`).
+  surface is `send(v)`, `recv()` (blocking), `poll()` (non-blocking -> `Option<T>`
+  for scalar payloads, Some/None), `len()`, `free()`, and `handle()` (raw Int for
+  `chan_select`). Int-family, `Float` (IEEE bit pattern), `Bool` (0/1), and
+  `Char` payloads use the int-slot channel runtime; String payloads use the
+  refcounted string runtime (with the empty-string sentinel poll). A chan is
+  shared by value across pthreads; scalar `poll()` is unambiguous because it
+  reports readiness explicitly (`test/modules/test_chan_typed.vyb`,
+  `test/modules/test_chan_threaded.vyb`, `test/modules/test_chan_scalar.vyb`).
 
 - **`vyb bindgen --full` non-integer function-like macros** — the libclang
   backend now binds comparison/logical, ternary, and string macro bodies as

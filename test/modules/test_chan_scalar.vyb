@@ -1,0 +1,54 @@
+// @test: typed chan<T> channels - Float, Bool, and Char payloads
+// @description: chan<Float>, chan<Bool>, and chan<Char> carry scalar payloads
+//   through the int-slot channel runtime. A Float travels as its IEEE bit
+//   pattern, Bool as 0/1, and Char as its code unit, so send/recv round-trip
+//   exactly. Scalar poll() returns Option<T>: Some(v) when a value is buffered
+//   and None when empty -- an empty Bool poll can never read as `true`, an empty
+//   Char as 0xFF, or an empty Float as a NaN bit pattern.
+// @category: modules, threads, channels, concurrency, stdlib
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+
+main()<Int> -> {
+    fc<chan<Float>> = chan<Float>()
+    if (fc == 0) { return 1 }
+    if (fc.send(2.5) != 1) { return 2 }
+    f<Float> = fc.recv()
+    if (f != 2.5) { return 3 }
+    if (fc.poll().tag != 1) { return 4 }          # empty -> None
+    if (fc.send(-1.25) != 1) { return 5 }
+    fo<Option<Float>> = fc.poll()
+    if (fo.tag != 0) { return 6 }                 # Some
+    if (fo.value != -1.25) { return 7 }
+    if (fc.send(0.0) != 1) { return 8 }
+    if (fc.recv() != 0.0) { return 9 }
+    if (fc.free() != 0) { return 10 }
+
+    bc<chan<Bool>> = chan<Bool>()
+    if (bc == 0) { return 11 }
+    if (bc.send(true) != 1) { return 12 }
+    if (bc.recv() != true) { return 13 }
+    if (bc.poll().tag != 1) { return 14 }         # empty -> None (not true)
+    if (bc.send(false) != 1) { return 15 }
+    bo<Option<Bool>> = bc.poll()
+    if (bo.tag != 0) { return 16 }
+    if (bo.value != false) { return 17 }
+    if (bc.send(true) != 1) { return 18 }
+    if (bc.recv() != true) { return 19 }
+    if (bc.free() != 0) { return 20 }
+
+    cc<chan<Char>> = chan<Char>()
+    if (cc == 0) { return 21 }
+    if (cc.send(65) != 1) { return 22 }
+    if (cc.recv() != 65) { return 23 }
+    if (cc.poll().tag != 1) { return 24 }
+    if (cc.send(66) != 1) { return 25 }
+    co<Option<Char>> = cc.poll()
+    if (co.tag != 0) { return 26 }
+    if (co.value != 66) { return 27 }
+    if (cc.free() != 0) { return 28 }
+
+    println("ok")
+    return 0
+}
