@@ -461,6 +461,7 @@ private:
         bool vecIsString = false;              // Vec<String>: release String elements before freeing data
         bool isOur = false;                    // an `our<T>` control-block pointer (release on cleanup)
         bool isStruct = false;                 // an inline struct value (deep-copied into the env)
+        bool isClosure = false;                // a closure `{ ptr env, ptr fn }` value (release env on cleanup)
         const vyb::ast::TypeNode* structType = nullptr; // AST type of the struct field (for reclaim)
     };
     // Build the per-layout destructor for an async-task environment that holds

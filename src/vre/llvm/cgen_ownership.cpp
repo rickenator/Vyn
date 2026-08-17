@@ -1578,6 +1578,12 @@ llvm::Function* LLVMCodegen::generateAsyncEnvDtor(
                 std::set<std::string> visited;
                 reclaimStructOwnedFieldsAt(fieldPtr, fld.structType, st3, visited);
             }
+        } else if (fld.isClosure) {
+            // A closure param snapshot: drop the env's reference to the closure's
+            // capture environment (the +1 taken at launcher snapshot time).
+            if (!isClosureStructType(fty)) continue;
+            llvm::Value* cv = builder->CreateLoad(fty, fieldPtr, "async.env.dtor.closure");
+            releaseClosureValue(cv);
         }
     }
     builder->CreateCall(getOrCreateFreeFunction(), {dtor->getArg(0)});

@@ -31,7 +31,7 @@ is the working audit for what needs to be implemented next.
 | `mild<T>` weak references | ~75% | Control blocks, failed `grab()` (native `our<T>?`), and `our<T>` copy/assignment/parameter refcounting done; full copy/drop semantics remain |
 | Aspect/bind system | ~78% | Aspect objects/dyn dispatch |
 | Generic monomorphization | ~85% | **SEALED**: Compile-time only. See doc/MONOMORPHIZATION_DESIGN.md |
-| Async/await | ~90% | Multi-threaded thread-pool executor |
+| Async/await | ~95% | Async lambdas, `async for`, actors |
 | Error propagation (`fail`/`trap`) | ~80% | Standard error aspects, `rethrow`, ensure contracts |
 | Lambda/closure codegen | ~70% | Capture-by-value closure env structs shipped; move/mutable/`our` capture planned |
 | Module system (`import`/`smuggle`/`bundle`) | ~70% | Local/module-path resolution, aliases, bundle/share visibility done; stdlib modules/package integration pending |
@@ -599,11 +599,18 @@ with `pass` for multi-statement case bodies. Needs polishing:
   structs (mirroring `reclaimStructOwnedFieldsAt` so the env dtor's reclaim of that
   copy balances it) — and the worker merely borrows it, keeping the caller's
   binding valid across nested awaits (`test/async/async_struct_param.vyb`,
-  valgrind-clean). Remaining stages: closures as params. See
+  valgrind-clean). **`fn`/closure params done** (Stage 11): the launcher
+  snapshots a closure-typed param into the env, retaining its capture
+  environment (+1) so it survives asynchronously and is invokable from the
+  worker; the env's per-layout dtor releases that reference on task cleanup.
+  Covers closures with captures (Int + String), nested `await` of a child task
+  sharing the closure, and mixing with String/scalar params
+  (`test/async/async_closure_param.vyb`, valgrind-clean). See
   `test/async/async_event_loop.vyb`, `async_params.vyb`, `async_nested_await.vyb`,
   `async_string.vyb`, `async_void.vyb`, `async_multicore.vyb`,
   `async_float_bool.vyb`, `async_string_param.vyb`, `async_vec_param.vyb`,
-  `async_our_param.vyb`, `async_struct_param.vyb`, and `async_await_chains.vyb`.
+  `async_our_param.vyb`, `async_struct_param.vyb`, `async_closure_param.vyb`,
+  and `async_await_chains.vyb`.
 - [x] **`spawn` for concurrent tasks** — two storylines: the pthread `tasks`
   module (`t = task_spawn(fn() -> Int)`, `task_await`/`task_poll`/`task_free`)
   for real parallel workers, and the cooperative `asyncs` module above for

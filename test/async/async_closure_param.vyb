@@ -1,0 +1,61 @@
+// Stage-11 real async: closures as async params — the last Stage of the
+// event-loop executor. The launcher snapshots a closure param into the task env,
+// retaining the closure's capture environment (+1) so it stays alive
+// asynchronously and can be invoked from the worker; the env's per-layout dtor
+// releases that reference (and frees the env block) on task cleanup. The worker
+// invokes the closure through the normal call path, so closures with captures
+// work end to end, including nested `await` and mixing with String/scalar params.
+// @env: VYB_STDLIB=stdlib
+// @expect: pass
+
+import asyncs::{async_sleep_ms}
+
+// A closure factory with a captured Int and a captured String (a deep env the
+// async snapshot must keep alive across the task boundary).
+make_scorer()<fn(Int) -> Int> -> {
+    bonus<Int> = 5
+    marker<String> = "!!"
+    return |v<Int>| -> (v * 2) + bonus + marker.len()
+}
+
+async async_score(f<fn(Int) -> Int>, v<Int>)<Future<Int>> -> {
+    async_sleep_ms(5)
+    return f(v)
+}
+
+// Nested await passes the same closure to a child task before using it again.
+async async_chain(f<fn(Int) -> Int>, v<Int>)<Future<Int>> -> {
+    async_sleep_ms(5)
+    inner<Int> = await async_score(f, v)
+    return inner + f(1)
+}
+
+// A closure mixed with a String param and a scalar.
+async async_tag(f<fn(Int) -> Int>, s<String>, v<Int>)<Future<Int>> -> {
+    async_sleep_ms(5)
+    return f(v) + s.len()
+}
+
+main()<Int> -> {
+    // scorer(v) = v*2 + bonus(5) + len("!!")(2) = v*2 + 7.
+    scorer<fn(Int) -> Int> = make_scorer()
+
+    fa<Future<Int>> = async_score(scorer, 10)
+    ra<Int> = await fa
+    if (ra != 27) { return 1 }          // 20 + 7
+
+    fb<Future<Int>> = async_chain(scorer, 10)
+    rb<Int> = await fb
+    if (rb != 36) { return 2 }          // 27 + scorer(1)=9
+
+    fc<Future<Int>> = async_tag(scorer, "abcd", 10)
+    rc<Int> = await fc
+    if (rc != 31) { return 3 }          // 27 + len("abcd")=4
+
+    // The caller's closure is unchanged and still callable after the tasks land.
+    direct<Int> = scorer(4)
+    if (direct != 15) { return 4 }      // 8 + 7
+
+    println("ok")
+    return 0
+}

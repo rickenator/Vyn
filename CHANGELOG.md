@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Closures as async params** — the event-loop executor's last param stage: an
+  `async fn(f<fn(...)->...>, ...)<Future<T>>` now snapshots a closure-typed
+  argument into the task env, retaining its capture environment (+1) so it stays
+  alive asynchronously and is invokable from the worker; the env's per-layout
+  dtor releases that reference on task cleanup. Closures with captures (Int +
+  String), nested `await` sharing a closure, and closure+String+scalar mixes are
+  covered by `test/async/async_closure_param.vyb` (valgrind-clean).
 - **Drop the Rust-shaped `Option<T>` enum** — the `Option<T>`/`Some`/`None`
   built-in generic enum is removed from the compiler, along with the
   transitional `core::option` bridge (`OptionInt`) and its prelude imports.

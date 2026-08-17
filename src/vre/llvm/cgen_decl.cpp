@@ -623,6 +623,7 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
             llvm::Type* pt = codegenType(p.typeNode.get());
             if (!pt || !(pt->isIntegerTy() || pt->isFloatTy() || pt->isDoubleTy() ||
                          isVybStringStructType(pt) || asyncParamIsVec(p.typeNode.get()) ||
+                         (isFnTypeNode(p.typeNode.get()) && isClosureStructType(pt)) ||
                          (pt->isPointerTy() && isOurRefType(p.typeNode.get())) ||
                          isKnownStructTypeNode(p.typeNode.get()))) {
                 paramsEnvSafe = false; break;
@@ -1747,6 +1748,13 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
         } else if (ptn && paramTypes[i] && paramTypes[i]->isPointerTy() && isOurRefType(ptn)) {
             AsyncEnvField f; f.fieldIx = i + 2; f.isString = false; f.isVec = false; f.vecIsString = false; f.isOur = true;
             ownedFields.push_back(f);
+        } else if (ptn && paramTypes[i] && isFnTypeNode(ptn) && isClosureStructType(paramTypes[i])) {
+            // Closure param: the env owns its own reference to the closure's
+            // capture environment (+1 on snapshot, released by the env dtor on
+            // task cleanup), so the closure outlives the caller's scope.
+            AsyncEnvField f; f.fieldIx = i + 2; f.isString = false; f.isVec = false; f.vecIsString = false; f.isOur = false;
+            f.isClosure = true;
+            ownedFields.push_back(f);
         } else if (ptn && asyncParamIsVec(ptn)) {
             AsyncEnvField f; f.fieldIx = i + 2; f.isString = false; f.isVec = true; f.isOur = false;
             f.vecIsString = isVecOfStringTypeNode(ptn);
@@ -1870,6 +1878,11 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
         } else if (paramTypes[i] && paramTypes[i]->isPointerTy() &&
                    node->params[i].typeNode && isOurRefType(node->params[i].typeNode.get())) {
             retainOurControlBlock(av, "async.env.our");
+        } else if (paramTypes[i] && node->params[i].typeNode &&
+                   isFnTypeNode(node->params[i].typeNode.get()) && isClosureStructType(paramTypes[i])) {
+            // Closure param: the env holds its own reference to the closure's
+            // capture environment so it stays alive while the task runs.
+            retainClosureValue(av);
         } else if (vecParam[i] && vecElemType[i] && paramTypes[i]) {
             llvm::Value* copy = generateVecDeepCopy(av, vecElemType[i], paramTypes[i]);
             av = copy ? copy : av;
