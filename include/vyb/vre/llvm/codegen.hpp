@@ -600,6 +600,12 @@ private:
     /// (`<fn>$__async_body` is a plain `fn(params...) -> Int`) that runs the
     /// body, dispatched from an `i64(void*)` entry trampoline that unpacks env.
     void codegenAsyncTask(vyb::ast::FunctionDeclaration* node);
+    /// Async lambda: `async |x| -> await process(x)`. The lambda body is compiled
+    /// as a normal closure (reused worker); the outer closure value launches a
+    /// cooperative task that runs that closure and returns a Future<T> to the
+    /// caller. Mirrors the worker + env snapshot + entry + launcher split that
+    /// real async functions use, composed with the closure {env,fn} value.
+    void codegenAsyncLambda(vyb::ast::FunctionExpression* node);
 
     // Ensure all core intrinsic functions are declared
     void ensureCoreIntrinsicFunctions();

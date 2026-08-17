@@ -31,7 +31,7 @@ is the working audit for what needs to be implemented next.
 | `mild<T>` weak references | ~75% | Control blocks, failed `grab()` (native `our<T>?`), and `our<T>` copy/assignment/parameter refcounting done; full copy/drop semantics remain |
 | Aspect/bind system | ~78% | Aspect objects/dyn dispatch |
 | Generic monomorphization | ~85% | **SEALED**: Compile-time only. See doc/MONOMORPHIZATION_DESIGN.md |
-| Async/await | ~95% | Async lambdas, `async for`, actors |
+| Async/await | ~95% | `async for`, actors |
 | Error propagation (`fail`/`trap`) | ~80% | Standard error aspects, `rethrow`, ensure contracts |
 | Lambda/closure codegen | ~70% | Capture-by-value closure env structs shipped; move/mutable/`our` capture planned |
 | Module system (`import`/`smuggle`/`bundle`) | ~70% | Local/module-path resolution, aliases, bundle/share visibility done; stdlib modules/package integration pending |
@@ -621,7 +621,11 @@ with `pass` for multi-statement case bodies. Needs polishing:
 - [x] **`select` over channels** — `chan_select(handles<Vec<Int>>)` waits on many
   channels at once and returns the ready index (Vyb-natural extension; blocks
   with ~1ms wakeup, does not consume).
-- [ ] **Async lambdas** — `async |x| -> await process(x)`
+- [x] **Async lambdas** — `async |x| -> await process(x)` (Stage 12: the body is
+  compiled as a closure running as a cooperative task; a call returns a
+  `Future<T>` that `await` drives. Covers captures, String / zero-arg forms,
+  and passing an async lambda as a future-returning closure param;
+  `test/async/async_lambda.vyb`, valgrind-clean).
 - [ ] **`async for`** — Iterate over async streams
 
 ---

@@ -307,10 +307,24 @@ namespace vyb {
         // two `|` into a single OR token, so accept an OR token as an empty
         // parameter list only when followed by `->` (otherwise OR is the binary
         // logical-or operator handled further up the precedence chain).
+        // Async lambdas: `async |x| -> body`. `async` immediately before the
+        // parameter pipe (or a zero-arg `|| ->`) signals that the lambda body
+        // runs as a cooperative task whose call returns a Future<T>. When
+        // `async` is not followed by a pipe we do not consume it here, so bare
+        // uses fall through to the normal (constructor/other) parser paths.
+        bool sawAsyncLambda = false;
+        if (check(TokenType::KEYWORD_ASYNC)) {
+            bool asyncPipe = peekNext().type == TokenType::PIPE;
+            bool asyncZeroArg = peekNext().type == TokenType::OR;
+            if (asyncPipe || asyncZeroArg) {
+                consume(); // the `async` keyword
+                sawAsyncLambda = true;
+            }
+        }
         bool zeroArgOrLambda = check(TokenType::OR) && peekNext().type == TokenType::ARROW;
         if (check(TokenType::PIPE) || zeroArgOrLambda) {
             SourceLocation lambda_loc = peek().location;
-            bool isAsync = false;  // TODO: Support async keyword before pipe
+            bool isAsync = sawAsyncLambda;  // `async` keyword before the pipe
 
             bool isZeroArgOr = check(TokenType::OR);
             if (isZeroArgOr) {
@@ -1634,6 +1648,11 @@ bool ExpressionParser::is_expression_start(vyb::TokenType type) const {
 
     // Check for await keyword (special case)
     if (type == TokenType::KEYWORD_AWAIT) {
+        return true;
+    }
+
+    // Check for async keyword (async lambdas / literals in expression position)
+    if (type == TokenType::KEYWORD_ASYNC) {
         return true;
     }
 

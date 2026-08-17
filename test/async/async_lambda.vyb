@@ -1,0 +1,57 @@
+// Async lambdas: `async |x| -> await process(x)`. The body is compiled as a
+// closure that runs as a cooperative task; calling the lambda returns a
+// Future<T> (public type fn(...) -> Future<T>) that `await` drives.
+// @env: VYB_STDLIB=stdlib
+// @expect: pass
+
+import asyncs::{async_sleep_ms}
+
+async process(x<Int>)<Future<Int>> -> {
+    async_sleep_ms(5)
+    return x * 2
+}
+
+async greet(s<String>)<Future<String>> -> {
+    async_sleep_ms(5)
+    return "hi " + s
+}
+
+async run_async_gated(f<fn(Int) -> Future<Int>>, x<Int>)<Future<Int>> -> {
+    async_sleep_ms(5)
+    return await f(x)
+}
+
+main()<Int> -> {
+    // 1) Basic async lambda: body awaits another async fn.
+    f<fn(Int) -> Future<Int>> = async |x<Int>| -> await process(x)
+    future<Future<Int>> = f(10)
+    r<Int> = await future
+    if (r != 20) { return 1 }
+
+    r2<Int> = await f(25)
+    if (r2 != 50) { return 2 }
+
+    // 2) A capturing async lambda (immutable capture baked into the closure).
+    bonus<Int> = 7
+    cap = async |x<Int>| -> await process(x + bonus)
+    r3<Int> = await cap(5)               // process(12) = 24
+    if (r3 != 24) { return 3 }
+
+    // 3) String-returning async lambda with a nested await.
+    g = async |s<String>| -> await greet(s)
+    r4<String> = await g("bob")
+    if (r4 != "hi bob") { return 4 }
+
+    // 4) A zero-arg async lambda.
+    seven = async || -> await process(7)
+    r5<Int> = await seven()
+    if (r5 != 14) { return 5 }
+
+    // 5) An async lambda passed as a closure param into a task that awaits it.
+    k = async |x<Int>| -> await process(x)
+    r6<Int> = await run_async_gated(k, 5)
+    if (r6 != 10) { return 6 }
+
+    println("ok")
+    return 0
+}

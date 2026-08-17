@@ -6606,6 +6606,12 @@ void LLVMCodegen::visit(ast::ConditionalExpression* node) {
 }
 
 void LLVMCodegen::visit(ast::FunctionExpression* node) {
+    // Async lambdas (`async |x| -> await process(x)`) compile their body as a
+    // closure and wrap it in a task launcher that returns a Future<T>.
+    if (node->isAsync) {
+        codegenAsyncLambda(node);
+        return;
+    }
     // A function expression creates a lambda. Every lambda lowers to a closure
     // value: `struct { ptr env, ptr fn }`. Captured variables (filled in by the
     // semantic analyzer) are copied by value into a heap-allocated environment

@@ -183,7 +183,14 @@ vyb::ast::StmtPtr StatementParser::parse() {
                     size_t saved_pos = this->pos_;
                     this->consume(); // consume identifier
                     this->consume(); // consume '='
-                    if (this->peek().type == vyb::TokenType::PIPE) {
+                    // Accept `name = |params| -> body` and the async form
+                    // `name = async |params| -> body`.
+                    bool isAsyncLambdaAfterEq =
+                        this->peek().type == vyb::TokenType::KEYWORD_ASYNC &&
+                        (this->peekAhead(1).type == vyb::TokenType::PIPE ||
+                         (this->peekAhead(1).type == vyb::TokenType::OR &&
+                          this->peekAhead(2).type == vyb::TokenType::ARROW));
+                    if (this->peek().type == vyb::TokenType::PIPE || isAsyncLambdaAfterEq) {
                         // It IS: name = |params| -> body — parse as VariableDeclaration with inferred type
                         SourceLocation decl_loc = current_token.location;
                         auto identifier_node = std::make_unique<vyb::ast::Identifier>(

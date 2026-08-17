@@ -4981,7 +4981,23 @@ void SemanticAnalyzer::visit(ast::FunctionExpression* node) {
             }
         }
     }
-    auto* funcType = new ast::FunctionType(node->loc, std::move(paramTypes), std::move(inferredReturn));
+    // An async lambda's public signature returns a Future: `fn(...) -> Future<T>`.
+    // The whole body runs as a cooperative task, so a call site receives a
+    // Future (which it then `await`s) rather than the inner value directly.
+    ast::TypeNodePtr effectiveReturn;
+    if (node->isAsync) {
+        ast::TypeNodePtr inner = inferredReturn
+            ? std::move(inferredReturn)
+            : std::make_unique<ast::TypeName>(node->loc,
+                  std::make_unique<ast::Identifier>(node->loc, "Void"));
+        auto futureTy = std::make_unique<ast::TypeName>(node->loc,
+            std::make_unique<ast::Identifier>(node->loc, "Future"));
+        futureTy->genericArgs.push_back(std::move(inner));
+        effectiveReturn = std::move(futureTy);
+    } else {
+        effectiveReturn = std::move(inferredReturn);
+    }
+    auto* funcType = new ast::FunctionType(node->loc, std::move(paramTypes), std::move(effectiveReturn));
     expressionTypes[node] = retainType(funcType);
     node->type = std::shared_ptr<ast::TypeNode>(funcType->clone());
 }

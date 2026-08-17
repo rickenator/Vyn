@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Async lambdas** — `async |x| -> await process(x)` is now a first-class
+  value. The body is compiled as a closure that runs as a cooperative task; a
+  call to the lambda returns a `Future<T>` (the public type is
+  `fn(...) -> Future<T>`) which `await` drives. Captures, String/zero-arg
+  forms, and passing an async lambda as a future-returning closure param are
+  covered by `test/async/async_lambda.vyb` (valgrind-clean).
 - **Closures as async params** — the event-loop executor's last param stage: an
   `async fn(f<fn(...)->...>, ...)<Future<T>>` now snapshots a closure-typed
   argument into the task env, retaining its capture environment (+1) so it stays

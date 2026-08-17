@@ -22,6 +22,7 @@ using namespace vyb;
 // Forward declaration: helper used by the routing branch before its definition.
 enum class AsyncResultKind { None, Int, String, Void, Float, Bool };
 static AsyncResultKind asyncFutureResultKind(vyb::ast::FunctionDeclaration* node);
+static AsyncResultKind asyncResultKindFromTypeNode(vyb::ast::TypeNode* inner);
 static bool asyncParamIsVec(const vyb::ast::TypeNode* tn);
 static const vyb::ast::TypeNode* asyncParamVecElement(const vyb::ast::TypeNode* tn);
 
@@ -1919,4 +1920,313 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
     b.CreateRet(fut);
 
     m_currentLLVMValue = launcher;
+}
+
+// Async lambda: `async |x| -> await process(x)`. The lambda body is compiled as
+// a normal closure (the reused worker, so captures and retained params compose).
+// The outer closure value `{ env, fn }` is a thin launcher whose `env` owns the
+// inner closure and whose `fn`, when called with the user params, snapshots them
+// into a task env, spawns the cooperative task, and returns a Future<T> for the
+// caller to `await`. This mirrors the worker + env snapshot + entry + launcher
+// split that real async functions use.
+void LLVMCodegen::codegenAsyncLambda(ast::FunctionExpression* node) {
+    static unsigned sAsyncLambdaCounter = 0;
+    const unsigned tag = ++sAsyncLambdaCounter;
+    const std::string funcName =
+        "lambda_" + std::to_string(reinterpret_cast<uintptr_t>(node)) + "_a" + std::to_string(tag);
+    const std::string entryName = funcName + "$__async_entry";
+    const std::string userEnvName = funcName + "$__userenv";
+    const std::string taskEnvName = funcName + "$__taskenv";
+
+    llvm::Value* nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(int8PtrType));
+
+    // Param LLVM types; async lambdas require explicit param types (like async fn).
+    std::vector<llvm::Type*> paramTypes;
+    for (const auto& p : node->params) {
+        if (!p.typeNode) {
+            logError(p.name ? p.name->loc : node->loc,
+                     "async lambda parameters require an explicit type annotation");
+            m_currentLLVMValue = nullptr; return;
+        }
+        llvm::Type* pt = codegenType(p.typeNode.get());
+        if (!pt) {
+            logError(p.name ? p.name->loc : node->loc, "could not type async lambda parameter");
+            m_currentLLVMValue = nullptr; return;
+        }
+        paramTypes.push_back(pt);
+    }
+    const size_t n = paramTypes.size();
+
+    // Inner (non-Future) result type from the semantic FunctionType. After
+    // semantic wrapping the lambda's public type is fn(...) -> Future<T>.
+    ast::FunctionType* ft = dynamic_cast<ast::FunctionType*>(node->type.get());
+    if (!ft || !ft->returnType) {
+        logError(node->loc, "async lambda missing inferred function type");
+        m_currentLLVMValue = nullptr; return;
+    }
+    ast::TypeNode* outerRet = ft->returnType.get();
+    const ast::TypeNode* innerRet = nullptr;
+    if (auto* tn = dynamic_cast<ast::TypeName*>(outerRet))
+        if (tn->identifier && tn->identifier->name == "Future" && tn->genericArgs.size() == 1)
+            innerRet = tn->genericArgs[0].get();
+    if (!innerRet) {
+        logError(node->loc, "async lambda return type must be Future<T>");
+        m_currentLLVMValue = nullptr; return;
+    }
+    llvm::Type* innerRetTy = codegenType(const_cast<ast::TypeNode*>(innerRet));
+    if (!innerRetTy) {
+        logError(node->loc, "could not type async lambda result");
+        m_currentLLVMValue = nullptr; return;
+    }
+    const AsyncResultKind kind =
+        asyncResultKindFromTypeNode(const_cast<ast::TypeNode*>(innerRet));
+    const std::string resultName =
+        (kind == AsyncResultKind::String) ? "String"
+        : (kind == AsyncResultKind::Void) ? "Void"
+        : (kind == AsyncResultKind::Float) ? "Float"
+        : (kind == AsyncResultKind::Bool) ? "Bool" : "Int";
+
+    // 1) Compile the body as a normal closure (reused worker). Temporarily set
+    //    the inferred FunctionType return type to the inner T so the closure
+    //    function returns T (the worker result), then restore the Future form.
+    llvm::StructType* closureTy = getClosureStructType();
+    llvm::Value* innerClosure = nullptr;
+    {
+        std::unique_ptr<ast::TypeNode> savedReturn = std::move(ft->returnType);
+        ft->returnType = std::unique_ptr<ast::TypeNode>(innerRet->clone());
+        bool savedAsync = node->isAsync;
+        node->isAsync = false;
+        node->accept(*this); // inner closure value lands in m_currentLLVMValue
+        node->isAsync = savedAsync;
+        innerClosure = m_currentLLVMValue;
+        ft->returnType = std::move(savedReturn);
+    }
+    if (!innerClosure || !isClosureStructType(innerClosure->getType())) {
+        logError(node->loc, "internal error: failed to compile async lambda body");
+        m_currentLLVMValue = nullptr; return;
+    }
+    // Inner worker signature: T(i8* capenv, params...).
+    std::vector<llvm::Type*> workerParamTys;
+    workerParamTys.push_back(llvm::PointerType::get(*context, 0));
+    for (auto* pt : paramTypes) workerParamTys.push_back(pt);
+    llvm::FunctionType* workerTy = llvm::FunctionType::get(innerRetTy, workerParamTys, false);
+
+    // Owned fields snapshotted into the task env: the inner closure + params.
+    std::vector<AsyncEnvField> ownedFields;
+    std::vector<bool> vecParam(n, false);
+    std::vector<llvm::Type*> vecElemType(n, nullptr);
+    std::vector<const ast::TypeNode*> structParamAst(n, nullptr);
+    AsyncEnvField innerField; innerField.fieldIx = 2; innerField.isClosure = true;
+    innerField.isString = false; innerField.isVec = false; innerField.isOur = false;
+    ownedFields.push_back(innerField);
+    for (size_t i = 0; i < n; ++i) {
+        const ast::TypeNode* ptn = node->params[i].typeNode.get();
+        if (paramTypes[i] && isVybStringStructType(paramTypes[i])) {
+            AsyncEnvField f; f.fieldIx = i + 3; f.isString = true; f.isVec = false; f.vecIsString = false; f.isOur = false;
+            ownedFields.push_back(f);
+        } else if (ptn && paramTypes[i] && paramTypes[i]->isPointerTy() && isOurRefType(ptn)) {
+            AsyncEnvField f; f.fieldIx = i + 3; f.isString = false; f.isVec = false; f.vecIsString = false; f.isOur = true;
+            ownedFields.push_back(f);
+        } else if (ptn && paramTypes[i] && isFnTypeNode(ptn) && isClosureStructType(paramTypes[i])) {
+            AsyncEnvField f; f.fieldIx = i + 3; f.isString = false; f.isVec = false; f.vecIsString = false; f.isOur = false;
+            f.isClosure = true; ownedFields.push_back(f);
+        } else if (ptn && asyncParamIsVec(ptn)) {
+            AsyncEnvField f; f.fieldIx = i + 3; f.isString = false; f.isVec = true; f.isOur = false;
+            f.vecIsString = isVecOfStringTypeNode(ptn);
+            ownedFields.push_back(f);
+            vecParam[i] = true;
+            if (const ast::TypeNode* en = asyncParamVecElement(ptn))
+                vecElemType[i] = codegenType(const_cast<ast::TypeNode*>(en));
+        } else if (ptn && isKnownStructTypeNode(ptn)) {
+            AsyncEnvField f; f.fieldIx = i + 3; f.isString = false; f.isVec = false; f.vecIsString = false; f.isOur = false;
+            f.isStruct = true; f.structType = ptn;
+            ownedFields.push_back(f);
+            structParamAst[i] = ptn;
+        }
+    }
+
+    // Task env: { i64 rc, ptr dtor, closureTy innerClosure, params... }.
+    std::vector<llvm::Type*> taskFields;
+    taskFields.push_back(int64Type);
+    taskFields.push_back(int8PtrType);
+    taskFields.push_back(closureTy);
+    for (auto* pt : paramTypes) taskFields.push_back(pt);
+    llvm::StructType* taskEnvTy = llvm::StructType::create(*context, taskFields, taskEnvName);
+    llvm::Function* taskDtor = generateAsyncEnvDtor(taskEnvTy, funcName + "_task", ownedFields);
+
+    // 2) Entry trampoline: i64(i8*) unpacks the task env, calls the worker
+    //    closure, and encodes the result into the i64 slot the runtime returns.
+    llvm::FunctionType* entryTy = llvm::FunctionType::get(int64Type, {int8PtrType}, false);
+    if (llvm::Function* old = module->getFunction(entryName)) old->eraseFromParent();
+    llvm::Function* entry = llvm::Function::Create(entryTy, llvm::Function::InternalLinkage, entryName, module.get());
+    {
+        llvm::BasicBlock* ebb = llvm::BasicBlock::Create(*context, "entry", entry);
+        llvm::IRBuilder<> b(ebb);
+        llvm::Value* envCast = b.CreateBitCast(entry->getArg(0), taskEnvTy->getPointerTo(), "al.env.cast");
+        llvm::Value* cl = b.CreateLoad(closureTy, b.CreateStructGEP(taskEnvTy, envCast, 2, "al.env.clr"), "al.env.closure");
+        std::vector<llvm::Value*> args;
+        args.push_back(b.CreateExtractValue(cl, 0, "al.env.capenv"));
+        for (size_t i = 0; i < n; ++i) {
+            llvm::Value* fp = b.CreateStructGEP(taskEnvTy, envCast, i + 3, "al.env.p" + std::to_string(i));
+            args.push_back(b.CreateLoad(paramTypes[i], fp, "al.env.v" + std::to_string(i)));
+        }
+        llvm::Value* fnPtr = b.CreateBitCast(b.CreateExtractValue(cl, 1, "al.env.fn"),
+                                             workerTy->getPointerTo(), "al.env.fptr");
+        if (kind == AsyncResultKind::Void) {
+            b.CreateCall(workerTy, fnPtr, args);
+            b.CreateRet(llvm::ConstantInt::get(int64Type, 0));
+        } else if (kind == AsyncResultKind::Int) {
+            b.CreateRet(b.CreateCall(workerTy, fnPtr, args, "al.worker"));
+        } else if (kind == AsyncResultKind::Bool) {
+            llvm::Value* bv = b.CreateCall(workerTy, fnPtr, args, "al.worker");
+            b.CreateRet(b.CreateZExt(bv, int64Type, "al.worker.zext"));
+        } else if (kind == AsyncResultKind::Float) {
+            llvm::Value* fv = b.CreateCall(workerTy, fnPtr, args, "al.worker");
+            b.CreateRet(b.CreateBitCast(fv, int64Type, "al.worker.bitcast"));
+        } else { // String
+            llvm::Value* sv = b.CreateCall(workerTy, fnPtr, args, "al.worker");
+            llvm::DataLayout dl(module.get());
+            llvm::Value* slotBytes = llvm::ConstantInt::get(int64Type, dl.getTypeAllocSize(innerRetTy));
+            llvm::Value* raw = b.CreateCall(getOrCreateMallocFunction(), {slotBytes}, "al.resslot");
+            llvm::Value* slot = b.CreateBitCast(raw, innerRetTy->getPointerTo(), "al.resslot.ptr");
+            b.CreateStore(sv, slot);
+            b.CreateRet(b.CreatePtrToInt(slot, int64Type, "al.resslot.i64"));
+        }
+    }
+
+    // 3) Launcher closure: Future<T>(i8* userenv, params...). Builds the task
+    //    env (snapshotting the inner closure + params), spawns the task, and
+    //    returns a Future whose task_id field lets `await` drive/suspend.
+    llvm::StructType* futureTy = createFutureStructType(innerRetTy);
+    llvm::StructType* userEnvTy = llvm::StructType::create(*context, {int64Type, int8PtrType, closureTy}, userEnvName);
+    std::vector<llvm::Type*> launcherParamTys;
+    launcherParamTys.push_back(llvm::PointerType::get(*context, 0));
+    for (auto* pt : paramTypes) launcherParamTys.push_back(pt);
+    llvm::FunctionType* launcherTy = llvm::FunctionType::get(futureTy, launcherParamTys, false);
+    llvm::Function* launcher = llvm::Function::Create(
+        launcherTy, llvm::Function::InternalLinkage, funcName + "$__launch", module.get());
+    {
+        llvm::BasicBlock* lbb = llvm::BasicBlock::Create(*context, "entry", launcher);
+        llvm::IRBuilder<> b(lbb);
+        generatePushFrameCall(funcName, node->loc);
+
+        llvm::Function* mallocFn = getOrCreateMallocFunction();
+        llvm::Function* releaseFn = getOrCreateClosureReleaseFunction();
+        llvm::DataLayout dl(module.get());
+
+        llvm::Value* ueCast = b.CreateBitCast(launcher->getArg(0), userEnvTy->getPointerTo(), "al.userenv.cast");
+        llvm::Value* innerClosureForTask = b.CreateLoad(closureTy,
+            b.CreateStructGEP(userEnvTy, ueCast, 2, "al.userenv.clr"), "al.userenv.closure");
+
+        llvm::Value* taskBytes = llvm::ConstantInt::get(int64Type, dl.getTypeAllocSize(taskEnvTy));
+        llvm::Value* rawTask = b.CreateCall(mallocFn, {taskBytes}, "al.task.alloc");
+        llvm::Value* taskEnvPtr = b.CreateBitCast(rawTask, taskEnvTy->getPointerTo(), "al.task.ptr");
+        b.CreateStore(llvm::ConstantInt::get(int64Type, 1),
+            b.CreateStructGEP(taskEnvTy, taskEnvPtr, 0, "al.task.rc"));
+        b.CreateStore(taskDtor ? llvm::ConstantExpr::getBitCast(taskDtor, int8PtrType)
+                               : static_cast<llvm::Value*>(nullPtr),
+            b.CreateStructGEP(taskEnvTy, taskEnvPtr, 1, "al.task.dtor"));
+        b.CreateStore(innerClosureForTask,
+            b.CreateStructGEP(taskEnvTy, taskEnvPtr, 2, "al.task.clr"));
+
+        // Point the member builder at the launcher so the shared retain/deep-copy
+        // helpers emit into this block, then restore.
+        llvm::Function* savedFunc = currentFunction;
+        currentFunction = launcher;
+        std::unique_ptr<llvm::IRBuilder<>> savedBuilder = std::move(builder);
+        builder = std::make_unique<llvm::IRBuilder<>>(lbb);
+        retainClosureValue(innerClosureForTask); // task's own reference
+        for (size_t i = 0; i < n; ++i) {
+            llvm::Value* fp = builder->CreateStructGEP(taskEnvTy, taskEnvPtr, i + 3, "al.task.sp" + std::to_string(i));
+            llvm::Value* av = launcher->getArg(i + 1);
+            if (paramTypes[i] && isVybStringStructType(paramTypes[i])) {
+                llvm::Value* data = builder->CreateExtractValue(av, 0, "al.task.str.data");
+                builder->CreateCall(getOrCreateVybStringRetainFunction(), {data}, "al.task.str.retain");
+            } else if (paramTypes[i] && paramTypes[i]->isPointerTy() &&
+                       node->params[i].typeNode && isOurRefType(node->params[i].typeNode.get())) {
+                retainOurControlBlock(av, "al.task.our");
+            } else if (paramTypes[i] && node->params[i].typeNode &&
+                       isFnTypeNode(node->params[i].typeNode.get()) && isClosureStructType(paramTypes[i])) {
+                retainClosureValue(av);
+            } else if (vecParam[i] && vecElemType[i] && paramTypes[i]) {
+                llvm::Value* copy = generateVecDeepCopy(av, vecElemType[i], paramTypes[i]);
+                av = copy ? copy : av;
+            } else if (structParamAst[i] && paramTypes[i]) {
+                if (auto* sot = llvm::dyn_cast<llvm::StructType>(paramTypes[i])) {
+                    llvm::Value* copy = generateStructDeepCopy(av, structParamAst[i], sot);
+                    av = copy ? copy : av;
+                }
+            }
+            builder->CreateStore(av, fp);
+        }
+        llvm::BasicBlock* contBlock = builder->GetInsertBlock();
+        builder = std::move(savedBuilder);
+        currentFunction = savedFunc;
+        b.SetInsertPoint(contBlock);
+
+        llvm::Function* spawn = module->getFunction("__vyb_async_spawn");
+        if (!spawn) {
+            llvm::FunctionType* spawnTy = llvm::FunctionType::get(int64Type, {int8PtrType, int8PtrType}, false);
+            spawn = llvm::Function::Create(spawnTy, llvm::Function::ExternalLinkage, "__vyb_async_spawn", module.get());
+        }
+        llvm::Value* taskId = b.CreateCall(spawn,
+            {b.CreateBitCast(taskEnvPtr, int8PtrType),
+             b.CreateBitCast(entry, int8PtrType)}, "al.task.id");
+        b.CreateCall(releaseFn, {b.CreateBitCast(taskEnvPtr, int8PtrType)}); // drop launcher ref
+
+        llvm::Value* nullResult = llvm::ConstantPointerNull::get(
+            llvm::cast<llvm::PointerType>(futureTy->getElementType(0)));
+        llvm::Value* fut = llvm::UndefValue::get(futureTy);
+        fut = b.CreateInsertValue(fut, nullResult, {0});
+        fut = b.CreateInsertValue(fut, llvm::ConstantInt::get(int32Type, 0), {1});
+        fut = b.CreateInsertValue(fut, taskId, {2});
+        fut = b.CreateInsertValue(fut, nullPtr, {3});
+        generatePopFrameCall();
+        b.CreateRet(fut);
+    }
+
+    // 4) The user-facing closure value stores the inner closure in its env so the
+    //    launcher can rebuild a task from it on each call; null-free base. The
+    //    user env's dtor drops the inner closure when the last reference is gone.
+    llvm::Value* rawUser = builder->CreateCall(getOrCreateMallocFunction(),
+        {llvm::ConstantInt::get(int64Type, llvm::DataLayout(module.get()).getTypeAllocSize(userEnvTy))}, "al.userenv.alloc");
+    llvm::Value* userEnvPtr = builder->CreateBitCast(rawUser, userEnvTy->getPointerTo(), "al.userenv.ptr");
+    // Env refcount starts at 0: each durable closure holder (the variable that
+    // owns this async-lambda value) retains on store and releases on scope exit.
+    builder->CreateStore(llvm::ConstantInt::get(int64Type, 0),
+        builder->CreateStructGEP(userEnvTy, userEnvPtr, 0, "al.userenv.rc"));
+    std::vector<AsyncEnvField> userFields;
+    AsyncEnvField uf; uf.fieldIx = 2; uf.isClosure = true; uf.isString = false; uf.isVec = false; uf.isOur = false;
+    userFields.push_back(uf);
+    llvm::Function* userDtor = generateAsyncEnvDtor(userEnvTy, funcName + "_user", userFields);
+    builder->CreateStore(userDtor ? llvm::ConstantExpr::getBitCast(userDtor, int8PtrType)
+                                  : static_cast<llvm::Value*>(nullPtr),
+        builder->CreateStructGEP(userEnvTy, userEnvPtr, 1, "al.userenv.dtor"));
+    // The user env is one durable holder of the inner closure: retain it (+1) so
+    // it outlives every task spawned from this lambda; the user env's dtor
+    // releases it when the last reference is dropped.
+    retainClosureValue(innerClosure);
+    builder->CreateStore(innerClosure,
+        builder->CreateStructGEP(userEnvTy, userEnvPtr, 2, "al.userenv.close"));
+    llvm::Value* closureVal = llvm::UndefValue::get(closureTy);
+    closureVal = builder->CreateInsertValue(closureVal, userEnvPtr, 0, "al.env");
+    closureVal = builder->CreateInsertValue(closureVal, launcher, 1, "al.fn");
+    m_currentLLVMValue = closureVal;
+    lastLambdaFuncType = llvm::FunctionType::get(futureTy, paramTypes, false);
+}
+
+// Resolve the result kind for an async lambda's inner type (the T in Future<T>).
+static AsyncResultKind asyncResultKindFromTypeNode(vyb::ast::TypeNode* inner) {
+    auto name = [](vyb::ast::TypeNode* t) -> std::string {
+        if (auto* tn = dynamic_cast<vyb::ast::TypeName*>(t))
+            if (tn->identifier) return tn->identifier->name;
+        return t ? t->toString() : "";
+    };
+    const std::string n = name(inner);
+    if (n == "Int") return AsyncResultKind::Int;
+    if (n == "String") return AsyncResultKind::String;
+    if (n == "Void") return AsyncResultKind::Void;
+    if (n == "Float") return AsyncResultKind::Float;
+    if (n == "Bool") return AsyncResultKind::Bool;
+    return AsyncResultKind::None;
 }
