@@ -152,7 +152,9 @@ extern "C" {
     int64_t __vyb_chan_recv(int64_t ch);
     int64_t __vyb_chan_try(int64_t ch);
     int64_t __vyb_chan_poll(int64_t ch, int64_t* out);
+    int64_t __vyb_chan_recv_opt(int64_t ch, int64_t* out);
     int64_t __vyb_chan_len(int64_t ch);
+    int64_t __vyb_chan_close(int64_t ch);
     int64_t __vyb_chan_free(int64_t ch);
     int64_t __vyb_chan_select(int64_t* handles, int64_t n);
     // String channels (channels stdlib module): a pthread ring buffer carrying
@@ -161,7 +163,9 @@ extern "C" {
     int64_t __vyb_strchan_send(int64_t ch, const char* ptr, int64_t len);
     vyb_file_str __vyb_strchan_recv(int64_t ch);
     vyb_file_str __vyb_strchan_try(int64_t ch);
+    int64_t __vyb_strchan_recv_opt(int64_t ch, vyb_file_str* out);
     int64_t __vyb_strchan_len(int64_t ch);
+    int64_t __vyb_strchan_close(int64_t ch);
     int64_t __vyb_strchan_free(int64_t ch);
     // Tasks (tasks stdlib module): a detached pthread running a closure whose
     // result is delivered to a private capacity-1 channel. handle == chan.
@@ -1083,8 +1087,12 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_chan_try), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_chan_poll")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_chan_poll), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_chan_recv_opt")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_chan_recv_opt), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_chan_len")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_chan_len), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_chan_close")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_chan_close), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_chan_free")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_chan_free), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_chan_select")] = llvm::orc::ExecutorSymbolDef(
@@ -1095,11 +1103,15 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_strchan_send), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_strchan_recv")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_strchan_recv), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_strchan_recv_opt")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_strchan_recv_opt), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_strchan_try")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_strchan_try), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_strchan_len")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_strchan_len), llvm::JITSymbolFlags::Exported);
-        runtimeSymbols[mangle("__vyb_strchan_free")] = llvm::orc::ExecutorSymbolDef(
+                runtimeSymbols[mangle("__vyb_strchan_close")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_strchan_close), llvm::JITSymbolFlags::Exported);
+runtimeSymbols[mangle("__vyb_strchan_free")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_strchan_free), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_task_spawn")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_task_spawn), llvm::JITSymbolFlags::Exported);

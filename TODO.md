@@ -31,7 +31,7 @@ is the working audit for what needs to be implemented next.
 | `mild<T>` weak references | ~75% | Control blocks, failed `grab()` (native `our<T>?`), and `our<T>` copy/assignment/parameter refcounting done; full copy/drop semantics remain |
 | Aspect/bind system | ~78% | Aspect objects/dyn dispatch |
 | Generic monomorphization | ~85% | **SEALED**: Compile-time only. See doc/MONOMORPHIZATION_DESIGN.md |
-| Async/await | ~95% | `async for`, agents |
+| Async/await | ~97% | agents |
 | Error propagation (`fail`/`trap`) | ~80% | Standard error aspects, `rethrow`, ensure contracts |
 | Lambda/closure codegen | ~70% | Capture-by-value closure env structs shipped; move/mutable/`our` capture planned |
 | Module system (`import`/`smuggle`/`bundle`) | ~70% | Local/module-path resolution, aliases, bundle/share visibility done; stdlib modules/package integration pending |
@@ -626,7 +626,9 @@ with `pass` for multi-statement case bodies. Needs polishing:
   `Future<T>` that `await` drives. Covers captures, String / zero-arg forms,
   and passing an async lambda as a future-returning closure param;
   `test/async/async_lambda.vyb`, valgrind-clean).
-- [ ] **`async for`** — Iterate over async streams
+- [x] **`async for`** — Iterate over async streams (drains a `chan<T>` /
+  `strchan` as an async stream via lossless `recv_opt` + `close`;
+  `test/async/async_for_chan.vyb`)
 
 ---
 
@@ -772,13 +774,13 @@ Types that `bind Iterator` become usable in `for` loops. The compiler desugars
 `for (item in col)` to repeated `Iterator::next()` calls. Depends on associated types
 being implemented in the aspect system first (tracked separately).
 
-### [DECIDED] Channels / Agents — Deferred to Post-1.0
+### [DECIDED] Channels / Agents — Channels Partially Shipped; Agents Post-1.0
 
-**Decision:** Channels and agents are not part of the 1.0 release.
-
-A solid 1.0 with `async`/`await` + structured concurrency is more valuable than an
-under-designed agent model. Channels and agents require a full design document before
-implementation. The README has been updated to remove them from the v1.0 scope.
+**Decision:** Typed `chan<T>`/`strchan` channels are now partially shipped
+(typed send/recv/poll/len, `select` over handles, `channel close`, and
+`async for` streams over channels). The heavier agent model (lightweight
+isolated message-passing units) remains deferred to post-1.0, and still wants a
+full design document before implementation.
 
 ### [DECIDED] Dynamic Dispatch (`dyn Aspect`) — Marked as Future Experiment
 

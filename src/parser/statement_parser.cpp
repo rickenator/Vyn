@@ -67,6 +67,11 @@ vyb::ast::StmtPtr StatementParser::parse() {
         case vyb::TokenType::KEYWORD_AUTO:
             return parse_var_decl();
         case vyb::TokenType::KEYWORD_ASYNC:
+            // `async for (item<T> in ch)` iterates a channel as an async stream;
+            // `async fn...` is the usual async-function declaration.
+            if (this->peekNext().type == vyb::TokenType::KEYWORD_FOR) {
+                return parse_async_for();
+            }
             if (decl_parser_) {
                 return decl_parser_->parse_function();
             } else {
@@ -713,6 +718,120 @@ std::unique_ptr<vyb::ast::ForStatement> StatementParser::buildForLoopIteratorDes
     std::vector<vyb::ast::StmtPtr> outer_stmts;
     for (auto& st : outer_pre) outer_stmts.push_back(std::move(st));
     outer_stmts.push_back(std::move(it_decl));
+    outer_stmts.push_back(std::move(while_stmt));
+    auto final_block = std::make_unique<vyb::ast::BlockStatement>(loc, std::move(outer_stmts));
+
+    // Wrap in a __run_once for-loop to satisfy the ForStatement return type.
+    std::string run_name = "__run_once_" + ident.lexeme;
+    auto run_var = std::make_unique<vyb::ast::Identifier>(loc, run_name);
+    auto run_init = std::make_unique<vyb::ast::BooleanLiteral>(loc, true);
+    auto run_decl = std::make_unique<vyb::ast::VariableDeclaration>(loc, std::move(run_var), false, nullptr, std::move(run_init));
+    auto run_cond = std::make_unique<vyb::ast::Identifier>(loc, run_name);
+    auto run_upd_l = std::make_unique<vyb::ast::Identifier>(loc, run_name);
+    auto run_upd_r = std::make_unique<vyb::ast::BooleanLiteral>(loc, false);
+    token::Token eq_token(vyb::TokenType::EQ, "=", loc);
+    auto run_update = std::make_unique<vyb::ast::AssignmentExpression>(loc, std::move(run_upd_l), eq_token, std::move(run_upd_r));
+    return std::make_unique<vyb::ast::ForStatement>(loc, std::move(run_decl), std::move(run_cond), std::move(run_update), std::move(final_block));
+}
+
+// `async for (item<T> in ch) { body }` iterates a channel as an async stream:
+// receives messages until the channel is closed and drained. The optional type
+// annotation on the loop variable selects the channel payload kind (Int or
+// String); without one it defaults to an Int channel. Desugars to
+//   { var __ch_<item> = ch;
+//     while (true) {
+//       match (chan_recv_opt(__ch_<item>) / strchan_recv_opt(...)) {
+//         item -> { body }
+//         ?    -> { break }
+//       }
+//     } }
+std::unique_ptr<vyb::ast::ForStatement> StatementParser::parse_async_for() {
+    SourceLocation for_loc = this->consume().location;             // 'async'
+    this->expect(vyb::TokenType::KEYWORD_FOR, "Expected 'for' after 'async'");
+    this->expect(vyb::TokenType::LPAREN, "Expected '(' after 'async for'");
+
+    if (this->peek().type != vyb::TokenType::IDENTIFIER) {
+        throw error(peek(), "Expected loop variable in 'async for'");
+    }
+    token::Token ident_token = this->consume();
+    SourceLocation ident_loc = ident_token.location;
+
+    // Optional loop-variable type selects Int vs String channel payload.
+    std::string chanKind = "Int";
+    if (match(vyb::TokenType::LT)) {
+        auto t = this->type_parser_.parse();
+        if (!t) {
+            throw error(peek(), "Expected a type after '<' in 'async for' loop variable");
+        }
+        this->expect(vyb::TokenType::GT, "Expected '>' after 'async for' loop variable type");
+        std::string ts = t->toString();
+        if (ts != "Int" && ts != "String") {
+            throw error(ident_token, "'async for' over channels supports <Int> or <String> payloads, got " + ts);
+        }
+        chanKind = ts;
+    }
+
+    this->expect(vyb::TokenType::KEYWORD_IN, "Expected 'in' after 'async for' loop variable");
+
+    // The channel handle expression (evaluated once into a temp).
+    vyb::ast::ExprPtr ch_expr = this->expr_parser_.parse_expression();
+
+    this->expect(vyb::TokenType::RPAREN, "Expected ')' after 'async for' header");
+
+    // Optional step/skip is meaningless for a stream; reject it clearly.
+    if (this->peek().type == vyb::TokenType::COMMA) {
+        throw error(peek(), "'async for' over channels does not take a step argument");
+    }
+
+    auto body = parse_block();
+    return buildAsyncChanForDesugar(
+        for_loc, ident_token, chanKind, std::move(ch_expr), std::move(body));
+}
+
+std::unique_ptr<vyb::ast::ForStatement> StatementParser::buildAsyncChanForDesugar(
+    const SourceLocation& loc, const token::Token& ident, const std::string& chanKind,
+    vyb::ast::ExprPtr ch_expr, std::unique_ptr<vyb::ast::BlockStatement> body) {
+
+    std::string ch_name = "__ch_" + ident.lexeme;
+    std::string recv_fn = (chanKind == "String") ? "strchan_recv_opt" : "chan_recv_opt";
+
+    // var __ch_<item> = <ch>;
+    auto ch_var = std::make_unique<vyb::ast::Identifier>(loc, ch_name);
+    auto ch_decl = std::make_unique<vyb::ast::VariableDeclaration>(
+        loc, std::move(ch_var), false, nullptr, std::move(ch_expr));
+
+    // Build `recvFn(__ch_<item>)` as a call expression.
+    auto ch_ref = std::make_unique<vyb::ast::Identifier>(loc, ch_name);
+    std::vector<vyb::ast::ExprPtr> args;
+    args.push_back(std::move(ch_ref));
+    auto callee = std::make_unique<vyb::ast::Identifier>(loc, recv_fn);
+    auto recv_call = std::make_unique<vyb::ast::CallExpression>(loc, std::move(callee), std::move(args));
+
+    // ? -> { break }  (absent = channel closed & drained)
+    std::vector<vyb::ast::StmtPtr> break_stmts;
+    break_stmts.push_back(std::make_unique<vyb::ast::BreakStatement>(loc));
+    auto break_block = std::make_unique<vyb::ast::BlockStatement>(loc, std::move(break_stmts));
+    auto absent_body = std::make_unique<vyb::ast::BlockExpression>(loc, std::move(break_block));
+
+    // item -> { body }  (present arm binds the message)
+    auto present_pattern = std::make_unique<vyb::ast::Identifier>(loc, ident.lexeme);
+    auto present_body = std::make_unique<vyb::ast::BlockExpression>(loc, std::move(body));
+
+    std::vector<std::pair<vyb::ast::ExprPtr, vyb::ast::ExprPtr>> cases;
+    cases.emplace_back(std::move(present_pattern), std::move(present_body));
+    cases.emplace_back(nullptr, std::move(absent_body));  // `?` wildcard
+    auto chan_match = std::make_unique<vyb::ast::MatchStatement>(loc, std::move(recv_call), std::move(cases));
+
+    // while (true) { chan_match }
+    auto true_lit = std::make_unique<vyb::ast::BooleanLiteral>(loc, true);
+    std::vector<vyb::ast::StmtPtr> while_stmts;
+    while_stmts.push_back(std::move(chan_match));
+    auto while_block = std::make_unique<vyb::ast::BlockStatement>(loc, std::move(while_stmts));
+    auto while_stmt = std::make_unique<vyb::ast::WhileStatement>(loc, std::move(true_lit), std::move(while_block));
+
+    // { ch_decl; while_stmt; }
+    std::vector<vyb::ast::StmtPtr> outer_stmts;
+    outer_stmts.push_back(std::move(ch_decl));
     outer_stmts.push_back(std::move(while_stmt));
     auto final_block = std::make_unique<vyb::ast::BlockStatement>(loc, std::move(outer_stmts));
 

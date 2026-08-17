@@ -3198,11 +3198,41 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         } else if (fname == "vyb_chan_recv") {
             emitHandleIntrinsic("__vyb_chan_recv", 1);  // blocking
             return;
+        } else if (fname == "vyb_chan_recv_opt") {
+            // Lossless blocking recv returning a native `Int?` (`{ value, has }`);
+            // absent only when the channel is closed and drained.
+            if (node->arguments.size() != 1) {
+                logError(node->loc, "vyb_chan_recv_opt expects 1 argument (ch)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this);
+            llvm::Value* ch = m_currentLLVMValue;
+            if (!ch) return;
+            llvm::Value* ch64 = ch;
+            if (ch64->getType()->isIntegerTy() && !ch64->getType()->isIntegerTy(64))
+                ch64 = builder->CreateSExt(ch64, int64Type, "chanopt.toi64");
+            llvm::StructType* optTy = llvm::StructType::get(*context,
+                {int64Type, llvm::Type::getInt1Ty(*context)}, false);
+            llvm::Value* slot = builder->CreateAlloca(int64Type, nullptr, "chanopt.slot");
+            llvm::FunctionType* ft = llvm::FunctionType::get(
+                int64Type, {int64Type, llvm::PointerType::get(*context, 0)}, false);
+            llvm::Function* f = module->getFunction("__vyb_chan_recv_opt");
+            if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_chan_recv_opt", module.get());
+            llvm::Value* has = builder->CreateCall(f, {ch64, slot}, "chanopt.has");
+            llvm::Value* val = builder->CreateLoad(int64Type, slot, "chanopt.val");
+            llvm::Value* opt = llvm::UndefValue::get(optTy);
+            opt = builder->CreateInsertValue(opt, val, 0, "chanopt.v");
+            opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "chanopt.h"), 1);
+            m_currentLLVMValue = opt;
+            return;
         } else if (fname == "vyb_chan_try") {
             emitHandleIntrinsic("__vyb_chan_try", 1);   // non-blocking
             return;
         } else if (fname == "vyb_chan_len") {
             emitHandleIntrinsic("__vyb_chan_len", 1);
+            return;
+        } else if (fname == "vyb_chan_close") {
+            emitHandleIntrinsic("__vyb_chan_close", 1);  // mark closed, wake waiters
             return;
         } else if (fname == "vyb_chan_free") {
             emitHandleIntrinsic("__vyb_chan_free", 1);
@@ -3266,6 +3296,33 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_strchan_send", module.get());
             m_currentLLVMValue = builder->CreateCall(f, {ch64, dataPtr, dataLen}, "strchan.sent");
             return;
+        } else if (fname == "vyb_strchan_recv_opt") {
+            // Lossless blocking recv returning a native `String?` (`{ String, has }`);
+            // transfers the channel's reference to the caller on a present result.
+            if (node->arguments.size() != 1) {
+                logError(node->loc, "vyb_strchan_recv_opt expects 1 argument (ch)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this);
+            llvm::Value* ch = m_currentLLVMValue;
+            if (!ch) return;
+            llvm::Value* ch64 = ch;
+            if (ch64->getType()->isIntegerTy() && !ch64->getType()->isIntegerTy(64))
+                ch64 = builder->CreateSExt(ch64, int64Type, "stropt.toi64");
+            llvm::StructType* strTy = llvm::StructType::get(*context, {int8PtrType, int64Type}, false);
+            llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
+            llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "stropt.slot");
+            llvm::FunctionType* ft = llvm::FunctionType::get(
+                int64Type, {int64Type, llvm::PointerType::get(*context, 0)}, false);
+            llvm::Function* f = module->getFunction("__vyb_strchan_recv_opt");
+            if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_strchan_recv_opt", module.get());
+            llvm::Value* has = builder->CreateCall(f, {ch64, slot}, "stropt.has");
+            llvm::Value* val = builder->CreateLoad(strTy, slot, "stropt.val");
+            llvm::Value* opt = llvm::UndefValue::get(optTy);
+            opt = builder->CreateInsertValue(opt, val, 0, "stropt.v");
+            opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "stropt.h"), 1);
+            m_currentLLVMValue = opt;
+            return;
         } else if (fname == "vyb_strchan_recv") {
             // Blocking recv returning a String { ptr, len } that the caller owns.
             if (node->arguments.size() != 1) {
@@ -3303,6 +3360,9 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             return;
         } else if (fname == "vyb_strchan_len") {
             emitHandleIntrinsic("__vyb_strchan_len", 1);
+            return;
+        } else if (fname == "vyb_strchan_close") {
+            emitHandleIntrinsic("__vyb_strchan_close", 1);  // mark closed, wake waiters
             return;
         } else if (fname == "vyb_strchan_free") {
             emitHandleIntrinsic("__vyb_strchan_free", 1);

@@ -2038,7 +2038,9 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_atomic_cas" || name == "vyb_atomic_free" ||
             name == "vyb_chan_new" || name == "vyb_chan_send" ||
             name == "vyb_chan_recv" || name == "vyb_chan_try" ||
-            name == "vyb_chan_len" || name == "vyb_chan_free" ||
+            name == "vyb_chan_recv_opt" ||
+            name == "vyb_chan_len" || name == "vyb_chan_close" ||
+            name == "vyb_chan_free" ||
             name == "vyb_task_spawn" || name == "vyb_task_await" ||
             name == "vyb_task_poll" || name == "vyb_task_free" ||
             name == "vyb_chan_select" ||
@@ -2047,7 +2049,9 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_async_yield" || name == "vyb_async_sleep_ms" ||
             name == "vyb_strchan_new" || name == "vyb_strchan_send" ||
             name == "vyb_strchan_recv" || name == "vyb_strchan_try" ||
-            name == "vyb_strchan_len" || name == "vyb_strchan_free") {
+            name == "vyb_strchan_recv_opt" ||
+            name == "vyb_strchan_len" || name == "vyb_strchan_close" ||
+            name == "vyb_strchan_free") {
             isIntrinsic = true;
         }
     }
@@ -2470,6 +2474,27 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 auto* resTy = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc,
                         netIntFuncs.count(name) ? "Int" : "String"));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+            // Lossless channel recv (`async for`): chan_recv_opt returns a native
+            // Int?, strchan_recv_opt a String? (absent when the channel is closed
+            // and drained).
+            if (name == "vyb_chan_recv_opt") {
+                auto* inner = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "Int"));
+                auto* resTy = new ast::OptionalType(node->loc,
+                    std::unique_ptr<ast::TypeNode>(inner));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+            if (name == "vyb_strchan_recv_opt") {
+                auto* inner = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "String"));
+                auto* resTy = new ast::OptionalType(node->loc,
+                    std::unique_ptr<ast::TypeNode>(inner));
                 expressionTypes[node] = retainType(resTy);
                 node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
                 return;

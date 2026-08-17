@@ -47,6 +47,15 @@ chan_recv(ch<Int>)<Int> -> {
     return vyb_chan_recv(ch)
 }
 
+# Lossless blocking recv for `async for` / draining: returns the value wrapped
+# in a native `Int?` (present when a value arrives, absent when the channel is
+# closed and drained). Unlike `chan_recv`, no valid Int payload is reserved as a
+# sentinel.
+share(all)
+chan_recv_opt(ch<Int>)<Int?> -> {
+    return vyb_chan_recv_opt(ch)
+}
+
 # Non-blocking dequeue. Returns a buffered value, or -1 if the channel is empty
 # (or closed). Useful for polling a channel without blocking.
 share(all)
@@ -58,6 +67,13 @@ chan_try(ch<Int>)<Int> -> {
 share(all)
 chan_len(ch<Int>)<Int> -> {
     return vyb_chan_len(ch)
+}
+
+# Mark `ch` closed and wake any blocked receivers. After close, receivers see
+# buffered values, then report absent/-1 once drained. Returns 1 or 0.
+share(all)
+chan_close(ch<Int>)<Int> -> {
+    return vyb_chan_close(ch)
 }
 
 # Destroy and free `ch`; returns 0 or -1.
@@ -109,6 +125,14 @@ strchan_recv(ch<Int>)<String> -> {
     return vyb_strchan_recv(ch)
 }
 
+# Lossless blocking String recv for `async for` / draining, returning a native
+# `String?` (absent when the channel is closed and drained). No sentinel "" is
+# lost as real data.
+share(all)
+strchan_recv_opt(ch<Int>)<String?> -> {
+    return vyb_strchan_recv_opt(ch)
+}
+
 # Non-blocking dequeue; returns a buffered String or "" if none is ready.
 share(all)
 strchan_try(ch<Int>)<String> -> {
@@ -119,6 +143,15 @@ strchan_try(ch<Int>)<String> -> {
 share(all)
 strchan_len(ch<Int>)<Int> -> {
     return vyb_strchan_len(ch)
+}
+
+# Reclaim and free `ch` (call after draining so no reference leaks); 0 or -1.
+share(all)
+# Mark a String channel closed and wake any blocked receivers (drained receivers
+# then see `String?` absence). Returns 1 or 0.
+share(all)
+strchan_close(ch<Int>)<Int> -> {
+    return vyb_strchan_close(ch)
 }
 
 # Reclaim and free `ch` (call after draining so no reference leaks); 0 or -1.

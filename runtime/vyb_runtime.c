@@ -908,6 +908,24 @@ VYB_WEAK int64_t __vyb_chan_poll(int64_t ch, int64_t* out) {
     return 1;
 }
 
+// Lossless blocking dequeue for `async for`: blocks until a value is available
+// or the channel is closed, then reports presence through the return value (1 =
+// present, having written *out; 0 = closed and drained). Unlike `__vyb_chan_recv`
+// (which reserves -1 as a closed sentinel) every Int payload — including -1 —
+// survives the round trip.
+VYB_WEAK int64_t __vyb_chan_recv_opt(int64_t ch, int64_t* out) {
+    if (!ch || !out) return 0;
+    vyb_chan* c = (vyb_chan*)(intptr_t)ch;
+    pthread_mutex_lock(&c->mutex);
+    while (c->size == 0 && !c->closed) pthread_cond_wait(&c->not_empty, &c->mutex);
+    if (c->size == 0) { pthread_mutex_unlock(&c->mutex); return 0; }  // closed & empty
+    *out = c->buf[c->head];
+    c->head = (c->head + 1) % c->cap;
+    c->size--;
+    pthread_mutex_unlock(&c->mutex);
+    return 1;
+}
+
 // Number of buffered values.
 VYB_WEAK int64_t __vyb_chan_len(int64_t ch) {
     if (!ch) return -1;
@@ -916,6 +934,19 @@ VYB_WEAK int64_t __vyb_chan_len(int64_t ch) {
     int64_t n = (int64_t)c->size;
     pthread_mutex_unlock(&c->mutex);
     return n;
+}
+
+// Mark `ch` closed and wake any blocked receivers. After close, receivers see
+// remaining buffered values, then report absent/-1 once drained. Returns 1 on
+// success, 0 on an invalid handle.
+VYB_WEAK int64_t __vyb_chan_close(int64_t ch) {
+    if (!ch) return 0;
+    vyb_chan* c = (vyb_chan*)(intptr_t)ch;
+    pthread_mutex_lock(&c->mutex);
+    c->closed = 1;
+    pthread_cond_broadcast(&c->not_empty);
+    pthread_mutex_unlock(&c->mutex);
+    return 1;
 }
 
 // Destroy and free `ch`; returns 0 or -1.
@@ -1114,6 +1145,22 @@ VYB_WEAK vyb_file_str __vyb_strchan_try(int64_t ch) {
     return r;
 }
 
+// Lossless blocking dequeue for a String channel: reports presence through the
+// return value and writes the String to *out on a present result, transferring
+// the channel's retained reference to the caller. 0 means closed and drained.
+VYB_WEAK int64_t __vyb_strchan_recv_opt(int64_t ch, vyb_file_str* out) {
+    if (!ch || !out) return 0;
+    vyb_strchan* c = (vyb_strchan*)(intptr_t)ch;
+    pthread_mutex_lock(&c->mutex);
+    while (c->size == 0 && !c->closed) pthread_cond_wait(&c->not_empty, &c->mutex);
+    if (c->size == 0) { pthread_mutex_unlock(&c->mutex); return 0; }
+    *out = c->buf[c->head];
+    c->head = (c->head + 1) % c->cap;
+    c->size--;
+    pthread_mutex_unlock(&c->mutex);
+    return 1;
+}
+
 VYB_WEAK int64_t __vyb_strchan_len(int64_t ch) {
     if (!ch) return -1;
     vyb_strchan* c = (vyb_strchan*)(intptr_t)ch;
@@ -1121,6 +1168,18 @@ VYB_WEAK int64_t __vyb_strchan_len(int64_t ch) {
     int64_t n = (int64_t)c->size;
     pthread_mutex_unlock(&c->mutex);
     return n;
+}
+
+// Mark a String channel closed and wake any blocked receivers (drained
+// receivers then see `String?` absence). Returns 1 on success, 0 otherwise.
+VYB_WEAK int64_t __vyb_strchan_close(int64_t ch) {
+    if (!ch) return 0;
+    vyb_strchan* c = (vyb_strchan*)(intptr_t)ch;
+    pthread_mutex_lock(&c->mutex);
+    c->closed = 1;
+    pthread_cond_broadcast(&c->not_empty);
+    pthread_mutex_unlock(&c->mutex);
+    return 1;
 }
 
 // Reclaim the channel, dropping any references still buffered (call after

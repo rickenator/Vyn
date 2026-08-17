@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`async for` over channels** — `async for (item<T> in ch)` drains a channel
+  as an async stream: it receives messages (Int or `String`, chosen by the
+  loop-variable type) until the channel is closed and drained, then stops. It
+  desugars to a `while(true)` loop over the lossless `chan_recv_opt` /
+  `strchan_recv_opt` primitives, so no valid payload is reserved as a sentinel
+  (a `-1` Int or empty `String` is just data). `chan_close` / `strchan_close`
+  were added so a stream has a way to signal termination. Multi-threaded
+  producer + close patterns are covered by `test/async/async_for_chan.vyb`
+  (valgrind-clean).
 - **Async lambdas** — `async |x| -> await process(x)` is now a first-class
   value. The body is compiled as a closure that runs as a cooperative task; a
   call to the lambda returns a `Future<T>` (the public type is

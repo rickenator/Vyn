@@ -1,0 +1,62 @@
+// `async for (item<T> in ch)` drains a channel as an async stream: it receives
+// messages (Int or String, chosen by the loop-variable type) until the channel
+// is closed and drained, then stops. Uses the lossless `chan_recv_opt` /
+// `strchan_recv_opt` primitives, so no valid payload is reserved as a sentinel
+// (a -1 Int is just data here).
+// @env: VYB_STDLIB=stdlib
+// @expect: pass
+
+import channels
+import threads
+import time::{sleep_ms}
+
+main()<Int> -> {
+    // --- Int channel, including a -1 payload (lossless) ---
+    ch<Int> = chan_new()
+    w<Int> = thread_spawn(|| -> {
+        sleep_ms(5)
+        chan_send(ch, 1)
+        chan_send(ch, 2)
+        chan_send(ch, -1)          # must be carried as real data, not "closed"
+        chan_close(ch)
+        return 0
+    })
+
+    total<Int> = 0
+    count<Int> = 0
+    saw_minus_one<Int> = 0
+    async for (v<Int> in ch) {
+        total += v
+        count += 1
+        if (v == -1) { saw_minus_one = 1 }
+    }
+    if (total != 2) { return 1 }        // 1 + 2 + (-1)
+    if (count != 3) { return 2 }
+    if (saw_minus_one != 1) { return 3 }
+
+    // --- String channel ---
+    sch<Int> = strchan_new()
+    ws<Int> = thread_spawn(|| -> {
+        sleep_ms(5)
+        strchan_send(sch, "a")
+        strchan_send(sch, "bb")
+        strchan_send(sch, "")          # empty string is real data too
+        strchan_close(sch)
+        return 0
+    })
+
+    ssum<Int> = 0
+    scount<Int> = 0
+    saw_empty<Int> = 0
+    async for (s<String> in sch) {
+        ssum += s.len()
+        scount += 1
+        if (s == "") { saw_empty = 1 }
+    }
+    if (ssum != 3) { return 4 }         // 1 + 2 + 0
+    if (scount != 3) { return 5 }
+    if (saw_empty != 1) { return 6 }
+
+    println("ok")
+    return 0
+}
