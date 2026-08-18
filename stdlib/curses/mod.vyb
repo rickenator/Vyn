@@ -1,0 +1,158 @@
+# curses - ncurses terminal UI, wrapped as an opaque-Int surface.
+#
+# A whole-terminal TUI module over ncursesw, used by programs like the VybLynx
+# browser. The ncurses WINDOW*/ABI stays in the runtime (`__vyb_curses_*` shims
+# in `runtime/vyb_runtime.c`); Vyb sees only Int keycodes, Int attributes, Int
+# dimensions, and String text.
+#
+# Lifecycle: call curses_init() once, draw, then curses_close(). The screen is a
+# single global owned by the active program; exactly one subsystem should mutate
+# it (ncurses refresh is not thread-safe). Everything returns 0 on success and
+# -1 on error, except:
+#   * curses_getch()      the pressed key/KEY_* code, or -1 when a timeout/no-delay
+#                         read finds no input
+#   * curses_ok()         1 while the screen is initialized, else 0
+#   * curses_has_color()  1 if the terminal supports color, else 0
+#   * curses_rows/cols    the current terminal size
+#   * curses_color_pair(n) an attribute value for curses_attr_on/off
+#
+# Input is blocking by default. For a nonblocking UI loop (so the browser can
+# keep network/async work moving without stalling on a keypress), call
+# curses_nodelay(1) (immediate nonblocking) or curses_timeout(ms) (poll up to
+# ms); curses_getch() then returns -1 when nothing is pending.
+
+# Initialize the terminal. Returns 0 on success, -1 if stdin is not a TTY or
+# initscr fails. Enables cbreak (immediate keypresses), noecho, and the keypad.
+share(all)
+curses_init()<Int> -> {
+    return vyb_curses_init()
+}
+
+# Shut the screen down and restore the terminal. Safe to call when not active.
+share(all)
+curses_close()<Int> -> {
+    return vyb_curses_close()
+}
+
+# 1 while the screen is initialized (curses_init succeeded, curses_close not
+# yet called), 0 otherwise.
+share(all)
+curses_ok()<Int> -> {
+    return vyb_curses_ok()
+}
+
+# Current terminal row count (Int), or -1 if the screen is not active.
+share(all)
+curses_rows()<Int> -> {
+    return vyb_curses_rows()
+}
+
+# Current terminal column count, or -1 if the screen is not active.
+share(all)
+curses_cols()<Int> -> {
+    return vyb_curses_cols()
+}
+
+# Flush pending screen changes to the terminal. Call after drawing a frame.
+share(all)
+curses_refresh()<Int> -> {
+    return vyb_curses_refresh()
+}
+
+# Clear the screen window. Returns 0 on success, -1 if not active.
+share(all)
+curses_clear()<Int> -> {
+    return vyb_curses_clear()
+}
+
+# Move the cursor to (row, col) (0-based) before the next addstr.
+share(all)
+curses_move(row<Int>, col<Int>)<Int> -> {
+    return vyb_curses_move(row, col)
+}
+
+# Write `s` at the cursor. Returns 0 on success, -1 if not active.
+share(all)
+curses_addstr(s<String>)<Int> -> {
+    return vyb_curses_addstr(s)
+}
+
+# Move to (row, col) then write `s`. Returns 0 on success, -1 on any error.
+share(all)
+curses_move_addstr(row<Int>, col<Int>, s<String>)<Int> -> {
+    return vyb_curses_move_addstr(row, col, s)
+}
+
+# 1 if the terminal supports color, else 0. Safe to call before init.
+share(all)
+curses_has_color()<Int> -> {
+    return vyb_curses_has_color()
+}
+
+# Enable color support (must call after curses_init, before using color pairs).
+share(all)
+curses_start_color()<Int> -> {
+    return vyb_curses_start_color()
+}
+
+# Color-pair n expressed as an attribute value to pass to curses_attr_on.
+share(all)
+curses_color_pair(n<Int>)<Int> -> {
+    return vyb_curses_color_pair(n)
+}
+
+# Turn on an attribute value (e.g. A_BOLD | curses_color_pair(n)). Call
+# curses_attr_off to clear it before drawing the next text.
+share(all)
+curses_attr_on(attrs<Int>)<Int> -> {
+    return vyb_curses_attr_on(attrs)
+}
+
+# Turn off an attribute value previously enabled with curses_attr_on.
+share(all)
+curses_attr_off(attrs<Int>)<Int> -> {
+    return vyb_curses_attr_off(attrs)
+}
+
+# Read one keypress (blocking). Returns the key code (a character code or a
+# KEY_* value), or -1 on an error or when a timeout / no-delay read has no input.
+share(all)
+curses_getch()<Int> -> {
+    return vyb_curses_getch()
+}
+
+# 1: getch returns immediately (-1) when nothing is pending; 0: block for input.
+share(all)
+curses_nodelay(flag<Bool>)<Int> -> {
+    if (flag) {
+        return vyb_curses_nodelay(1)
+    }
+    return vyb_curses_nodelay(0)
+}
+
+# Set getch polling: -1 blocks, 0 no-wait, >0 wait up to ms. Returns 0.
+share(all)
+curses_timeout(ms<Int>)<Int> -> {
+    return vyb_curses_timeout(ms)
+}
+
+# Enable (1) / disable (0) the keypad so arrow/function keys arrive as KEY_* codes.
+share(all)
+curses_keypad(flag<Bool>)<Int> -> {
+    if (flag) {
+        return vyb_curses_keypad(1)
+    }
+    return vyb_curses_keypad(0)
+}
+
+# Show the terminal cursor. Returns 0 on success, -1 if not active.
+share(all)
+curses_show_cursor()<Int> -> {
+    return vyb_curses_show_cursor()
+}
+
+# Hide the terminal cursor (typical for full-screen UIs). Returns 0 on success.
+share(all)
+curses_hide_cursor()<Int> -> {
+    return vyb_curses_hide_cursor()
+}

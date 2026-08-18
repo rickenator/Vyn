@@ -194,6 +194,20 @@ if(VYB_USE_OPENSSL AND OpenSSL_FOUND)
     target_link_libraries(vyb PRIVATE OpenSSL::SSL OpenSSL::Crypto)
     target_compile_definitions(vyb PRIVATE VYB_HAVE_OPENSSL)
 endif()
+
+# ncursesw: link the wide-char TUI library into the binary so the JIT's
+# process-symbol generator can resolve the stdlib `curses` module's runtime
+# shims. Optional: if ncursesw is absent the build still succeeds and modules
+# that use `curses` fail at JIT link-time with an unresolved-symbol error.
+find_library(NCURSESW_LIBRARY NAMES ncursesw ncurses)
+if(NCURSESW_LIBRARY)
+    target_link_libraries(vyb PRIVATE ${NCURSESW_LIBRARY})
+    target_compile_definitions(vyb PRIVATE VYB_HAVE_NCURSES)
+    message(STATUS "ncursesw found: ${NCURSESW_LIBRARY}")
+else()
+    message(STATUS "ncursesw not found; stdlib `curses` module will be unavailable")
+endif()
+
 if(VYB_HAVE_LIBCLANG)
     add_executable(vyb-libclang
         src/bindgen_libclang_main.cpp

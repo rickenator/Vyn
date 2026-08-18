@@ -31,6 +31,9 @@
 #include <openssl/x509.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
+#if defined(VYB_HAVE_NCURSES)
+#include <ncursesw/curses.h>
+#endif
 #endif
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -572,6 +575,170 @@ VYB_WEAK int64_t __vyb_term_move_cursor(int64_t row, int64_t col) {
 }
 VYB_WEAK int64_t __vyb_term_hide_cursor(void) { return vyb_term_emit("\x1b[?25l"); }
 VYB_WEAK int64_t __vyb_term_show_cursor(void) { return vyb_term_emit("\x1b[?25h"); }
+
+// ============================================================================
+// CURSES (ncurses TUI stdlib module) - thin facades over ncursesw.
+// A Vyb program owns the whole terminal while curses is active: initscr is
+// called once and the module exposes an Int keycode / attribute / handle surface,
+// keeping the WINDOW* ABI out of Vyb. Int returns are 0 on success and -1 on
+// error (matching the term module); getch returns the key code, or -1 (ERR) when
+// a timeout / no-delay read finds no input. Without ncursesw linked the shims are
+// stubs that report the screen as unavailable.
+// ============================================================================
+
+#if defined(VYB_HAVE_NCURSES)
+
+static int vyb_curses_active = 0;
+
+#define VYB_CURSES_GUARD if (!vyb_curses_active) return -1
+
+VYB_WEAK int64_t __vyb_curses_init(void) {
+    if (vyb_curses_active) return 0;
+    // ncurses needs a real terminal; refuse to run with redirected stdio.
+    if (!isatty(STDOUT_FILENO)) return -1;
+    if (initscr() == NULL) return -1;
+    cbreak();
+    noecho();
+    keypad(stdscr, TRUE);
+    use_default_colors();
+    vyb_curses_active = 1;
+    return 0;
+}
+
+VYB_WEAK int64_t __vyb_curses_close(void) {
+    if (!vyb_curses_active) return 0;
+    endwin();
+    vyb_curses_active = 0;
+    return 0;
+}
+
+VYB_WEAK int64_t __vyb_curses_ok(void) {
+    return vyb_curses_active ? 1 : 0;
+}
+
+VYB_WEAK int64_t __vyb_curses_rows(void) {
+    VYB_CURSES_GUARD;
+    return (int64_t)LINES;
+}
+
+VYB_WEAK int64_t __vyb_curses_cols(void) {
+    VYB_CURSES_GUARD;
+    return (int64_t)COLS;
+}
+
+VYB_WEAK int64_t __vyb_curses_refresh(void) {
+    VYB_CURSES_GUARD;
+    return wrefresh(stdscr) == ERR ? -1 : 0;
+}
+
+VYB_WEAK int64_t __vyb_curses_clear(void) {
+    VYB_CURSES_GUARD;
+    return wclear(stdscr) == ERR ? -1 : 0;
+}
+
+VYB_WEAK int64_t __vyb_curses_move(int64_t y, int64_t x) {
+    VYB_CURSES_GUARD;
+    return wmove(stdscr, (int)y, (int)x) == ERR ? -1 : 0;
+}
+
+VYB_WEAK int64_t __vyb_curses_addstr(const char* s, int64_t len) {
+    VYB_CURSES_GUARD;
+    if (len < 0) len = 0;
+    if (len > INT_MAX) len = INT_MAX;
+    return waddnstr(stdscr, s, (int)len) == ERR ? -1 : 0;
+}
+
+VYB_WEAK int64_t __vyb_curses_move_addstr(int64_t y, int64_t x, const char* s, int64_t len) {
+    VYB_CURSES_GUARD;
+    if (len < 0) len = 0;
+    if (len > INT_MAX) len = INT_MAX;
+    if (wmove(stdscr, (int)y, (int)x) == ERR) return -1;
+    return waddnstr(stdscr, s, (int)len) == ERR ? -1 : 0;
+}
+
+VYB_WEAK int64_t __vyb_curses_has_color(void) {
+    return has_colors() ? 1 : 0;
+}
+
+VYB_WEAK int64_t __vyb_curses_start_color(void) {
+    VYB_CURSES_GUARD;
+    return start_color() == ERR ? -1 : 0;
+}
+
+VYB_WEAK int64_t __vyb_curses_color_pair(int64_t n) {
+    VYB_CURSES_GUARD;
+    return (int64_t)COLOR_PAIR((int)n);
+}
+
+VYB_WEAK int64_t __vyb_curses_attr_on(int64_t attr) {
+    VYB_CURSES_GUARD;
+    return attr_on((attr_t)attr, NULL) == ERR ? -1 : 0;
+}
+
+VYB_WEAK int64_t __vyb_curses_attr_off(int64_t attr) {
+    VYB_CURSES_GUARD;
+    return attr_off((attr_t)attr, NULL) == ERR ? -1 : 0;
+}
+
+VYB_WEAK int64_t __vyb_curses_getch(void) {
+    VYB_CURSES_GUARD;
+    int c = wgetch(stdscr);
+    return c == ERR ? -1 : (int64_t)c;
+}
+
+VYB_WEAK int64_t __vyb_curses_nodelay(int64_t flag) {
+    VYB_CURSES_GUARD;
+    return nodelay(stdscr, flag ? TRUE : FALSE) == ERR ? -1 : 0;
+}
+
+VYB_WEAK int64_t __vyb_curses_timeout(int64_t ms) {
+    VYB_CURSES_GUARD;
+    wtimeout(stdscr, (int)ms);
+    return 0;
+}
+
+VYB_WEAK int64_t __vyb_curses_keypad(int64_t flag) {
+    VYB_CURSES_GUARD;
+    return keypad(stdscr, flag ? TRUE : FALSE) == ERR ? -1 : 0;
+}
+
+VYB_WEAK int64_t __vyb_curses_show_cursor(void) {
+    VYB_CURSES_GUARD;
+    return curs_set(1) == ERR ? -1 : 0;
+}
+
+VYB_WEAK int64_t __vyb_curses_hide_cursor(void) {
+    VYB_CURSES_GUARD;
+    return curs_set(0) == ERR ? -1 : 0;
+}
+
+#else // !VYB_HAVE_NCURSES
+
+VYB_WEAK int64_t __vyb_curses_init(void) { return -1; }
+VYB_WEAK int64_t __vyb_curses_close(void) { return 0; }
+VYB_WEAK int64_t __vyb_curses_ok(void) { return 0; }
+VYB_WEAK int64_t __vyb_curses_rows(void) { return 0; }
+VYB_WEAK int64_t __vyb_curses_cols(void) { return 0; }
+VYB_WEAK int64_t __vyb_curses_refresh(void) { return -1; }
+VYB_WEAK int64_t __vyb_curses_clear(void) { return -1; }
+VYB_WEAK int64_t __vyb_curses_move(int64_t y, int64_t x) { (void)y; (void)x; return -1; }
+VYB_WEAK int64_t __vyb_curses_addstr(const char* s, int64_t len) { (void)s; (void)len; return -1; }
+VYB_WEAK int64_t __vyb_curses_move_addstr(int64_t y, int64_t x, const char* s, int64_t len) {
+    (void)y; (void)x; (void)s; (void)len; return -1;
+}
+VYB_WEAK int64_t __vyb_curses_has_color(void) { return 0; }
+VYB_WEAK int64_t __vyb_curses_start_color(void) { return -1; }
+VYB_WEAK int64_t __vyb_curses_color_pair(int64_t n) { (void)n; return 0; }
+VYB_WEAK int64_t __vyb_curses_attr_on(int64_t attr) { (void)attr; return -1; }
+VYB_WEAK int64_t __vyb_curses_attr_off(int64_t attr) { (void)attr; return -1; }
+VYB_WEAK int64_t __vyb_curses_getch(void) { return -1; }
+VYB_WEAK int64_t __vyb_curses_nodelay(int64_t flag) { (void)flag; return -1; }
+VYB_WEAK int64_t __vyb_curses_timeout(int64_t ms) { (void)ms; return -1; }
+VYB_WEAK int64_t __vyb_curses_keypad(int64_t flag) { (void)flag; return -1; }
+VYB_WEAK int64_t __vyb_curses_show_cursor(void) { return -1; }
+VYB_WEAK int64_t __vyb_curses_hide_cursor(void) { return -1; }
+
+#endif // VYB_HAVE_NCURSES
 
 // ============================================================================
 // NETWORK I/O (network stdlib module) - thin facades over BSD sockets.

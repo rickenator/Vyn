@@ -1,0 +1,32 @@
+// @test: curses stdlib module - real terminal draw/refresh/getch/close
+// @description: On a real TTY it initializes the screen, draws, refreshes, polls a
+//   key with a short timeout, tears down, and reports success. On a redirected
+//   (non-TTY) stdin it degrades gracefully and still reports success, so the test
+//   passes both in a pseudo-terminal and in the CI harness.
+// @category: curses, stdlib, tui
+// @expect: pass
+// @expect-output: curses-ok
+// @env: VYB_STDLIB=stdlib
+
+import curses
+
+main()<Int> -> {
+    init<Int> = curses_init()
+    if (init != 0) {
+        // No controlling TTY (e.g. the harness): degrade without initscr.
+        if (init != -1) { return 99 }
+        println("curses-ok")
+        return 0
+    }
+
+    // Real terminal: draw a frame, flush, poll a key briefly, tear down.
+    if (curses_rows() < 1 || curses_cols() < 1) { return 1 }
+    if (curses_move_addstr(0, 0, "curses") != 0) { return 2 }
+    if (curses_refresh() != 0) { return 3 }
+    if (curses_timeout(100) != 0) { return 4 }
+    curses_getch()   // polls up to 100ms; the value read is not asserted
+    if (curses_close() != 0) { return 5 }
+
+    println("curses-ok")
+    return 0
+}

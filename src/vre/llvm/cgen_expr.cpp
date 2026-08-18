@@ -2907,6 +2907,119 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         }
     }
 
+    // Curses TUI intrinsics (curses stdlib module): thin facades over the
+    // `__vyb_curses_*` runtime shims in `runtime/vyb_runtime.c` (which wrap
+    // ncursesw). Every helper returns an Int (status, keycode, or attribute);
+    // a String argument crosses as its { ptr, len } struct and the data pointer
+    // and length are extracted at the boundary. Arity follows the module surface.
+    if (identCallee) {
+        const std::string& fname = identCallee->name;
+        std::string rtName;
+        if (fname == "vyb_curses_init") rtName = "__vyb_curses_init";
+        else if (fname == "vyb_curses_close") rtName = "__vyb_curses_close";
+        else if (fname == "vyb_curses_ok") rtName = "__vyb_curses_ok";
+        else if (fname == "vyb_curses_rows") rtName = "__vyb_curses_rows";
+        else if (fname == "vyb_curses_cols") rtName = "__vyb_curses_cols";
+        else if (fname == "vyb_curses_refresh") rtName = "__vyb_curses_refresh";
+        else if (fname == "vyb_curses_clear") rtName = "__vyb_curses_clear";
+        else if (fname == "vyb_curses_move") rtName = "__vyb_curses_move";
+        else if (fname == "vyb_curses_addstr") rtName = "__vyb_curses_addstr";
+        else if (fname == "vyb_curses_move_addstr") rtName = "__vyb_curses_move_addstr";
+        else if (fname == "vyb_curses_has_color") rtName = "__vyb_curses_has_color";
+        else if (fname == "vyb_curses_start_color") rtName = "__vyb_curses_start_color";
+        else if (fname == "vyb_curses_color_pair") rtName = "__vyb_curses_color_pair";
+        else if (fname == "vyb_curses_attr_on") rtName = "__vyb_curses_attr_on";
+        else if (fname == "vyb_curses_attr_off") rtName = "__vyb_curses_attr_off";
+        else if (fname == "vyb_curses_getch") rtName = "__vyb_curses_getch";
+        else if (fname == "vyb_curses_nodelay") rtName = "__vyb_curses_nodelay";
+        else if (fname == "vyb_curses_timeout") rtName = "__vyb_curses_timeout";
+        else if (fname == "vyb_curses_keypad") rtName = "__vyb_curses_keypad";
+        else if (fname == "vyb_curses_show_cursor") rtName = "__vyb_curses_show_cursor";
+        else if (fname == "vyb_curses_hide_cursor") rtName = "__vyb_curses_hide_cursor";
+        if (!rtName.empty()) {
+            auto getCurseFn = [&](llvm::FunctionType* ft) -> llvm::Function* {
+                llvm::Function* f = module->getFunction(rtName);
+                if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, rtName, module.get());
+                return f;
+            };
+            auto toI64 = [&](llvm::Value* v) -> llvm::Value* {
+                if (!v) return v;
+                if (v->getType()->isIntegerTy(64)) return v;
+                if (v->getType()->isIntegerTy()) return builder->CreateSExt(v, int64Type, "curses.toi64");
+                return v;
+            };
+            auto toStrPtr = [&](llvm::Value* v) -> llvm::Value* {
+                if (v && v->getType()->isStructTy()) return builder->CreateExtractValue(v, 0, "curses.strptr");
+                return v;
+            };
+            auto strLen = [&](llvm::Value* v) -> llvm::Value* {
+                return (v && v->getType()->isStructTy())
+                    ? builder->CreateExtractValue(v, 1, "curses.strlen")
+                    : llvm::ConstantInt::get(int64Type, 0);
+            };
+            auto callNoArgs = [&](const char* tag) { return builder->CreateCall(
+                getCurseFn(llvm::FunctionType::get(int64Type, {}, false)), {}, tag); };
+
+            if (fname == "vyb_curses_move") {
+                if (node->arguments.size() != 2) {
+                    logError(node->loc, rtName + " expects 2 arguments (row, col)");
+                    m_currentLLVMValue = nullptr; return;
+                }
+                node->arguments[0]->accept(*this); llvm::Value* row = m_currentLLVMValue;
+                node->arguments[1]->accept(*this); llvm::Value* col = m_currentLLVMValue;
+                if (!row || !col) { m_currentLLVMValue = nullptr; return; }
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getCurseFn(ft), {toI64(row), toI64(col)}, "curses.move");
+                return;
+            } else if (fname == "vyb_curses_addstr") {
+                if (node->arguments.size() != 1) {
+                    logError(node->loc, rtName + " expects 1 argument (s)");
+                    m_currentLLVMValue = nullptr; return;
+                }
+                node->arguments[0]->accept(*this); llvm::Value* s = m_currentLLVMValue;
+                if (!s) { m_currentLLVMValue = nullptr; return; }
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getCurseFn(ft), {toStrPtr(s), strLen(s)}, "curses.addstr");
+                return;
+            } else if (fname == "vyb_curses_move_addstr") {
+                if (node->arguments.size() != 3) {
+                    logError(node->loc, rtName + " expects 3 arguments (row, col, s)");
+                    m_currentLLVMValue = nullptr; return;
+                }
+                node->arguments[0]->accept(*this); llvm::Value* row = m_currentLLVMValue;
+                node->arguments[1]->accept(*this); llvm::Value* col = m_currentLLVMValue;
+                node->arguments[2]->accept(*this); llvm::Value* s = m_currentLLVMValue;
+                if (!row || !col || !s) { m_currentLLVMValue = nullptr; return; }
+                llvm::FunctionType* ft = llvm::FunctionType::get(
+                    int64Type, {int64Type, int64Type, int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(
+                    getCurseFn(ft), {toI64(row), toI64(col), toStrPtr(s), strLen(s)}, "curses.moveadd");
+                return;
+            } else {
+                // 1-arg Int helpers: color_pair, attr_on, attr_off, nodelay, timeout, keypad
+                if (fname == "vyb_curses_color_pair" || fname == "vyb_curses_attr_on" ||
+                    fname == "vyb_curses_attr_off" || fname == "vyb_curses_nodelay" ||
+                    fname == "vyb_curses_timeout" || fname == "vyb_curses_keypad") {
+                    if (node->arguments.size() != 1) {
+                        logError(node->loc, rtName + " expects 1 argument");
+                        m_currentLLVMValue = nullptr; return;
+                    }
+                    node->arguments[0]->accept(*this); llvm::Value* arg = m_currentLLVMValue;
+                    if (!arg) { m_currentLLVMValue = nullptr; return; }
+                    llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
+                    m_currentLLVMValue = builder->CreateCall(getCurseFn(ft), {toI64(arg)}, "curses.arg1");
+                    return;
+                }
+                if (!node->arguments.empty()) {
+                    logError(node->loc, rtName + " expects no arguments");
+                    m_currentLLVMValue = nullptr; return;
+                }
+                m_currentLLVMValue = callNoArgs("curses.ret");
+                return;
+            }
+        }
+    }
+
     // Handle UTF-8 / env / rand / process / regex intrinsics (the utf8, env,
     // rand, process, regex stdlib modules) plus the socket-timeout helper added
     // to the network module. Same FFI shape as the terminal block: String args

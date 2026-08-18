@@ -2104,6 +2104,17 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_term_cols" || name == "vyb_term_rows" ||
             name == "vyb_term_clear" || name == "vyb_term_move_cursor" ||
             name == "vyb_term_hide_cursor" || name == "vyb_term_show_cursor" ||
+            name == "vyb_curses_init" || name == "vyb_curses_close" ||
+            name == "vyb_curses_ok" || name == "vyb_curses_rows" ||
+            name == "vyb_curses_cols" || name == "vyb_curses_refresh" ||
+            name == "vyb_curses_clear" || name == "vyb_curses_move" ||
+            name == "vyb_curses_addstr" || name == "vyb_curses_move_addstr" ||
+            name == "vyb_curses_has_color" || name == "vyb_curses_start_color" ||
+            name == "vyb_curses_color_pair" || name == "vyb_curses_attr_on" ||
+            name == "vyb_curses_attr_off" || name == "vyb_curses_getch" ||
+            name == "vyb_curses_nodelay" || name == "vyb_curses_timeout" ||
+            name == "vyb_curses_keypad" || name == "vyb_curses_show_cursor" ||
+            name == "vyb_curses_hide_cursor" ||
             name == "vyb_net_set_timeout" ||
             name == "vyb_utf8_len" || name == "vyb_utf8_at" ||
             name == "vyb_utf8_index" || name == "vyb_utf8_valid" ||
@@ -2587,6 +2598,26 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 auto* resTy = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc,
                         termIntFuncs.count(name) ? "Int" : "String"));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+
+            // Curses TUI intrinsics (curses stdlib module): every helper returns an
+            // Int (keycode, attribute, flag, or status). Arity is left to codegen.
+            static const std::set<std::string> cursesIntFuncs = {
+                "vyb_curses_init", "vyb_curses_close", "vyb_curses_ok",
+                "vyb_curses_rows", "vyb_curses_cols", "vyb_curses_refresh",
+                "vyb_curses_clear", "vyb_curses_move", "vyb_curses_addstr",
+                "vyb_curses_move_addstr", "vyb_curses_has_color",
+                "vyb_curses_start_color", "vyb_curses_color_pair",
+                "vyb_curses_attr_on", "vyb_curses_attr_off", "vyb_curses_getch",
+                "vyb_curses_nodelay", "vyb_curses_timeout", "vyb_curses_keypad",
+                "vyb_curses_show_cursor", "vyb_curses_hide_cursor"
+            };
+            if (cursesIntFuncs.count(name)) {
+                auto* resTy = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "Int"));
                 expressionTypes[node] = retainType(resTy);
                 node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
                 return;

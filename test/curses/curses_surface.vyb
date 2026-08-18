@@ -1,0 +1,27 @@
+// @test: curses stdlib module - graceful non-TTY degradation + surface
+// @description: Without a controlling TTY (the harness runs redirected), curses_init
+//   must refuse to initscr and report the screen unavailable (-1) rather than
+//   corrupting stdio; the rest of the surface degrades to -1 without crashing.
+// @category: curses, stdlib, tui
+// @expect: pass
+// @expect-output: curses-ok
+// @env: VYB_STDLIB=stdlib
+
+import curses
+
+main()<Int> -> {
+    // Harness runs without a TTY: init must fail cleanly, screen stays inactive.
+    if (curses_init() != -1) { return 1 }
+    if (curses_ok() != 0) { return 2 }
+    if (curses_rows() != -1 || curses_cols() != -1) { return 3 }
+    if (curses_addstr("x") != -1) { return 4 }
+    if (curses_getch() != -1) { return 5 }
+    if (curses_close() != 0) { return 6 }
+
+    // Color probe is safe pre-init; report only 0 or 1.
+    has<Int> = curses_has_color()
+    if (has != 0 && has != 1) { return 7 }
+
+    println("curses-ok")
+    return 0
+}

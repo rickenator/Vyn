@@ -174,6 +174,32 @@ extern "C" {
     int64_t __vyb_term_hide_cursor(void);
     int64_t __vyb_term_show_cursor(void);
 
+#ifdef VYB_HAVE_NCURSES
+    // Curses TUI runtime helpers (curses stdlib module) over ncursesw. The
+    // whole screen is owned by the runtime; Vyb sees Int keycodes/attrs only.
+    int64_t __vyb_curses_init(void);
+    int64_t __vyb_curses_close(void);
+    int64_t __vyb_curses_ok(void);
+    int64_t __vyb_curses_rows(void);
+    int64_t __vyb_curses_cols(void);
+    int64_t __vyb_curses_refresh(void);
+    int64_t __vyb_curses_clear(void);
+    int64_t __vyb_curses_move(int64_t y, int64_t x);
+    int64_t __vyb_curses_addstr(const char* s, int64_t len);
+    int64_t __vyb_curses_move_addstr(int64_t y, int64_t x, const char* s, int64_t len);
+    int64_t __vyb_curses_has_color(void);
+    int64_t __vyb_curses_start_color(void);
+    int64_t __vyb_curses_color_pair(int64_t n);
+    int64_t __vyb_curses_attr_on(int64_t attr);
+    int64_t __vyb_curses_attr_off(int64_t attr);
+    int64_t __vyb_curses_getch(void);
+    int64_t __vyb_curses_nodelay(int64_t flag);
+    int64_t __vyb_curses_timeout(int64_t ms);
+    int64_t __vyb_curses_keypad(int64_t flag);
+    int64_t __vyb_curses_show_cursor(void);
+    int64_t __vyb_curses_hide_cursor(void);
+#endif
+
 #ifdef VYB_HAVE_OPENSSL
     // TLS runtime helpers (tls stdlib module) over OpenSSL. SSL/SSL_CTX are
     // opaque pointers carried across as Int; certs are in-line PEM strings.
@@ -1403,6 +1429,50 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_term_hide_cursor), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_term_show_cursor")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_term_show_cursor), llvm::JITSymbolFlags::Exported);
+#ifdef VYB_HAVE_NCURSES
+        runtimeSymbols[mangle("__vyb_curses_init")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_init), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_close")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_close), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_ok")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_ok), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_rows")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_rows), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_cols")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_cols), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_refresh")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_refresh), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_clear")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_clear), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_move")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_move), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_addstr")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_addstr), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_move_addstr")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_move_addstr), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_has_color")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_has_color), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_start_color")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_start_color), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_color_pair")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_color_pair), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_attr_on")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_attr_on), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_attr_off")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_attr_off), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_getch")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_getch), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_nodelay")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_nodelay), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_timeout")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_timeout), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_keypad")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_keypad), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_show_cursor")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_show_cursor), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_hide_cursor")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_hide_cursor), llvm::JITSymbolFlags::Exported);
+#endif
         runtimeSymbols[mangle("__vyb_net_open")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_open), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_net_close")] = llvm::orc::ExecutorSymbolDef(
