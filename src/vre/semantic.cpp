@@ -4052,6 +4052,40 @@ void SemanticAnalyzer::visit(ast::ArrayElementExpression* node) {
         }
     }
 
+    // Tuple access: `t[0]`, `t[1]`, ... — resolve the member's type so that
+    // type inference (`auto x = t[i]`) and downstream member lookups on the
+    // element work. Only constant literal indices can be resolved statically.
+    if (expressionTypes.find(node) == expressionTypes.end() &&
+        arrayTypeIt != expressionTypes.end() && arrayTypeIt->second) {
+        ast::TypeNode* resolvedType = arrayTypeIt->second;
+        if (auto typeName = dynamic_cast<ast::TypeName*>(resolvedType)) {
+            if (typeName->type) resolvedType = typeName->type.get();
+        }
+        if (auto tupleType = dynamic_cast<ast::TupleTypeNode*>(resolvedType)) {
+            size_t tupleIndex = 0;
+            bool hasIndex = false;
+            if (auto idxLit = dynamic_cast<ast::IntegerLiteral*>(node->index.get())) {
+                if (idxLit->isUnsigned) {
+                    if (idxLit->uvalue < tupleType->memberTypes.size()) {
+                        tupleIndex = idxLit->uvalue;
+                        hasIndex = true;
+                    }
+                } else if (idxLit->value >= 0 &&
+                           static_cast<size_t>(idxLit->value) < tupleType->memberTypes.size()) {
+                    tupleIndex = static_cast<size_t>(idxLit->value);
+                    hasIndex = true;
+                }
+            }
+            if (hasIndex) {
+                const ast::TypeNodePtr& member = tupleType->memberTypes[tupleIndex];
+                expressionTypes[node] = retainType(member->clone().release());
+                node->type = std::shared_ptr<ast::TypeNode>(member->clone());
+            } else if (auto idxLit = dynamic_cast<ast::IntegerLiteral*>(node->index.get())) {
+                addError("Tuple index out of range.", node);
+            }
+        }
+    }
+
     // Validate index type (should be integer)
     auto indexTypeIt = expressionTypes.find(node->index.get());
     if (indexTypeIt != expressionTypes.end() && indexTypeIt->second) {

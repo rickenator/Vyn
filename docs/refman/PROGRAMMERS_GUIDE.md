@@ -312,12 +312,24 @@ element), `grab()` on a released `mild` (absent), and channel receives
 
 ```vyb
 x<Int> = 5        // explicit type
-y = 3.14          // inferred
+y = 3.14          // inferred from the RHS (auto is optional: `auto y = 3.14`)
 n<Int const> = 7  // immutable (const is a type modifier)
+const<Int> c = 9  // immutability is also expressed with a const prefix
+a, b, c = t       // tuple destructure: each member type is inferred
 ```
 
-Declarations are type-first (`name<Type>`). Values default to mutable unless
-typed `const`.
+Declarations are type-first (`name<Type>`). `name = expr` on a **new** name
+infers its type from the RHS, so the `auto` keyword is optional
+(`auto y = 3.14` is equivalent to `y = 3.14`). Values default to mutable unless
+typed `const` (either `name<Type const>` or `const<Type> name`).
+
+Inference resolves literals, simple calls and arithmetic, lambdas
+(`add = |x, y| -> x + y`), and tuple element access (`x = t[i]` for a constant
+index `i`). A `name<Type> = value` annotation is still canonical and is required
+wherever the initializer's type cannot be inferred (for example, a tuple element
+accessed with a non-constant index). To update an **existing** variable, use a
+bare assignment `name = value`; the compiler only treats `name = expr` as a new
+declaration when `name` has not already been declared in the enclosing scope.
 
 ### 3.4 Functions and parameters
 
@@ -489,8 +501,19 @@ u = (1, "x", true)            # mixed types
 v = (1, 2, 3, 4, 5, 6, 7)     # variadic
 ```
 
-A function can return a tuple and the caller can destructure by index:
-`.0`, `.1`, …
+Element membership is accessed by zero-based index, and length via `.len()`:
+
+```vyb
+data<Tuple<Int, String, Bool>> = (1, "x", true)
+num<Int>   = data[0]   # 1
+text<String> = data[1] # "x"
+ok<Bool>   = data[2]   # true
+size<Int>  = data.len()# 3
+```
+
+The types are static, so an explicit `name<Type>` annotation or `auto`
+inference (constant index) works. A caller can also pull members out without
+naming types by tuple destructure: `num, text, ok = data`.
 
 ### 3.9 Structs
 

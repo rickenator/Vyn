@@ -186,6 +186,8 @@ vyb::ast::StmtPtr StatementParser::parse() {
                 // Per LAMBDAS.md, `add = |x, y| -> x + y` is valid Vyb syntax (type inferred from RHS).
                 if (next_token.type == vyb::TokenType::EQ) {
                     size_t saved_pos = this->pos_;
+                    const std::string lhs_name = current_token.lexeme;
+                    const SourceLocation decl_loc = current_token.location;
                     this->consume(); // consume identifier
                     this->consume(); // consume '='
                     // Accept `name = |params| -> body` and the async form
@@ -197,13 +199,13 @@ vyb::ast::StmtPtr StatementParser::parse() {
                           this->peekAhead(2).type == vyb::TokenType::ARROW));
                     if (this->peek().type == vyb::TokenType::PIPE || isAsyncLambdaAfterEq) {
                         // It IS: name = |params| -> body — parse as VariableDeclaration with inferred type
-                        SourceLocation decl_loc = current_token.location;
                         auto identifier_node = std::make_unique<vyb::ast::Identifier>(
                             current_token.location, current_token.lexeme);
                         auto init = this->expr_parser_.parse_expression();
                         if (this->peek().type == vyb::TokenType::SEMICOLON) {
                             this->consume();
                         }
+                        if (decl_parser_) decl_parser_->declareVariable(lhs_name);
                         return std::make_unique<vyb::ast::VariableDeclaration>(
                             decl_loc,
                             std::move(identifier_node),
@@ -213,6 +215,41 @@ vyb::ast::StmtPtr StatementParser::parse() {
                     }
                     // Not a lambda — restore and fall through to expression statement parsing
                     this->pos_ = saved_pos;
+
+                    // Bare inference: `name = expr` where `name` is a new,
+                    // previously-undeclared variable declares it with the type
+                    // inferred from the RHS — making `auto` optional. Existing
+                    // variables fall through to the assignment path below.
+                    if (decl_parser_ && !decl_parser_->isVariableDeclared(lhs_name)) {
+                        this->consume(); // consume identifier
+                        this->expect(vyb::TokenType::EQ, "Expected '=' after variable name.");
+                        auto init = this->expr_parser_.parse_expression();
+                        if (!init) {
+                            throw std::runtime_error("Expected initializer expression after '=' for variable at " +
+                                                     location_to_string(this->current_location()));
+                        }
+                        if (this->peek().type == vyb::TokenType::SEMICOLON) {
+                            this->consume();
+                        } else if (this->IsAtEnd() ||
+                                   this->peek().type == vyb::TokenType::RBRACE ||
+                                   this->peek().type == vyb::TokenType::DEDENT ||
+                                   this->peek().type == vyb::TokenType::NEWLINE ||
+                                   is_statement_start(this->peek().type)) {
+                            // Optional statement separator
+                        } else {
+                            throw std::runtime_error("Expected statement separator after variable declaration at " +
+                                                     location_to_string(this->peek().location));
+                        }
+                        auto identifier_node = std::make_unique<vyb::ast::Identifier>(
+                            current_token.location, current_token.lexeme);
+                        decl_parser_->declareVariable(lhs_name);
+                        return std::make_unique<vyb::ast::VariableDeclaration>(
+                            decl_loc,
+                            std::move(identifier_node),
+                            /*isConst=*/false,
+                            /*typeNode=*/nullptr,
+                            std::move(init));
+                    }
                 }
 
                 // Check if this could be a legacy relaxed syntax variable declaration (Type name)
@@ -411,6 +448,7 @@ std::unique_ptr<vyb::ast::ForStatement> StatementParser::parse_for() {
         if (this->peek().type == vyb::TokenType::KEYWORD_IN) {
             // This is a range-based for loop
             this->consume(); // Consume 'in'
+            if (decl_parser_) decl_parser_->declareVariable(ident_token.lexeme);
 
             // Parse the range expression
             vyb::ast::ExprPtr range_expr = this->expr_parser_.parse_expression();
@@ -755,6 +793,7 @@ std::unique_ptr<vyb::ast::ForStatement> StatementParser::parse_async_for() {
     }
     token::Token ident_token = this->consume();
     SourceLocation ident_loc = ident_token.location;
+    if (decl_parser_) decl_parser_->declareVariable(ident_token.lexeme);
 
     // Optional loop-variable type selects Int vs String channel payload.
     std::string chanKind = "Int";
@@ -936,6 +975,7 @@ vyb::ast::StmtPtr StatementParser::parse_var_decl() {
         // Parse variable name for auto
         vyb::token::Token name_token = this->expect(vyb::TokenType::IDENTIFIER, "Expected variable name after 'auto'.");
         auto identifier_node = std::make_unique<vyb::ast::Identifier>(name_token.location, name_token.lexeme);
+        if (decl_parser_) decl_parser_->declareVariable(name_token.lexeme);
 
         // Auto requires initializer
         this->expect(vyb::TokenType::EQ, "Auto variables require an initializer.");
@@ -998,6 +1038,7 @@ vyb::ast::StmtPtr StatementParser::parse_var_decl() {
         // Parse variable name
         vyb::token::Token name_token = this->expect(vyb::TokenType::IDENTIFIER, "Expected variable name.");
         auto identifier_node = std::make_unique<vyb::ast::Identifier>(name_token.location, name_token.lexeme);
+        if (decl_parser_) decl_parser_->declareVariable(name_token.lexeme);
 
         vyb::ast::ExprPtr initializer = nullptr;
         SourceLocation end_loc = name_token.location;
@@ -1061,6 +1102,7 @@ vyb::ast::StmtPtr StatementParser::parse_var_decl() {
             // Parse variable name
             vyb::token::Token name_token = this->expect(vyb::TokenType::IDENTIFIER, "Expected variable name.");
             auto identifier_node = std::make_unique<vyb::ast::Identifier>(name_token.location, name_token.lexeme);
+            if (decl_parser_) decl_parser_->declareVariable(name_token.lexeme);
 
             vyb::ast::ExprPtr initializer = nullptr;
             if (this->match(vyb::TokenType::EQ)) {
@@ -1076,6 +1118,7 @@ vyb::ast::StmtPtr StatementParser::parse_var_decl() {
             ast::TypeNodePtr type_expr = this->type_parser_.parse();
             vyb::token::Token name_token = this->expect(vyb::TokenType::IDENTIFIER, "Expected variable name.");
             auto identifier_node = std::make_unique<vyb::ast::Identifier>(name_token.location, name_token.lexeme);
+            if (decl_parser_) decl_parser_->declareVariable(name_token.lexeme);
             vyb::ast::ExprPtr initializer = nullptr;
             if (this->match(vyb::TokenType::EQ)) {
                 initializer = this->expr_parser_.parse_expression();
@@ -1173,6 +1216,9 @@ vyb::ast::StmtPtr StatementParser::parse_var_decl() {
     }
 
     // Create VariableDeclaration nodes for each variable (all share the same initializer via shared_ptr)
+    for (auto& info : var_decls) {
+        if (decl_parser_ && info.identifier) decl_parser_->declareVariable(info.identifier->name);
+    }
     if (var_decls.size() == 1) {
         auto& info = var_decls[0];
         return std::make_unique<vyb::ast::VariableDeclaration>(
@@ -1275,6 +1321,10 @@ vyb::ast::StmtPtr StatementParser::try_parse_tuple_destructure() {
     if (identifiers.size() < 2) {
         this->pos_ = saved_pos;
         return nullptr;
+    }
+
+    for (auto& id : identifiers) {
+        if (decl_parser_) decl_parser_->declareVariable(id->name);
     }
 
     return std::make_unique<vyb::ast::TupleDestructureAssignment>(

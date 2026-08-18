@@ -1,0 +1,62 @@
+// @test: bare variable type inference (auto optional)
+// @description: `name = expr` with a new name infers the type from the RHS,
+//   making the `auto` keyword optional; existing names remain assignments.
+// @category: types, type-inference, variables
+// @expect: pass
+// @expect-return: 0
+
+get_data()<Tuple<Int, String, Bool>> -> {
+    return 42, "test", true
+}
+
+counter<Int> = 0
+
+bump()<Int> -> {
+    # Reassignment of a module-global must remain an assignment, not a redeclaration.
+    counter = counter + 1
+    return counter
+}
+
+main()<Int> -> {
+    # Bare inference on a literal and an arithmetic expression.
+    x = 42
+    y = x + 1
+    if (typename(x) != "Int") { return 1 }
+    if (y != 43) { return 2 }
+
+    # Bare inference on a tuple element access.
+    t<Tuple<Int, String, Bool>> = get_data()
+    s = t[1]
+    n = t[0]
+    if (typename(s) != "String") { return 3 }
+    if (n != 42) { return 4 }
+
+    # Reassignment of an already-declared bare variable.
+    y = y + 7
+    if (y != 50) { return 5 }
+
+    # Loop-variable reassignment (declared by the for-loop).
+    total = 0
+    for (i in 0..4) {
+        total = total + i
+    }
+    if (total != 10) { return 6 }
+
+    # Closure that mutates a bare-inferred captured variable.
+    count = 0
+    step = |dx<Int>| -> { count = count + dx; return count }
+    if (step(5) != 5) { return 7 }
+    if (step(3) != 8) { return 8 }
+    if (count != 8) { return 9 }
+    step2 = |dx<Int>| -> dx * 2
+
+    # Module-global reassignment across functions.
+    if (bump() != 1) { return 10 }
+    if (bump() != 2) { return 11 }
+
+    # lambda stored bare, then invoked bare.
+    r = step2(21)
+    if (r != 42) { return 12 }
+
+    return 0
+}

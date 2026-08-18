@@ -398,6 +398,9 @@ vyb::ast::FunctionParameter DeclarationParser::parse_function_parameter_struct()
 std::unique_ptr<vyb::ast::FunctionDeclaration> DeclarationParser::parse_function() {
     // Skip INDENT/DEDENT tokens before parsing a function (especially for indentation-based bodies)
     this->skip_indents_dedents();
+    // Fresh per-function scope for bare-inference classification. Parameters
+    // get registered right after they are parsed, below.
+    this->resetFunctionScope();
     SourceLocation loc = this->current_location();
     bool is_async = this->match(vyb::TokenType::KEYWORD_ASYNC).has_value();
     #ifdef VERBOSE
@@ -480,6 +483,9 @@ std::unique_ptr<vyb::ast::FunctionDeclaration> DeclarationParser::parse_function
             } while (this->match(vyb::TokenType::COMMA));
         }
         this->expect(vyb::TokenType::RPAREN);
+        for (auto& p : params_structs) {
+            if (p.name) this->declareVariable(p.name->name);
+        }
 
         // Parse the rest using legacy logic
         ast::TypeNodePtr throws_type = nullptr;
@@ -588,6 +594,9 @@ std::unique_ptr<vyb::ast::FunctionDeclaration> DeclarationParser::parse_function
         } while (this->match(vyb::TokenType::COMMA));
     }
     this->expect(vyb::TokenType::RPAREN);
+    for (auto& p : params_structs) {
+        if (p.name) this->declareVariable(p.name->name);
+    }
 
     // Parse return type: name(params)<ReturnType>
     ast::TypeNodePtr return_type_node = nullptr;
@@ -1211,6 +1220,7 @@ std::unique_ptr<vyb::ast::VariableDeclaration> DeclarationParser::parse_global_v
                                     location_to_string(this->current_location()));
         }
         auto identifier = std::make_unique<ast::Identifier>(this->current_location(), this->consume().lexeme);
+        this->declareGlobalVariable(identifier->name);
 
         ast::ExprPtr initializer = nullptr;
         if (this->match(vyb::TokenType::EQ)) {
@@ -1241,6 +1251,7 @@ std::unique_ptr<vyb::ast::VariableDeclaration> DeclarationParser::parse_global_v
                                     location_to_string(this->current_location()));
         }
         auto identifier = std::make_unique<ast::Identifier>(this->current_location(), this->consume().lexeme);
+        this->declareGlobalVariable(identifier->name);
 
         ast::ExprPtr initializer = nullptr;
         if (this->match(vyb::TokenType::EQ)) {
@@ -1265,6 +1276,7 @@ std::unique_ptr<vyb::ast::VariableDeclaration> DeclarationParser::parse_global_v
                                 location_to_string(this->current_location()));
     }
     auto identifier = std::make_unique<ast::Identifier>(this->current_location(), this->consume().lexeme);
+    this->declareGlobalVariable(identifier->name);
 
     // Parse the type in angle brackets: name<Type>
     ast::TypeNodePtr type_node = nullptr;

@@ -235,10 +235,22 @@ namespace vyb { // Changed Vyb to vyb
         ExpressionParser& expr_parser_;
         StatementParser& stmt_parser_;
         std::set<std::string>& knownTypeNames_; // shared user-declared type name registry
+        std::set<std::string> functionVarNames_; // per-function declared variable names (bare-inference)
+        std::set<std::string> moduleVarNames_; // module-level (global) variable names, never reset
     public:
         TypeParser& get_type_parser() { return type_parser_; }
         ExpressionParser& get_expr_parser() { return expr_parser_; }
         void register_type_name(const std::string& name) { if (!name.empty()) knownTypeNames_.insert(name); }
+        // Track declared variable names so a bare `name = expr` can be
+        // classified as an inferred declaration (new name) vs. an ordinary
+        // assignment (existing name). Function-scope names are reset once per
+        // function; module-scope (global) names persist across functions.
+        void resetFunctionScope() { functionVarNames_.clear(); }
+        void declareGlobalVariable(const std::string& name) { if (!name.empty()) moduleVarNames_.insert(name); }
+        void declareVariable(const std::string& name) { if (!name.empty()) functionVarNames_.insert(name); }
+        bool isVariableDeclared(const std::string& name) const {
+            return moduleVarNames_.count(name) != 0 || functionVarNames_.count(name) != 0;
+        }
     public:
         DeclarationParser(const std::vector<vyb::token::Token>& tokens, size_t& pos, const std::string& file_path, TypeParser& type_parser, ExpressionParser& expr_parser, StatementParser& stmt_parser, std::set<std::string>& knownTypeNames);
         vyb::ast::DeclPtr parse();

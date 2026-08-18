@@ -1,0 +1,30 @@
+// @test: tuple index inference
+// @description: auto infers the element type of a constant tuple index (t[i])
+// @category: tuples
+// @expect: pass
+// @expect-output: Bool=Bool.test=Int
+
+get_data()<Tuple<Int, String, Bool>> -> {
+    return 42, "test", true
+}
+
+main()<Int> -> {
+    t<Tuple<Int, String, Bool>> = get_data()
+
+    # Previously this failed: "Missing type annotation on 'x'" because the
+    # analyzer could not resolve the element type of a tuple index expression.
+    auto b = t[2]
+    if (typename(b) != "Bool") { return 1 }
+    if (b != true) { return 2 }
+
+    auto s = t[1]
+    if (typename(s) != "String") { return 3 }
+
+    println("Bool=" + typename(b) + "." + s + "=" + typename(t[0]))
+
+    # Element types also flow through arithmetic on an inferred element.
+    auto n = t[0] + t[0]
+    if (n != 84) { return 4 }
+
+    return 0
+}
