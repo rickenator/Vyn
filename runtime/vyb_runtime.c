@@ -21,6 +21,8 @@
 #include <poll.h>
 #include <termios.h>
 #include <sys/ioctl.h>
+#include <sys/wait.h>
+#include <regex.h>
 
 #ifdef VYB_HAVE_OPENSSL
 #include <openssl/ssl.h>
@@ -579,16 +581,34 @@ VYB_WEAK int64_t __vyb_term_show_cursor(void) { return vyb_term_emit("\x1b[?25h"
 
 static int vyb_net_err = 0;
 
-static int vyb_net_fill_addr(const char* ip, int64_t port, struct sockaddr_in* out) {
+// Parse an IP literal (IPv4 dotted-quad or IPv6 colon-hex) into a sockaddr
+// storage, handling byte order internally. An empty/`*` ip binds any address
+// (INADDR_ANY / in6addr_any respectively). Returns the address family, or -1 if
+// the literal is malformed. `*outlen` receives the sockaddr size to pass to the
+// BSD socket calls.
+static int vyb_net_fill_addr(const char* ip, int64_t port, struct sockaddr_storage* out,
+                             socklen_t* outlen) {
     memset(out, 0, sizeof(*out));
-    out->sin_family = AF_INET;
-    if (!ip || !*ip) {
-        out->sin_addr.s_addr = htonl(INADDR_ANY);
-    } else if (inet_pton(AF_INET, ip, &out->sin_addr) != 1) {
+    const char* s = (ip && *ip) ? ip : NULL;
+    uint16_t p = htons((uint16_t)port);
+    if (s && strchr(s, ':')) {
+        struct sockaddr_in6* a6 = (struct sockaddr_in6*)out;
+        a6->sin6_family = AF_INET6;
+        a6->sin6_port = p;
+        if (inet_pton(AF_INET6, s, &a6->sin6_addr) != 1) return -1;
+        *outlen = (socklen_t)sizeof(struct sockaddr_in6);
+        return AF_INET6;
+    }
+    struct sockaddr_in* a4 = (struct sockaddr_in*)out;
+    a4->sin_family = AF_INET;
+    a4->sin_port = p;
+    if (!s) {
+        a4->sin_addr.s_addr = htonl(INADDR_ANY);
+    } else if (inet_pton(AF_INET, s, &a4->sin_addr) != 1) {
         return -1;
     }
-    out->sin_port = htons((uint16_t)port);
-    return 0;
+    *outlen = (socklen_t)sizeof(struct sockaddr_in);
+    return AF_INET;
 }
 
 VYB_WEAK int64_t __vyb_net_open(int64_t domain, int64_t t, int64_t protocol) {
@@ -604,9 +624,9 @@ VYB_WEAK int64_t __vyb_net_close(int64_t fd) {
 }
 
 VYB_WEAK int64_t __vyb_net_bind(int64_t fd, const char* ip, int64_t port) {
-    struct sockaddr_in addr;
-    if (vyb_net_fill_addr(ip, port, &addr) != 0) { vyb_net_err = EINVAL; return -1; }
-    int r = bind((int)fd, (struct sockaddr*)&addr, (socklen_t)sizeof(addr));
+    struct sockaddr_storage addr; socklen_t alen;
+    if (vyb_net_fill_addr(ip, port, &addr, &alen) < 0) { vyb_net_err = EINVAL; return -1; }
+    int r = bind((int)fd, (struct sockaddr*)&addr, alen);
     vyb_net_err = (r < 0) ? errno : 0;
     return (int64_t)r;
 }
@@ -618,7 +638,7 @@ VYB_WEAK int64_t __vyb_net_listen(int64_t fd, int64_t backlog) {
 }
 
 VYB_WEAK int64_t __vyb_net_accept(int64_t fd) {
-    struct sockaddr_in addr;
+    struct sockaddr_storage addr;
     socklen_t len = (socklen_t)sizeof(addr);
     int c = accept((int)fd, (struct sockaddr*)&addr, &len);
     vyb_net_err = (c < 0) ? errno : 0;
@@ -626,11 +646,24 @@ VYB_WEAK int64_t __vyb_net_accept(int64_t fd) {
 }
 
 VYB_WEAK int64_t __vyb_net_connect(int64_t fd, const char* ip, int64_t port) {
-    struct sockaddr_in addr;
-    if (vyb_net_fill_addr(ip, port, &addr) != 0) { vyb_net_err = EINVAL; return -1; }
-    int r = connect((int)fd, (struct sockaddr*)&addr, (socklen_t)sizeof(addr));
+    struct sockaddr_storage addr; socklen_t alen;
+    if (vyb_net_fill_addr(ip, port, &addr, &alen) < 0) { vyb_net_err = EINVAL; return -1; }
+    int r = connect((int)fd, (struct sockaddr*)&addr, alen);
     vyb_net_err = (r < 0) ? errno : 0;
     return (int64_t)r;
+}
+
+// Set receive + send timeouts on a socket so a hung peer can't block the
+// process forever; returns 0 on success, -1 on error. A 0/negative ms disables
+// the timeout (back to blocking).
+VYB_WEAK int64_t __vyb_net_set_timeout(int64_t fd, int64_t ms) {
+    struct timeval tv;
+    tv.tv_sec = ms / 1000;
+    tv.tv_usec = (ms % 1000) * 1000;
+    int r1 = setsockopt((int)fd, SOL_SOCKET, SO_RCVTIMEO, &tv, (socklen_t)sizeof(tv));
+    int r2 = setsockopt((int)fd, SOL_SOCKET, SO_SNDTIMEO, &tv, (socklen_t)sizeof(tv));
+    vyb_net_err = (r1 != 0 || r2 != 0) ? errno : 0;
+    return (r1 != 0 || r2 != 0) ? -1 : 0;
 }
 
 VYB_WEAK int64_t __vyb_net_send(int64_t fd, const char* data, int64_t len) {
@@ -660,14 +693,15 @@ VYB_WEAK vyb_file_str __vyb_net_recv(int64_t fd, int64_t maxlen) {
 // The port a listening socket is actually bound to (0 passed to bind ->
 // ephemeral). Returns -1 on error.
 VYB_WEAK int64_t __vyb_net_local_port(int64_t fd) {
-    struct sockaddr_in addr;
+    struct sockaddr_storage addr;
     socklen_t len = (socklen_t)sizeof(addr);
     if (getsockname((int)fd, (struct sockaddr*)&addr, &len) != 0) {
         vyb_net_err = errno;
         return -1;
     }
     vyb_net_err = 0;
-    return (int64_t)ntohs(addr.sin_port);
+    // Port lives at the same offset (2) in both sockaddr_in and sockaddr_in6.
+    return (int64_t)ntohs(((struct sockaddr_in*)&addr)->sin_port);
 }
 
 // Resolve `host` (a hostname or IP literal) to a dotted-quad IPv4 address
@@ -679,14 +713,18 @@ VYB_WEAK vyb_file_str __vyb_net_resolve(const char* host) {
     if (!host || !*host) { vyb_net_err = EINVAL; return r; }
     struct addrinfo hints;
     memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET;
+    hints.ai_family = AF_UNSPEC;   // resolve v4 or v6
     hints.ai_socktype = SOCK_STREAM;
     struct addrinfo* res = NULL;
     int g = getaddrinfo(host, NULL, &hints, &res);
     if (g != 0) { vyb_net_err = (errno ? errno : EINVAL); return r; }
-    struct sockaddr_in* sin = res ? (struct sockaddr_in*)res->ai_addr : NULL;
-    char ip[INET_ADDRSTRLEN];
-    if (sin && inet_ntop(AF_INET, &sin->sin_addr, ip, sizeof(ip))) {
+    char ip[INET6_ADDRSTRLEN] = "";
+    const struct sockaddr* sa = res ? res->ai_addr : NULL;
+    if (sa && sa->sa_family == AF_INET6)
+        inet_ntop(AF_INET6, &((const struct sockaddr_in6*)sa)->sin6_addr, ip, sizeof(ip));
+    else if (sa && sa->sa_family == AF_INET)
+        inet_ntop(AF_INET, &((const struct sockaddr_in*)sa)->sin_addr, ip, sizeof(ip));
+    if (ip[0]) {
         char* copy = strdup(ip);
         if (copy) __vyb_string_register(copy);
         r.ptr = copy;
@@ -717,15 +755,15 @@ VYB_WEAK char* __vyb_net_error_message(void) {
 // recvfrom in `vyb_net_from_*` so the Vyb layer can report where a datagram
 // came from (mirroring the return-code + diagnostic idiom of this module).
 
-static char vyb_net_from_ip[INET_ADDRSTRLEN] = "";
+static char vyb_net_from_ip[INET6_ADDRSTRLEN] = "";
 static int vyb_net_from_port = -1;
 
 VYB_WEAK int64_t __vyb_net_sendto(int64_t fd, const char* data, int64_t len,
                                   const char* ip, int64_t port) {
-    struct sockaddr_in addr;
-    if (vyb_net_fill_addr(ip, port, &addr) != 0) { vyb_net_err = EINVAL; return -1; }
+    struct sockaddr_storage addr; socklen_t alen;
+    if (vyb_net_fill_addr(ip, port, &addr, &alen) < 0) { vyb_net_err = EINVAL; return -1; }
     ssize_t n = sendto((int)fd, data, (size_t)len, 0,
-                       (struct sockaddr*)&addr, (socklen_t)sizeof(addr));
+                       (struct sockaddr*)&addr, alen);
     vyb_net_err = (n < 0) ? errno : 0;
     return (int64_t)n;
 }
@@ -738,7 +776,7 @@ VYB_WEAK vyb_file_str __vyb_net_recvfrom(int64_t fd, int64_t maxlen) {
     if (maxlen <= 0) maxlen = 65536;
     char* buf = (char*)malloc((size_t)maxlen);
     if (!buf) { vyb_net_err = errno; return r; }
-    struct sockaddr_in from;
+    struct sockaddr_storage from;
     socklen_t flen = (socklen_t)sizeof(from);
     ssize_t n = recvfrom((int)fd, buf, (size_t)maxlen, 0,
                          (struct sockaddr*)&from, &flen);
@@ -747,10 +785,18 @@ VYB_WEAK vyb_file_str __vyb_net_recvfrom(int64_t fd, int64_t maxlen) {
     r.ptr = buf;
     r.len = (int64_t)n;
     vyb_net_err = 0;
-    if (inet_ntop(AF_INET, &from.sin_addr, vyb_net_from_ip, INET_ADDRSTRLEN))
-        vyb_net_from_port = (int)ntohs(from.sin_port);
-    else
+    if (from.ss_family == AF_INET6) {
+        if (inet_ntop(AF_INET6, &((struct sockaddr_in6*)&from)->sin6_addr,
+                      vyb_net_from_ip, INET6_ADDRSTRLEN))
+            vyb_net_from_port = (int)ntohs(((struct sockaddr_in6*)&from)->sin6_port);
+        else
+            vyb_net_from_port = -1;
+    } else if (inet_ntop(AF_INET, &((struct sockaddr_in*)&from)->sin_addr,
+                         vyb_net_from_ip, INET6_ADDRSTRLEN)) {
+        vyb_net_from_port = (int)ntohs(((struct sockaddr_in*)&from)->sin_port);
+    } else {
         vyb_net_from_port = -1;
+    }
     return r;
 }
 
@@ -762,6 +808,435 @@ VYB_WEAK char* __vyb_net_last_peer_ip(void) {
 }
 VYB_WEAK int64_t __vyb_net_last_peer_port(void) {
     return (int64_t)vyb_net_from_port;
+}
+
+// ============================================================================
+// UTF-8 (utf8 stdlib module) - codepoint counting / indexing over the byte
+// buffers that Vyb Strings carry. Every offset in and out of these helpers is a
+// byte offset into that { ptr, len } buffer, keeping them consistent with the
+// byte-indexed String model; the browser / text layer uses them to walk real
+// codepoints instead of raw bytes. -1 means "not found / invalid" so callers
+// can tell it apart from the valid offset 0.
+// ============================================================================
+
+// Decode one UTF-8 codepoint starting at byte offset `*off`; advances `*off`
+// past the full sequence. Returns the codepoint, or -1 (leaving `*off` where it
+// was) when the bytes there are not a valid lead/continuation run.
+static int64_t vyb_utf8_decode_at(const unsigned char* s, int64_t len, int64_t* off) {
+    if (!s || *off < 0 || *off >= len) return -1;
+    unsigned char c = s[*off];
+    if (c < 0x80) { int64_t cp = (int64_t)c; *off += 1; return cp; }
+    int64_t cp;
+    int need;
+    if ((c & 0xE0) == 0xC0)      { cp = c & 0x1F; need = 1; }
+    else if ((c & 0xF0) == 0xE0) { cp = c & 0x0F; need = 2; }
+    else if ((c & 0xF8) == 0xF0) { cp = c & 0x07; need = 3; }
+    else return -1;                              // a lone continuation byte
+    if (*off + need >= len) return -1;           // truncated sequence
+    for (int i = 1; i <= need; i++) {
+        unsigned char cc = s[*off + i];
+        if ((cc & 0xC0) != 0x80) return -1;      // bad continuation byte
+        cp = (cp << 6) | (cc & 0x3F);
+    }
+    // Reject overlong encodings and out-of-range / surrogate values (RFC 3629).
+    if (need == 1 && cp < 0x80) return -1;
+    if (need == 2 && cp < 0x800) return -1;
+    if (need == 3 && cp < 0x10000) return -1;
+    if (cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) return -1;
+    *off += need + 1;
+    return cp;
+}
+
+// Number of codepoints in the byte range [s, s+len).
+VYB_WEAK int64_t __vyb_utf8_len(const char* s, int64_t len) {
+    int64_t n = 0, off = 0;
+    while (off < len && vyb_utf8_decode_at((const unsigned char*)s, len, &off) >= 0) n++;
+    return n;
+}
+
+// Byte offset of the cp_index-th codepoint (0-based), or -1 if that codepoint
+// does not exist. A browser can step `utf8_index(s, i)` for i in 0..utf8_len(s).
+VYB_WEAK int64_t __vyb_utf8_index(const char* s, int64_t len, int64_t cp_index) {
+    if (cp_index < 0) return -1;
+    int64_t off = 0, idx = 0;
+    while (off < len) {
+        int64_t start = off;
+        if (vyb_utf8_decode_at((const unsigned char*)s, len, &off) < 0) return -1;
+        if (idx == cp_index) return start;
+        idx++;
+    }
+    return -1;
+}
+
+// The codepoint value carried by the byte at offset `byte_off`, or -1 if that
+// offset is out of range or lands on a continuation byte.
+VYB_WEAK int64_t __vyb_utf8_at(const char* s, int64_t len, int64_t byte_off) {
+    if (!s || byte_off < 0 || byte_off >= len) return -1;
+    return vyb_utf8_decode_at((const unsigned char*)s, len, &byte_off);
+}
+
+// 1 if the byte range is entirely valid UTF-8, 0 otherwise.
+VYB_WEAK int64_t __vyb_utf8_valid(const char* s, int64_t len) {
+    if (!s) return 0;
+    int64_t off = 0;
+    while (off < len) {
+        if (vyb_utf8_decode_at((const unsigned char*)s, len, &off) < 0) return 0;
+    }
+    return 1;
+}
+
+// ============================================================================
+// ENV (env stdlib module) - process environment access. `get` hands back an
+// owned, registry-registered String ("" when the variable is unset); `set` /
+// `unset` return 0 on success or -1 on error.
+// ============================================================================
+
+VYB_WEAK vyb_file_str __vyb_env_get(const char* name) {
+    vyb_file_str r = { NULL, 0 };
+    if (!name) return r;
+    const char* v = getenv(name);
+    if (!v) v = "";
+    size_t vlen = strlen(v);
+    char* buf = (char*)malloc(vlen + 1);
+    if (!buf) return r;
+    memcpy(buf, v, vlen + 1);
+    __vyb_string_register(buf);
+    r.ptr = buf;
+    r.len = (int64_t)vlen;
+    return r;
+}
+
+VYB_WEAK int64_t __vyb_env_set(const char* name, const char* value) {
+    if (!name || !value) return -1;
+    return (setenv(name, value, 1) == 0) ? 0 : -1;
+}
+
+VYB_WEAK int64_t __vyb_env_unset(const char* name) {
+    if (!name) return -1;
+    return (unsetenv(name) == 0) ? 0 : -1;
+}
+
+// ============================================================================
+// RAND (rand stdlib module) - a small xorshift64 pseudo-random generator. `rand`
+// returns an Int in [0, 2^63-1]; `rand_range(lo, hi)` is in [lo, hi). Seeding
+// makes a sequence reproducible, which the tests rely on.
+// ============================================================================
+
+static uint64_t vyb_rand_state = 0;
+
+static uint64_t vyb_rand_next(void) {
+    if (vyb_rand_state == 0) {
+        // Self-seed once from clock + pid + address so separate runs (and
+        // processes) diverge; keep tests deterministic by seeding explicitly.
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        uint64_t seed = (uint64_t)getpid() ^ ((uint64_t)ts.tv_sec << 32) ^
+                        (uint64_t)ts.tv_nsec ^ (uint64_t)(uintptr_t)&vyb_rand_state;
+        vyb_rand_state = seed ? seed : 0x9E3779B97F4A7C15ULL;
+    }
+    uint64_t x = vyb_rand_state;
+    x ^= x >> 12;
+    x ^= x << 25;
+    x ^= x >> 27;
+    vyb_rand_state = x;
+    return x * 0x2545F4914F6CDD1DULL;
+}
+
+VYB_WEAK int64_t __vyb_rand(void) {
+    return (int64_t)(vyb_rand_next() & 0x7FFFFFFFFFFFFFFFULL);
+}
+
+VYB_WEAK int64_t __vyb_rand_range(int64_t lo, int64_t hi) {
+    if (hi <= lo) return lo;
+    uint64_t span = (uint64_t)(hi - lo);
+    return lo + (int64_t)(vyb_rand_next() % span);
+}
+
+VYB_WEAK void __vyb_rand_seed(int64_t seed) {
+    vyb_rand_state = (uint64_t)((seed ^ 0x9E3779B97F4A7C15ULL) | (uint64_t)1);
+}
+
+// ============================================================================
+// PROCESS (process stdlib module) - run an external command through the shell.
+// `exec_run` returns the child's exit code (0..255) or -1 when it could not be
+// launched; `exec_output` captures stdout as an owned String and records the
+// exit status for `exec_status()`. Running through `sh -c` keeps a single
+// prebuilt command string (including simple pipelines/redirection) the FFI can
+// pass; callers supply trusted command lines.
+// ============================================================================
+
+static int vyb_process_last_status = -1;
+
+VYB_WEAK int64_t __vyb_exec_run(const char* cmd) {
+    if (!cmd) return -1;
+    int st = system(cmd);
+    if (st == -1) { vyb_process_last_status = -1; return -1; }
+    if (WIFEXITED(st)) vyb_process_last_status = WEXITSTATUS(st);
+    else if (WIFSIGNALED(st)) vyb_process_last_status = 128 + WTERMSIG(st);
+    else vyb_process_last_status = -1;
+    return (int64_t)vyb_process_last_status;
+}
+
+VYB_WEAK vyb_file_str __vyb_exec_output(const char* cmd) {
+    vyb_file_str r = { NULL, 0 };
+    if (!cmd) { vyb_process_last_status = -1; return r; }
+    FILE* f = popen(cmd, "r");
+    if (!f) { vyb_process_last_status = -1; return r; }
+    size_t cap = 4096, len = 0;
+    char* buf = (char*)malloc(cap);
+    if (!buf) { pclose(f); vyb_process_last_status = -1; return r; }
+    for (;;) {
+        if (len + 4096 + 1 > cap) {
+            size_t nc = cap * 2;
+            char* nb = (char*)realloc(buf, nc);
+            if (!nb) { free(buf); pclose(f); vyb_process_last_status = -1; return r; }
+            buf = nb; cap = nc;
+        }
+        size_t n = fread(buf + len, 1, 4096, f);
+        len += n;
+        if (n < 4096) break;
+    }
+    int st = pclose(f);
+    if (WIFEXITED(st)) vyb_process_last_status = WEXITSTATUS(st);
+    else if (WIFSIGNALED(st)) vyb_process_last_status = 128 + WTERMSIG(st);
+    else vyb_process_last_status = -1;
+    buf[len] = '\0';
+    __vyb_string_register(buf);
+    r.ptr = buf;
+    r.len = (int64_t)len;
+    return r;
+}
+
+VYB_WEAK int64_t __vyb_exec_status(void) {
+    return (int64_t)vyb_process_last_status;
+}
+
+// ============================================================================
+// REGEX (regex stdlib module) - POSIX extended regular expressions over Vyb
+// byte strings. Offsets / ranges returned by find + capture are byte offsets,
+// matching the byte-indexed String model. An invalid pattern or a failure to
+// compile simply yields no-match / "" / "unchanged" rather than raising, so the
+// browser can treat regex as best-effort when scanning HTML/URL text.
+// ============================================================================
+
+// NUL-terminated copy of a byte range (so regcomp/regexec see a C string).
+static char* vyb_strndup(const char* s, int64_t len) {
+    if (len < 0) len = 0;
+    char* out = (char*)malloc((size_t)len + 1);
+    if (!out) return NULL;
+    memcpy(out, s, (size_t)len);
+    out[len] = '\0';
+    return out;
+}
+
+// Find the first match of `pat` within `str`'s first `slen` bytes starting at
+// byte `pos`. On a match, fills `*out` (rm_so/rm_eo are byte offsets into the
+// NUL-terminated copy) and returns 1; otherwise returns 0. REG_STARTEND bounds
+// the search to [pos, slen), and REG_NOTBOL stops `^` from matching mid-string.
+static int vyb_regex_find_in(const char* pat, const char* str, int64_t slen,
+                             int64_t pos, regmatch_t* out) {
+    regex_t re;
+    if (regcomp(&re, pat, REG_EXTENDED) != 0) return 0;
+    regmatch_t rm[1];
+    rm[0].rm_so = (regoff_t)pos;
+    rm[0].rm_eo = (regoff_t)slen;
+    int flags = REG_STARTEND | ((pos > 0) ? REG_NOTBOL : 0);
+    int rc = regexec(&re, str, 1, rm, flags);
+    regfree(&re);
+    if (rc != 0) return 0;
+    if (out) *out = rm[0];
+    return 1;
+}
+
+// 1 if `pat` matches anywhere in `s`, else 0.
+VYB_WEAK int64_t __vyb_regex_match(const char* pat, int64_t plen, const char* s, int64_t slen) {
+    char* p = vyb_strndup(pat, plen);
+    char* str = vyb_strndup(s, slen);
+    if (!p || !str) { free(p); free(str); return 0; }
+    int64_t rc = vyb_regex_find_in(p, str, slen, 0, NULL);
+    free(p); free(str);
+    return rc;
+}
+
+// Byte offset of the first match of `pat` in `s`, or -1.
+VYB_WEAK int64_t __vyb_regex_find(const char* pat, int64_t plen, const char* s, int64_t slen) {
+    char* p = vyb_strndup(pat, plen);
+    char* str = vyb_strndup(s, slen);
+    if (!p || !str) { free(p); free(str); return -1; }
+    regmatch_t rm;
+    int ok = vyb_regex_find_in(p, str, slen, 0, &rm);
+    free(p); free(str);
+    return ok ? (int64_t)rm.rm_so : -1;
+}
+
+// The whole-match string (group 0) as an owned String; "" when there is none.
+VYB_WEAK vyb_file_str __vyb_regex_capture_match(const char* pat, int64_t plen,
+                                                const char* s, int64_t slen) {
+    vyb_file_str r = { NULL, 0 };
+    char* p = vyb_strndup(pat, plen);
+    char* str = vyb_strndup(s, slen);
+    if (!p || !str) { free(p); free(str); return r; }
+    regex_t re;
+    if (regcomp(&re, p, REG_EXTENDED) != 0) { free(p); free(str); return r; }
+    regmatch_t rm[2];
+    rm[0].rm_so = 0; rm[0].rm_eo = (regoff_t)slen;
+    int rc = regexec(&re, str, 2, rm, REG_STARTEND);
+    regfree(&re);
+    free(p);
+    if (rc != 0 || rm[0].rm_so < 0) { free(str); return r; }
+    regoff_t so = rm[0].rm_so, eo = rm[0].rm_eo;
+    size_t n = (size_t)(eo - so);
+    char* buf = (char*)malloc(n + 1);
+    if (buf) {
+        memcpy(buf, str + so, n);
+        buf[n] = '\0';
+        __vyb_string_register(buf);
+        r.ptr = buf;
+        r.len = (int64_t)n;
+    }
+    free(str);
+    return r;
+}
+
+// The first capture group's string (group 1) as an owned String; "" when the
+// pattern has no group or no match.
+VYB_WEAK vyb_file_str __vyb_regex_capture(const char* pat, int64_t plen,
+                                          const char* s, int64_t slen) {
+    vyb_file_str r = { NULL, 0 };
+    char* p = vyb_strndup(pat, plen);
+    char* str = vyb_strndup(s, slen);
+    if (!p || !str) { free(p); free(str); return r; }
+    regex_t re;
+    if (regcomp(&re, p, REG_EXTENDED) != 0) { free(p); free(str); return r; }
+    regmatch_t rm[2];
+    rm[0].rm_so = 0; rm[0].rm_eo = (regoff_t)slen;
+    int rc = regexec(&re, str, 2, rm, REG_STARTEND);
+    regfree(&re);
+    free(p);
+    if (rc != 0 || rm[1].rm_so < 0) { free(str); return r; }
+    regoff_t so = rm[1].rm_so, eo = rm[1].rm_eo;
+    size_t n = (size_t)(eo - so);
+    char* buf = (char*)malloc(n + 1);
+    if (buf) {
+        memcpy(buf, str + so, n);
+        buf[n] = '\0';
+        __vyb_string_register(buf);
+        r.ptr = buf;
+        r.len = (int64_t)n;
+    }
+    free(str);
+    return r;
+}
+
+// A tiny growable buffer builder shared by the replace helpers so a replaced
+// String can be assembled without a fixed-size guess.
+typedef struct { char* buf; size_t len, cap; } vyb_grow;
+
+static int vyb_grow_append(vyb_grow* g, const char* data, size_t n) {
+    if (g->len + n + 1 > g->cap) {
+        size_t nc = g->cap ? g->cap * 2 : 64;
+        while (g->len + n + 1 > nc) nc *= 2;
+        char* nb = (char*)realloc(g->buf, nc);
+        if (!nb) return -1;
+        g->buf = nb;
+        g->cap = nc;
+    }
+    memcpy(g->buf + g->len, data, n);
+    g->len += n;
+    g->buf[g->len] = '\0';
+    return 0;
+}
+
+// Replace the first match of `pat` in `s` with `repl`; an owned String, or the
+// original when there is no match / no valid regex.
+VYB_WEAK vyb_file_str __vyb_regex_replace(const char* pat, int64_t plen,
+                                          const char* s, int64_t slen,
+                                          const char* repl, int64_t rlen) {
+    vyb_file_str r = { NULL, 0 };
+    char* p = vyb_strndup(pat, plen);
+    char* str = vyb_strndup(s, slen);
+    char* rp = vyb_strndup(repl, rlen);
+    if (!p || !str || !rp) { free(p); free(str); free(rp); return r; }
+    regmatch_t rm;
+    size_t outlen = (size_t)slen, so = 0, eo = 0;
+    int replaced = (vyb_regex_find_in(p, str, slen, 0, &rm) && rm.rm_so >= 0);
+    char* out = NULL;
+    if (replaced) {
+        so = (size_t)rm.rm_so; eo = (size_t)rm.rm_eo;
+        outlen = so + (size_t)rlen + (size_t)(slen - eo);
+        out = (char*)malloc(outlen + 1);
+        if (!out) { free(p); free(str); free(rp); return r; }
+        size_t k = 0;
+        memcpy(out + k, str, so); k += so;
+        memcpy(out + k, rp, (size_t)rlen); k += (size_t)rlen;
+        memcpy(out + k, str + eo, (size_t)(slen - eo)); k += (size_t)(slen - eo);
+        out[k] = '\0';
+        __vyb_string_register(out);
+    }
+    free(p); free(str); free(rp);
+    if (!replaced) {
+        // No match: hand back the original byte range as an owned copy.
+        char* buf = vyb_strndup(s, slen);
+        if (buf) {
+            __vyb_string_register(buf);
+            r.ptr = buf;
+            r.len = slen;
+        }
+        return r;
+    }
+    r.ptr = out;
+    r.len = (int64_t)outlen;
+    return r;
+}
+
+// Replace every match of `pat` in `s` with `repl`; an owned String assembled
+// with a growable buffer. Zero-length matches advance by one byte to avoid an
+// infinite loop, and a pattern that never matches yields the original bytes.
+VYB_WEAK vyb_file_str __vyb_regex_replace_all(const char* pat, int64_t plen,
+                                              const char* s, int64_t slen,
+                                              const char* repl, int64_t rlen) {
+    vyb_file_str r = { NULL, 0 };
+    char* p = vyb_strndup(pat, plen);
+    char* str = vyb_strndup(s, slen);
+    char* rp = vyb_strndup(repl, rlen);
+    if (!p || !str || !rp) { free(p); free(str); free(rp); return r; }
+    vyb_grow g = { NULL, 0, 0 };
+    int64_t pos = 0;
+    regmatch_t rm;
+    while (pos <= slen) {
+        if (!vyb_regex_find_in(p, str, slen, pos, &rm)) {
+            if (vyb_grow_append(&g, str + pos, (size_t)(slen - pos)) != 0) goto oom;
+            break;
+        }
+        if (pos < rm.rm_so) {
+            if (vyb_grow_append(&g, str + pos, (size_t)(rm.rm_so - pos)) != 0) goto oom;
+        }
+        if (vyb_grow_append(&g, rp, (size_t)rlen) != 0) goto oom;
+        int64_t next = (rm.rm_eo > rm.rm_so) ? rm.rm_eo : (rm.rm_so + 1);
+        pos = next;
+    }
+    free(p); free(str); free(rp);
+    if (!g.buf) goto hand_back_original;
+    __vyb_string_register(g.buf);
+    r.ptr = g.buf;
+    r.len = (int64_t)g.len;
+    return r;
+
+oom:
+    free(g.buf);
+    free(p); free(str); free(rp);
+    return r;
+
+hand_back_original:
+    {
+        char* buf = vyb_strndup(s, slen);
+        if (buf) {
+            __vyb_string_register(buf);
+            r.ptr = buf;
+            r.len = slen;
+        }
+    }
+    return r;
 }
 
 #ifdef VYB_HAVE_OPENSSL
@@ -2590,9 +3065,9 @@ VYB_WEAK int64_t __vyb_async_send(int64_t fd, const char* data, int64_t len) {
 // refused. Returns 0 on success, -1 on failure (see socket_error_code()).
 VYB_WEAK int64_t __vyb_async_connect(int64_t fd, const char* ip, int64_t port) {
     vyb_net_set_nonblock((int)fd);
-    struct sockaddr_in addr;
-    if (vyb_net_fill_addr(ip, port, &addr) != 0) { vyb_net_err = EINVAL; return -1; }
-    int r = connect((int)fd, (struct sockaddr*)&addr, (socklen_t)sizeof(addr));
+    struct sockaddr_storage addr; socklen_t alen;
+    if (vyb_net_fill_addr(ip, port, &addr, &alen) < 0) { vyb_net_err = EINVAL; return -1; }
+    int r = connect((int)fd, (struct sockaddr*)&addr, alen);
     if (r == 0) { vyb_net_err = 0; return 0; }
     if (errno == EINPROGRESS) {
         if (__vyb_async_io_wait(fd, 1) < 0) { vyb_net_err = EIO; return -1; }
@@ -2614,12 +3089,12 @@ VYB_WEAK int64_t __vyb_async_connect(int64_t fd, const char* ip, int64_t port) {
 VYB_WEAK int64_t __vyb_async_sendto(int64_t fd, const char* data, int64_t len,
                                     const char* ip, int64_t port) {
     if (len < 0) len = 0;
-    struct sockaddr_in addr;
-    if (vyb_net_fill_addr(ip, port, &addr) != 0) { vyb_net_err = EINVAL; return -1; }
+    struct sockaddr_storage addr; socklen_t alen;
+    if (vyb_net_fill_addr(ip, port, &addr, &alen) < 0) { vyb_net_err = EINVAL; return -1; }
     vyb_net_set_nonblock((int)fd);
     for (;;) {
         ssize_t n = sendto((int)fd, data, (size_t)len, 0,
-                           (struct sockaddr*)&addr, (socklen_t)sizeof(addr));
+                           (struct sockaddr*)&addr, alen);
         if (n >= 0) { vyb_net_err = 0; return (int64_t)n; }
         if (errno == EINTR) continue;
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -2640,7 +3115,7 @@ VYB_WEAK vyb_file_str __vyb_async_recvfrom(int64_t fd, int64_t maxlen) {
     char* buf = (char*)malloc((size_t)maxlen);
     if (!buf) { vyb_net_err = errno; return r; }
     for (;;) {
-        struct sockaddr_in from;
+        struct sockaddr_storage from;
         socklen_t flen = (socklen_t)sizeof(from);
         ssize_t n = recvfrom((int)fd, buf, (size_t)maxlen, 0,
                              (struct sockaddr*)&from, &flen);
@@ -2649,10 +3124,18 @@ VYB_WEAK vyb_file_str __vyb_async_recvfrom(int64_t fd, int64_t maxlen) {
             r.ptr = buf;
             r.len = (int64_t)n;
             vyb_net_err = 0;
-            if (inet_ntop(AF_INET, &from.sin_addr, vyb_net_from_ip, INET_ADDRSTRLEN))
-                vyb_net_from_port = (int)ntohs(from.sin_port);
-            else
+            if (from.ss_family == AF_INET6) {
+                if (inet_ntop(AF_INET6, &((struct sockaddr_in6*)&from)->sin6_addr,
+                              vyb_net_from_ip, INET6_ADDRSTRLEN))
+                    vyb_net_from_port = (int)ntohs(((struct sockaddr_in6*)&from)->sin6_port);
+                else
+                    vyb_net_from_port = -1;
+            } else if (inet_ntop(AF_INET, &((struct sockaddr_in*)&from)->sin_addr,
+                                 vyb_net_from_ip, INET6_ADDRSTRLEN)) {
+                vyb_net_from_port = (int)ntohs(((struct sockaddr_in*)&from)->sin_port);
+            } else {
                 vyb_net_from_port = -1;
+            }
             return r;
         }
         if (errno == EINTR) continue;

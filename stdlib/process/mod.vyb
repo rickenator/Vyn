@@ -1,0 +1,23 @@
+# process - run external commands.
+#
+# Thin wrappers over the runtime's `__vyb_exec_*` functions in
+# `runtime/vyb_runtime.c`. A full command line (with shell metacharacters,
+# pipelines, and redirection) is passed through `sh -c`, so callers supply
+# trusted command strings. `exec_run` returns the child's exit code (0..255) or
+# -1 if it could not be launched; `exec_output` captures stdout as a String and
+# records the exit status for `exec_status`.
+
+share(all)
+exec_run(cmd<String>)<Int> -> {
+    return vyb_exec_run(cmd)
+}
+
+share(all)
+exec_output(cmd<String>)<String> -> {
+    return vyb_exec_output(cmd)
+}
+
+share(all)
+exec_status()<Int> -> {
+    return vyb_exec_status()
+}

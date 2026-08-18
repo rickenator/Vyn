@@ -1,0 +1,26 @@
+// @test: process stdlib module - run commands and capture output
+// @description: deterministic exit codes plus stdout capture via sh -c.
+// @category: process, stdlib
+// @expect: pass
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import process::{exec_run, exec_output, exec_status}
+
+main()<Int> -> {
+    // Exit codes flow through directly.
+    if (exec_run("true") != 0) { return 1 }
+    if (exec_run("false") != 1) { return 2 }
+    if (exec_run("exit 7") != 7) { return 3 }
+
+    // stdout capture includes everything the child printed.
+    out<String> = exec_output("printf hello")
+    if (out != "hello") { return 4 }
+
+    // exec_output records its child's exit status.
+    if (exec_output("false") != "") { return 5 }
+    if (exec_status() != 1) { return 6 }
+
+    println("process ok")
+    return 0
+}

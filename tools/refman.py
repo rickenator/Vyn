@@ -43,6 +43,7 @@ GUIDE_API_END = "<!-- refman:api-index end -->"
 GUIDE_MODULE_ORDER = [
     "core", "error", "io", "term", "time", "collections", "channels", "threads",
     "tasks", "asyncs", "agents", "network", "tls", "http", "https", "prelude",
+    "utf8", "env", "rand", "process", "regex",
 ]
 GUIDE_API_AREA = {
     "core": "Contracts & math", "error": "Domain errors", "io": "Files",
@@ -52,6 +53,8 @@ GUIDE_API_AREA = {
     "asyncs": "Async executor", "agents": "Message-passing units",
     "network": "Sockets/TCP/UDP", "tls": "TLS", "http": "HTTP",
     "https": "HTTPS client", "prelude": "Auto-imported facade",
+    "utf8": "UTF-8 codepoints", "env": "Environment",
+    "rand": "Pseudo-random", "process": "External commands", "regex": "Regex",
 }
 GUIDE_API_CROSS = {
     "core": "[aspects & binds](aspects.md)", "io": "[types](types.md)",

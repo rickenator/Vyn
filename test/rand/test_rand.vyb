@@ -1,0 +1,33 @@
+// @test: rand stdlib module - seeded reproducibility and ranges
+// @description: deterministic after seeding; range checks across many draws.
+// @category: rand, stdlib
+// @expect: pass
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import rand
+
+main()<Int> -> {
+    // Same seed reproduces the same sequence in-process.
+    rand_seed(42)
+    a1<Int> = rand()
+    rand_seed(42)
+    a2<Int> = rand()
+    if (a1 != a2) { return 1 }
+    if (a1 < 0) { return 2 }
+
+    // rand_range stays within [lo, hi).
+    rand_seed(7)
+    i<Int> = 0
+    while (i < 200) {
+        v<Int> = rand_range(5, 10)
+        if (v < 5 || v >= 10) { return 3 }
+        i = i + 1
+    }
+
+    // A degenerate/empty range just yields lo.
+    if (rand_range(9, 9) != 9) { return 4 }
+
+    println("rand ok")
+    return 0
+}

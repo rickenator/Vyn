@@ -124,6 +124,38 @@ extern "C" {
     vyb_file_str __vyb_net_recvfrom(int64_t fd, int64_t maxlen);
     const char* __vyb_net_last_peer_ip(void);
     int64_t __vyb_net_last_peer_port(void);
+    int64_t __vyb_net_set_timeout(int64_t fd, int64_t ms);
+
+    // UTF-8 codepoint helpers (utf8 stdlib module)
+    int64_t __vyb_utf8_len(const char* s, int64_t len);
+    int64_t __vyb_utf8_index(const char* s, int64_t len, int64_t cp_index);
+    int64_t __vyb_utf8_at(const char* s, int64_t len, int64_t byte_off);
+    int64_t __vyb_utf8_valid(const char* s, int64_t len);
+
+    // Environment helpers (env stdlib module)
+    vyb_file_str __vyb_env_get(const char* name);
+    int64_t __vyb_env_set(const char* name, const char* value);
+    int64_t __vyb_env_unset(const char* name);
+
+    // Pseudo-random helpers (rand stdlib module)
+    int64_t __vyb_rand(void);
+    int64_t __vyb_rand_range(int64_t lo, int64_t hi);
+    void    __vyb_rand_seed(int64_t seed);
+
+    // Process helpers (process stdlib module)
+    int64_t __vyb_exec_run(const char* cmd);
+    vyb_file_str __vyb_exec_output(const char* cmd);
+    int64_t __vyb_exec_status(void);
+
+    // Regex helpers (regex stdlib module)
+    int64_t __vyb_regex_match(const char* pat, int64_t plen, const char* s, int64_t slen);
+    int64_t __vyb_regex_find(const char* pat, int64_t plen, const char* s, int64_t slen);
+    vyb_file_str __vyb_regex_capture_match(const char* pat, int64_t plen, const char* s, int64_t slen);
+    vyb_file_str __vyb_regex_capture(const char* pat, int64_t plen, const char* s, int64_t slen);
+    vyb_file_str __vyb_regex_replace(const char* pat, int64_t plen, const char* s, int64_t slen,
+                                     const char* repl, int64_t rlen);
+    vyb_file_str __vyb_regex_replace_all(const char* pat, int64_t plen, const char* s, int64_t slen,
+                                         const char* repl, int64_t rlen);
 
     // Terminal + stdin runtime helpers (term stdlib module)
     vyb_file_str __vyb_stdin_read(int64_t maxlen);
@@ -1403,6 +1435,57 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_last_peer_ip), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_net_last_peer_port")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_last_peer_port), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_net_set_timeout")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_set_timeout), llvm::JITSymbolFlags::Exported);
+
+        // UTF-8 codepoint helpers (utf8 stdlib module)
+        runtimeSymbols[mangle("__vyb_utf8_len")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_utf8_len), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_utf8_index")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_utf8_index), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_utf8_at")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_utf8_at), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_utf8_valid")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_utf8_valid), llvm::JITSymbolFlags::Exported);
+
+        // Environment helpers (env stdlib module)
+        runtimeSymbols[mangle("__vyb_env_get")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_env_get), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_env_set")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_env_set), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_env_unset")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_env_unset), llvm::JITSymbolFlags::Exported);
+
+        // Pseudo-random helpers (rand stdlib module)
+        runtimeSymbols[mangle("__vyb_rand")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_rand), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_rand_range")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_rand_range), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_rand_seed")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_rand_seed), llvm::JITSymbolFlags::Exported);
+
+        // Process helpers (process stdlib module)
+        runtimeSymbols[mangle("__vyb_exec_run")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_exec_run), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_exec_output")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_exec_output), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_exec_status")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_exec_status), llvm::JITSymbolFlags::Exported);
+
+        // Regex helpers (regex stdlib module)
+        runtimeSymbols[mangle("__vyb_regex_match")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_regex_match), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_regex_find")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_regex_find), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_regex_capture_match")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_regex_capture_match), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_regex_capture")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_regex_capture), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_regex_replace")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_regex_replace), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_regex_replace_all")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_regex_replace_all), llvm::JITSymbolFlags::Exported);
+
 #ifdef VYB_HAVE_OPENSSL
         // TLS runtime shims (tls stdlib module). Only present in OpenSSL builds;
         // a no-OpenSSL build simply has no tls module symbols to register.

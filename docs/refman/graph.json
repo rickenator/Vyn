@@ -1,21 +1,26 @@
 {
-  "git_rev": "b916d8dbd3231f006d54456d2f6a09848d41202c",
+  "git_rev": "22965cb0ac900a5176eaf440fdc4f2ff11a89461",
   "modules": [
     "agents",
     "asyncs",
     "channels",
     "collections",
     "core",
+    "env",
     "http",
     "https",
     "io",
     "network",
     "prelude",
+    "process",
+    "rand",
+    "regex",
     "tasks",
     "term",
     "threads",
     "time",
-    "tls"
+    "tls",
+    "utf8"
   ],
   "nodes": {
     "modules": [
@@ -69,6 +74,15 @@
         "fan_out": 0
       },
       {
+        "name": "env",
+        "files": [
+          "stdlib/env/mod.vyb"
+        ],
+        "exported": 3,
+        "fan_in": 0,
+        "fan_out": 0
+      },
+      {
         "name": "http",
         "files": [
           "stdlib/http/mod.vyb"
@@ -100,7 +114,7 @@
         "files": [
           "stdlib/network/mod.vyb"
         ],
-        "exported": 37,
+        "exported": 38,
         "fan_in": 2,
         "fan_out": 0
       },
@@ -112,6 +126,33 @@
         "exported": 0,
         "fan_in": 0,
         "fan_out": 1
+      },
+      {
+        "name": "process",
+        "files": [
+          "stdlib/process/mod.vyb"
+        ],
+        "exported": 3,
+        "fan_in": 0,
+        "fan_out": 0
+      },
+      {
+        "name": "rand",
+        "files": [
+          "stdlib/rand/mod.vyb"
+        ],
+        "exported": 3,
+        "fan_in": 0,
+        "fan_out": 0
+      },
+      {
+        "name": "regex",
+        "files": [
+          "stdlib/regex/mod.vyb"
+        ],
+        "exported": 6,
+        "fan_in": 0,
+        "fan_out": 0
       },
       {
         "name": "tasks",
@@ -156,6 +197,15 @@
         ],
         "exported": 18,
         "fan_in": 1,
+        "fan_out": 0
+      },
+      {
+        "name": "utf8",
+        "files": [
+          "stdlib/utf8/mod.vyb"
+        ],
+        "exported": 4,
+        "fan_in": 0,
         "fan_out": 0
       }
     ],
@@ -316,6 +366,15 @@
         ]
       },
       {
+        "path": "stdlib/env/mod.vyb",
+        "module": "env",
+        "symbols": [
+          "env_get",
+          "env_set",
+          "env_unset"
+        ]
+      },
+      {
         "path": "stdlib/http/mod.vyb",
         "module": "http",
         "symbols": [
@@ -390,6 +449,7 @@
           "socket_listen",
           "socket_accept",
           "socket_connect",
+          "socket_set_timeout",
           "socket_send",
           "socket_recv",
           "socket_local_port",
@@ -426,6 +486,36 @@
         "path": "stdlib/prelude.vyb",
         "module": "prelude",
         "symbols": []
+      },
+      {
+        "path": "stdlib/process/mod.vyb",
+        "module": "process",
+        "symbols": [
+          "exec_run",
+          "exec_output",
+          "exec_status"
+        ]
+      },
+      {
+        "path": "stdlib/rand/mod.vyb",
+        "module": "rand",
+        "symbols": [
+          "rand",
+          "rand_range",
+          "rand_seed"
+        ]
+      },
+      {
+        "path": "stdlib/regex/mod.vyb",
+        "module": "regex",
+        "symbols": [
+          "regex_match",
+          "regex_find",
+          "regex_capture_match",
+          "regex_capture",
+          "regex_replace",
+          "regex_replace_all"
+        ]
       },
       {
         "path": "stdlib/tasks/mod.vyb",
@@ -516,6 +606,16 @@
           "tls_close",
           "tls_error_code",
           "tls_error_message"
+        ]
+      },
+      {
+        "path": "stdlib/utf8/mod.vyb",
+        "module": "utf8",
+        "symbols": [
+          "utf8_len",
+          "utf8_index",
+          "utf8_at",
+          "utf8_valid"
         ]
       }
     ],
@@ -1430,6 +1530,33 @@
         "fan_in": 0
       },
       {
+        "name": "env_get",
+        "module": "env",
+        "file": "stdlib/env/mod.vyb",
+        "kind": "fn",
+        "signature": "env_get(name<String>)<String> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "env_set",
+        "module": "env",
+        "file": "stdlib/env/mod.vyb",
+        "kind": "fn",
+        "signature": "env_set(name<String>, value<String>)<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "env_unset",
+        "module": "env",
+        "file": "stdlib/env/mod.vyb",
+        "kind": "fn",
+        "signature": "env_unset(name<String>)<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
         "name": "HttpResponse",
         "module": "http",
         "file": "stdlib/http/mod.vyb",
@@ -2096,6 +2223,15 @@
         "fan_in": 1
       },
       {
+        "name": "socket_set_timeout",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "socket_set_timeout(fd<Int>, ms<Int>)<Int> ->",
+        "summary": "Put a read + write timeout on a socket so a hung peer can't block the process",
+        "fan_in": 0
+      },
+      {
         "name": "tcp_accept",
         "module": "network",
         "file": "stdlib/network/mod.vyb",
@@ -2174,6 +2310,114 @@
         "kind": "fn",
         "signature": "udp_send_to(s<UdpSocket>, ip<String>, port<Int>, data<String>)<Int> ->",
         "summary": "Send one datagram to `ip:port` (the socket need not be connected). Returns the",
+        "fan_in": 0
+      },
+      {
+        "name": "exec_output",
+        "module": "process",
+        "file": "stdlib/process/mod.vyb",
+        "kind": "fn",
+        "signature": "exec_output(cmd<String>)<String> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "exec_run",
+        "module": "process",
+        "file": "stdlib/process/mod.vyb",
+        "kind": "fn",
+        "signature": "exec_run(cmd<String>)<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "exec_status",
+        "module": "process",
+        "file": "stdlib/process/mod.vyb",
+        "kind": "fn",
+        "signature": "exec_status()<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "rand",
+        "module": "rand",
+        "file": "stdlib/rand/mod.vyb",
+        "kind": "fn",
+        "signature": "rand()<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "rand_range",
+        "module": "rand",
+        "file": "stdlib/rand/mod.vyb",
+        "kind": "fn",
+        "signature": "rand_range(lo<Int>, hi<Int>)<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "rand_seed",
+        "module": "rand",
+        "file": "stdlib/rand/mod.vyb",
+        "kind": "fn",
+        "signature": "rand_seed(seed<Int>)<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "regex_capture",
+        "module": "regex",
+        "file": "stdlib/regex/mod.vyb",
+        "kind": "fn",
+        "signature": "regex_capture(pattern<String>, s<String>)<String> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "regex_capture_match",
+        "module": "regex",
+        "file": "stdlib/regex/mod.vyb",
+        "kind": "fn",
+        "signature": "regex_capture_match(pattern<String>, s<String>)<String> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "regex_find",
+        "module": "regex",
+        "file": "stdlib/regex/mod.vyb",
+        "kind": "fn",
+        "signature": "regex_find(pattern<String>, s<String>)<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "regex_match",
+        "module": "regex",
+        "file": "stdlib/regex/mod.vyb",
+        "kind": "fn",
+        "signature": "regex_match(pattern<String>, s<String>)<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "regex_replace",
+        "module": "regex",
+        "file": "stdlib/regex/mod.vyb",
+        "kind": "fn",
+        "signature": "regex_replace(pattern<String>, s<String>, replacement<String>)<String> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "regex_replace_all",
+        "module": "regex",
+        "file": "stdlib/regex/mod.vyb",
+        "kind": "fn",
+        "signature": "regex_replace_all(pattern<String>, s<String>, replacement<String>)<String> ->",
+        "summary": "",
         "fan_in": 0
       },
       {
@@ -2724,6 +2968,42 @@
         "signature": "tls_write(s<TlsStream>, data<String>)<Int> ->",
         "summary": "Send the whole of `data` on the stream. Returns bytes sent (or -1).",
         "fan_in": 1
+      },
+      {
+        "name": "utf8_at",
+        "module": "utf8",
+        "file": "stdlib/utf8/mod.vyb",
+        "kind": "fn",
+        "signature": "utf8_at(s<String>, byte_off<Int>)<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "utf8_index",
+        "module": "utf8",
+        "file": "stdlib/utf8/mod.vyb",
+        "kind": "fn",
+        "signature": "utf8_index(s<String>, cp_index<Int>)<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "utf8_len",
+        "module": "utf8",
+        "file": "stdlib/utf8/mod.vyb",
+        "kind": "fn",
+        "signature": "utf8_len(s<String>)<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "utf8_valid",
+        "module": "utf8",
+        "file": "stdlib/utf8/mod.vyb",
+        "kind": "fn",
+        "signature": "utf8_valid(s<String>)<Int> ->",
+        "summary": "",
+        "fan_in": 0
       }
     ]
   },
@@ -4704,6 +4984,24 @@
     },
     {
       "type": "runtimeRef",
+      "from_module": "env",
+      "from_symbol": "env_get",
+      "to_symbol": "vyb_env_get"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "env",
+      "from_symbol": "env_set",
+      "to_symbol": "vyb_env_set"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "env",
+      "from_symbol": "env_unset",
+      "to_symbol": "vyb_env_unset"
+    },
+    {
+      "type": "runtimeRef",
       "from_module": "io",
       "from_symbol": "close",
       "to_symbol": "vyb_io_close"
@@ -4849,6 +5147,12 @@
     {
       "type": "runtimeRef",
       "from_module": "network",
+      "from_symbol": "socket_set_timeout",
+      "to_symbol": "vyb_net_set_timeout"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "network",
       "from_symbol": "tcp_accept",
       "to_symbol": "vyb_net_accept"
     },
@@ -4953,6 +5257,78 @@
       "from_module": "network",
       "from_symbol": "udp_send_to",
       "to_symbol": "vyb_net_sendto"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "process",
+      "from_symbol": "exec_output",
+      "to_symbol": "vyb_exec_output"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "process",
+      "from_symbol": "exec_run",
+      "to_symbol": "vyb_exec_run"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "process",
+      "from_symbol": "exec_status",
+      "to_symbol": "vyb_exec_status"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "rand",
+      "from_symbol": "rand",
+      "to_symbol": "vyb_rand"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "rand",
+      "from_symbol": "rand_range",
+      "to_symbol": "vyb_rand_range"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "rand",
+      "from_symbol": "rand_seed",
+      "to_symbol": "vyb_rand_seed"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "regex",
+      "from_symbol": "regex_capture",
+      "to_symbol": "vyb_regex_capture"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "regex",
+      "from_symbol": "regex_capture_match",
+      "to_symbol": "vyb_regex_capture_match"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "regex",
+      "from_symbol": "regex_find",
+      "to_symbol": "vyb_regex_find"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "regex",
+      "from_symbol": "regex_match",
+      "to_symbol": "vyb_regex_match"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "regex",
+      "from_symbol": "regex_replace",
+      "to_symbol": "vyb_regex_replace"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "regex",
+      "from_symbol": "regex_replace_all",
+      "to_symbol": "vyb_regex_replace_all"
     },
     {
       "type": "runtimeRef",
@@ -5277,6 +5653,30 @@
       "from_module": "tls",
       "from_symbol": "tls_write",
       "to_symbol": "vyb_tls_write"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "utf8",
+      "from_symbol": "utf8_at",
+      "to_symbol": "vyb_utf8_at"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "utf8",
+      "from_symbol": "utf8_index",
+      "to_symbol": "vyb_utf8_index"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "utf8",
+      "from_symbol": "utf8_len",
+      "to_symbol": "vyb_utf8_len"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "utf8",
+      "from_symbol": "utf8_valid",
+      "to_symbol": "vyb_utf8_valid"
     },
     {
       "type": "usesType",

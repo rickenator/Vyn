@@ -2907,6 +2907,179 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         }
     }
 
+    // Handle UTF-8 / env / rand / process / regex intrinsics (the utf8, env,
+    // rand, process, regex stdlib modules) plus the socket-timeout helper added
+    // to the network module. Same FFI shape as the terminal block: String args
+    // cross as { ptr, len } structs and their data pointer (and, where the helper
+    // cares about the exact bytes, the length) is extracted; the string-returning
+    // helpers hand back an owned, registry-registered buffer the Vyb String
+    // adopts, so reference-counted cleanup releases it.
+    if (identCallee) {
+        const std::string& fname = identCallee->name;
+        std::string rtName;
+        if (fname == "vyb_utf8_len" || fname == "vyb_utf8_at" ||
+            fname == "vyb_utf8_index" || fname == "vyb_utf8_valid") rtName = "__vyb_" + fname.substr(4);
+        else if (fname == "vyb_net_set_timeout") rtName = "__vyb_net_set_timeout";
+        else if (fname == "vyb_env_get") rtName = "__vyb_env_get";
+        else if (fname == "vyb_env_set") rtName = "__vyb_env_set";
+        else if (fname == "vyb_env_unset") rtName = "__vyb_env_unset";
+        else if (fname == "vyb_rand") rtName = "__vyb_rand";
+        else if (fname == "vyb_rand_range") rtName = "__vyb_rand_range";
+        else if (fname == "vyb_rand_seed") rtName = "__vyb_rand_seed";
+        else if (fname == "vyb_exec_run") rtName = "__vyb_exec_run";
+        else if (fname == "vyb_exec_output") rtName = "__vyb_exec_output";
+        else if (fname == "vyb_exec_status") rtName = "__vyb_exec_status";
+        else if (fname == "vyb_regex_match" || fname == "vyb_regex_find" ||
+                 fname == "vyb_regex_capture_match" || fname == "vyb_regex_capture" ||
+                 fname == "vyb_regex_replace" || fname == "vyb_regex_replace_all") rtName = "__vyb_" + fname.substr(4);
+        if (!rtName.empty()) {
+            auto getXFn = [&](llvm::FunctionType* ft) -> llvm::Function* {
+                llvm::Function* f = module->getFunction(rtName);
+                if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, rtName, module.get());
+                return f;
+            };
+            auto toI64 = [&](llvm::Value* v) -> llvm::Value* {
+                if (!v) return v;
+                if (v->getType()->isIntegerTy(64)) return v;
+                if (v->getType()->isIntegerTy())
+                    return builder->CreateSExt(v, int64Type, "x.toi64");
+                return v;
+            };
+            auto toStrPtr = [&](llvm::Value* v) -> llvm::Value* {
+                if (v && v->getType()->isStructTy())
+                    return builder->CreateExtractValue(v, 0, "x.strptr");
+                return v;
+            };
+            auto strLenOf = [&](llvm::Value* v) -> llvm::Value* {
+                if (v && v->getType()->isStructTy())
+                    return builder->CreateExtractValue(v, 1, "x.strlen");
+                return llvm::ConstantInt::get(int64Type, 0);
+            };
+            auto xsStrStructType = [&]() {
+                std::vector<llvm::Type*> f = {int8PtrType, int64Type};
+                return llvm::StructType::get(*context, f, false);
+            };
+            auto needArg = [&](size_t idx) -> llvm::Value* {
+                if (idx >= node->arguments.size()) { m_currentLLVMValue = nullptr; return nullptr; }
+                node->arguments[idx]->accept(*this);
+                return m_currentLLVMValue;
+            };
+            auto checkArity = [&](size_t n) -> bool {
+                if (node->arguments.size() != n) {
+                    logError(node->loc, rtName + " expects " + std::to_string(n) + " argument(s)");
+                    m_currentLLVMValue = nullptr;
+                    return false;
+                }
+                return true;
+            };
+
+            if (fname == "vyb_utf8_len" || fname == "vyb_utf8_valid") {
+                if (!checkArity(1)) return;
+                llvm::Value* str = needArg(0); if (!str) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getXFn(ft), {toStrPtr(str), strLenOf(str)}, "x.utf8");
+                return;
+            } else if (fname == "vyb_utf8_at" || fname == "vyb_utf8_index") {
+                if (!checkArity(2)) return;
+                llvm::Value* str = needArg(0); llvm::Value* idx = needArg(1);
+                if (!str || !idx) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int8PtrType, int64Type, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getXFn(ft), {toStrPtr(str), strLenOf(str), toI64(idx)}, "x.utf8");
+                return;
+            } else if (fname == "vyb_net_set_timeout") {
+                if (!checkArity(2)) return;
+                llvm::Value* fd = needArg(0); llvm::Value* ms = needArg(1);
+                if (!fd || !ms) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getXFn(ft), {toI64(fd), toI64(ms)}, "x.timeout");
+                return;
+            } else if (fname == "vyb_env_get") {
+                if (!checkArity(1)) return;
+                llvm::Value* name = needArg(0); if (!name) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(xsStrStructType(), {int8PtrType}, false);
+                m_currentLLVMValue = builder->CreateCall(getXFn(ft), {toStrPtr(name)}, "x.envget");
+                return;
+            } else if (fname == "vyb_env_set") {
+                if (!checkArity(2)) return;
+                llvm::Value* name = needArg(0); llvm::Value* value = needArg(1);
+                if (!name || !value) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int8PtrType, int8PtrType}, false);
+                m_currentLLVMValue = builder->CreateCall(getXFn(ft), {toStrPtr(name), toStrPtr(value)}, "x.envset");
+                return;
+            } else if (fname == "vyb_env_unset") {
+                if (!checkArity(1)) return;
+                llvm::Value* name = needArg(0); if (!name) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int8PtrType}, false);
+                m_currentLLVMValue = builder->CreateCall(getXFn(ft), {toStrPtr(name)}, "x.envunset");
+                return;
+            } else if (fname == "vyb_rand") {
+                if (!checkArity(0)) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {}, false);
+                m_currentLLVMValue = builder->CreateCall(getXFn(ft), {}, "x.rand");
+                return;
+            } else if (fname == "vyb_rand_range") {
+                if (!checkArity(2)) return;
+                llvm::Value* lo = needArg(0); llvm::Value* hi = needArg(1);
+                if (!lo || !hi) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getXFn(ft), {toI64(lo), toI64(hi)}, "x.randrange");
+                return;
+            } else if (fname == "vyb_rand_seed") {
+                if (!checkArity(1)) return;
+                llvm::Value* seed = needArg(0); if (!seed) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(voidType, {int64Type}, false);
+                builder->CreateCall(getXFn(ft), {toI64(seed)});
+                m_currentLLVMValue = llvm::ConstantInt::get(int64Type, 0);
+                return;
+            } else if (fname == "vyb_exec_run") {
+                if (!checkArity(1)) return;
+                llvm::Value* cmd = needArg(0); if (!cmd) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int8PtrType}, false);
+                m_currentLLVMValue = builder->CreateCall(getXFn(ft), {toStrPtr(cmd)}, "x.exec");
+                return;
+            } else if (fname == "vyb_exec_output") {
+                if (!checkArity(1)) return;
+                llvm::Value* cmd = needArg(0); if (!cmd) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(xsStrStructType(), {int8PtrType}, false);
+                m_currentLLVMValue = builder->CreateCall(getXFn(ft), {toStrPtr(cmd)}, "x.execout");
+                return;
+            } else if (fname == "vyb_exec_status") {
+                if (!checkArity(0)) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {}, false);
+                m_currentLLVMValue = builder->CreateCall(getXFn(ft), {}, "x.execstatus");
+                return;
+            } else if (fname == "vyb_regex_match" || fname == "vyb_regex_find") {
+                if (!checkArity(2)) return;
+                llvm::Value* pat = needArg(0); llvm::Value* str = needArg(1);
+                if (!pat || !str) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type,
+                    {int8PtrType, int64Type, int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getXFn(ft),
+                    {toStrPtr(pat), strLenOf(pat), toStrPtr(str), strLenOf(str)}, "x.regex");
+                return;
+            } else if (fname == "vyb_regex_capture_match" || fname == "vyb_regex_capture") {
+                if (!checkArity(2)) return;
+                llvm::Value* pat = needArg(0); llvm::Value* str = needArg(1);
+                if (!pat || !str) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(xsStrStructType(),
+                    {int8PtrType, int64Type, int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getXFn(ft),
+                    {toStrPtr(pat), strLenOf(pat), toStrPtr(str), strLenOf(str)}, "x.regex");
+                return;
+            } else { // vyb_regex_replace / vyb_regex_replace_all
+                if (!checkArity(3)) return;
+                llvm::Value* pat = needArg(0); llvm::Value* str = needArg(1); llvm::Value* repl = needArg(2);
+                if (!pat || !str || !repl) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(xsStrStructType(),
+                    {int8PtrType, int64Type, int8PtrType, int64Type, int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getXFn(ft),
+                    {toStrPtr(pat), strLenOf(pat), toStrPtr(str), strLenOf(str),
+                     toStrPtr(repl), strLenOf(repl)}, "x.regex");
+                return;
+            }
+        }
+    }
+
     // Handle Network I/O intrinsics (network stdlib module). Mirrors the File I/O
     // mapping: each Vyb-level call (`vyb_net_*`) resolves to an exported runtime
     // symbol (`__vyb_net_*`) in `runtime/vyb_runtime.c`. IP addresses and payloads

@@ -1,0 +1,32 @@
+// @test: utf8 stdlib module - codepoints over byte strings
+// @description: byte offsets vs codepoint counts for ASCII and multibyte text.
+// @category: utf8, stdlib
+// @expect: pass
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import utf8
+
+main()<Int> -> {
+    // Pure ASCII: byte offsets equal codepoint offsets.
+    if (utf8_len("hello") != 5) { return 1 }
+    if (utf8_index("hello", 2) != 2) { return 2 }
+    if (utf8_at("hello", 1) != 101) { return 3 }   // 'e' == 101
+    if (utf8_valid("hello") != 1) { return 4 }
+
+    // A multibyte character: 'cafe' with combining/acute is 5 codepoints but
+    // more bytes. U+00E9 (e-acute) is 0xC3 0xA9, two bytes.
+    s<String> = "café au lait"
+    if (utf8_len(s) < 5) { return 5 }
+    // The e-acute starts at byte offset 3 in "café".
+    if (utf8_at(s, 3) != 233) { return 6 }         // 233 == U+00E9
+    // "café au lait" is 12 codepoints; the 4th is U+00E9 at byte offset 3.
+    if (utf8_index(s, 3) != 3) { return 7 }
+
+    // Out-of-range asks come back -1.
+    if (utf8_index(s, 999) != -1) { return 8 }
+    if (utf8_at(s, 9999) != -1) { return 9 }
+
+    println("utf8 ok")
+    return 0
+}

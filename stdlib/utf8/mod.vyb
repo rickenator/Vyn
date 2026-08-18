@@ -1,0 +1,28 @@
+# utf8 - codepoint-aware helpers over UTF-8 byte strings.
+#
+# Thin wrappers over the runtime's `__vyb_utf8_*` functions in
+# `runtime/vyb_runtime.c`. Vyb Strings carry raw bytes, so these helpers use
+# byte offsets everywhere. A provider can walk real characters in web content
+# with `utf8_len` / `utf8_index` instead of assuming one byte per glyph.
+# `utf8_at` returns the codepoint value of the byte at an offset; `utf8_index`
+# returns the byte offset of the n-th codepoint.
+
+share(all)
+utf8_len(s<String>)<Int> -> {
+    return vyb_utf8_len(s)
+}
+
+share(all)
+utf8_index(s<String>, cp_index<Int>)<Int> -> {
+    return vyb_utf8_index(s, cp_index)
+}
+
+share(all)
+utf8_at(s<String>, byte_off<Int>)<Int> -> {
+    return vyb_utf8_at(s, byte_off)
+}
+
+share(all)
+utf8_valid(s<String>)<Int> -> {
+    return vyb_utf8_valid(s)
+}

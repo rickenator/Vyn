@@ -1262,7 +1262,8 @@ socket_send(fd, data)
 socket_recv(fd, max)
 socket_connect(fd, ip, port)
 socket_local_port(fd)
-socket_resolve(host)<String>    # hostname/IP -> dotted-quad IPv4
+socket_set_timeout(fd, ms)      # SO_RCVTIMEO/SO_SNDTIMEO; 0 disables
+socket_resolve(host)<String>    # hostname / IPv4 / IPv6 literal -> address
 socket_error_code()
 socket_error_message()
 ```
@@ -1275,8 +1276,10 @@ comes from the matching aspect:
 - `UdpSocketOps` — `send_to` / `recv_from`, plus `local_ip` / `local_port` / `close`
 
 `enum Socket` holds the constants `AF_INET`, `SOCK_STREAM`, `SOCK_DGRAM`,
-`IPPROTO_TCP`, and `IPPROTO_UDP` used by the raw `socket_*` calls. The
-`async_tcp_*` and `async_udp_*` helpers integrate sockets with the async
+`AF_INET6`, `IPPROTO_TCP`, and `IPPROTO_UDP` used by the raw `socket_*` calls.
+IP literals may be dotted-quad ("127.0.0.1") or colon-hex IPv6 ("::1");
+`socket_set_timeout` bounds how long a recv/send waits on a non-responsive peer.
+The `async_tcp_*` and `async_udp_*` helpers integrate sockets with the async
 executor.
 
 ### 4.12 `tls` — TLS contexts, sessions, handshakes
@@ -1368,6 +1371,73 @@ Module page: [`prelude.md`](prelude.md). Re-exports `Display`, `Debug`,
 `Clone`, `Equatable`, `Hashable`, `Comparable`, `hash_chars`, and
 `prelude_ok`. The compiler injects these into every module unless the module
 imports them itself or redefines one of the core aspects.
+
+---
+---
+
+### 4.16 `utf8` — UTF-8 codepoints over byte strings
+
+Module page: [`utf8.md`](utf8.md). Vyb Strings carry raw bytes, so a provider
+displaying multibyte web content needs codepoint-aware helpers. Everything uses
+byte offsets, matching the byte-indexed String model; an out-of-range or invalid
+request reads back `-1`.
+
+```vyb
+utf8_len(s<String>)<Int>            # number of codepoints
+utf8_at(s<String>, byte_off<Int>)<Int>      # codepoint value at an offset
+utf8_index(s<String>, cp<Int>)<Int>         # byte offset of code point cp
+utf8_valid(s<String>)<Int>                  # 1 when the whole string is UTF-8
+```
+
+### 4.17 `env` — the process environment
+
+Module page: [`env.md`](env.md). Read and write environment variables in-process;
+a browser honors `HTTP_PROXY` / `HOME` / `TERM` here instead of hard-coding them.
+
+```vyb
+env_get(name<String>)<String>       # "" when the variable is unset
+env_set(name<String>, value<String>)<Int>   # 0 on success
+env_unset(name<String>)<Int>        # 0 on success
+```
+
+### 4.18 `rand` — pseudo-random integers
+
+Module page: [`rand.md`](rand.md). A small xorshift generator; `rand_range`
+yields `[lo, hi)`, and `rand_seed` reproduces a sequence for deterministic
+behavior.
+
+```vyb
+rand()<Int>                         # [0, 2^63-1]
+rand_range(lo<Int>, hi<Int>)<Int>   # [lo, hi)
+rand_seed(seed<Int>)<Int>           # reseed (reproducible sequence)
+```
+
+### 4.19 `process` — external commands
+
+Module page: [`process.md`](process.md). Run a trusted command line through the
+shell and read its exit status or captured stdout.
+
+```vyb
+exec_run(cmd<String>)<Int>          # child exit code, or -1 if not launched
+exec_output(cmd<String>)<String>    # captured stdout ("" on failure)
+exec_status()<Int>                  # exit status of the last exec_output
+```
+
+### 4.20 `regex` — POSIX extended patterns
+
+Module page: [`regex.md`](regex.md). Extended-pattern matching over String bytes,
+with byte-offset find, group capture, and literal replacement. A pattern that
+does not match or compile yields the "no match" form of each helper
+(`0` / `-1` / `""` / unchanged input).
+
+```vyb
+regex_match(pattern<String>, s<String>)<Int>            # substring match?
+regex_find(pattern<String>, s<String>)<Int>             # first match offset
+regex_capture_match(pattern<String>, s<String>)<String> # whole match text
+regex_capture(pattern<String>, s<String>)<String>       # first group
+regex_replace(pattern<String>, s<String>, replacement<String>)<String>
+regex_replace_all(pattern<String>, s<String>, replacement<String>)<String>
+```
 
 ---
 ---
@@ -1548,8 +1618,14 @@ regenerates byte-identical output.
 | HTTP | [`http`](http.md) | [shared types](interfaces.md) |
 | HTTPS client | [`https`](https.md) | [shared types](interfaces.md) |
 | Auto-imported facade | [`prelude`](prelude.md) | — |
+| UTF-8 codepoints | [`utf8`](utf8.md) | — |
+| Environment | [`env`](env.md) | — |
+| Pseudo-random | [`rand`](rand.md) | — |
+| External commands | [`process`](process.md) | — |
+| Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 The **shared cross-module types** (`HttpResponse`, `TcpStream`, `TlsContext`,

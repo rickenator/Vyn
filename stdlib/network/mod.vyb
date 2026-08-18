@@ -2,9 +2,11 @@
 #
 # Everything crosses the runtime's `__vyb_net_*` functions in
 # `runtime/vyb_runtime.c`; the Vyb surface stays allocation/pointer-free. IP
-# addresses are plain strings ("127.0.0.1"); pass "0.0.0.0" (or "") to bind any
+# addresses are plain strings: a dotted-quad ("127.0.0.1") or a colon-hex IPv6
+# literal ("::1"). Pass "0.0.0.0" (or ""), or "::" for IPv6, to bind any
 # interface. A port of `0` asks the kernel for an ephemeral port, which you can
-# read back with `socket_local_port()`.
+# read back with `socket_local_port()`. `socket_set_timeout(fd, ms)` keeps a
+# non-responsive peer from hanging a caller forever.
 #
 # Usage (loopback echo):
 #   import network::{socket_open, socket_bind, socket_listen, socket_accept,
@@ -29,6 +31,7 @@
 share(all)
 enum Socket {
     AF_INET = 2
+    AF_INET6 = 10
     SOCK_STREAM = 1
     IPPROTO_TCP = 6
     SOCK_DGRAM = 2
@@ -68,6 +71,13 @@ socket_accept(fd<Int>)<Int> -> {
 share(all)
 socket_connect(fd<Int>, ip<String>, port<Int>)<Int> -> {
     return vyb_net_connect(fd, ip, port)
+}
+
+# Put a read + write timeout on a socket so a hung peer can't block the process
+# forever; `ms` of 0 (or negative) disables the timeout. Returns 0 on success.
+share(all)
+socket_set_timeout(fd<Int>, ms<Int>)<Int> -> {
+    return vyb_net_set_timeout(fd, ms)
 }
 
 # Send the whole of `data` on `fd`; returns the number of bytes sent (or -1).

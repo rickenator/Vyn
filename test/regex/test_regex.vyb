@@ -1,0 +1,31 @@
+// @test: regex stdlib module - POSIX extended patterns over String bytes
+// @description: match/find/capture/replace are deterministic on fixed inputs.
+// @category: regex, stdlib
+// @expect: pass
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import regex::{regex_find, regex_match, regex_capture, regex_capture_match,
+               regex_replace, regex_replace_all}
+
+main()<Int> -> {
+    // find returns the byte offset of the first match.
+    if (regex_find("llo", "hello") != 2) { return 1 }
+    if (regex_find("xyz", "hello") != -1) { return 2 }
+
+    // match is a substring test.
+    if (regex_match("hello", "say hello world") != 1) { return 3 }
+    if (regex_match("skip", "hello world") != 0) { return 4 }
+
+    // whole-match and first-group capture.
+    if (regex_capture_match("h(ell)o", "hello") != "hello") { return 5 }
+    if (regex_capture("([0-9]+)", "id=42 end") != "42") { return 6 }
+    if (regex_capture("([0-9]+)", "no digits") != "") { return 7 }
+
+    // replace hits the first match; replace_all hits every match.
+    if (regex_replace("[0-9]+", "a1b22c", "#") != "a#b22c") { return 8 }
+    if (regex_replace_all("[0-9]+", "a1b22c", "#") != "a#b#c") { return 9 }
+
+    println("regex ok")
+    return 0
+}

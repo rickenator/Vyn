@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- New `utf8` stdlib module: codepoint-aware helpers over Vyb byte strings
+  (`utf8_len`, `utf8_at`, `utf8_index`, `utf8_valid`) via weak runtime helpers
+  in `runtime/vyb_runtime.c` (registered with the ORC JIT), discovered with
+  `import utf8`.
+- New `env` stdlib module: in-process environment access — `env_get` /
+  `env_set` / `env_unset` (`import env`). A provider reads `HTTP_PROXY` / `HOME`
+  / `TERM` instead of hard-coding them.
+- New `rand` stdlib module: `rand`, `rand_range(lo, hi)`, and `rand_seed` over a
+  small xorshift generator (`import rand`).
+- New `process` stdlib module: `exec_run`, `exec_output`, and `exec_status` to
+  run shell commands and capture stdout/exit codes (`import process`).
+- New `regex` stdlib module: POSIX extended patterns — `regex_match`,
+  `regex_find`, `regex_capture_match`, `regex_capture`, `regex_replace`,
+  `regex_replace_all` (`import regex`).
+- `network` module: `socket_set_timeout(fd, ms)` (SO_RCVTIMEO/SO_SNDTIMEO) and
+  IPv6 dual-stack — colon-hex literals ("::1") bind/dial through an AF_INET6
+  path, `Socket::AF_INET6`, and `socket_resolve` accepts IPv4/IPv6.
+- Deterministic tests: `test/env/`, `test/utf8/`, `test/rand/`, `test/process/`,
+  `test/regex/`, plus `test/modules/test_network_timeout.vyb` and
+  `test/modules/test_network_ipv6.vyb`.
+
+---
+
 ## [0.7.2] - 2026-08-17
 
 ### Added

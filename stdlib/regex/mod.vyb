@@ -1,0 +1,38 @@
+# regex - POSIX extended regular expressions over String bytes.
+#
+# Thin wrappers over the runtime's `__vyb_regex_*` functions in
+# `runtime/vyb_runtime.c`. Matching and the offsets returned by `regex_find` are
+# byte-based, in line with the Vyb String model, so providers parsing HTML/URL
+# text can rely on the same indices as the rest of the stdlib. A pattern that
+# does not match (or does not compile) yields the "no match" form of each
+# helper: 0 / -1 / "" / the unchanged input.
+
+share(all)
+regex_match(pattern<String>, s<String>)<Int> -> {
+    return vyb_regex_match(pattern, s)
+}
+
+share(all)
+regex_find(pattern<String>, s<String>)<Int> -> {
+    return vyb_regex_find(pattern, s)
+}
+
+share(all)
+regex_capture_match(pattern<String>, s<String>)<String> -> {
+    return vyb_regex_capture_match(pattern, s)
+}
+
+share(all)
+regex_capture(pattern<String>, s<String>)<String> -> {
+    return vyb_regex_capture(pattern, s)
+}
+
+share(all)
+regex_replace(pattern<String>, s<String>, replacement<String>)<String> -> {
+    return vyb_regex_replace(pattern, s, replacement)
+}
+
+share(all)
+regex_replace_all(pattern<String>, s<String>, replacement<String>)<String> -> {
+    return vyb_regex_replace_all(pattern, s, replacement)
+}

@@ -1,0 +1,21 @@
+# rand - pseudo-random integers.
+#
+# Thin wrappers over the runtime's `__vyb_rand_*` functions in
+# `runtime/vyb_runtime.c`. `rand` yields an Int in [0, 2^63-1]; `rand_range`
+# yields one in [lo, hi). `rand_seed` makes a sequence reproducible (seeded
+# identically in the same process), which deterministic tests rely on.
+
+share(all)
+rand()<Int> -> {
+    return vyb_rand()
+}
+
+share(all)
+rand_range(lo<Int>, hi<Int>)<Int> -> {
+    return vyb_rand_range(lo, hi)
+}
+
+share(all)
+rand_seed(seed<Int>)<Int> -> {
+    return vyb_rand_seed(seed)
+}

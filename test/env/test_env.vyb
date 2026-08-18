@@ -1,0 +1,28 @@
+// @test: env stdlib module - get/set/unset
+// @description: deterministic process-environment checks within this process.
+// @category: env, stdlib
+// @expect: pass
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import env
+
+main()<Int> -> {
+    // An unset variable reads back as "".
+    if (env_get("VYB_TEST_PROBE_ASDF") != "") { return 1 }
+    // A real variable (HOME or PATH) is never empty.
+    if (env_get("PATH") == "") { return 2 }
+
+    // Set then read back the same value.
+    if (env_set("VYB_TEST_PROBE_ASDF", "hello") != 0) { return 3 }
+    if (env_get("VYB_TEST_PROBE_ASDF") != "hello") { return 4 }
+
+    // Overwrite, then unset.
+    if (env_set("VYB_TEST_PROBE_ASDF", "world") != 0) { return 5 }
+    if (env_get("VYB_TEST_PROBE_ASDF") != "world") { return 6 }
+    if (env_unset("VYB_TEST_PROBE_ASDF") != 0) { return 7 }
+    if (env_get("VYB_TEST_PROBE_ASDF") != "") { return 8 }
+
+    println("env ok")
+    return 0
+}

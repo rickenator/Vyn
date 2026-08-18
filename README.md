@@ -479,22 +479,21 @@ count<Int> = get_csv().split(",").len()                   // number of fields
 ### ✅ **Async Programming & Debugging**
 
 Vyb parses and compiles `async` functions returning `Future<T>` and the `await`
-expression. An `async fn(params...)<Future<T>>` (T = `Int`, `Float`, `Bool`, `String`, or
-`Void`) starts a task on the stdlib's **multi-threaded executor** when called —
-its scalar arguments are snapshotted into a closing environment, and a `String`
-result travels back as a heap slot that `await` hands to the consumer as an owned
-transfer (a `Float` travels as its bit pattern and a `Bool` as 0/1 in the task's
-result slot). `await` parks the caller until the task completes (from `main`) or
-suspends the current fiber (so a worker can `await` a child task), including as a
-bare statement (`await f`) for `Future<Void>`. The future is returned by value as
-a real struct; the syntax and type plumbing below are stable and tested. Owned
-parameters are snapshotted into the task env: a `String` keeps its buffer with a
-retain (+1), an `our<T>` takes a shared-control-block retain (+1), and a `Vec<T>`
+expression.
+An `async fn(params...)<Future<T>>` (T = `Int`, `Float`, `Bool`, `String`, or `Void`)
+starts a task on the stdlib's **multi-threaded executor** when called — its scalar
+arguments are snapshotted into a closing environment, and a `String` result travels
+back as a heap slot that `await` hands to the consumer as an owned transfer (a
+`Float` travels as its bit pattern and a `Bool` as 0/1 in the task's result slot).
+`await` parks the caller until the task completes (from `main`) or suspends the
+current fiber (so a worker can `await` a child task), including as a bare statement
+(`await f`) for `Future<Void>`.
+The future is returned by value as a real struct.
+Owned parameters are snapshotted into the task env: a `String` keeps its buffer with
+a retain (+1), an `our<T>` takes a shared-control-block retain (+1), and a `Vec<T>`
 is deep-copied so the env owns an independent copy; the env's per-layout dtor
-releases each one on cleanup (reclaiming `Vec<String>` element references too),
-so they safely outlive the caller's scope while the worker runs. Other owned/rich
-parameter types (structs, closures) still use the legacy eager path (a follow-on
-stage).
+releases each one on cleanup (reclaiming `Vec<String>` element references too), so
+they safely outlive the caller's scope while the worker runs.
 
 #### Async Function Syntax
 ```vyb
@@ -531,38 +530,19 @@ main()<Void> -> {
 
 **See:** `test/async/async_simple.vyb` for a working example.
 
-**Implementation Status:**
-- ✅ Async function parsing and validation
-- ✅ Future<T> type checking
-- ✅ await expression support (from `main` and inside tasks)
-- ✅ Real event-loop execution for `Future<Int>` / `Future<String>` / `Future<Void>`
-- ✅ `Future<Float>` / `Future<Bool>` primitives (Int-slot bitcast / zero-extend + truncate)
-- ✅ `String` async parameters (env snapshot + retain, released by the env dtor)
-- ✅ `Vec<T>` async parameters (env deep-copy; dtor reclaims storage + String elements)
-- ✅ `our<T>` async parameters (env shared-control-block retain + release)
-- ✅ `struct` async parameters (env deep-copy of owned fields — String retain, Vec
-  clone, `our`/`mild` retain, nested structs — reclaimed by the env dtor)
-- ✅ Richer await chains (`await` result usable as a receiver, call arg, arithmetic operand, comparison; nested `await` in an argument)
-- ✅ Multi-threaded executor (a thread pool, one scheduler per CPU worker, fibers pinned to their worker)
-- ✅ Parameterized `Future<Int>` async tasks (scalar args captured in an env)
-- ✅ Nested `await` from inside a task (fiber suspension)
-- ✅ Bare `await f` statement form (drives the loop, no assignment needed)
-- ✅ LLVM codegen with debug metadata
-
-**See also:** `test/async/async_event_loop.vyb` (two concurrent sleeps finish in
-~20ms, proving real concurrency), `test/async/async_params.vyb` (parameterized
-concurrency), `test/async/async_nested_await.vyb` (a task that awaits a child),
-`test/async/async_string.vyb` / `async_void.vyb` (non-`Int` futures),
-`test/async/async_multicore.vyb` (four CPU-bound tasks finish in parallel across
-the pool, ~120ms not ~480ms), `test/async/async_float_bool.vyb` (`Float`/`Bool`
-futures, including awaited from inside a task), `test/async/async_string_param.vyb`
-(`String` params retained in the env), `test/async/async_vec_param.vyb` (`Vec<T>`
-params deep-copied, incl. nested await + mixed envs), `test/async/async_our_param.vyb`
-(`our<T>` params retained across tasks, caller ref stays valid),
-`test/async/async_struct_param.vyb` (struct params deep-copied with owned fields,
-caller binding stays valid across nested await),
-`test/async/async_await_chains.vyb` (await results composed in expressions), and
-the `asyncs` stdlib module section.
+**See also:**
+- `test/async/async_event_loop.vyb` — two concurrent sleeps finish in ~20ms
+- `test/async/async_params.vyb` — parameterized concurrency
+- `test/async/async_nested_await.vyb` — a task that awaits a child
+- `test/async/async_string.vyb`, `test/async/async_void.vyb` — non-`Int` futures
+- `test/async/async_multicore.vyb` — four CPU-bound tasks finish in parallel
+- `test/async/async_float_bool.vyb` — `Float`/`Bool` futures, also awaited from inside a task
+- `test/async/async_string_param.vyb` — `String` params retained in the env
+- `test/async/async_vec_param.vyb` — `Vec<T>` params deep-copied (nested await + mixed envs)
+- `test/async/async_our_param.vyb` — `our<T>` params retained across tasks
+- `test/async/async_struct_param.vyb` — struct params deep-copied with owned fields
+- `test/async/async_await_chains.vyb` — await results composed in expressions
+- the `asyncs` stdlib module section
 
 ### ✅ **Concurrency Modules (stdlib)**
 
@@ -635,14 +615,6 @@ if (typeof(x) != typeof(y)) {
 
 ```
 
-**Implementation Status:**
-- ✅ `KEYWORD_TYPEOF` and `KEYWORD_TYPENAME` tokens
-- ✅ `TypeofExpression` and `TypenameExpression` AST nodes
-- ✅ Parser support for `typeof(expr)` and `typename(expr)` syntax
-- ✅ Semantic analysis — `typeof` returns opaque `Type`, `typename` returns `String`
-- ✅ LLVM codegen — `typeof` uses `std::hash`, `typename` creates a `{ptr, len}` string struct
-- ✅ Comprehensive test coverage in `test/introspection/`
-
 **See:** `test/introspection/` for working examples and `doc/INTROSPECTION_DESIGN.md` for design philosophy
 
 ### ✅ **Aspect System**
@@ -707,26 +679,13 @@ main()<Int> -> {
 }
 ```
 
-#### **Current Implementation Status**
-
-**✅ Fully Working:**
-- **Aspect Declarations**: Define interfaces with method signatures and `Self` type
-- **Bind Blocks**: Implement aspects for types using `bind Aspect -> Type` syntax
-- **Generic Aspects**: Aspects support generic type parameters
-- **Generic Bindings**: `bind<T> Display -> Box<T>` with type parameter extraction
-- **Generic Functions**: `printItem<T<Display>>(item<T>)` with full monomorphization
-- **Method Calls**: Aspect methods called through generic function parameters
-- **Aspect Registry**: Semantic analyzer validates and stores aspect definitions
-- **Bind Validation**: Full signature checking against aspect requirements
-- **Canonical Syntax**: Arrow syntax `->` for bindings
-
 **Why Aspects > Classes:**
-- ✅ Multiple aspect implementations (no diamond problem)
-- ✅ Composition over inheritance (more flexible)
-- ✅ Extension without modification (bind aspects to any type)
-- ✅ Static dispatch (zero-cost abstractions)
-- ✅ No fragile base class problem
-- ✅ Explicit binding makes relationships clear
+- Multiple aspect implementations (no diamond problem)
+- Composition over inheritance (more flexible)
+- Extension without modification (bind aspects to any type)
+- Static dispatch (zero-cost abstractions)
+- No fragile base class problem
+- Explicit binding makes relationships clear
 
 **See:** `doc/ASPECT_SYSTEM_DESIGN.md` for complete specification and `test/aspect/` for working examples
 
@@ -2435,24 +2394,6 @@ struct NetworkError {
 # Less good: Requires external documentation
 fail 503  # What does this mean?
 ```
-
-### Current Implementation Status
-
-**✅ In This Release:**
-- fail statements with primitives (Int, Float, String)
-- fail statements with custom struct types
-- Error heap allocation with type ID + value storage
-- Multi-level error propagation through call stacks
-- trap blocks with pattern matching on error types
-- Struct field access in trap handlers
-- Type-safe trap handler matching
-- Automatic memory management (malloc/free)
-- Untrapped error runtime handler with formatted output
-- Complete LLVM codegen for all error operations
-- `ensure` keyword for cleanup/finally blocks
-- Stack trace capture in error structs
-- Wildcard trap handlers `} trap (e<?>) -> { ... }`
-- Type introspection (`typeof`, `as`) for discriminating multi-type traps
 
 ### Example: Complete Error Handling
 

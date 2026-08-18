@@ -2095,6 +2095,18 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_term_cols" || name == "vyb_term_rows" ||
             name == "vyb_term_clear" || name == "vyb_term_move_cursor" ||
             name == "vyb_term_hide_cursor" || name == "vyb_term_show_cursor" ||
+            name == "vyb_net_set_timeout" ||
+            name == "vyb_utf8_len" || name == "vyb_utf8_at" ||
+            name == "vyb_utf8_index" || name == "vyb_utf8_valid" ||
+            name == "vyb_env_get" || name == "vyb_env_set" ||
+            name == "vyb_env_unset" ||
+            name == "vyb_rand" || name == "vyb_rand_range" ||
+            name == "vyb_rand_seed" ||
+            name == "vyb_exec_run" || name == "vyb_exec_output" ||
+            name == "vyb_exec_status" ||
+            name == "vyb_regex_match" || name == "vyb_regex_find" ||
+            name == "vyb_regex_capture_match" || name == "vyb_regex_capture" ||
+            name == "vyb_regex_replace" || name == "vyb_regex_replace_all" ||
             name == "vyb_strchan_len" || name == "vyb_strchan_close" ||
             name == "vyb_strchan_free") {
             isIntrinsic = true;
@@ -2556,6 +2568,36 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 auto* resTy = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc,
                         termIntFuncs.count(name) ? "Int" : "String"));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+
+            // UTF-8 / env / rand / process / regex intrinsics (the utf8, env,
+            // rand, process, regex stdlib modules) plus the socket-timeout
+            // helper on the network module. The byte/codepoint, status, exit,
+            // and rand helpers return Int; the lookups (env_get), capture, and
+            // regex result helpers return String. rand_seed has no payload but
+            // is typed Int for uniformity (its call site yields a 0 handle).
+            // Arity/diagnostic detail is left to codegen.
+            static const std::set<std::string> xIntFuncs = {
+                "vyb_utf8_len", "vyb_utf8_at", "vyb_utf8_index", "vyb_utf8_valid",
+                "vyb_net_set_timeout",
+                "vyb_env_set", "vyb_env_unset",
+                "vyb_rand", "vyb_rand_range", "vyb_rand_seed",
+                "vyb_exec_run", "vyb_exec_status",
+                "vyb_regex_match", "vyb_regex_find"
+            };
+            static const std::set<std::string> xStrFuncs = {
+                "vyb_env_get",
+                "vyb_exec_output",
+                "vyb_regex_capture_match", "vyb_regex_capture",
+                "vyb_regex_replace", "vyb_regex_replace_all"
+            };
+            if (xIntFuncs.count(name) || xStrFuncs.count(name)) {
+                auto* resTy = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc,
+                        xIntFuncs.count(name) ? "Int" : "String"));
                 expressionTypes[node] = retainType(resTy);
                 node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
                 return;
