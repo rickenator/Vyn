@@ -184,17 +184,80 @@ std::vector<vyb::token::Token> Lexer::tokenize() {
       }
     }
 
-    if (c == '"') { // Escaped quote: \"
+    if (c == '"') {
       pos_++; // Consume opening quote
-      // current_column_start_for_token is before the opening quote
-      std::string str_value = consume_while([](char c_str) { return c_str != '"'; });
-      if (pos_ >= source_.size() || source_[pos_] != '"') {
-          throw std::runtime_error("Unterminated string literal at line " + std::to_string(current_line_start_for_token) + ", column " + std::to_string(current_column_start_for_token));
+      std::string str_value;
+      // Number of source characters the literal body spans (escapes count as
+      // their full source spelling), used to keep column_ accurate for the
+      // Compiler that follows this token.
+      size_t src_chars = 0;
+      while (pos_ < source_.size() && source_[pos_] != '"') {
+        char ch = source_[pos_];
+        if (ch != '\\') {
+          str_value.push_back(ch);
+          pos_++;
+          src_chars++;
+          continue;
+        }
+        // Backslash escape sequence: consume the backslash, then one more char.
+        pos_++;
+        src_chars++;
+        if (pos_ >= source_.size()) {
+          throw std::runtime_error("Unterminated string literal at line " +
+            std::to_string(current_line_start_for_token) + ", column " +
+            std::to_string(current_column_start_for_token));
+        }
+        char esc = source_[pos_];
+        pos_++;
+        src_chars++;
+        switch (esc) {
+          case 'n': str_value.push_back('\n'); break;
+          case 'r': str_value.push_back('\r'); break;
+          case 't': str_value.push_back('\t'); break;
+          case '\\': str_value.push_back('\\'); break;
+          case '"': str_value.push_back('"'); break;
+          case '\'': str_value.push_back('\''); break;
+          case '0': str_value.push_back('\0'); break;
+          case 'x': {
+            // \xHH - exactly two hexadecimal digits as a literal byte.
+            auto hex_val = [](char h) -> int {
+              if (h >= '0' && h <= '9') return h - '0';
+              if (h >= 'a' && h <= 'f') return h - 'a' + 10;
+              if (h >= 'A' && h <= 'F') return h - 'A' + 10;
+              return -1;
+            };
+            if (pos_ + 2 <= source_.size()) {
+              int hi = hex_val(source_[pos_]);
+              int lo = hex_val(source_[pos_ + 1]);
+              if (hi >= 0 && lo >= 0) {
+                str_value.push_back(static_cast<char>((hi << 4) | lo));
+                pos_ += 2;
+                src_chars += 2;
+                break;
+              }
+            }
+            // Not a valid \xHH: preserve the backslash-x literally so regex /
+            // path strings stay intact.
+            str_value.push_back('\\');
+            str_value.push_back('x');
+            break;
+          }
+          default:
+            // Unrecognized escape: keep the backslash + character verbatim.
+            str_value.push_back('\\');
+            str_value.push_back(esc);
+            break;
+        }
+      }
+      if (pos_ >= source_.size()) {
+          throw std::runtime_error("Unterminated string literal at line " +
+            std::to_string(current_line_start_for_token) + ", column " +
+            std::to_string(current_column_start_for_token));
       }
       tokens.emplace_back(vyb::TokenType::STRING_LITERAL, str_value, vyb::SourceLocation{current_file_path_, current_line_start_for_token, current_column_start_for_token});
       maybe_print_token(tokens.back());
       pos_++; // Consume closing quote
-      column_ += str_value.size() + 2; // +2 for the quotes
+      column_ += src_chars + 2; // +2 for the quotes
       continue;
     }
 

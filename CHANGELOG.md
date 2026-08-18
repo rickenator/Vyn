@@ -33,6 +33,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test/regex/`, plus `test/modules/test_network_timeout.vyb` and
   `test/modules/test_network_ipv6.vyb`.
 
+### Fixed
+- String literals now process backslash escapes. Previously the lexer copied
+  literal text verbatim, so `"\r\n"` was four characters (`\ r \ n`) instead of
+  a real CRLF — real HTTP servers rejected Vyb's requests with 400
+  "Bad request version". Supported: `\n`, `\r`, `\t`, `\\`, `\"`, `\'`, `\0`,
+  and `\xHH`; any other `\X` is preserved verbatim (regex/path-friendly).
+  Regression test: `test/string/string_escapes_test.vyb`.
+
 ---
 
 ## [0.7.2] - 2026-08-17

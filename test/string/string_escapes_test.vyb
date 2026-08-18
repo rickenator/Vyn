@@ -1,0 +1,40 @@
+// @test: string literal escape sequences
+// @description: \n \r \t \\ \" \' \0 and \xHH collapse to single control/byte
+//   characters (HTTP relies on real CRLF); unknown escapes keep the backslash
+//   literally so regex/path strings are unaffected.
+// @category: string, lexer
+// @expect: pass
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import utf8::{utf8_at}
+
+main()<Int> -> {
+    // Control escapes collapse to single bytes.
+    if ("A\nB".len() != 3) { return 1 }     // A LF B
+    if ("A\r\nB".len() != 4) { return 2 }   // A CR LF B
+    if ("A\tB".len() != 3) { return 3 }     // A TAB B
+
+    // Backslash and quote can be escaped.
+    if ("\\".len() != 1) { return 4 }
+    if ("\"".len() != 1) { return 5 }
+    if ("\'".len() != 1) { return 6 }
+
+    // Hex byte escapes produce the exact byte.
+    if ("\x41" != "A") { return 7 }
+
+    // Byte values land in the String; utf8_at reads the byte at an offset.
+    s<String> = "A\r\nB"
+    if (utf8_at(s, 1) != 13) { return 8 }   // CR == 13
+    if (utf8_at(s, 2) != 10) { return 9 }   // LF == 10
+    if (utf8_at(s, 3) != 66) { return 10 }  // 'B' == 66
+
+    // Unrecognized escapes keep the backslash (regex/path-friendly).
+    if ("a\qb".len() != 4) { return 11 }
+
+    // An empty literal is still empty.
+    if ("".len() != 0) { return 12 }
+
+    println("esc ok")
+    return 0
+}

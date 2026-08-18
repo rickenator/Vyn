@@ -727,6 +727,23 @@ n<Int> = "hello".len()     # methods on literals
 c<String> = "abc"[1]       # bounds-checked indexing ("" out of range)
 ```
 
+**Escape sequences.** String literals process backslash escapes at lex time. An
+unknown escape (one not in the table) is kept verbatim — backslash plus the
+character — so regex and path strings like `"\."` or `"C:\work"` need no doubling.
+
+| Escape | Meaning |
+|---|---|
+| `\n` | line feed `0x0A` |
+| `\r` | carriage return `0x0D` |
+| `\t` | horizontal tab `0x09` |
+| `\\` | a literal backslash |
+| `\"` | a literal double quote |
+| `\'` | a literal single quote |
+| `\0` | NUL `0x00` |
+| `\xHH` | a literal byte from two hexadecimal digits |
+
+`"\r\n"` is therefore a two-byte CRLF pair — real web requests rely on this.
+
 **Core method family** (all work on value receivers and non-identifier
 receivers, e.g. `"Hello".to_upper()`):
 

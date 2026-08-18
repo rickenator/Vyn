@@ -1693,6 +1693,11 @@ check<Bool> = "Einstein".starts_with("Ein")  # Returns true
 # All without explicit constructors!
 ```
 
+String literals process backslash escapes: `\n` LF, `\r` CR, `\t` TAB, `\\` a
+literal backslash, `\"` a double quote, `\0` NUL, and `\xHH` a hex byte. Any
+other `\X` is kept verbatim (regex/path-friendly), so `"\r\n"` is a real CRLF
+pair — HTTP requests depend on this.
+
 ### Complete Method Reference
 
 **Constructor**
