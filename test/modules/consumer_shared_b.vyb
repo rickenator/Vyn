@@ -1,0 +1,11 @@
+// @test: Shared-dependency consumer B helper
+// @description: Imports dep_b (a different symbol) from the shared origin module
+// @category: modules
+// @expect: pass
+// @parse-only: true
+// @tags: modules, import-shared-dep
+
+import source_shared_origin::{dep_b}
+
+share(all)
+fn_b()<Int> -> { return dep_b() }   // = 202

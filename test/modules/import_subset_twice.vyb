@@ -1,0 +1,18 @@
+// @test: Two subset imports of the same module in one file
+// @description: A second subset import of an already-resolved module must be spliced
+//   independently. Previously the dependency's body was moved into the first
+//   importer, so a repeat subset import was ignored and fn_b came out undefined.
+// @category: modules
+// @expect: pass
+// @expect-output: 102
+// @expect-output: 203
+// @tags: modules, import-subset-twice
+
+import subset_twice_helpers::{fn_a}
+import subset_twice_helpers::{fn_b}
+
+main()<Int> -> {
+    println_int(fn_a(1))   // 102 (dep_a carried by the first subset import)
+    println_int(fn_b(1))   // 203 (dep_b carried by the second subset import)
+    return 0
+}

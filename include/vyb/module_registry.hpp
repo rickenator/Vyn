@@ -29,7 +29,6 @@ struct ModuleRecord {
     std::string importSpelling;
     std::vector<std::string> bundles;
     std::unordered_map<std::string, std::vector<std::string>> sharesByName;
-    bool emitted = false;
 };
 
 struct ModuleRegistryOptions {
@@ -91,8 +90,7 @@ private:
 
     std::string resolveModule(const std::string& source,
                               const std::filesystem::path& sourcePath,
-                              const std::string& importSpelling,
-                              bool isRoot);
+                              const std::string& importSpelling);
     ResolvedImportPath resolveImportPath(const ast::ImportDeclaration* importDecl, const std::filesystem::path& importingFile) const;
     std::vector<std::filesystem::path> buildSearchRoots(const std::filesystem::path& importingFile) const;
     std::vector<std::filesystem::path> buildConfiguredSearchPaths() const;

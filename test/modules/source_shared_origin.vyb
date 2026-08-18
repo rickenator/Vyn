@@ -1,0 +1,12 @@
+// @test: Shared-origin dependency helper
+// @description: Origin module with two independent exports consumed by two modules
+// @category: modules
+// @expect: pass
+// @parse-only: true
+// @tags: modules, import-shared-dep
+
+share(all)
+dep_a()<Int> -> { return 100 }
+
+share(all)
+dep_b()<Int> -> { return 202 }

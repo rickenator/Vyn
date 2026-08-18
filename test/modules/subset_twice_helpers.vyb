@@ -1,0 +1,18 @@
+// @test: Twice-subset import helper
+// @description: Helper module imported by two separate subset imports in one file
+// @category: modules
+// @expect: pass
+// @parse-only: true
+// @tags: modules, import-subset-twice
+
+share(all)
+dep_a(x<Int>)<Int> -> { return x + 100 }
+
+share(all)
+fn_a(x<Int>)<Int> -> { return dep_a(x) + 1 }   // fn_a(1) = 102
+
+share(all)
+dep_b(x<Int>)<Int> -> { return x + 200 }
+
+share(all)
+fn_b(x<Int>)<Int> -> { return dep_b(x) + 2 }   // fn_b(1) = 203

@@ -328,6 +328,514 @@ public:
     void visit(ast::TupleTypeNode* node) override { if (node) tys(node->memberTypes); }
 };
 
+// --- AST deep-clone support ---------------------------------------------------
+// Deep-copies a module's AST statements so a dependency body stays pristine and
+// can be spliced into multiple consumers independently. The module resolver used
+// to `std::move` a dependency's statements into the first importer (single-
+// consumer): a second subset import of the same module, or a shared dependency
+// imported by several modules, found an already-emptied origin body. This visitor
+// reconstructs an equivalent subtree, leaving the source untouched.
+class AstCloner : public ast::Visitor {
+public:
+    using BlockStatementPtr = std::unique_ptr<ast::BlockStatement>;
+    using GenericParameterPtr = std::unique_ptr<ast::GenericParameter>;
+    using FunctionDeclarationPtr = std::unique_ptr<ast::FunctionDeclaration>;
+    using FieldDeclarationPtr = std::unique_ptr<ast::FieldDeclaration>;
+    using EnumVariantPtr = std::unique_ptr<ast::EnumVariant>;
+    using TrapClausePtr = std::unique_ptr<ast::TrapClause>;
+    using EnsureClausePtr = std::unique_ptr<ast::EnsureClause>;
+    using MatchStatementPtr = std::unique_ptr<ast::MatchStatement>;
+
+    std::unique_ptr<ast::Node> result_;
+
+    template <typename T>
+    std::unique_ptr<T> take() {
+        return std::unique_ptr<T>(static_cast<T*>(result_.release()));
+    }
+
+    // Entry point: deep-copy a top-level statement (a dependency declaration).
+    ast::StmtPtr cloneStatement(ast::Statement* s) { return cloneStmt(s); }
+
+private:
+    ast::IdentifierPtr cloneId(ast::Identifier* id) {
+        return id ? (id->accept(*this), take<ast::Identifier>()) : nullptr;
+    }
+    ast::TypeNodePtr cloneTy(ast::TypeNode* t) {
+        if (!t) return nullptr;
+        t->accept(*this);
+        return take<ast::TypeNode>();
+    }
+    ast::ExprPtr cloneExpr(ast::Expression* e) {
+        if (!e) return nullptr;
+        e->accept(*this);
+        return take<ast::Expression>();
+    }
+    ast::StmtPtr cloneStmt(ast::Statement* s) {
+        if (!s) return nullptr;
+        s->accept(*this);
+        return take<ast::Statement>();
+    }
+    ast::DeclPtr cloneDecl(ast::Declaration* d) {
+        if (!d) return nullptr;
+        d->accept(*this);
+        return take<ast::Declaration>();
+    }
+    BlockStatementPtr cloneBlock(ast::BlockStatement* b) {
+        if (!b) return nullptr;
+        b->accept(*this);
+        return take<ast::BlockStatement>();
+    }
+    ast::NodePtr cloneNode(ast::Node* n) {
+        if (!n) return nullptr;
+        n->accept(*this);
+        return take<ast::Node>();
+    }
+    GenericParameterPtr cloneGenericParam(ast::GenericParameter* g) {
+        if (!g) return nullptr;
+        g->accept(*this);
+        return take<ast::GenericParameter>();
+    }
+    FunctionDeclarationPtr cloneFuncDecl(ast::FunctionDeclaration* f) {
+        if (!f) return nullptr;
+        f->accept(*this);
+        return take<ast::FunctionDeclaration>();
+    }
+    FieldDeclarationPtr cloneField(ast::FieldDeclaration* f) {
+        if (!f) return nullptr;
+        f->accept(*this);
+        return take<ast::FieldDeclaration>();
+    }
+    EnumVariantPtr cloneEnumVariant(ast::EnumVariant* v) {
+        if (!v) return nullptr;
+        v->accept(*this);
+        return take<ast::EnumVariant>();
+    }
+    TrapClausePtr cloneTrap(ast::TrapClause* t) {
+        if (!t) return nullptr;
+        t->accept(*this);
+        return take<ast::TrapClause>();
+    }
+    EnsureClausePtr cloneEnsure(ast::EnsureClause* e) {
+        if (!e) return nullptr;
+        e->accept(*this);
+        return take<ast::EnsureClause>();
+    }
+    MatchStatementPtr cloneMatchStmt(ast::MatchStatement* m) {
+        if (!m) return nullptr;
+        m->accept(*this);
+        return take<ast::MatchStatement>();
+    }
+
+    std::vector<ast::ExprPtr> cloneExprs(std::vector<ast::ExprPtr>& v) {
+        std::vector<ast::ExprPtr> out;
+        out.reserve(v.size());
+        for (auto& e : v) out.push_back(cloneExpr(e.get()));
+        return out;
+    }
+    std::vector<ast::StmtPtr> cloneStmts(std::vector<ast::StmtPtr>& v) {
+        std::vector<ast::StmtPtr> out;
+        out.reserve(v.size());
+        for (auto& s : v) out.push_back(cloneStmt(s.get()));
+        return out;
+    }
+    std::vector<ast::TypeNodePtr> cloneTypes(std::vector<ast::TypeNodePtr>& v) {
+        std::vector<ast::TypeNodePtr> out;
+        out.reserve(v.size());
+        for (auto& t : v) out.push_back(cloneTy(t.get()));
+        return out;
+    }
+    std::vector<ast::IdentifierPtr> cloneIds(std::vector<ast::IdentifierPtr>& v) {
+        std::vector<ast::IdentifierPtr> out;
+        out.reserve(v.size());
+        for (auto& id : v) out.push_back(cloneId(id.get()));
+        return out;
+    }
+    std::vector<GenericParameterPtr> cloneGenericParams(std::vector<GenericParameterPtr>& v) {
+        std::vector<GenericParameterPtr> out;
+        out.reserve(v.size());
+        for (auto& g : v) out.push_back(cloneGenericParam(g.get()));
+        return out;
+    }
+    std::vector<FieldDeclarationPtr> cloneFields(std::vector<FieldDeclarationPtr>& v) {
+        std::vector<FieldDeclarationPtr> out;
+        out.reserve(v.size());
+        for (auto& f : v) out.push_back(cloneField(f.get()));
+        return out;
+    }
+    std::vector<FunctionDeclarationPtr> cloneFuncs(std::vector<FunctionDeclarationPtr>& v) {
+        std::vector<FunctionDeclarationPtr> out;
+        out.reserve(v.size());
+        for (auto& f : v) out.push_back(cloneFuncDecl(f.get()));
+        return out;
+    }
+    std::vector<EnumVariantPtr> cloneVariants(std::vector<EnumVariantPtr>& v) {
+        std::vector<EnumVariantPtr> out;
+        out.reserve(v.size());
+        for (auto& var : v) out.push_back(cloneEnumVariant(var.get()));
+        return out;
+    }
+    std::vector<TrapClausePtr> cloneTraps(std::vector<TrapClausePtr>& v) {
+        std::vector<TrapClausePtr> out;
+        out.reserve(v.size());
+        for (auto& t : v) out.push_back(cloneTrap(t.get()));
+        return out;
+    }
+    std::vector<ast::DeclPtr> cloneDecls(std::vector<ast::DeclPtr>& v) {
+        std::vector<ast::DeclPtr> out;
+        out.reserve(v.size());
+        for (auto& d : v) out.push_back(cloneDecl(d.get()));
+        return out;
+    }
+    ast::FunctionParameter cloneParam(ast::FunctionParameter& p) {
+        return ast::FunctionParameter(cloneId(p.name.get()), cloneTy(p.typeNode.get()), p.isMutable);
+    }
+    std::vector<ast::FunctionParameter> cloneParams(std::vector<ast::FunctionParameter>& v) {
+        std::vector<ast::FunctionParameter> out;
+        out.reserve(v.size());
+        for (auto& p : v) out.push_back(cloneParam(p));
+        return out;
+    }
+    std::vector<std::pair<ast::ExprPtr, ast::ExprPtr>> cloneCasePairs(std::vector<std::pair<ast::ExprPtr, ast::ExprPtr>>& v) {
+        std::vector<std::pair<ast::ExprPtr, ast::ExprPtr>> out;
+        out.reserve(v.size());
+        for (auto& c : v) out.push_back({cloneExpr(c.first.get()), cloneExpr(c.second.get())});
+        return out;
+    }
+
+public:
+    // Literals
+    void visit(ast::Identifier* node) override {
+        result_ = std::make_unique<ast::Identifier>(node->loc, node->name);
+    }
+    void visit(ast::IntegerLiteral* node) override {
+        result_ = std::make_unique<ast::IntegerLiteral>(node->loc, node->value, node->isUnsigned, node->uvalue);
+    }
+    void visit(ast::FloatLiteral* node) override {
+        result_ = std::make_unique<ast::FloatLiteral>(node->loc, node->value);
+    }
+    void visit(ast::StringLiteral* node) override {
+        result_ = std::make_unique<ast::StringLiteral>(node->loc, node->value);
+    }
+    void visit(ast::BooleanLiteral* node) override {
+        result_ = std::make_unique<ast::BooleanLiteral>(node->loc, node->value);
+    }
+    void visit(ast::NilLiteral* node) override {
+        result_ = std::make_unique<ast::NilLiteral>(node->loc);
+    }
+    void visit(ast::ArrayLiteral* node) override {
+        result_ = std::make_unique<ast::ArrayLiteral>(node->loc, cloneExprs(node->elements));
+    }
+    void visit(ast::ObjectLiteral* node) override {
+        std::vector<ast::ObjectProperty> props;
+        props.reserve(node->properties.size());
+        for (auto& prop : node->properties) {
+            props.push_back(ast::ObjectProperty(prop.loc, cloneId(prop.key.get()), cloneExpr(prop.value.get())));
+        }
+        result_ = std::make_unique<ast::ObjectLiteral>(node->loc, cloneTy(node->typePath.get()), std::move(props));
+    }
+
+    // Expressions
+    void visit(ast::UnaryExpression* node) override {
+        result_ = std::make_unique<ast::UnaryExpression>(node->loc, node->op, cloneExpr(node->operand.get()));
+    }
+    void visit(ast::BinaryExpression* node) override {
+        result_ = std::make_unique<ast::BinaryExpression>(node->loc, cloneExpr(node->left.get()), node->op, cloneExpr(node->right.get()));
+    }
+    void visit(ast::CallExpression* node) override {
+        auto call = std::make_unique<ast::CallExpression>(node->loc, cloneExpr(node->callee.get()), cloneExprs(node->arguments));
+        for (auto& a : node->explicitTypeArgs) call->explicitTypeArgs.push_back(cloneTy(a.get()));
+        result_ = std::move(call);
+    }
+    void visit(ast::MemberExpression* node) override {
+        result_ = std::make_unique<ast::MemberExpression>(node->loc, cloneExpr(node->object.get()), cloneExpr(node->property.get()), node->computed);
+    }
+    void visit(ast::AssignmentExpression* node) override {
+        result_ = std::make_unique<ast::AssignmentExpression>(node->loc, cloneExpr(node->left.get()), node->op, cloneExpr(node->right.get()));
+    }
+    void visit(ast::BorrowExpression* node) override {
+        result_ = std::make_unique<ast::BorrowExpression>(node->loc, cloneExpr(node->expression.get()), node->kind);
+    }
+    void visit(ast::PointerDerefExpression* node) override {
+        result_ = std::make_unique<ast::PointerDerefExpression>(node->loc, cloneExpr(node->pointer.get()));
+    }
+    void visit(ast::AddrOfExpression* node) override {
+        result_ = std::make_unique<ast::AddrOfExpression>(node->loc, cloneExpr(const_cast<ast::ExprPtr&>(node->getLocation()).get()));
+    }
+    void visit(ast::FromIntToLocExpression* node) override {
+        result_ = std::make_unique<ast::FromIntToLocExpression>(node->loc, cloneExpr(const_cast<ast::ExprPtr&>(node->getAddressExpression()).get()), cloneTy(const_cast<ast::TypeNodePtr&>(node->getTargetType()).get()));
+    }
+    void visit(ast::ArrayElementExpression* node) override {
+        result_ = std::make_unique<ast::ArrayElementExpression>(node->loc, cloneExpr(node->array.get()), cloneExpr(node->index.get()));
+    }
+    void visit(ast::LocationExpression* node) override {
+        result_ = std::make_unique<ast::LocationExpression>(node->loc, cloneExpr(node->expression.get()));
+    }
+    void visit(ast::ListComprehension* node) override {
+        result_ = std::make_unique<ast::ListComprehension>(node->loc, cloneExpr(node->elementExpr.get()), cloneId(node->loopVariable.get()), cloneExpr(node->iterableExpr.get()), cloneExpr(node->conditionExpr.get()));
+    }
+    void visit(ast::IfExpression* node) override {
+        result_ = std::make_unique<ast::IfExpression>(node->loc, cloneExpr(node->condition.get()), cloneExpr(node->thenBranch.get()), cloneExpr(node->elseBranch.get()));
+    }
+    void visit(ast::ConstructionExpression* node) override {
+        result_ = std::make_unique<ast::ConstructionExpression>(node->loc, cloneTy(node->constructedType.get()), cloneExprs(node->arguments));
+    }
+    void visit(ast::ArrayInitializationExpression* node) override {
+        result_ = std::make_unique<ast::ArrayInitializationExpression>(node->loc, cloneTy(node->elementType.get()), cloneExpr(node->sizeExpression.get()));
+    }
+    void visit(ast::GenericInstantiationExpression* node) override {
+        result_ = std::make_unique<ast::GenericInstantiationExpression>(node->loc, cloneExpr(node->baseExpression.get()), cloneTypes(node->genericArguments), node->lt_loc, node->gt_loc);
+    }
+    void visit(ast::LogicalExpression* node) override {
+        result_ = std::make_unique<ast::LogicalExpression>(node->loc, cloneExpr(node->left.get()), node->op, cloneExpr(node->right.get()));
+    }
+    void visit(ast::ConditionalExpression* node) override {
+        result_ = std::make_unique<ast::ConditionalExpression>(node->loc, cloneExpr(node->condition.get()), cloneExpr(node->thenExpr.get()), cloneExpr(node->elseExpr.get()));
+    }
+    void visit(ast::SequenceExpression* node) override {
+        result_ = std::make_unique<ast::SequenceExpression>(node->loc, cloneExprs(node->expressions));
+    }
+    void visit(ast::FunctionExpression* node) override {
+        result_ = std::make_unique<ast::FunctionExpression>(node->loc, cloneParams(node->params), cloneExpr(node->body.get()), node->isAsync);
+    }
+    void visit(ast::ThisExpression* node) override {
+        result_ = std::make_unique<ast::ThisExpression>(node->loc);
+    }
+    void visit(ast::SuperExpression* node) override {
+        result_ = std::make_unique<ast::SuperExpression>(node->loc);
+    }
+    void visit(ast::AwaitExpression* node) override {
+        result_ = std::make_unique<ast::AwaitExpression>(node->loc, cloneExpr(node->expr.get()));
+    }
+    void visit(ast::RangeExpression* node) override {
+        result_ = std::make_unique<ast::RangeExpression>(node->loc, cloneExpr(node->start.get()), cloneExpr(node->end.get()), cloneExpr(node->step.get()));
+    }
+    void visit(ast::BlockExpression* node) override {
+        result_ = std::make_unique<ast::BlockExpression>(node->loc, cloneBlock(node->block.get()), cloneTraps(node->trapClauses), cloneEnsure(node->ensureClause.get()));
+    }
+    void visit(ast::SelectExpression* node) override {
+        result_ = std::make_unique<ast::SelectExpression>(node->loc, cloneExpr(node->expr.get()), cloneCasePairs(node->cases));
+    }
+    void visit(ast::ComparisonPattern* node) override {
+        result_ = std::make_unique<ast::ComparisonPattern>(node->loc, node->op, cloneExpr(node->value.get()));
+    }
+    void visit(ast::StructPattern* node) override {
+        result_ = std::make_unique<ast::StructPattern>(node->loc, cloneTy(node->typeName.get()), cloneIds(node->bindings));
+    }
+    void visit(ast::TypeofExpression* node) override {
+        if (node->operand) {
+            result_ = std::make_unique<ast::TypeofExpression>(node->loc, cloneExpr(node->operand.get()));
+        } else {
+            result_ = std::make_unique<ast::TypeofExpression>(node->loc, cloneTy(node->typeArg.get()));
+        }
+    }
+    void visit(ast::TypenameExpression* node) override {
+        result_ = std::make_unique<ast::TypenameExpression>(node->loc, cloneExpr(node->operand.get()));
+    }
+    void visit(ast::AsExpression* node) override {
+        result_ = std::make_unique<ast::AsExpression>(node->loc, cloneExpr(node->operand.get()), cloneTy(node->targetType.get()));
+    }
+    void visit(ast::MatchExpression* node) override {
+        result_ = std::make_unique<ast::MatchExpression>(node->loc, cloneMatchStmt(node->match.get()));
+    }
+
+    // Statements
+    void visit(ast::BlockStatement* node) override {
+        result_ = std::make_unique<ast::BlockStatement>(node->loc, cloneStmts(node->body));
+    }
+    void visit(ast::ExpressionStatement* node) override {
+        result_ = std::make_unique<ast::ExpressionStatement>(node->loc, cloneExpr(node->expression.get()));
+    }
+    void visit(ast::IfStatement* node) override {
+        result_ = std::make_unique<ast::IfStatement>(node->loc, cloneExpr(node->test.get()), cloneStmt(node->consequent.get()), cloneStmt(node->alternate.get()));
+    }
+    void visit(ast::ForStatement* node) override {
+        auto f = std::make_unique<ast::ForStatement>(node->loc, cloneNode(node->init.get()), cloneExpr(node->test.get()), cloneExpr(node->update.get()), cloneStmt(node->body.get()));
+        f->label = node->label;
+        result_ = std::move(f);
+    }
+    void visit(ast::WhileStatement* node) override {
+        auto w = std::make_unique<ast::WhileStatement>(node->loc, cloneExpr(node->test.get()), cloneStmt(node->body.get()));
+        w->label = node->label;
+        result_ = std::move(w);
+    }
+    void visit(ast::ReturnStatement* node) override {
+        result_ = std::make_unique<ast::ReturnStatement>(node->loc, cloneExpr(node->argument.get()));
+    }
+    void visit(ast::PassStatement* node) override {
+        result_ = std::make_unique<ast::PassStatement>(node->loc, cloneExpr(node->argument.get()));
+    }
+    void visit(ast::BreakStatement* node) override {
+        auto b = std::make_unique<ast::BreakStatement>(node->loc);
+        b->label = node->label;
+        result_ = std::move(b);
+    }
+    void visit(ast::ContinueStatement* node) override {
+        auto c = std::make_unique<ast::ContinueStatement>(node->loc);
+        c->label = node->label;
+        result_ = std::move(c);
+    }
+    void visit(ast::TryStatement* node) override {
+        result_ = std::make_unique<ast::TryStatement>(node->loc, cloneBlock(node->tryBlock.get()), node->catchIdent, cloneBlock(node->catchBlock.get()), cloneBlock(node->finallyBlock.get()));
+    }
+    void visit(ast::UnsafeStatement* node) override {
+        result_ = std::make_unique<ast::UnsafeStatement>(node->loc, cloneBlock(node->block.get()));
+    }
+    void visit(ast::EmptyStatement* node) override {
+        result_ = std::make_unique<ast::EmptyStatement>(node->loc);
+    }
+    void visit(ast::ExternStatement* node) override {
+        result_ = std::make_unique<ast::ExternStatement>(node->loc, cloneId(node->name.get()), cloneTy(node->returnType.get()), cloneParams(node->parameters));
+    }
+    void visit(ast::ThrowStatement* node) override {
+        result_ = std::make_unique<ast::ThrowStatement>(node->loc, cloneExpr(node->expr.get()));
+    }
+    void visit(ast::MatchStatement* node) override {
+        result_ = std::make_unique<ast::MatchStatement>(node->loc, cloneExpr(node->expr.get()), cloneCasePairs(node->cases), cloneExprs(node->guards));
+    }
+    void visit(ast::YieldStatement* node) override {
+        result_ = std::make_unique<ast::YieldStatement>(node->loc, cloneExpr(node->expression.get()));
+    }
+    void visit(ast::YieldReturnStatement* node) override {
+        result_ = std::make_unique<ast::YieldReturnStatement>(node->loc, cloneExpr(node->expression.get()));
+    }
+    void visit(ast::AssertStatement* node) override {
+        result_ = std::make_unique<ast::AssertStatement>(node->loc, cloneExpr(node->condition.get()), cloneExpr(node->message.get()));
+    }
+    void visit(ast::FailStatement* node) override {
+        result_ = std::make_unique<ast::FailStatement>(node->loc, cloneExpr(node->error.get()), cloneTy(node->errorType.get()));
+    }
+    void visit(ast::TrapClause* node) override {
+        auto t = std::make_unique<ast::TrapClause>(node->loc, cloneId(node->errorName.get()), cloneTy(node->errorType.get()), cloneStmt(node->handler.get()), node->isWildcard, node->isMultiType);
+        for (auto& et : node->errorTypes) t->errorTypes.push_back(cloneTy(et.get()));
+        result_ = std::move(t);
+    }
+    void visit(ast::EnsureClause* node) override {
+        result_ = std::make_unique<ast::EnsureClause>(node->loc, cloneStmt(node->cleanupBlock.get()));
+    }
+    void visit(ast::RethrowStatement* node) override {
+        result_ = std::make_unique<ast::RethrowStatement>(node->loc, cloneExpr(node->transformedError.get()));
+    }
+    void visit(ast::PanicStatement* node) override {
+        result_ = std::make_unique<ast::PanicStatement>(node->loc, cloneExpr(node->message.get()));
+    }
+    void visit(ast::ExitStatement* node) override {
+        result_ = std::make_unique<ast::ExitStatement>(node->loc, cloneExpr(node->code.get()));
+    }
+    void visit(ast::DeferStatement* node) override {
+        result_ = std::make_unique<ast::DeferStatement>(node->loc, cloneStmt(node->statement.get()));
+    }
+    void visit(ast::TupleDestructureAssignment* node) override {
+        result_ = std::make_unique<ast::TupleDestructureAssignment>(node->loc, cloneIds(node->identifiers), cloneExpr(node->expression.get()));
+    }
+
+    // Declarations
+    void visit(ast::VariableDeclaration* node) override {
+        auto v = std::make_unique<ast::VariableDeclaration>(node->loc, cloneId(node->id.get()), node->isConst, cloneTy(node->typeNode.get()));
+        if (node->init) v->init = std::shared_ptr<ast::Expression>(cloneExpr(node->init.get()));
+        result_ = std::move(v);
+    }
+    void visit(ast::FunctionDeclaration* node) override {
+        result_ = std::make_unique<ast::FunctionDeclaration>(node->loc, cloneId(node->id.get()), cloneParams(node->params), cloneBlock(node->body.get()), node->isAsync, cloneTy(node->returnTypeNode.get()), node->hasDefaultImpl, cloneGenericParams(node->genericParams), node->variadic);
+    }
+    void visit(ast::TypeAliasDeclaration* node) override {
+        result_ = std::make_unique<ast::TypeAliasDeclaration>(node->loc, cloneId(node->name.get()), cloneTy(node->typeNode.get()));
+    }
+    void visit(ast::ImportDeclaration* node) override {
+        std::vector<ast::ImportSpecifier> specs;
+        specs.reserve(node->specifiers.size());
+        for (auto& s : node->specifiers) {
+            specs.push_back(ast::ImportSpecifier(cloneId(s.importedName.get()), cloneId(s.localName.get())));
+        }
+        std::unique_ptr<ast::StringLiteral> src = (node->source
+            ? (node->source->accept(*this), take<ast::StringLiteral>()) : nullptr);
+        std::unique_ptr<ast::StringLiteral> locator = (node->locator
+            ? (node->locator->accept(*this), take<ast::StringLiteral>()) : nullptr);
+        result_ = std::make_unique<ast::ImportDeclaration>(node->loc, node->kind, std::move(src), std::move(locator), std::move(specs), cloneId(node->defaultImport.get()), cloneId(node->namespaceImport.get()));
+    }
+    void visit(ast::StructDeclaration* node) override {
+        auto sd = std::make_unique<ast::StructDeclaration>(node->loc, cloneId(node->name.get()), cloneGenericParams(node->genericParams), cloneFields(node->fields), node->reprC);
+        sd->constructors = cloneFuncs(node->constructors);
+        result_ = std::move(sd);
+    }
+    void visit(ast::ClassDeclaration* node) override {
+        result_ = std::make_unique<ast::ClassDeclaration>(node->loc, cloneId(node->name.get()), cloneGenericParams(node->genericParams), cloneDecls(node->members));
+    }
+    void visit(ast::FieldDeclaration* node) override {
+        result_ = std::make_unique<ast::FieldDeclaration>(node->loc, cloneId(node->name.get()), cloneTy(node->typeNode.get()), cloneExpr(node->initializer.get()), node->isMutable);
+    }
+    void visit(ast::BindDeclaration* node) override {
+        std::vector<ast::BindDeclaration::AssociatedTypeBinding> binds;
+        binds.reserve(node->associatedTypeBindings.size());
+        for (auto& b : node->associatedTypeBindings) {
+            binds.push_back({cloneId(b.name.get()), cloneTy(b.valueType.get())});
+        }
+        result_ = std::make_unique<ast::BindDeclaration>(node->loc, cloneTy(node->selfType.get()), std::move(binds), cloneFuncs(node->methods), cloneId(node->name.get()), cloneGenericParams(node->genericParams), cloneTy(node->traitType.get()));
+    }
+    void visit(ast::EnumDeclaration* node) override {
+        result_ = std::make_unique<ast::EnumDeclaration>(node->loc, cloneId(node->name.get()), cloneGenericParams(node->genericParams), cloneVariants(node->variants));
+    }
+    void visit(ast::EnumVariant* node) override {
+        auto v = std::make_unique<ast::EnumVariant>(node->loc, cloneId(node->name.get()), cloneTypes(node->associatedTypes));
+        v->value = node->value;
+        v->hasValue = node->hasValue;
+        result_ = std::move(v);
+    }
+    void visit(ast::GenericParameter* node) override {
+        result_ = std::make_unique<ast::GenericParameter>(node->loc, cloneId(node->name.get()), cloneTypes(node->bounds));
+    }
+    void visit(ast::TemplateDeclaration* node) override {
+        result_ = std::make_unique<ast::TemplateDeclaration>(node->loc, cloneId(node->name.get()), cloneGenericParams(node->genericParams), cloneDecl(node->body.get()));
+    }
+    void visit(ast::AspectDeclaration* node) override {
+        std::vector<std::vector<ast::TypeNodePtr>> constraints;
+        constraints.reserve(node->associatedTypeConstraints.size());
+        for (auto& c : node->associatedTypeConstraints) constraints.push_back(cloneTypes(c));
+        result_ = std::make_unique<ast::AspectDeclaration>(node->loc, cloneId(node->name.get()), cloneGenericParams(node->genericParams), cloneIds(node->superTypes), cloneIds(node->associatedTypes), cloneTypes(node->associatedTypeDefaults), std::move(constraints), cloneFuncs(node->methods));
+    }
+    void visit(ast::NamespaceDeclaration* node) override {
+        result_ = std::make_unique<ast::NamespaceDeclaration>(node->loc, cloneId(node->name.get()), cloneDecls(node->members));
+    }
+
+    // Other
+    void visit(ast::TypeNode*) override { result_.reset(); }
+    void visit(ast::Module* node) override {
+        result_ = std::make_unique<ast::Module>(node->loc, cloneStmts(node->body));
+    }
+    void visit(ast::TypeName* node) override {
+        result_ = std::make_unique<ast::TypeName>(node->loc, cloneId(node->identifier.get()), cloneTypes(node->genericArgs));
+    }
+    void visit(ast::PointerType* node) override {
+        result_ = std::make_unique<ast::PointerType>(node->loc, cloneTy(node->pointeeType.get()));
+    }
+    void visit(ast::ArrayType* node) override {
+        result_ = std::make_unique<ast::ArrayType>(node->loc, cloneTy(node->elementType.get()), cloneExpr(node->sizeExpression.get()));
+    }
+    void visit(ast::VecType* node) override {
+        result_ = std::make_unique<ast::VecType>(node->loc, cloneTy(node->elementType.get()));
+    }
+    void visit(ast::FutureType* node) override {
+        result_ = std::make_unique<ast::FutureType>(node->loc, cloneTy(node->resultType.get()));
+    }
+    void visit(ast::FunctionType* node) override {
+        result_ = std::make_unique<ast::FunctionType>(node->loc, cloneTypes(node->parameterTypes), cloneTy(node->returnType.get()));
+    }
+    void visit(ast::OptionalType* node) override {
+        result_ = std::make_unique<ast::OptionalType>(node->loc, cloneTy(node->containedType.get()));
+    }
+    void visit(ast::TupleTypeNode* node) override {
+        result_ = std::make_unique<ast::TupleTypeNode>(node->loc, cloneTypes(node->memberTypes));
+    }
+};
+
+// Deep-copy a single origin statement so the module's own body is left intact
+// and can be re-spliced into later consumers unchanged.
+static ast::StmtPtr cloneSplicedStmt(ast::StmtPtr& src) {
+    AstCloner cloner;
+    return cloner.cloneStatement(src.get());
+}
+
+
+
 // A module's namespace bindings: namespace identifier (`GV`) -> the set of
 // origin symbol names it exposes. `import module as GV` (or `import * as GV`)
 // binds the whole module's visible exports under `GV`; qualified access
@@ -984,7 +1492,7 @@ ModuleRegistry::ModuleRegistry(ModuleRegistryOptions options)
 }
 
 std::unique_ptr<ast::Module> ModuleRegistry::resolveRoot(const std::string& source, const std::string& fileName) {
-    std::string rootKey = resolveModule(source, fileName, "<root>", true);
+    std::string rootKey = resolveModule(source, fileName, "<root>");
     auto it = records_.find(rootKey);
     if (it == records_.end() || !it->second.module) {
         throw std::runtime_error("Module resolution failed for root module: " + rootKey);
@@ -994,8 +1502,7 @@ std::unique_ptr<ast::Module> ModuleRegistry::resolveRoot(const std::string& sour
 
 std::string ModuleRegistry::resolveModule(const std::string& source,
                                           const fs::path& sourcePath,
-                                          const std::string& importSpelling,
-                                          bool isRoot) {
+                                          const std::string& importSpelling) {
     fs::path currentPath = normalizePath(sourcePath);
     std::string currentKey = currentPath.string();
     ModuleRecord& currentRecord = records_[currentKey];
@@ -1041,6 +1548,17 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
         }
         std::vector<ast::StmtPtr> resolvedBody;
         std::unordered_set<std::string> seenNames;
+        // Declaring-module key of each name already spliced into this module. With
+        // clone-on-import a shared dependency (e.g. core::aspects) is deep-cloned
+        // into several consumer modules, so the SAME origin declaration can surface
+        // here twice via different feature paths; tracking its origin lets the
+        // re-splice be skipped instead of colliding. A genuinely distinct
+        // declaration with the same name still errors.
+        std::unordered_map<std::string, std::string> seenOrigins;
+        auto declaringOrigin = [&](const std::string& n) -> std::string {
+            auto it = moduleKeyByName_.find(n);
+            return it != moduleKeyByName_.end() ? it->second : currentKey;
+        };
         size_t importIndex = 0;
 
         currentRecord.bundles = metadata.bundles;
@@ -1128,7 +1646,7 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                 std::string importedSource = readSourceFile(importPath.resolvedPath);
                 std::string importedKey;
                 try {
-                    importedKey = resolveModule(importedSource, importPath.resolvedPath, importPath.importSpelling, false);
+                    importedKey = resolveModule(importedSource, importPath.resolvedPath, importPath.importSpelling);
                 } catch (const std::exception& e) {
                     std::string message = e.what();
                     if (message.find("Parse error inside module") != std::string::npos) {
@@ -1165,7 +1683,11 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                 // bind has no user-facing symbol to alias; the `bind:`-prefixed keys
                 // never collide with ordinary declaration names.
                 std::unordered_set<std::string> carryBindKeys;
-                if (!requestedNames.empty() && importedRecord.module && !importedRecord.emitted) {
+                // Recompute the dependency closure on every subset import of this
+                // module: the origin body is now deep-cloned per importer (rather
+                // than moved into the first importer), so a repeat subset import of
+                // the same module must be spliced independently again.
+                if (!requestedNames.empty() && importedRecord.module) {
                     // Module-level declarations this import may depend on, plus a
                     // bind side-table. Binds are keyed by `bind:SelfType:Aspect` and
                     // also indexed by the method names they provide, so the closure
@@ -1306,10 +1828,11 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                 // *genuine* exports to this module's resolvable scope (a leaked
                 // transitive dependency of the origin is not available here);
                 // `smuggle` grants whatever is smuggled; `share(...)` also adds
-                // the granted names back to this module's exports. Computed even
-                // for an already-emitted module so every importer's scope is
-                // correct regardless of splice order. A namespace import adds
-                // nothing to the unqualified scope (access is via `NS.sym` only).
+                // the granted names back to this module's exports. Computed for
+                // every importer regardless of how many times the origin module is
+                // consumed, so each importer's scope is correct regardless of
+                // splice order. A namespace import adds nothing to the unqualified
+                // scope (access is via `NS.sym` only).
                 if (!isNamespaceImport) {
                     const bool isSmuggle = importDecl->kind == ast::ImportKind::Smuggle;
                     const std::unordered_set<std::string>& importedExports = exports_[importedKey];
@@ -1345,7 +1868,7 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                     }
                 }
 
-                if (importedRecord.emitted || !importedRecord.module) {
+                if (!importedRecord.module) {
                     continue;
                 }
 
@@ -1422,10 +1945,12 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                             continue;
                         }
                         if (seenNames.find(bindKey) != seenNames.end()) {
-                            if (bindClosureCarried) {
+                            if (bindClosureCarried ||
+                                seenOrigins[bindKey] == declaringOrigin(bindKey)) {
                                 // The same bind already reached this module through
-                                // another import path (e.g. a core auto-import); the
-                                // dependency closure re-requesting it is harmless.
+                                // another import path (e.g. a core auto-import), or the
+                                // same origin bind was deep-cloned via a shared dependency;
+                                // either way re-splicing it is harmless.
                                 continue;
                             }
                             throw std::runtime_error("Duplicate bind after splice: '" + bindKey +
@@ -1433,8 +1958,9 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                                                      importPath.importerFile + ":" + std::to_string(importPath.line));
                         }
                         seenNames.insert(bindKey);
+                        seenOrigins[bindKey] = declaringOrigin(bindKey);
                         carryShare(bindKey, bindKey);
-                        resolvedBody.push_back(std::move(importedStmt));
+                        resolvedBody.push_back(cloneSplicedStmt(importedStmt));
                         continue;
                     }
 
@@ -1452,11 +1978,17 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                         continue;
                     }
 
+                    // Deep-copy the statement first so the origin module's body stays
+                    // intact. Renames and namespace mangling below apply only to the
+                    // copy, letting the same origin declaration satisfy each consumer
+                    // unchanged instead of being moved into the very first importer.
+                    ast::StmtPtr copyStmt = cloneSplicedStmt(importedStmt);
+
                     if (!requestedNames.empty()) {
                         requestedNames.erase(name);
                         auto renameIt = requestedRenames.find(name);
                         if (renameIt != requestedRenames.end() && renameIt->second != name) {
-                            if (!renameDeclaration(importedStmt, renameIt->second)) {
+                            if (!renameDeclaration(copyStmt, renameIt->second)) {
                                 throw std::runtime_error("Cannot alias imported declaration '" + name +
                                                          "' from " + importedRecord.sourcePath.string());
                             }
@@ -1465,6 +1997,17 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                     }
 
                     if (seenNames.find(name) != seenNames.end()) {
+                        // Same origin declaration deep-cloned through a shared dependency
+                        // (e.g. core::aspects surfaced via this module's own core
+                        // auto-import and again via a whole-imported consumer that also
+                        // carried it), or an explicitly-requested symbol already made
+                        // available by a whole import of a module that re-exports it:
+                        // skip rather than treat as a real conflict. The requested name
+                        // was already erased above, so the missing-import check is happy.
+                        if (seenOrigins.count(name) &&
+                            seenOrigins[name] == declaringOrigin(originName)) {
+                            continue;
+                        }
                         const bool explicitlyRequested = requestedRenames.count(originName) > 0;
                         if (isSubsetImport && !explicitlyRequested) {
                             // A dependency-closure carry that is already present in
@@ -1481,32 +2024,34 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
 
                     if (isNamespaceImport) {
                         std::string mangled = mangledNamespaceName(nsName, originName);
-                        if (!renameDeclaration(importedStmt, mangled)) {
+                        if (!renameDeclaration(copyStmt, mangled)) {
                             throw std::runtime_error("Cannot mangle namespace import '" + originName +
                                                      "' from " + importedRecord.sourcePath.string());
                         }
                         // Re-map the carried declaration's own cross-references to the
                         // mangled names so its internal calls/reads stay consistent.
-                        mangleBareStmt(importedStmt, namespaceMangled);
+                        mangleBareStmt(copyStmt, namespaceMangled);
                         if (seenNames.find(mangled) != seenNames.end()) {
                             throw std::runtime_error("Duplicate symbol after splice: '" + mangled +
                                                      "' while importing '" + importPath.importSpelling + "' from " +
                                                      importPath.importerFile + ":" + std::to_string(importPath.line));
                         }
                         seenNames.insert(mangled);
+                        seenOrigins[mangled] = declaringOrigin(originName);
                         // The mangled symbol keeps share visibility from its origin so
                         // it can follow an exported function onto the next import hop
                         // (the mangled name is not user-writeable, so this never
                         // exposes the plain symbol unqualified).
                         carryShare(originName, mangled);
                         namespaceMangled[originName] = mangled;
-                        resolvedBody.push_back(std::move(importedStmt));
+                        resolvedBody.push_back(std::move(copyStmt));
                         continue;
                     }
 
                     seenNames.insert(name);
+                    seenOrigins[name] = declaringOrigin(originName);
                     carryShare(originName, name);
-                    resolvedBody.push_back(std::move(importedStmt));
+                    resolvedBody.push_back(std::move(copyStmt));
                 }
 
                 if (!requestedNames.empty()) {
@@ -1521,7 +2066,6 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                     localNamespaces[nsName] = std::move(namespaceMangled);
                 }
 
-                importedRecord.emitted = true;
                 continue;
                 }
             }
@@ -1529,6 +2073,7 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
             std::string name = declarationName(stmt);
             if (!name.empty()) {
                 seenNames.insert(name);
+                seenOrigins[name] = currentKey;
             }
             ownStmtIndices.push_back(resolvedBody.size());
             resolvedBody.push_back(std::move(stmt));
@@ -1564,9 +2109,6 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
         module->body = std::move(resolvedBody);
         currentRecord.module = std::move(module);
         currentRecord.state = ModuleState::Resolved;
-        if (!isRoot) {
-            currentRecord.emitted = false;
-        }
         topologicalOrder_.push_back(currentKey);
     } catch (...) {
         currentRecord.state = ModuleState::Failed;

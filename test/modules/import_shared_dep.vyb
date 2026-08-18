@@ -1,0 +1,20 @@
+// @test: Shared dependency spliced into two consumers
+// @description: consumer_shared_a and consumer_shared_b each import a different symbol
+//   from source_shared_origin. Whichever consumer is splicted first, the origin body
+//   must not be consumed: the second consumer still needs its own symbol (dep_b).
+//   Previously the origin's body was moved into the first consumer and dep_b was
+//   undefined in the second.
+// @category: modules
+// @expect: pass
+// @expect-output: 100
+// @expect-output: 202
+// @tags: modules, import-shared-dep
+
+import consumer_shared_a::{fn_a}
+import consumer_shared_b::{fn_b}
+
+main()<Int> -> {
+    println_int(fn_a())   // 100
+    println_int(fn_b())   // 202
+    return 0
+}
