@@ -28,14 +28,16 @@ VYB_LYNX_HOME=http://example.com ../../build/vyb src/main.vyb
 ## What is wired
 - **Single screen owner.** Only the UI loop mutates ncurses (`clear`, header,
   body, status, `refresh`). Network/content work only publish state (RFE §40).
-- **Timed, non-blocking input.** `curses_timeout(80)` + `getch` polls, so the
-  loop is responsive and ready for a future async/select event model (RFE §38).
+- **Timed, non-blocking input + event loop.** `curses_timeout(80)` + `getch`
+  polls, and the same tick also runs `commit_fetch` (a non-blocking
+  `async_poll`) so keyboard input and background fetches are serviced together
+  in one select-style loop (RFE §38).
 - **Sanitize boundary.** Every text add passes through `sanitize()`, which
   drops control bytes (and `0x7f`) from remote content so a hostile page cannot
   inject terminal control sequences (RFE §46 checklist).
-- **Navigation is structured.** `fetch_page` `fail`s with the HTTP status and
-  `navigate` `trap`s it, so one bad page becomes an error page, never a crash
-  (RFE §20/§21/§35).
+- **Navigation is structured.** The `fail`/`trap` lives inside `fetch_page_at`,
+  so whether it runs on the worker fiber or the main-thread fallback, one bad
+  page becomes an error page, never a crash (RFE §20/§21/§35).
 - **`T?` models absence** for "no such link" and the cancelled URL prompt.
 - **`ensure` guards the render invariant** (non-zero terminal size).
 - **Aspect/bind.** `Display` is bound to `Url`; an `Interactive` aspect is bound
@@ -53,9 +55,13 @@ VYB_LYNX_HOME=http://example.com ../../build/vyb src/main.vyb
   `Page`/`String` into a struct field deep-copies/retains the source.
 - **Multi-value returns.** `tty_dims()` returns a pair of `Int`s that is
   destructured in `content_width()` and in the event loop (RFE §22).
-- **asyncs / Future.** A warm-up fiber is started as a `Future` and awaited at
-  launch (RFE §10/§11). The page fetch itself is still synchronous — making it a
-  `Future` (so a slow network never blocks the UI) is the next milestone.
+- **asyncs / Future — non-blocking fetch (Milestone 5).** A warm-up fiber is
+  started as a `Future` and awaited at launch (RFE §10/§11). Navigation spawns a
+  worker fiber (`async_spawn`) that does the whole fetch AND render off the main
+  thread; the UI loop's `commit_fetch` polls that task with non-blocking
+  `async_poll` each tick and deep-copies the published `Page` into owned state.
+  A generation counter on the publication globals means a superseded fetch can
+  never clobber a newer navigation (RFE §8/§38).
 
 ## Language-feature → code map
 | Feature | Where |
@@ -70,7 +76,8 @@ VYB_LYNX_HOME=http://example.com ../../build/vyb src/main.vyb
 | ownership (`their`/`borrow`) | load_url/draw/follow_page |
 | multi-value returns | `tty_dims()` + nested destructuring |
 | http/https (stdlib) | `ResourceProvider` fetch path |
-| asyncs / Future | `warm_up`, `await` |
+| asyncs / Future | `warm_up`+`await`; `async_spawn` fetch fiber + `async_poll` |
+| publication globals | `fetch_req_gen`/`fetch_pub_gen`/`fetch_pub_page` + `commit_fetch` |
 | curses (stdlib) | entire terminal layer |
 | sanitize | control-byte scrubbing (RFE security) |
 
@@ -100,8 +107,6 @@ are recorded here so the fixes are traceable.
    unconditionally.
 
 ## Next milestones (per RFE §45)
-- Make the page fetch a `Future` and add a timed/select event loop so a slow
-  load never blocks the UI (RFE §8/§38).
 - Add a `FileProvider` resource provider for `file://` documents (RFE §6/§44).
 - Downloads via a `DownloadAgent` + file I/O + progress (RFE §23-§29).
 - Resize handling (`curses_resize` shim) and window-based layout (±RFE §14).

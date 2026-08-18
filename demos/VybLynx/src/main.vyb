@@ -4,8 +4,8 @@
 # UI goes through the stdlib `curses` module *exclusively* - no raw libc/escape
 # sequences in the browser. One owner (the UI loop) mutates the screen; network
 # and content work only publish state, which the UI renders. Input is timed
-# (curses_timeout) so the loop polls instead of blocking forever, laying the
-# ground for a future async/select event loop.
+# (curses_timeout) so the loop polls instead of blocking forever, and page loads
+# run as background async worker fibers so the network never blocks the UI.
 #
 #   VYB_LYNX_HOME=http://example.org  vyblynx   : open that URL at launch
 #   <n>        follow numbered link           b  back
@@ -31,7 +31,7 @@ import http::{http_get_full, http_header, HttpResponse}
 import https::{https_get_full_verified}
 import term::{stdin_read_line}
 import env
-import asyncs::{async_sleep_ms}
+import asyncs::{async_sleep_ms, async_spawn, async_poll}
 import curses
 
 version_id()<String> -> { return "0.1.0" }
@@ -106,7 +106,10 @@ struct BrowserState {
     top<Int>,
     loading<Bool>,
     help<Bool>,
-    status<String>
+    status<String>,
+    task<Int>,
+    pending<String>,
+    gen<Int>
 }
 
 # --- Terminal size + invariant -----------------------------------------------
@@ -238,13 +241,13 @@ error_page(urlStr<String>, status<Int>)<Page> -> {
 # Structured failure: a page request that cannot be satisfied `fail`s with its
 # status, and the browser `trap`s it at the navigation boundary (RFE §20/§21)
 # so one bad page cannot terminate the program.
-fetch_page(urlStr<String>)<Page> -> {
+fetch_page_at(urlStr<String>, width<Int>)<Page> -> {
     page<Page> = {
         resp<HttpResponse> = fetch_resource(urlStr, 6)
         if (resp.status < 200 || resp.status >= 300) {
             fail<Int>(resp.status)
         }
-        build_page(resp.body, parse_url(urlStr), content_width())
+        build_page(resp.body, parse_url(urlStr), width)
     } trap (e<Int>) -> {
         error_page(urlStr, e)
     }
@@ -258,6 +261,38 @@ status_for(p<their<Page>>, target<String>)<String> -> {
     }
     return "ok  " + p.lines.len().to_string() + " lines  " +
            p.navs.len().to_string() + " links"
+}
+
+# --- Async fetch state published by a worker fiber (RFE §8/§38) --------------
+# The curses UI loop must never block on the network, so navigation spawns a
+# worker fiber that does the whole fetch AND render off the main thread. A fiber
+# can only return an Int, so the built `Page` comes back through these module
+# globals. `fetch_req_gen` is bumped on every load_url request; a worker only
+# publishes if its generation still matches (a superseded fetch can never clobber
+# a newer navigation). The UI loop polls the handle each tick (non-blocking
+# async_poll) and, on completion, `commit_fetch` deep-copies the published Page
+# into the owned state and resets the scratch.
+fetch_req_gen<Int> = 0
+fetch_pub_gen<Int> = 0
+fetch_pub_done<Int> = 0
+fetch_pub_page<Page> = blank_page()
+
+# Poll the in-flight navigation and, when the latest request has published,
+# commit its Page to the owned state. Returns true when the screen changed.
+commit_fetch(st<their<BrowserState>>)<Bool> -> {
+    if (!st.loading || st.task == 0) { return false }
+    res<Int> = async_poll(st.task)
+    if (res < 0) { return false }
+    if (fetch_pub_done == 1 && fetch_pub_gen == st.gen) {
+        st.page = fetch_pub_page
+        fetch_pub_page = blank_page()
+        fetch_pub_done = 0
+        st.task = 0
+        st.loading = false
+        st.status = status_for(borrow(st.page), st.pending)
+        return true
+    }
+    return false
 }
 
 # --- Curses drawing (single screen owner) ------------------------------------
@@ -410,8 +445,7 @@ open_url_prompt()<String?> -> {
 
 # --- A tiny async showcase ---------------------------------------------------
 # RFE §10/§11: an explicit Future object represents an outstanding operation.
-# Here a warm-up fiber is started and awaited at launch; the next milestone
-# makes the page fetch itself a Future so the network never blocks the UI.
+# A warm-up fiber is started and awaited at launch before the event loop begins.
 async warm_up(ms<Int>)<Future<Int>> -> {
     async_sleep_ms(ms)
     return ms
@@ -423,21 +457,48 @@ async warm_up(ms<Int>)<Future<Int>> -> {
 # (an owned field, so the compiler deep-copies/transfers the source into
 # independent storage) and read back via `borrow(st.page)` by the single-owner
 # screen helpers.
+# Start a background fetch of `target` and return immediately so the UI loop
+# stays responsive (the network/TLS never runs on the main thread). The whole
+# fetch AND render happen on a worker fiber, which publishes its Page into the
+# module scratch; the UI loop's commit_fetch polls that task each tick and
+# commits the result. `gen` is bumped per navigation so a superseded fetch can
+# never clobber the newest one.
 load_url(st<their<BrowserState>>, target<String>)<Void> -> {
+    fetch_req_gen = fetch_req_gen + 1
+    st.gen = fetch_req_gen
+    st.pending = target
     st.url = target
     st.loading = true
     st.status = "Loading " + target
     st.top = 0
-    # Show the loading frame before the (possibly slow) network/TLS fetch so the
-    # first paint is immediate and navigation has visible feedback.
     r<Int>, c<Int>
     r, c = tty_dims()
     if (r < 1) { r = 24 }
     if (c < 1) { c = 80 }
+    # Show the loading frame immediately so the first paint and navigation
+    # feedback are instant, independent of how long the fetch takes.
     redraw(borrow(st.page), st.top, st.status, st.loading, st.help, r, c)
-    st.page = fetch_page(target)
-    st.loading = false
-    st.status = status_for(borrow(st.page), target)
+    wd<Int> = content_width()
+    g<Int> = st.gen
+    h<Int> = async_spawn(|| -> {
+        pg<Page> = fetch_page_at(target, wd)
+        if (fetch_req_gen == g) {
+            fetch_pub_page = pg
+            fetch_pub_gen = g
+            fetch_pub_done = 1
+        }
+        return 0
+    })
+    if (h == 0) {
+        # No worker could be scheduled: fetch synchronously on this thread so
+        # navigation still works (and never hangs forever).
+        st.page = fetch_page_at(target, wd)
+        st.task = 0
+        st.loading = false
+        st.status = status_for(borrow(st.page), target)
+    } else {
+        st.task = h
+    }
 }
 
 scroll_page(st<their<BrowserState>>, r<Int>, forward<Bool>)<Void> -> {
@@ -461,7 +522,10 @@ run_browser(initial<String>)<Int> -> {
         top = 0,
         loading = false,
         help = false,
-        status = "ready"
+        status = "ready",
+        task = 0,
+        pending = "",
+        gen = 0
     }
 
     load_url(borrow(state), initial)
@@ -477,6 +541,11 @@ run_browser(initial<String>)<Int> -> {
         r, c = tty_dims()
         if (r < 1) { r = 24 }
         if (c < 1) { c = 80 }
+        # Non-blocking: if a background fetch finished, commit it and repaint.
+        done<Bool> = commit_fetch(borrow(state))
+        if (done) {
+            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
+        }
         k<Int> = curses_getch()
         if (k == -1) {
             continue
