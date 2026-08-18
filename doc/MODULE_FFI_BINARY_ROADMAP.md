@@ -841,7 +841,6 @@ For each phase, track:
 
 - `doc/bundles_and_sharing.md` - Detailed bundle/sharing design
 - `doc/AST_Declarations.md` - Import AST node specifications
-- `doc/archive/ROADMAP.md` - Overall Vyb roadmap
 - `doc/VRE.md` - Vyb Runtime Environment design
 
 ---

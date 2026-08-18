@@ -1,7 +1,7 @@
 # Vyb Documentation Index
 
 This directory contains the active documentation for the Vyb programming language.
-Obsolete, superseded, and phase-complete documents live in [`archive/`](archive/).
+Superseded documents are folded into the repository history.
 
 ---
 

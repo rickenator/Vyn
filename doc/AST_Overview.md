@@ -24,6 +24,4 @@ This documentation is split into several parts:
 *   **[Auto-Serialization](Auto_Serialization_Main_Returns.md)**: Describes Vyb's auto-serialization system for `main()` function returns and built-in JSON support.
 *   **[Multi-Value Returns & JSON Serialization](./Auto_Serialization_Main_Returns.md)**: Comprehensive specification for multi-value returns with typeful JSON serialization, including serialization mode intrinsics.
 *   **[Design Considerations](./AST_Design_Considerations.md)**: Discusses various design choices, alternatives, and rationale behind the AST structure. This includes topics like memory management, error handling, and potential future enhancements.
-*   **[Roadmap](AST_Roadmap.md (archived: `archive/AST_Roadmap.md`))**: Outlines planned AST nodes and future development directions for the AST.
-
 *(The original `AST.md` served as the basis for these documents and will be phased out.)*

@@ -285,8 +285,7 @@ Represents a `trap` handler that intercepts a `fail`-propagated error.
     -   `body` (`BlockStatementPtr`): The block to execute, which may propagate a `fail`.
     -   `handlers` (`std::vector<TrapHandlerPtr>`): Error type → handler block pairs.
 
-> See `doc/ERROR_TRAP.md` and `doc/archive/ERROR_PROPAGATION_DESIGN.md` for the full `fail`/`trap`
-> design.
+> See `doc/ERROR_TRAP.md` for the full `fail`/`trap` design.
 
 ## 11. `ScopedStatement`
 

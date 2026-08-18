@@ -209,7 +209,7 @@ Once FFI is implemented, many other planned features become library problems rat
 language problems:
 
 - **File I/O** — wrap `fopen`/`fclose`/`fread`/`fwrite`
-- **Networking** — wrap POSIX socket API (see `doc/archive/ROADMAP.md` networking section)
+- **Networking** — wrap POSIX socket API
 - **Math** — expose `libm` functions beyond what's in Vyb intrinsics
 - **OS signals** — `signal()`, `sigaction()`
 - **Terminal** — `tcgetattr()`/`tcsetattr()`, readline
@@ -221,4 +221,4 @@ FFI is the foundation that unlocks the systems programming story for Vyb.
 
 ---
 
-*See also:* `doc/MODULE_FFI_BINARY_ROADMAP.md`, `doc/archive/ROADMAP.md`
+*See also:* `doc/MODULE_FFI_BINARY_ROADMAP.md`

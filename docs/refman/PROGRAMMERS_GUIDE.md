@@ -125,13 +125,16 @@ main()<Int> -> {
 
 ```bash
 ./build/vyb hello.vyb          # compile and run
-./build/vyb --emit-obj hi.vyb  # or produce an object/binary
+./build/vyb hi.vyb -c hi.o     # compile to an LLVM object file
 ```
 
 The compiler compiles `*.vyb` to LLVM IR, codegens an object, links it with
-`runtime/vyb_runtime.c` + libc/libm (and OpenSSL for TLS), and produces a
-native executable. Common build flags: `--emit-obj`, `--optimize`, and
-static vs dynamic linking.
+the runtime (the C atoms `runtime/vyb_runtime.c` + `runtime/vyb_type_metadata.c`
+plus the C++ type/closure atoms `src/runtime/error_handling.cpp` +
+`src/vre/intrinsics.cpp`), libc/libm, and OpenSSL for TLS, and produces a native
+executable. A single file becomes an executable with `vyb app.vyb --build app`;
+multi-file packages use `vyb.toml` (see *Projects and packaging* below). Common
+flags: `--compile <out.o>`, `--link <lib>`, `--static`, and `-O<0..3>`.
 
 ### Running the test suite
 
@@ -142,6 +145,48 @@ python3 test_harness.py --vyb ./build/vyb --workers 16
 
 Key test knobs (see also [§8](#8-testing-and-tooling)): `--pattern`, `--category`, `--report`,
 `triage` for triage planning, and HTML report generation.
+
+### Projects and packaging
+
+A *project* is a multi-file package described by a `vyb.toml` manifest at its
+root. A minimal manifest declares the package and one or more binaries:
+
+```toml
+[package]
+name = "myapp"
+version = "0.1.0"
+
+[[bin]]
+name = "myapp"
+path = "src/main.vyb"
+
+[dependencies]
+mylib = { path = "../mylib" }
+```
+
+```bash
+vyb new myapp           # scaffold myapp/vyb.toml + myapp/src/main.vyb
+cd myapp && vyb build   # build every [[bin]] into ./target/
+./target/myapp
+```
+
+`vyb build` does the following:
+
+- Reads `vyb.toml` and builds each `[[bin]]` into `target/<name>`.
+- Adds the project `src/` directory and every local `[dependencies]` path to the
+  module search paths, so imports in your project resolve your own modules and
+  library modules uniformly.
+- Writes `vyb.lock`, pinning the resolved dependency set.
+- Compiles and links through the same pipeline as a single file, into
+  `target/<name>`.
+
+Dependencies may be local paths today: `mylib = { path = "../mylib" }`. Remote
+(version / git) dependency resolution is not implemented yet; a manifest that
+declares one fails `vyb build` with a clear message.
+
+`--link <lib>`, `--static`, and `-O<0..3>` pass through to the native link, and
+`vyb build` also accepts an optional project directory (`vyb build path/to/proj`
+or `-C path/to/proj`).
 
 ---
 
