@@ -431,7 +431,9 @@ void __vyb_runtime_panic(const char* message) {
     fprintf(stderr, "\nABORTING\n");
     fflush(stderr);
 
-    abort();
+    // A panic in a compiled program should terminate with a non-zero status;
+    // not necessarily dump core. (Tests assert exit code 1, not SIGABRT.)
+    exit(1);
 }
 
 // ===== Untrapped Error Handler =====

@@ -1,4 +1,4 @@
-// @expect: fail
+// @expect: pass
 // Test Vec edge cases and error conditions
 main()<Int> -> {
     // Test empty Vec operations

@@ -1829,16 +1829,21 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
             ebErr = llvm::BasicBlock::Create(*context, "entry.err_fail", entry);
         }
 
+        // A worker that yields nothing (Future<Void>) has no payload; LLVM
+        // forbids naming a call that returns void, and there is no result
+        // aggregate to split into success/error. Skip the failable split (and
+        // the untrapped-error path) entirely for such workers.
+        const bool workerIsVoid = (kind == AsyncResultKind::Void);
         llvm::Value* wr = nullptr;
-        if (failable) {
+        if (failable && !workerIsVoid) {
             wr = b.CreateCall(worker, args, "async.worker");
             errPtr = b.CreateBitCast(b.CreateExtractValue(wr, 1, "async.err.raw"), int8PtrType, "async.err");
             b.CreateCondBr(b.CreateIsNull(errPtr), ebOk, ebErr);
             b.SetInsertPoint(ebOk);
         }
 
-        if (kind == AsyncResultKind::Void) {
-            if (!failable) b.CreateCall(worker, args, "async.worker");
+        if (workerIsVoid) {
+            if (!failable) b.CreateCall(worker, args);
             b.CreateRet(llvm::ConstantInt::get(int64Type, 0));
         } else {
             llvm::Value* val = failable ? b.CreateExtractValue(wr, 0, "async.worker.val")
@@ -1859,7 +1864,7 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
             }
         }
 
-        if (failable) {
+        if (failable && !workerIsVoid) {
             b.SetInsertPoint(ebErr);
             b.CreateCall(setErrFn, {taskIdArg, errPtr}, "async.err.set");
             b.CreateRet(llvm::ConstantInt::get(int64Type, 0));

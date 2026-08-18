@@ -631,9 +631,97 @@ void LLVMCodegen::handleVecConcat(vyb::ast::CallExpression* node, llvm::Value* v
 
     VYB_CDBG << "DEBUG: Vec::concat() called - concatenating with another Vec" << std::endl;
 
-    // For now, placeholder implementation
-    // Return the original Vec reference
-    m_currentLLVMValue = vecPtr;
+    // The other Vec argument arrives as a struct value (e.g. loaded from a
+    // variable); back it with a temporary alloca so both buffers can be read
+    // through the { data, size, capacity } field GEPs below.
+    if (!otherVec->getType()->isPointerTy()) {
+        llvm::Value* tempAlloca = builder->CreateAlloca(otherVec->getType(), nullptr, "vec.concat.other");
+        builder->CreateStore(otherVec, tempAlloca);
+        otherVec = tempAlloca;
+    }
+
+    // Resolve the element type (and byte size) from the Vec<T> result type so
+    // the combined buffer is laid out exactly like the source vectors.
+    llvm::Type* elementLLVMType = nullptr;
+    vyb::ast::TypeNode* elemNode = nullptr;
+    if (auto* vt = dynamic_cast<ast::VecType*>(node->type.get())) {
+        elemNode = vt->elementType.get();
+    } else if (auto* tn = dynamic_cast<ast::TypeName*>(node->type.get())) {
+        if (!tn->genericArgs.empty()) elemNode = tn->genericArgs[0].get();
+    }
+    if (elemNode) elementLLVMType = codegenType(elemNode);
+    if (!elementLLVMType) elementLLVMType = llvm::Type::getInt64Ty(*context); // fallback
+    llvm::DataLayout dataLayout(module.get());
+    const uint64_t elementSizeBytes = dataLayout.getTypeAllocSize(elementLLVMType);
+
+    // Load this Vec's data pointer and size.
+    llvm::Value* thisDataPtr = builder->CreateLoad(
+        llvm::PointerType::get(*context, 0),
+        builder->CreateStructGEP(vecStructType, vecPtr, 0, "vec.concat.data_ptr"),
+        "vec.concat.data");
+    llvm::Value* thisSize = builder->CreateLoad(
+        llvm::Type::getInt64Ty(*context),
+        builder->CreateStructGEP(vecStructType, vecPtr, 1, "vec.concat.size_ptr"),
+        "vec.concat.size");
+
+    // Load the other Vec's data pointer and size.
+    llvm::Value* otherDataPtr = builder->CreateLoad(
+        llvm::PointerType::get(*context, 0),
+        builder->CreateStructGEP(vecStructType, otherVec, 0, "vec.concat.other_data_ptr"),
+        "vec.concat.other_data");
+    llvm::Value* otherSize = builder->CreateLoad(
+        llvm::Type::getInt64Ty(*context),
+        builder->CreateStructGEP(vecStructType, otherVec, 1, "vec.concat.other_size_ptr"),
+        "vec.concat.other_size");
+
+    // A fresh combined vector sized exactly to hold both element ranges.
+    llvm::Value* zero = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 0);
+    llvm::Value* elemSizeVal = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), elementSizeBytes);
+    llvm::Value* newCap = builder->CreateAdd(thisSize, otherSize, "vec.concat.cap");
+    llvm::Value* allocBytes = builder->CreateMul(newCap, elemSizeVal, "vec.concat.bytes");
+
+    llvm::Function* currentFunc = builder->GetInsertBlock()->getParent();
+    llvm::Function* mallocFunc = getOrCreateMallocFunction();
+    llvm::Value* newDataPtr = builder->CreateCall(mallocFunc, {allocBytes}, "vec.concat.new_data");
+
+    // Guarded memcpy so an empty side never reads from an uninitialized buffer.
+    llvm::Value* hasThis = builder->CreateICmpSGT(thisSize, zero, "vec.concat.has_this");
+    llvm::Value* hasOther = builder->CreateICmpSGT(otherSize, zero, "vec.concat.has_other");
+    llvm::Value* hasData = builder->CreateOr(hasThis, hasOther, "vec.concat.has_data");
+
+    llvm::BasicBlock* copyBB = llvm::BasicBlock::Create(*context, "vec.concat.copy", currentFunc);
+    llvm::BasicBlock* copyThisBB = llvm::BasicBlock::Create(*context, "vec.concat.copy_this", currentFunc);
+    llvm::BasicBlock* copyOtherBB = llvm::BasicBlock::Create(*context, "vec.concat.copy_other", currentFunc);
+    llvm::BasicBlock* doneBB = llvm::BasicBlock::Create(*context, "vec.concat.done", currentFunc);
+    builder->CreateCondBr(hasData, copyBB, doneBB);
+
+    builder->SetInsertPoint(copyBB);
+    llvm::Function* memcpyFunc = getOrCreateMemcpyFunction();
+    llvm::Value* thisBytes = builder->CreateMul(thisSize, elemSizeVal, "vec.concat.this_bytes");
+    llvm::Value* otherBytes = builder->CreateMul(otherSize, elemSizeVal, "vec.concat.other_bytes");
+    builder->CreateCondBr(hasThis, copyThisBB, copyOtherBB);
+
+    builder->SetInsertPoint(copyThisBB);
+    builder->CreateCall(memcpyFunc, {newDataPtr, thisDataPtr, thisBytes});
+    builder->CreateBr(copyOtherBB);
+
+    builder->SetInsertPoint(copyOtherBB);
+    llvm::Value* thisBytesPtr = builder->CreateGEP(llvm::Type::getInt8Ty(*context), newDataPtr, thisBytes, "vec.concat.other_dst");
+    builder->CreateCall(memcpyFunc, {thisBytesPtr, otherDataPtr, otherBytes});
+    builder->CreateBr(doneBB);
+
+    builder->SetInsertPoint(doneBB);
+    // The combined Vec is an independent holder of any String elements it now
+    // references, so each retained element survives the original vectors' teardown.
+    if (elementLLVMType && isVybStringStructType(elementLLVMType)) {
+        retainStringElements(newDataPtr, newCap);
+    }
+
+    llvm::Value* newVec = llvm::UndefValue::get(vecStructType);
+    newVec = builder->CreateInsertValue(newVec, newDataPtr, 0, "vec.concat.result.data");
+    newVec = builder->CreateInsertValue(newVec, newCap, 1, "vec.concat.result.size");
+    newVec = builder->CreateInsertValue(newVec, newCap, 2, "vec.concat.result.cap");
+    m_currentLLVMValue = newVec;
 }
 
 void LLVMCodegen::handleVecContains(vyb::ast::CallExpression* node, llvm::Value* vecPtr, llvm::Type* vecStructType) {
@@ -789,7 +877,8 @@ void LLVMCodegen::handleVecRemoveAt(vyb::ast::CallExpression* node, llvm::Value*
     llvm::BasicBlock* removeBlock = llvm::BasicBlock::Create(*context, "vec.remove_valid", builder->GetInsertBlock()->getParent());
     llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(*context, "vec.remove_merge", builder->GetInsertBlock()->getParent());
 
-    // Create a phi node for the return value
+    // The block that takes the out-of-bounds edge into the merge PHI.
+    llvm::BasicBlock* boundsCheckBlock = builder->GetInsertBlock();
     builder->CreateCondBr(indexInBounds, removeBlock, mergeBlock);
 
     // Remove block - valid index
@@ -868,7 +957,7 @@ void LLVMCodegen::handleVecRemoveAt(vyb::ast::CallExpression* node, llvm::Value*
     } else {
         defaultValue = llvm::Constant::getNullValue(elementLLVMType);
     }
-    resultPhi->addIncoming(defaultValue, builder->GetInsertBlock()->getUniquePredecessor());
+    resultPhi->addIncoming(defaultValue, boundsCheckBlock);
 
     VYB_CDBG << "DEBUG: Vec::remove_at() called - element removed and Vec compacted" << std::endl;
 

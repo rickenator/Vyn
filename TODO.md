@@ -990,7 +990,7 @@ For Vyb to be considered production-ready at 1.0, **all of the following must be
 - [x] FFI (`extern "C"`) working — extern blocks, ABI aliases, `#[repr(C)]`, native `--link` (variadics/bindgen still open)
 - [x] `vyb.toml` and `vyb build` project system (foundation shipped: manifest, multi-file/path-dep build, `vyb new`, `vyb.lock`; remote git/version dependency fetching is a staged follow-up)
 - [x] Wildcard trap handler (`trap (e<?>)`) with `typeof` discrimination
-- [ ] All open contradictions resolved (see section above; 4 pre-existing trap/vec failures remain)
+- [ ] All open contradictions resolved (see section above)
 
 ### Should-Have for 1.0
 - [ ] REPL (`vyb repl`)
@@ -1131,5 +1131,5 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 
 *Last Updated: 2026-08-17 (doc-reconciliation)*
 *Current Version: Vyb v0.7.1 (freedom-1.0 series)*
-*Overall Status: ~60-65% complete toward 1.0 — 993 tests, 989 passing (full --execute-jit directory sweep; 4 pre-existing trap/vec failures remain)*
+*Overall Status: ~60-65% complete toward 1.0 — 1002 tests, 1002 passing (full --execute-jit directory sweep)*
 *SUGGESTIONS.md merged into this document.*
