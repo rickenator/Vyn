@@ -1177,6 +1177,24 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                     std::unordered_set<std::string> moduleDeclNames;
                     std::unordered_map<std::string, ast::Node*> bindByKey;
                     std::unordered_map<std::string, std::vector<std::string>> bindMethodToKeys;
+                    // Bind reachability footprint. A bind is admitted to the
+                    // closure only when its own self type is already in play, so
+                    // a `Vec` `for..in` does not drag in the iterator binds of
+                    // every other collection. `bindSelfBase` is the unwrapped
+                    // self-type name (e.g. `Vec`); `bindTypeBases` is the union
+                    // of the self type, trait type, and every method return type,
+                    // which is what makes a downstream bind (e.g. `next` on the
+                    // `VecIter` returned by `iter`) reachable once `iter` is
+                    // admitted.
+                    std::unordered_map<std::string, std::string> bindSelfBase;
+                    std::unordered_map<std::string, std::unordered_set<std::string>> bindTypeBases;
+                    auto baseTypeName = [](const ast::TypeNode* ty) -> std::string {
+                        if (!ty) return "";
+                        if (auto* tn = dynamic_cast<const ast::TypeName*>(ty)) {
+                            if (tn->identifier) return tn->identifier->name;
+                        }
+                        return "";
+                    };
                     for (const auto& decl : importedRecord.module->body) {
                         if (!decl) continue;
                         if (dynamic_cast<ast::ImportDeclaration*>(decl.get())) continue;
@@ -1187,6 +1205,18 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                             for (const auto& m : bind->methods) {
                                 if (m && m->id) bindMethodToKeys[m->id->name].push_back(bk);
                             }
+                            std::string selfBase = baseTypeName(bind->selfType.get());
+                            if (!selfBase.empty()) bindSelfBase[bk] = selfBase;
+                            auto& bases = bindTypeBases[bk];
+                            if (!selfBase.empty()) bases.insert(selfBase);
+                            std::string traitBase = baseTypeName(bind->traitType.get());
+                            if (!traitBase.empty()) bases.insert(traitBase);
+                            for (const auto& m : bind->methods) {
+                                if (m) {
+                                    std::string rb = baseTypeName(m->returnTypeNode.get());
+                                    if (!rb.empty()) bases.insert(rb);
+                                }
+                            }
                             continue;
                         }
                         std::string n = declarationName(decl);
@@ -1195,34 +1225,76 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                         declByName.emplace(n, decl.get());
                     }
                     FreeIdentifierCollector collector;
-                    std::vector<std::string> pending(carryNames.begin(), carryNames.end());
-                    for (const auto& bk : carryBindKeys) pending.push_back(bk);
-                    std::unordered_set<std::string> walked;
-                    while (!pending.empty()) {
-                        const std::string key = pending.back();
-                        pending.pop_back();
-                        if (!walked.insert(key).second) continue;
-                        ast::Node* carried = nullptr;
-                        if (auto it = declByName.find(key); it != declByName.end()) {
-                            carried = it->second;
-                        } else if (auto it = bindByKey.find(key); it != bindByKey.end()) {
-                            carried = it->second;
-                        }
-                        if (!carried) continue;
-                        collector.names.clear();
-                        carried->accept(collector);
-                        for (const auto& ref : collector.names) {
-                            if (moduleDeclNames.count(ref)) {
-                                if (carryNames.insert(ref).second) {
-                                    pending.push_back(ref);
+                    // Order-independent fixpoint. A single pass can see `next`
+                    // referenced before `iter` has made `VecIter` reachable, so
+                    // keep rescanning until nothing new is admitted.
+                    std::unordered_set<std::string> reachableTypes(carryNames.begin(), carryNames.end());
+                    std::unordered_set<std::string> referencedMethods;
+                    std::unordered_set<std::string> declWalked;
+                    std::unordered_set<std::string> bindBodyWalked;
+                    bool changed = true;
+                    while (changed) {
+                        changed = false;
+                        // Walk carried module declarations and admitted binds,
+                        // absorbing free identifiers into reachability. Walking a
+                        // declaration's signature is enough to seed its receiver
+                        // types (e.g. `Vec`), so only that type's binds are
+                        // reachable.
+                        std::vector<std::string> passDecls(carryNames.begin(), carryNames.end());
+                        for (const auto& key : passDecls) {
+                            if (!declWalked.insert(key).second) continue;
+                            auto it = declByName.find(key);
+                            if (it == declByName.end()) continue;
+                            collector.names.clear();
+                            it->second->accept(collector);
+                            for (const auto& ref : collector.names) {
+                                reachableTypes.insert(ref);
+                                if (moduleDeclNames.count(ref) && carryNames.insert(ref).second) {
+                                    changed = true;
                                 }
+                                if (bindMethodToKeys.count(ref)) referencedMethods.insert(ref);
                             }
-                            auto mIt = bindMethodToKeys.find(ref);
-                            if (mIt != bindMethodToKeys.end()) {
+                        }
+                        std::vector<std::string> passBinds(carryBindKeys.begin(), carryBindKeys.end());
+                        for (const auto& key : passBinds) {
+                            if (!bindBodyWalked.insert(key).second) continue;
+                            auto it = bindByKey.find(key);
+                            if (it == bindByKey.end()) continue;
+                            collector.names.clear();
+                            it->second->accept(collector);
+                            for (const auto& ref : collector.names) {
+                                reachableTypes.insert(ref);
+                                if (moduleDeclNames.count(ref) && carryNames.insert(ref).second) {
+                                    changed = true;
+                                }
+                                if (bindMethodToKeys.count(ref)) referencedMethods.insert(ref);
+                            }
+                        }
+                        // Admit binds for referenced methods whose self type is
+                        // reachable; their footprints extend reachability, so this
+                        // must run to a fixpoint in its own right too.
+                        bool admitted = true;
+                        while (admitted) {
+                            admitted = false;
+                            for (const auto& m : referencedMethods) {
+                                auto mIt = bindMethodToKeys.find(m);
+                                if (mIt == bindMethodToKeys.end()) continue;
                                 for (const auto& bk : mIt->second) {
-                                    if (carryBindKeys.insert(bk).second) {
-                                        pending.push_back(bk);
+                                    if (carryBindKeys.count(bk)) continue;
+                                    auto sbIt = bindSelfBase.find(bk);
+                                    if (sbIt == bindSelfBase.end() ||
+                                        !reachableTypes.count(sbIt->second)) {
+                                        continue;
                                     }
+                                    carryBindKeys.insert(bk);
+                                    auto tbIt = bindTypeBases.find(bk);
+                                    if (tbIt != bindTypeBases.end()) {
+                                        for (const auto& base : tbIt->second) {
+                                            reachableTypes.insert(base);
+                                        }
+                                    }
+                                    changed = true;
+                                    admitted = true;
                                 }
                             }
                         }
