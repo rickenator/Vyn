@@ -350,12 +350,18 @@ error_page(urlStr<String>, status<Int>)<Page> -> {
     lns<Vec<String>> = Vec()
     lns.push("unable to load: " + urlStr)
     if (status == -1) {
-        lns.push("connection, DNS, or timeout failure")
+        lns.push("this machine appears to be offline (connection, DNS, or timeout)")
+        lns.push("")
+        lns.push("network pages can't be reached here, but the bundled local:")
+        lns.push("pages need no network at all - press  g , type")
+        lns.push("local:///welcome.html , then enter to reopen the home page.")
     } else {
         lns.push("HTTP status " + status.to_string())
+        lns.push("")
+        lns.push("the page returned an error status; b goes back, or g opens a")
+        lns.push("new URL in the box at the bottom of the window.")
     }
-    lns.push("")
-    lns.push("press q to quit, b to go back, or <n> to follow a link")
+    lns.push("q quit    b back    g address bar")
     return Page { title = "error", url = urlStr, lines = lns, navs = Vec() }
 }
 
