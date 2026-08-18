@@ -4256,6 +4256,9 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         } else if (fname == "vyb_async_poll") {
             emitHandleIntrinsic("__vyb_async_poll", 1);
             return;
+        } else if (fname == "vyb_async_detach") {
+            emitHandleIntrinsic("__vyb_async_detach", 1);
+            return;
         } else if (fname == "vyb_async_yield") {
             emitHandleIntrinsic("__vyb_async_yield", 0);
             return;

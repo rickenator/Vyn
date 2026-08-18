@@ -18,9 +18,11 @@
 # these -- no state-machine transform is required.
 #
 # Lifecycle: tasks stay valid across main-thread awaits, so you can spawn
-# several and await them in any order. async_run_all() runs whatever is left and
-# then reclaims every task (handles must not be used afterwards); a leftover-task
-# atexit hook stops the worker pool and reclaims anything forgotten.
+# several and await them in any order. async_detach(t) reclaims a single
+# completed task early (call after polling/awaiting; the handle must not be used
+# afterwards), so a long-lived program can recycle fibers instead of one per
+# spawn. async_run_all() runs whatever is left and then reclaims every task; a
+# leftover-task atexit hook stops the worker pool and reclaims anything forgotten.
 
 # Enqueue `work` (a fn() -> Int) on the worker pool; returns a task handle (>= 1)
 # or 0 on failure. The pool runs on the next async_await/async_run_all.
@@ -47,6 +49,18 @@ async_await(t<Int>)<Int> -> {
 share(all)
 async_poll(t<Int>)<Int> -> {
     return vyb_async_poll(t)
+}
+
+# Reclaim a completed task, freeing its fiber stack and captured environment so
+# long-lived programs don't accumulate one fiber per spawn. The task must no
+# longer be awaited; the handle must not be used afterwards. If the fiber is
+# already finished the task is freed immediately; a still-running task is marked
+# and reclaimed by its worker as soon as it completes, so a slow fetch still
+# self-reaps. Returns 0 on success, -1 if already detached, -3 if a waiter is
+# still attached.
+share(all)
+async_detach(t<Int>)<Int> -> {
+    return vyb_async_detach(t)
 }
 
 # Cooperative yield: suspend the current fiber and reschedule it (a no-op if

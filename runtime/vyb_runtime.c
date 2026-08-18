@@ -2668,6 +2668,8 @@ typedef struct vyb_async_task {
     int64_t (*fn)(void*, int64_t);
     void* env;
     int state;                 // 0 = READY, 1 = BLOCKED, 2 = DONE
+    int reap;                  // detach requested: reclaim once the fiber is DONE + off-stack
+    int fully_done;            // home worker resumed; the fiber has fully left its stack
     int64_t result;
     int64_t wake_ms;           // abs mono-ms when on the timer heap, else -1
     void* stack;
@@ -2810,6 +2812,20 @@ static void async_ensure_workers(void) {
     }
 }
 
+// Reclaim a single task that is DONE and fully off its stack: unlink it from
+// the lifecycle list, drop the closure env, and free the fiber stack + struct.
+// Must be called with g_async_lock held, and only after the home worker has
+// resumed (so the fiber's stack is no longer live). A reaped handle must not be
+// reused, exactly like task_free / async_run_all.
+static void async_reap_task(vyb_async_task* t) {
+    vyb_async_task** pp = &g_all;
+    while (*pp && *pp != t) pp = &(*pp)->next_all;
+    if (*pp) *pp = t->next_all;
+    if (t->env) __vyb_closure_release(t->env);
+    free(t->stack);
+    free(t);
+}
+
 // Per-worker scheduler loop. Only this worker touches its own sched_ctx and
 // ready queue, so the fiber-pinning invariant is kept. Exits on shutdown.
 static void* async_worker_main(void* arg) {
@@ -2823,6 +2839,7 @@ static void* async_worker_main(void* arg) {
             if (!w->ready) w->ready_tail = NULL;
             g_nready--;
             w->busy = 1;
+            t->fully_done = 0;   // stale flag from a prior suspension must not read as done
         } else {
             if (g_shutdown) { pthread_mutex_unlock(&g_async_lock); break; }
             if (async_quiescent_locked()) pthread_cond_broadcast(&g_drain_cv);
@@ -2856,7 +2873,9 @@ static void* async_worker_main(void* arg) {
         }
 
         pthread_mutex_lock(&g_async_lock);
+        t->fully_done = 1;      // the fiber is now fully off its stack
         w->busy = 0;
+        if (t->reap && t->state == 2) async_reap_task(t);
     }
     return NULL;
 }
@@ -2965,6 +2984,29 @@ VYB_WEAK int64_t __vyb_async_poll(int64_t task) {
     int64_t v = (t->state == 2) ? t->result : -1;
     pthread_mutex_unlock(&g_async_lock);
     return v;
+}
+
+// Reclaim an async task handle. The handle is handed to the runtime: if the
+// fiber has already finished AND its home worker has resumed (fully off its
+// stack) the task is freed immediately; otherwise it is marked and the worker
+// frees it on completion, so a slow detached fetch still self-reaps. The handle
+// must not be used after this call (like task_free / async_run_all).
+// Returns 0 on success, -1 if already detached, -3 if a waiter (a fiber await
+// or a parked main-thread await) is still attached; the caller should not detach
+// until every awaiting fiber has been resumed.
+VYB_WEAK int64_t __vyb_async_detach(int64_t task) {
+    if (!task) return -2;
+    vyb_async_task* t = (vyb_async_task*)(intptr_t)task;
+    pthread_mutex_lock(&g_async_lock);
+    if (t->reap) { pthread_mutex_unlock(&g_async_lock); return -1; }
+    if (t->waiters != NULL || g_main_wait == t) {
+        pthread_mutex_unlock(&g_async_lock);
+        return -3;
+    }
+    t->reap = 1;
+    if (t->state == 2 && t->fully_done) async_reap_task(t);
+    pthread_mutex_unlock(&g_async_lock);
+    return 0;
 }
 
 // Cooperative yield: suspend the current fiber and reschedule it (no-op if not

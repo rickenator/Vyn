@@ -61,7 +61,9 @@ VYB_LYNX_HOME=http://example.com ../../build/vyb src/main.vyb
   thread; the UI loop's `commit_fetch` polls that task with non-blocking
   `async_poll` each tick and deep-copies the published `Page` into owned state.
   A generation counter on the publication globals means a superseded fetch can
-  never clobber a newer navigation (RFE §8/§38).
+  never clobber a newer navigation (RFE §8/§38). Each committed (or superseded)
+  fetch handle is reclaimed via `async_detach` once the fiber is done, so the
+  per-navigation fiber stacks/env are freed instead of accumulating until exit.
 
 ## Language-feature → code map
 | Feature | Where |
@@ -76,7 +78,7 @@ VYB_LYNX_HOME=http://example.com ../../build/vyb src/main.vyb
 | ownership (`their`/`borrow`) | load_url/draw/follow_page |
 | multi-value returns | `tty_dims()` + nested destructuring |
 | http/https (stdlib) | `ResourceProvider` fetch path |
-| asyncs / Future | `warm_up`+`await`; `async_spawn` fetch fiber + `async_poll` |
+| asyncs / Future | `warm_up`+`await`; `async_spawn` fetch fiber + `async_poll` + `async_detach` reap |
 | publication globals | `fetch_req_gen`/`fetch_pub_gen`/`fetch_pub_page` + `commit_fetch` |
 | curses (stdlib) | entire terminal layer |
 | sanitize | control-byte scrubbing (RFE security) |

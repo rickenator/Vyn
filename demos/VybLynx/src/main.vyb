@@ -31,7 +31,7 @@ import http::{http_get_full, http_header, HttpResponse}
 import https::{https_get_full_verified}
 import term::{stdin_read_line}
 import env
-import asyncs::{async_sleep_ms, async_spawn, async_poll}
+import asyncs::{async_sleep_ms, async_spawn, async_poll, async_detach}
 import curses
 
 version_id()<String> -> { return "0.1.0" }
@@ -109,7 +109,8 @@ struct BrowserState {
     status<String>,
     task<Int>,
     pending<String>,
-    gen<Int>
+    gen<Int>,
+    stale<Vec<Int>>
 }
 
 # --- Terminal size + invariant -----------------------------------------------
@@ -278,21 +279,46 @@ fetch_pub_done<Int> = 0
 fetch_pub_page<Page> = blank_page()
 
 # Poll the in-flight navigation and, when the latest request has published,
-# commit its Page to the owned state. Returns true when the screen changed.
+# commit its Page to the owned state. The completed fiber is reclaimed via
+# async_detach so its stack/env is released rather than waiting for exit.
+# Returns true when the screen changed.
 commit_fetch(st<their<BrowserState>>)<Bool> -> {
     if (!st.loading || st.task == 0) { return false }
     res<Int> = async_poll(st.task)
     if (res < 0) { return false }
     if (fetch_pub_done == 1 && fetch_pub_gen == st.gen) {
+        h<Int> = st.task
         st.page = fetch_pub_page
         fetch_pub_page = blank_page()
         fetch_pub_done = 0
         st.task = 0
         st.loading = false
         st.status = status_for(borrow(st.page), st.pending)
+        async_detach(h)
         return true
     }
     return false
+}
+
+# Reclaim any superseded navigation fibers that have finished. Each navigation
+# spawns its own fiber; when the user navigates again the previous handle is
+# parked in `stale` and swept here once per tick, detaching (and thereby freeing)
+# the ones that have already completed.
+reap_stale(st<their<BrowserState>>)<Void> -> {
+    if (st.stale.len() == 0) { return }
+    keep<Vec<Int>> = Vec()
+    i<Int> = 0
+    while (i < st.stale.len()) {
+        h<Int> = st.stale.get(i)
+        p<Int> = async_poll(h)
+        if (p >= 0) {
+            async_detach(h)
+        } else {
+            keep.push(h)
+        }
+        i = i + 1
+    }
+    st.stale = keep
 }
 
 # --- Curses drawing (single screen owner) ------------------------------------
@@ -464,6 +490,7 @@ async warm_up(ms<Int>)<Future<Int>> -> {
 # commits the result. `gen` is bumped per navigation so a superseded fetch can
 # never clobber the newest one.
 load_url(st<their<BrowserState>>, target<String>)<Void> -> {
+    if (st.task != 0) { st.stale.push(st.task) }
     fetch_req_gen = fetch_req_gen + 1
     st.gen = fetch_req_gen
     st.pending = target
@@ -525,7 +552,8 @@ run_browser(initial<String>)<Int> -> {
         status = "ready",
         task = 0,
         pending = "",
-        gen = 0
+        gen = 0,
+        stale = Vec()
     }
 
     load_url(borrow(state), initial)
@@ -541,7 +569,8 @@ run_browser(initial<String>)<Int> -> {
         r, c = tty_dims()
         if (r < 1) { r = 24 }
         if (c < 1) { c = 80 }
-        # Non-blocking: if a background fetch finished, commit it and repaint.
+        # Reclaim finished superseded fetch fibers, then commit the current one.
+        reap_stale(borrow(state))
         done<Bool> = commit_fetch(borrow(state))
         if (done) {
             redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)

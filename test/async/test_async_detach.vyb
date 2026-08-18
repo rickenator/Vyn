@@ -1,0 +1,66 @@
+// Per-task reclamation: async_detach frees a spawned fiber's stack and captured
+// environment so a long-running program doesn't accumulate one fiber per spawn.
+// A completed task is reaped eagerly; a task detached while still running is
+// reaped by its worker as soon as it finishes (self-reap). Detaching a task a
+// waiter still awaits is refused. The handle must not be reused after detach,
+// exactly like task_free / async_run_all.
+// @env: VYB_STDLIB=stdlib
+// @expect: pass
+
+import asyncs::{async_sleep_ms, async_spawn, async_poll, async_await, async_detach, async_run_all}
+
+wait_for(t<Int>)<Int> -> {
+    i<Int> = 0
+    while (i < 1000) {
+        p<Int> = async_poll(t)
+        if (p >= 0) { return p }
+        async_sleep_ms(1)
+        i = i + 1
+    }
+    return -9
+}
+
+main()<Int> -> {
+    # 1) Eager reclamation: run each task to completion, then detach it -> 0.
+    hs<Vec<Int>> = Vec()
+    n<Int> = 6
+    i<Int> = 0
+    while (i < n) {
+        v<Int> = i
+        hs.push(async_spawn(|| -> { async_sleep_ms(2); return v }))
+        i = i + 1
+    }
+    i = 0
+    while (i < hs.len()) {
+        h<Int> = hs.get(i)
+        got<Int> = wait_for(h)
+        if (got != i) { return 10 + i }
+        if (async_detach(h) != 0) { return 90 + i }
+        i = i + 1
+    }
+
+    # 2) Deferred reclamation: detach fibers that are still running. The worker
+    #    reaps them when they finish; a second detach reports already-detached.
+    a<Int> = async_spawn(|| -> { async_sleep_ms(30); return 77 })
+    b<Int> = async_spawn(|| -> { async_sleep_ms(40); return 88 })
+    if (async_detach(a) != 0) { return 120 }
+    if (async_detach(a) != -1) { return 121 }
+    if (async_detach(b) != 0) { return 122 }
+
+    # 3) A task with a waiter attached cannot be detached (refused with -3).
+    c<Int> = async_spawn(|| -> { async_sleep_ms(80); return 5 })
+    d<Int> = async_spawn(|| -> { return async_await(c) })
+    async_sleep_ms(10)             # let d become a waiter on c
+    if (async_detach(c) != -3) { return 130 }
+
+    # 4) A null/invalid handle is refused.
+    if (async_detach(0) != -2) { return 140 }
+
+    # Drive the remainder (c,d) to completion; awaiting d also exercises nested
+    # suspend. The detached a/b self-reap, and run_all reclaims the leftovers.
+    if (async_await(d) != 5) { return 150 }
+    async_run_all()
+
+    println("ok")
+    return 0
+}
