@@ -2804,6 +2804,109 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         }
     }
 
+    // Terminal + stdin intrinsics (term stdlib module): interactive console I/O.
+    // Mirrors the File/Network mapping — Vyb-level calls (`vyb_stdin_*`,
+    // `vyb_eprint*`, `vyb_stdout_flush`, `vyb_stderr_flush`, `vyb_term_*`) resolve
+    // to `__vyb_*` runtime symbols in `runtime/vyb_runtime.c`. The stdin readers
+    // return an owned, registry-registered heap buffer { ptr, len } that the Vyb
+    // String built over it will free on last reference; all other helpers return
+    // an Int status. String arguments arrive as Vyb Strings { ptr, len } and their
+    // data pointer (and length) are extracted at the boundary.
+    if (identCallee) {
+        const std::string& fname = identCallee->name;
+        std::string rtName;
+        if (fname == "vyb_stdin_read") rtName = "__vyb_stdin_read";
+        else if (fname == "vyb_stdin_read_line") rtName = "__vyb_stdin_read_line";
+        else if (fname == "vyb_stdin_isatty") rtName = "__vyb_stdin_isatty";
+        else if (fname == "vyb_stdin_raw_enable") rtName = "__vyb_stdin_raw_enable";
+        else if (fname == "vyb_stdin_raw_disable") rtName = "__vyb_stdin_raw_disable";
+        else if (fname == "vyb_eprint") rtName = "__vyb_eprint";
+        else if (fname == "vyb_eprintln") rtName = "__vyb_eprintln";
+        else if (fname == "vyb_stdout_flush") rtName = "__vyb_stdout_flush";
+        else if (fname == "vyb_stderr_flush") rtName = "__vyb_stderr_flush";
+        else if (fname == "vyb_term_cols") rtName = "__vyb_term_cols";
+        else if (fname == "vyb_term_rows") rtName = "__vyb_term_rows";
+        else if (fname == "vyb_term_clear") rtName = "__vyb_term_clear";
+        else if (fname == "vyb_term_move_cursor") rtName = "__vyb_term_move_cursor";
+        else if (fname == "vyb_term_hide_cursor") rtName = "__vyb_term_hide_cursor";
+        else if (fname == "vyb_term_show_cursor") rtName = "__vyb_term_show_cursor";
+        if (!rtName.empty()) {
+            auto getTermFn = [&](llvm::FunctionType* ft) -> llvm::Function* {
+                llvm::Function* f = module->getFunction(rtName);
+                if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, rtName, module.get());
+                return f;
+            };
+            auto toI64 = [&](llvm::Value* v) -> llvm::Value* {
+                if (!v) return v;
+                if (v->getType()->isIntegerTy(64)) return v;
+                if (v->getType()->isIntegerTy()) return builder->CreateSExt(v, int64Type, "term.toi64");
+                return v;
+            };
+            auto toStrPtr = [&](llvm::Value* v) -> llvm::Value* {
+                if (v && v->getType()->isStructTy()) return builder->CreateExtractValue(v, 0, "term.strptr");
+                return v;
+            };
+            auto strLen = [&](llvm::Value* v) -> llvm::Value* {
+                return (v && v->getType()->isStructTy())
+                    ? builder->CreateExtractValue(v, 1, "term.strlen")
+                    : llvm::ConstantInt::get(int64Type, 0);
+            };
+            auto strStruct = [&]() {
+                std::vector<llvm::Type*> f = {int8PtrType, int64Type};
+                return llvm::StructType::get(*context, f, false);
+            };
+
+            if (fname == "vyb_stdin_read") {
+                if (node->arguments.size() != 1) {
+                    logError(node->loc, rtName + " expects 1 argument (maxlen)");
+                    m_currentLLVMValue = nullptr; return;
+                }
+                node->arguments[0]->accept(*this); llvm::Value* maxlen = m_currentLLVMValue;
+                if (!maxlen) { m_currentLLVMValue = nullptr; return; }
+                llvm::FunctionType* ft = llvm::FunctionType::get(strStruct(), {int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getTermFn(ft), {toI64(maxlen)}, "stdin.data");
+                return;
+            } else if (fname == "vyb_stdin_read_line") {
+                if (!node->arguments.empty()) {
+                    logError(node->loc, rtName + " expects no arguments");
+                    m_currentLLVMValue = nullptr; return;
+                }
+                llvm::FunctionType* ft = llvm::FunctionType::get(strStruct(), {}, false);
+                m_currentLLVMValue = builder->CreateCall(getTermFn(ft), {}, "stdin.line");
+                return;
+            } else if (fname == "vyb_eprint" || fname == "vyb_eprintln") {
+                if (node->arguments.size() != 1) {
+                    logError(node->loc, rtName + " expects 1 argument (s)");
+                    m_currentLLVMValue = nullptr; return;
+                }
+                node->arguments[0]->accept(*this); llvm::Value* s = m_currentLLVMValue;
+                if (!s) { m_currentLLVMValue = nullptr; return; }
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getTermFn(ft), {toStrPtr(s), strLen(s)}, "term.eprint");
+                return;
+            } else if (fname == "vyb_term_move_cursor") {
+                if (node->arguments.size() != 2) {
+                    logError(node->loc, rtName + " expects 2 arguments (row, col)");
+                    m_currentLLVMValue = nullptr; return;
+                }
+                node->arguments[0]->accept(*this); llvm::Value* row = m_currentLLVMValue;
+                node->arguments[1]->accept(*this); llvm::Value* col = m_currentLLVMValue;
+                if (!row || !col) { m_currentLLVMValue = nullptr; return; }
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getTermFn(ft), {toI64(row), toI64(col)}, "term.move");
+                return;
+            } else {
+                if (!node->arguments.empty()) {
+                    logError(node->loc, rtName + " expects no arguments");
+                    m_currentLLVMValue = nullptr; return;
+                }
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {}, false);
+                m_currentLLVMValue = builder->CreateCall(getTermFn(ft), {}, "term.ret");
+                return;
+            }
+        }
+    }
+
     // Handle Network I/O intrinsics (network stdlib module). Mirrors the File I/O
     // mapping: each Vyb-level call (`vyb_net_*`) resolves to an exported runtime
     // symbol (`__vyb_net_*`) in `runtime/vyb_runtime.c`. IP addresses and payloads

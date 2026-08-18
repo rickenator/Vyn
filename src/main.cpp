@@ -125,6 +125,23 @@ extern "C" {
     const char* __vyb_net_last_peer_ip(void);
     int64_t __vyb_net_last_peer_port(void);
 
+    // Terminal + stdin runtime helpers (term stdlib module)
+    vyb_file_str __vyb_stdin_read(int64_t maxlen);
+    vyb_file_str __vyb_stdin_read_line(void);
+    int64_t __vyb_stdin_isatty(void);
+    int64_t __vyb_stdin_raw_enable(void);
+    int64_t __vyb_stdin_raw_disable(void);
+    int64_t __vyb_eprint(const char* s, int64_t len);
+    int64_t __vyb_eprintln(const char* s, int64_t len);
+    int64_t __vyb_stdout_flush(void);
+    int64_t __vyb_stderr_flush(void);
+    int64_t __vyb_term_cols(void);
+    int64_t __vyb_term_rows(void);
+    int64_t __vyb_term_clear(void);
+    int64_t __vyb_term_move_cursor(int64_t row, int64_t col);
+    int64_t __vyb_term_hide_cursor(void);
+    int64_t __vyb_term_show_cursor(void);
+
 #ifdef VYB_HAVE_OPENSSL
     // TLS runtime helpers (tls stdlib module) over OpenSSL. SSL/SSL_CTX are
     // opaque pointers carried across as Int; certs are in-line PEM strings.
@@ -1324,6 +1341,36 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_file_error_code), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_file_error_message")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_file_error_message), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_stdin_read")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_stdin_read), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_stdin_read_line")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_stdin_read_line), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_stdin_isatty")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_stdin_isatty), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_stdin_raw_enable")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_stdin_raw_enable), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_stdin_raw_disable")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_stdin_raw_disable), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_eprint")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_eprint), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_eprintln")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_eprintln), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_stdout_flush")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_stdout_flush), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_stderr_flush")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_stderr_flush), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_term_cols")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_term_cols), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_term_rows")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_term_rows), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_term_clear")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_term_clear), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_term_move_cursor")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_term_move_cursor), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_term_hide_cursor")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_term_hide_cursor), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_term_show_cursor")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_term_show_cursor), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_net_open")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_open), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_net_close")] = llvm::orc::ExecutorSymbolDef(

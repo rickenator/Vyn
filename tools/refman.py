@@ -41,11 +41,12 @@ DEFAULT_OUT = ROOT / "docs" / "refman"
 GUIDE_API_BEGIN = "<!-- refman:api-index begin -->"
 GUIDE_API_END = "<!-- refman:api-index end -->"
 GUIDE_MODULE_ORDER = [
-    "core", "error", "io", "time", "collections", "channels", "threads",
+    "core", "error", "io", "term", "time", "collections", "channels", "threads",
     "tasks", "asyncs", "agents", "network", "tls", "http", "https", "prelude",
 ]
 GUIDE_API_AREA = {
     "core": "Contracts & math", "error": "Domain errors", "io": "Files",
+    "term": "Terminal & stdin",
     "time": "Clocks", "collections": "Vec/Map/Set/BTree", "channels": "Channels",
     "threads": "Threads & atomics", "tasks": "Fire-and-forget",
     "asyncs": "Async executor", "agents": "Message-passing units",

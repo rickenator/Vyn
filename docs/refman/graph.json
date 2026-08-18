@@ -1,5 +1,5 @@
 {
-  "git_rev": "f92a6d22ea6ab28765b19768c8e21daa126b99fc",
+  "git_rev": "b916d8dbd3231f006d54456d2f6a09848d41202c",
   "modules": [
     "agents",
     "asyncs",
@@ -12,6 +12,7 @@
     "network",
     "prelude",
     "tasks",
+    "term",
     "threads",
     "time",
     "tls"
@@ -118,6 +119,15 @@
           "stdlib/tasks/mod.vyb"
         ],
         "exported": 4,
+        "fan_in": 0,
+        "fan_out": 0
+      },
+      {
+        "name": "term",
+        "files": [
+          "stdlib/term/mod.vyb"
+        ],
+        "exported": 16,
         "fan_in": 0,
         "fan_out": 0
       },
@@ -425,6 +435,28 @@
           "task_await",
           "task_poll",
           "task_free"
+        ]
+      },
+      {
+        "path": "stdlib/term/mod.vyb",
+        "module": "term",
+        "symbols": [
+          "stdin_read",
+          "stdin_read_line",
+          "stdin_isatty",
+          "stdin_raw_enable",
+          "stdin_raw_disable",
+          "eprint",
+          "eprintln",
+          "flush",
+          "stderr_flush",
+          "term_cols",
+          "term_rows",
+          "term_clear",
+          "term_move_cursor",
+          "term_hide_cursor",
+          "term_show_cursor",
+          "term_status_message"
         ]
       },
       {
@@ -2178,6 +2210,150 @@
         "kind": "fn",
         "signature": "task_spawn(work<fn() -> Int>)<Int> ->",
         "summary": "Start `work` on a detached task thread; returns a task handle (>= 1) or 0/ -1",
+        "fan_in": 0
+      },
+      {
+        "name": "eprint",
+        "module": "term",
+        "file": "stdlib/term/mod.vyb",
+        "kind": "fn",
+        "signature": "eprint(s<String>)<Int> ->",
+        "summary": "Write `s` to stderr (no newline). Returns bytes written, or -1 on error.",
+        "fan_in": 0
+      },
+      {
+        "name": "eprintln",
+        "module": "term",
+        "file": "stdlib/term/mod.vyb",
+        "kind": "fn",
+        "signature": "eprintln(s<String>)<Int> ->",
+        "summary": "Write `s` followed by a newline to stderr. Returns bytes written, or -1.",
+        "fan_in": 0
+      },
+      {
+        "name": "flush",
+        "module": "term",
+        "file": "stdlib/term/mod.vyb",
+        "kind": "fn",
+        "signature": "flush()<Int> ->",
+        "summary": "Flush stdout so pending TUI updates are visible (call before reading input).",
+        "fan_in": 0
+      },
+      {
+        "name": "stderr_flush",
+        "module": "term",
+        "file": "stdlib/term/mod.vyb",
+        "kind": "fn",
+        "signature": "stderr_flush()<Int> ->",
+        "summary": "Flush stderr.",
+        "fan_in": 0
+      },
+      {
+        "name": "stdin_isatty",
+        "module": "term",
+        "file": "stdlib/term/mod.vyb",
+        "kind": "fn",
+        "signature": "stdin_isatty()<Bool> ->",
+        "summary": "1 if stdin is an interactive terminal (TTY), 0 if it is a pipe/redirect.",
+        "fan_in": 0
+      },
+      {
+        "name": "stdin_raw_disable",
+        "module": "term",
+        "file": "stdlib/term/mod.vyb",
+        "kind": "fn",
+        "signature": "stdin_raw_disable()<Int> ->",
+        "summary": "Restore the terminal mode saved by the last raw_enable. Returns 0 on success.",
+        "fan_in": 0
+      },
+      {
+        "name": "stdin_raw_enable",
+        "module": "term",
+        "file": "stdlib/term/mod.vyb",
+        "kind": "fn",
+        "signature": "stdin_raw_enable()<Int> ->",
+        "summary": "Put stdin in raw mode: read single keypresses without waiting for Enter, no",
+        "fan_in": 0
+      },
+      {
+        "name": "stdin_read",
+        "module": "term",
+        "file": "stdlib/term/mod.vyb",
+        "kind": "fn",
+        "signature": "stdin_read(maxlen<Int>)<String> ->",
+        "summary": "Blocking read up to `maxlen` bytes from stdin. In canonical (cooked) terminal",
+        "fan_in": 0
+      },
+      {
+        "name": "stdin_read_line",
+        "module": "term",
+        "file": "stdlib/term/mod.vyb",
+        "kind": "fn",
+        "signature": "stdin_read_line()<String> ->",
+        "summary": "Blocking read of one line (until '\\n' or EOF). The trailing newline is",
+        "fan_in": 0
+      },
+      {
+        "name": "term_clear",
+        "module": "term",
+        "file": "stdlib/term/mod.vyb",
+        "kind": "fn",
+        "signature": "term_clear()<Int> ->",
+        "summary": "Clear the screen and home the cursor. Returns 0 on success.",
+        "fan_in": 0
+      },
+      {
+        "name": "term_cols",
+        "module": "term",
+        "file": "stdlib/term/mod.vyb",
+        "kind": "fn",
+        "signature": "term_cols()<Int> ->",
+        "summary": "Terminal width in columns (typewriter units), falling back to 80.",
+        "fan_in": 0
+      },
+      {
+        "name": "term_hide_cursor",
+        "module": "term",
+        "file": "stdlib/term/mod.vyb",
+        "kind": "fn",
+        "signature": "term_hide_cursor()<Int> ->",
+        "summary": "Hide the cursor while drawing. Returns 0 on success.",
+        "fan_in": 0
+      },
+      {
+        "name": "term_move_cursor",
+        "module": "term",
+        "file": "stdlib/term/mod.vyb",
+        "kind": "fn",
+        "signature": "term_move_cursor(row<Int>, col<Int>)<Int> ->",
+        "summary": "Move the cursor to 1-based (row, column). Returns 0 on success.",
+        "fan_in": 0
+      },
+      {
+        "name": "term_rows",
+        "module": "term",
+        "file": "stdlib/term/mod.vyb",
+        "kind": "fn",
+        "signature": "term_rows()<Int> ->",
+        "summary": "Terminal height in rows, falling back to 24.",
+        "fan_in": 0
+      },
+      {
+        "name": "term_show_cursor",
+        "module": "term",
+        "file": "stdlib/term/mod.vyb",
+        "kind": "fn",
+        "signature": "term_show_cursor()<Int> ->",
+        "summary": "Show the cursor when drawing is done. Returns 0 on success.",
+        "fan_in": 0
+      },
+      {
+        "name": "term_status_message",
+        "module": "term",
+        "file": "stdlib/term/mod.vyb",
+        "kind": "fn",
+        "signature": "term_status_message()<String> ->",
+        "summary": "Compatibility status probe (kept for the module-surface import test).",
         "fan_in": 0
       },
       {
@@ -4801,6 +4977,96 @@
       "from_module": "tasks",
       "from_symbol": "task_spawn",
       "to_symbol": "vyb_task_spawn"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "term",
+      "from_symbol": "eprint",
+      "to_symbol": "vyb_eprint"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "term",
+      "from_symbol": "eprintln",
+      "to_symbol": "vyb_eprintln"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "term",
+      "from_symbol": "flush",
+      "to_symbol": "vyb_stdout_flush"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "term",
+      "from_symbol": "stderr_flush",
+      "to_symbol": "vyb_stderr_flush"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "term",
+      "from_symbol": "stdin_isatty",
+      "to_symbol": "vyb_stdin_isatty"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "term",
+      "from_symbol": "stdin_raw_disable",
+      "to_symbol": "vyb_stdin_raw_disable"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "term",
+      "from_symbol": "stdin_raw_enable",
+      "to_symbol": "vyb_stdin_raw_enable"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "term",
+      "from_symbol": "stdin_read",
+      "to_symbol": "vyb_stdin_read"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "term",
+      "from_symbol": "stdin_read_line",
+      "to_symbol": "vyb_stdin_read_line"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "term",
+      "from_symbol": "term_clear",
+      "to_symbol": "vyb_term_clear"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "term",
+      "from_symbol": "term_cols",
+      "to_symbol": "vyb_term_cols"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "term",
+      "from_symbol": "term_hide_cursor",
+      "to_symbol": "vyb_term_hide_cursor"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "term",
+      "from_symbol": "term_move_cursor",
+      "to_symbol": "vyb_term_move_cursor"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "term",
+      "from_symbol": "term_rows",
+      "to_symbol": "vyb_term_rows"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "term",
+      "from_symbol": "term_show_cursor",
+      "to_symbol": "vyb_term_show_cursor"
     },
     {
       "type": "runtimeRef",

@@ -27,6 +27,7 @@ successfully with the current compiler. Support modules live under
 | `ffi_puts.vyb` | `extern "C"` plus `freedom`-gated calls |
 | `module_import.vyb` | local module import from `examples/modules/` |
 | `module_visibility.vyb` | `bundle(...)`, `share(...)`, and selective import aliases |
+| `term_input.vyb` | `term` module — cooked `stdin_read_line`, raw-mode keypresses, stderr prompts |
 
 ### Idiomatic language patterns
 

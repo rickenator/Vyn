@@ -1,0 +1,35 @@
+// @test: term stdlib module - stderr, flush, terminal size, ANSI control
+// @description: deterministic checks of the `import term` surface that don't
+//   need interactive stdin (the harness runs without a controlling TTY input).
+//   Interactive stdin/raw-mode reads are covered separately via piped input.
+// @category: term, stdlib, io
+// @expect: pass
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import term
+
+main()<Int> -> {
+    // stderr: diagnostics must not corrupt the rendered stdout page.
+    if (eprint("E") < 0) { return 1 }
+    if (eprintln("K") < 0) { return 2 }
+    stderr_flush()
+
+    // flush stdout (succeeds even when stdout is a pipe).
+    if (flush() != 0) { return 3 }
+
+    // terminal size: real size or the 80x24 fallback, always >= 1.
+    if (term_cols() < 1 || term_rows() < 1) { return 4 }
+
+    // ANSI control helpers return 0 in most contexts.
+    if (term_move_cursor(3, 5) != 0) { return 5 }
+    if (term_show_cursor() != 0) { return 6 }
+    if (term_hide_cursor() != 0) { return 7 }
+    if (term_clear() != 0) { return 8 }
+
+    // module surface probe.
+    if (!term_status_message().starts_with("term:")) { return 9 }
+
+    println("term_io ok")
+    return 0
+}

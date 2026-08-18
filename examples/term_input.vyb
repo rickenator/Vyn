@@ -1,0 +1,37 @@
+// term_input.vyb — reading the keyboard: a cooked line, then raw keypresses.
+//
+// Uses the `term` stdlib module. In an interactive terminal (TTY) it prompts on
+// stderr, flushes, reads a full line, then switches to raw mode to read two
+// single keypresses (no echo, no Enter) and restore the terminal before exit.
+//
+// With piped input both reads hit EOF and return "" immediately, so this example
+// also runs non-interactively:
+//   build/vyb examples/term_input.vyb          # interactive
+//   printf 'hello\n' | build/vyb examples/term_input.vyb
+import term
+
+main()<Int> -> {
+    interactive<Bool> = stdin_isatty()
+    println("term_input demo — interactive=", interactive)
+
+    // 1. Cooked line read (prompt on stderr so it never corrupts a rendered page).
+    if (interactive) {
+        eprint("Type a line and press Enter: ")
+        stderr_flush()
+    }
+    line<String> = stdin_read_line()
+    println("line=", line)
+
+    // 2. Raw-mode single-key reads (interactive terminals only).
+    if (interactive) {
+        eprint("Raw mode: press two keys (Ctrl-C aborts): ")
+        stderr_flush()
+        stdin_raw_enable()
+        k1<Int> = stdin_read(1).char_at(0)
+        k2<Int> = stdin_read(1).char_at(0)
+        stdin_raw_disable()
+        println("keys=", k1, ",", k2)
+    }
+
+    return 0
+}

@@ -19,6 +19,8 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <poll.h>
+#include <termios.h>
+#include <sys/ioctl.h>
 
 #ifdef VYB_HAVE_OPENSSL
 #include <openssl/ssl.h>
@@ -427,6 +429,147 @@ VYB_WEAK char* __vyb_file_error_message(void) {
     if (copy) __vyb_string_register(copy);
     return copy;
 }
+
+// ============================================================================
+// TERMINAL + STDIN (term stdlib module) - interactive console I/O.
+// ============================================================================
+
+// Blocking read from stdin (fd 0), length-based like the file helpers. Reads up
+// to `maxlen` bytes (canonical terminal mode may deliver fewer — typically one
+// line). The buffer is registered with the String registry so the Vyb String
+// built over it is freed on last reference. Returns {NULL,0} on EOF/error or a
+// non-positive maxlen.
+VYB_WEAK vyb_file_str __vyb_stdin_read(int64_t maxlen) {
+    vyb_file_str r = { NULL, 0 };
+    if (maxlen <= 0) return r;
+    size_t cap = (size_t)maxlen;
+    char* buf = (char*)malloc(cap + 1);
+    if (!buf) return r;
+    ssize_t n = read(STDIN_FILENO, buf, cap);
+    if (n > 0) {
+        buf[n] = '\0';
+        __vyb_string_register(buf);
+        r.ptr = buf; r.len = (int64_t)n;
+    } else {
+        free(buf);
+    }
+    return r;
+}
+
+// Read one line (until '\n' or EOF) from stdin. The trailing newline is
+// stripped, and a CRLF terminator collapses to the bare line. NUL-terminated and
+// registered so it behaves like any other Vyb String.
+VYB_WEAK vyb_file_str __vyb_stdin_read_line(void) {
+    vyb_file_str r = { NULL, 0 };
+    size_t cap = 256, len = 0;
+    char* buf = (char*)malloc(cap);
+    if (!buf) return r;
+    // Read byte-at-a-time with unbuffered read() (not stdio getchar) so it does
+    // not consume bytes the stdio buffer would otherwise hand to stdin_read().
+    for (;;) {
+        unsigned char c;
+        ssize_t n = read(STDIN_FILENO, &c, 1);
+        if (n <= 0) break;              // EOF or error
+        if (c == '\n') break;          // end of line (stripped)
+        if (len + 1 >= cap) {
+            cap *= 2;
+            char* nb = (char*)realloc(buf, cap);
+            if (!nb) { free(buf); return r; }
+            buf = nb;
+        }
+        buf[len++] = (char)c;
+    }
+    if (len > 0 && buf[len - 1] == '\r') len--; // CRLF input
+    buf[len] = '\0';
+    __vyb_string_register(buf);
+    r.ptr = buf; r.len = (int64_t)len;
+    return r;
+}
+
+// 1 if stdin is an interactive terminal (a TTY), 0 if it is a pipe/redirect.
+VYB_WEAK int64_t __vyb_stdin_isatty(void) {
+    return isatty(STDIN_FILENO) ? 1 : 0;
+}
+
+static struct termios vyb_saved_termios;
+static int vyb_raw_active = 0;
+
+// Put stdin into raw mode (single-key reads, no echo, no line buffering) so an
+// interactive browser can read keypresses directly. Returns 0 on success, -1 if
+// stdin is not a TTY or the termios call fails.
+VYB_WEAK int64_t __vyb_stdin_raw_enable(void) {
+    if (!isatty(STDIN_FILENO)) return -1;
+    struct termios t;
+    if (tcgetattr(STDIN_FILENO, &t) != 0) return -1;
+    if (!vyb_raw_active) vyb_saved_termios = t;
+    cfmakeraw(&t);
+    if (tcsetattr(STDIN_FILENO, TCSANOW, &t) != 0) return -1;
+    vyb_raw_active = 1;
+    return 0;
+}
+
+// Restore the terminal mode saved by the last raw_enable. No-op (0) if raw mode
+// is not active. Returns 0 on success, -1 on failure.
+VYB_WEAK int64_t __vyb_stdin_raw_disable(void) {
+    if (!vyb_raw_active) return 0;
+    if (tcsetattr(STDIN_FILENO, TCSANOW, &vyb_saved_termios) != 0) return -1;
+    vyb_raw_active = 0;
+    return 0;
+}
+
+// Write `len` bytes of `s` to stderr so diagnostics don't corrupt the rendered
+// TUI on stdout. Returns the bytes written, or -1 on error.
+VYB_WEAK int64_t __vyb_eprint(const char* s, int64_t len) {
+    if (len < 0) len = 0;
+    if (s && len > 0)
+        return fwrite(s, 1, (size_t)len, stderr) == (size_t)len ? len : -1;
+    return 0;
+}
+
+// eprint followed by a newline. Returns the bytes written, or -1 on error.
+VYB_WEAK int64_t __vyb_eprintln(const char* s, int64_t len) {
+    int64_t w = __vyb_eprint(s, len);
+    if (w < 0) return -1;
+    if (fputc('\n', stderr) == EOF) return -1;
+    return w + 1;
+}
+
+// Flush stdout so TUI updates are visible before a blocking input read.
+VYB_WEAK int64_t __vyb_stdout_flush(void) { return fflush(stdout) == 0 ? 0 : -1; }
+// Flush stderr.
+VYB_WEAK int64_t __vyb_stderr_flush(void) { return fflush(stderr) == 0 ? 0 : -1; }
+
+// Terminal dimensions via ioctl(TIOCGWINSZ); fall back to 80x24 when unavailable.
+VYB_WEAK int64_t __vyb_term_cols(void) {
+    struct winsize w;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == 0 && w.ws_col > 0) return (int64_t)w.ws_col;
+    return 80;
+}
+VYB_WEAK int64_t __vyb_term_rows(void) {
+    struct winsize w;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == 0 && w.ws_row > 0) return (int64_t)w.ws_row;
+    return 24;
+}
+
+// Emit an ANSI escape sequence to stdout and flush.
+static int vyb_term_emit(const char* s) {
+    if (!s) return -1;
+    for (; *s; ++s)
+        if (fputc((unsigned char)*s, stdout) == EOF) return -1;
+    return fflush(stdout) == 0 ? 0 : -1;
+}
+
+// Clear the screen and home the cursor.
+VYB_WEAK int64_t __vyb_term_clear(void) { return vyb_term_emit("\x1b[2J\x1b[H"); }
+// Move the cursor to (1-based) row,column.
+VYB_WEAK int64_t __vyb_term_move_cursor(int64_t row, int64_t col) {
+    if (row < 1) row = 1;
+    if (col < 1) col = 1;
+    fprintf(stdout, "\x1b[%lld;%lldH", (long long)row, (long long)col);
+    return fflush(stdout) == 0 ? 0 : -1;
+}
+VYB_WEAK int64_t __vyb_term_hide_cursor(void) { return vyb_term_emit("\x1b[?25l"); }
+VYB_WEAK int64_t __vyb_term_show_cursor(void) { return vyb_term_emit("\x1b[?25h"); }
 
 // ============================================================================
 // NETWORK I/O (network stdlib module) - thin facades over BSD sockets.

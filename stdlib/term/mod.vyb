@@ -1,0 +1,122 @@
+# term - terminal + stdin I/O module.
+#
+# Interactive console I/O for TUI-style programs (a lynx-style browser): read
+# from stdin / keypresses, send diagnostics to stderr, flush stdout, and control
+# the terminal (size query + ANSI escapes). Everything crosses the runtime's
+# `__vyb_stdin_*` / `__vyb_eprint*` / `__vyb_term_*` functions in
+# `runtime/vyb_runtime.c`; the Vyb surface stays allocation/pointer-free.
+#
+# Usage:
+#   import term::{stdin_read_line, stdin_raw_enable, stdin_raw_disable,
+#                 eprintln, flush, term_cols, term_rows, term_clear,
+#                 term_move_cursor, term_hide_cursor, term_show_cursor}
+#   line<String> = stdin_read_line()          # one line (no trailing newline)
+#   stdin_raw_enable()                        # single-key reads, no echo
+#   key<Int> = ...                            # then read raw bytes with stdin_read
+#   stdin_raw_disable()
+#   eprintln("diagnostic goes to stderr")     # never corrupts the rendered page
+#   flush()                                   # make stdout visible before input
+#   cols<Int> = term_cols(); rows<Int> = term_rows()
+#
+# Stdin readers return a String (empty on EOF). The raw-mode and status helpers
+# return an Int: 0 on success, -1 on failure (e.g. stdin is not a TTY).
+
+# Blocking read up to `maxlen` bytes from stdin. In canonical (cooked) terminal
+# mode this typically returns one line; in raw mode it returns up to `maxlen`
+# keypress bytes. Returns an empty String on EOF.
+share(all)
+stdin_read(maxlen<Int>)<String> -> {
+    return vyb_stdin_read(maxlen)
+}
+
+# Blocking read of one line (until '\n' or EOF). The trailing newline is
+# stripped, and CRLF collapses to the bare line. Returns an empty String on EOF.
+share(all)
+stdin_read_line()<String> -> {
+    return vyb_stdin_read_line()
+}
+
+# 1 if stdin is an interactive terminal (TTY), 0 if it is a pipe/redirect.
+share(all)
+stdin_isatty()<Bool> -> {
+    return vyb_stdin_isatty() != 0
+}
+
+# Put stdin in raw mode: read single keypresses without waiting for Enter, no
+# echo. Returns 0 on success, -1 if stdin is not a TTY or termios fails.
+share(all)
+stdin_raw_enable()<Int> -> {
+    return vyb_stdin_raw_enable()
+}
+
+# Restore the terminal mode saved by the last raw_enable. Returns 0 on success.
+share(all)
+stdin_raw_disable()<Int> -> {
+    return vyb_stdin_raw_disable()
+}
+
+# Write `s` to stderr (no newline). Returns bytes written, or -1 on error.
+share(all)
+eprint(s<String>)<Int> -> {
+    return vyb_eprint(s)
+}
+
+# Write `s` followed by a newline to stderr. Returns bytes written, or -1.
+share(all)
+eprintln(s<String>)<Int> -> {
+    return vyb_eprintln(s)
+}
+
+# Flush stdout so pending TUI updates are visible (call before reading input).
+share(all)
+flush()<Int> -> {
+    return vyb_stdout_flush()
+}
+
+# Flush stderr.
+share(all)
+stderr_flush()<Int> -> {
+    return vyb_stderr_flush()
+}
+
+# Terminal width in columns (typewriter units), falling back to 80.
+share(all)
+term_cols()<Int> -> {
+    return vyb_term_cols()
+}
+
+# Terminal height in rows, falling back to 24.
+share(all)
+term_rows()<Int> -> {
+    return vyb_term_rows()
+}
+
+# Clear the screen and home the cursor. Returns 0 on success.
+share(all)
+term_clear()<Int> -> {
+    return vyb_term_clear()
+}
+
+# Move the cursor to 1-based (row, column). Returns 0 on success.
+share(all)
+term_move_cursor(row<Int>, col<Int>)<Int> -> {
+    return vyb_term_move_cursor(row, col)
+}
+
+# Hide the cursor while drawing. Returns 0 on success.
+share(all)
+term_hide_cursor()<Int> -> {
+    return vyb_term_hide_cursor()
+}
+
+# Show the cursor when drawing is done. Returns 0 on success.
+share(all)
+term_show_cursor()<Int> -> {
+    return vyb_term_show_cursor()
+}
+
+# Compatibility status probe (kept for the module-surface import test).
+share(all)
+term_status_message()<String> -> {
+    return "term: stdin/raw-mode, stderr/flush, and terminal control via `import term`"
+}

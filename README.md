@@ -17,7 +17,7 @@
 
 ## 1. Introduction
 
-Welcome to the Vyb programming language version 0.7.1. This overview walks you through what Vyb is and the thinking behind it. Vyb is a systems language built on a simple conviction: you should not have to choose between safety and power. Strong type safety and explicit ownership give your code discipline and predictability, while low-level escape hatches keep raw, machine-near control within reach when you need it. Code runs as fast native executables or through a JIT, so performance stays predictable from first prototype to final program. The syntax is readable and name-first, the abstractions are zero-cost, and the language aims to stay out of your way as your ambitions grow. The rest of this guide shows how those ideas take shape through feature summaries and examples.
+Welcome to the Vyb programming language version 0.7.2. This overview walks you through what Vyb is and the thinking behind it. Vyb is a systems language built on a simple conviction: you should not have to choose between safety and power. Strong type safety and explicit ownership give your code discipline and predictability, while low-level escape hatches keep raw, machine-near control within reach when you need it. Code runs as fast native executables or through a JIT, so performance stays predictable from first prototype to final program. The syntax is readable and name-first, the abstractions are zero-cost, and the language aims to stay out of your way as your ambitions grow. The rest of this guide shows how those ideas take shape through feature summaries and examples.
 
 ### 1.1 Purpose & Audience
 
@@ -298,7 +298,7 @@ This unique `import`/`smuggle` distinction makes Vyb's module system both secure
 
 ## In This Release
 
-Vyb **v0.7.1** (freedom-1.0 series) is a mature systems programming language with **native executable generation** and a broad core feature set.
+Vyb **v0.7.2** (freedom-1.0 series) is a mature systems programming language with **native executable generation** and a broad core feature set.
 
 ### ✅ **Recent Milestones**
 These features were completed in the current release cycle and are fully tested:

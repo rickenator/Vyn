@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.7.2] - 2026-08-17
+
+### Added
+- New `term` stdlib module: interactive (typing-direct) console I/O over new
+  weakly-linked `__vyb_stdin_*` / `__vyb_eprint*` / `__vyb_term_*` runtime
+  helpers in `runtime/vyb_runtime.c` (registered with the ORC JIT), discovered
+  via `import term`.
+  - stdin: `stdin_read(maxlen)`, `stdin_read_line()`, `stdin_isatty()`, and
+    terminal raw mode (`stdin_raw_enable()` / `stdin_raw_disable()`) for
+    single-keypress reads without echo or Enter.
+  - stderr + flush: `eprint(s)`, `eprintln(s)`, `flush()`, `stderr_flush()` so
+    diagnostics don't corrupt a rendered TUI page.
+  - terminal control: `term_cols()`, `term_rows()`, `term_clear()`,
+    `term_move_cursor(row, col)`, `term_hide_cursor()`, `term_show_cursor()`.
+  - `test/term/term_io.vyb` (deterministic surface check) and
+    `examples/term_input.vyb` (cooked line + raw-mode keypresses).
+
+### Changed
+- Version bumped to 0.7.2 to match the shipped `term` stdlib module
+  (`CMakeLists.txt`, `README.md`, `doc/FEATURE_STATUS.md`, `TODO.md`).
+
+---
+
 ## [0.7.1] - 2026-08-17
 
 ### Added

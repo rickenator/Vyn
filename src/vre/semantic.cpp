@@ -2087,6 +2087,14 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_strchan_new" || name == "vyb_strchan_send" ||
             name == "vyb_strchan_recv" || name == "vyb_strchan_try" ||
             name == "vyb_strchan_recv_opt" ||
+            name == "vyb_stdin_read" || name == "vyb_stdin_read_line" ||
+            name == "vyb_stdin_isatty" || name == "vyb_stdin_raw_enable" ||
+            name == "vyb_stdin_raw_disable" ||
+            name == "vyb_eprint" || name == "vyb_eprintln" ||
+            name == "vyb_stdout_flush" || name == "vyb_stderr_flush" ||
+            name == "vyb_term_cols" || name == "vyb_term_rows" ||
+            name == "vyb_term_clear" || name == "vyb_term_move_cursor" ||
+            name == "vyb_term_hide_cursor" || name == "vyb_term_show_cursor" ||
             name == "vyb_strchan_len" || name == "vyb_strchan_close" ||
             name == "vyb_strchan_free") {
             isIntrinsic = true;
@@ -2526,6 +2534,28 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 auto* resTy = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc,
                         netIntFuncs.count(name) ? "Int" : "String"));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+
+            // Terminal + stdin intrinsics (term stdlib module). The stdin readers
+            // return a String; the status/control helpers return an Int. Arity
+            // /diagnostic detail is left to codegen.
+            static const std::set<std::string> termIntFuncs = {
+                "vyb_stdin_isatty", "vyb_stdin_raw_enable", "vyb_stdin_raw_disable",
+                "vyb_eprint", "vyb_eprintln", "vyb_stdout_flush",
+                "vyb_stderr_flush", "vyb_term_cols", "vyb_term_rows",
+                "vyb_term_clear", "vyb_term_move_cursor", "vyb_term_hide_cursor",
+                "vyb_term_show_cursor"
+            };
+            static const std::set<std::string> termStrFuncs = {
+                "vyb_stdin_read", "vyb_stdin_read_line"
+            };
+            if (termIntFuncs.count(name) || termStrFuncs.count(name)) {
+                auto* resTy = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc,
+                        termIntFuncs.count(name) ? "Int" : "String"));
                 expressionTypes[node] = retainType(resTy);
                 node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
                 return;
