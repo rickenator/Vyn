@@ -1160,13 +1160,35 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                 // origin itself imported, so imports-of-imports are carried too.
                 bool closureComputed = false;
                 std::unordered_set<std::string> carryNames = requestedNames;
+                // Binds (keyed `bind:SelfType:Aspect`) that a carried declaration
+                // refers to through its method calls. Tracked separately because a
+                // bind has no user-facing symbol to alias; the `bind:`-prefixed keys
+                // never collide with ordinary declaration names.
+                std::unordered_set<std::string> carryBindKeys;
                 if (!requestedNames.empty() && importedRecord.module && !importedRecord.emitted) {
+                    // Module-level declarations this import may depend on, plus a
+                    // bind side-table. Binds are keyed by `bind:SelfType:Aspect` and
+                    // also indexed by the method names they provide, so the closure
+                    // can follow aspect dispatch (`v.iter()`, `it.next()`) that a
+                    // carried declaration uses. Without this a leaf module's
+                    // `for (x in v)` would fail to resolve `iter`/`next` unless the
+                    // consumer also imported collections.
                     std::unordered_map<std::string, ast::Node*> declByName;
                     std::unordered_set<std::string> moduleDeclNames;
+                    std::unordered_map<std::string, ast::Node*> bindByKey;
+                    std::unordered_map<std::string, std::vector<std::string>> bindMethodToKeys;
                     for (const auto& decl : importedRecord.module->body) {
                         if (!decl) continue;
-                        if (dynamic_cast<ast::BindDeclaration*>(decl.get())) continue;
                         if (dynamic_cast<ast::ImportDeclaration*>(decl.get())) continue;
+                        if (auto* bind = dynamic_cast<ast::BindDeclaration*>(decl.get())) {
+                            std::string bk = declarationName(decl);
+                            if (bk.empty()) continue;
+                            bindByKey.emplace(bk, decl.get());
+                            for (const auto& m : bind->methods) {
+                                if (m && m->id) bindMethodToKeys[m->id->name].push_back(bk);
+                            }
+                            continue;
+                        }
                         std::string n = declarationName(decl);
                         if (n.empty()) continue;
                         moduleDeclNames.insert(n);
@@ -1174,19 +1196,34 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                     }
                     FreeIdentifierCollector collector;
                     std::vector<std::string> pending(carryNames.begin(), carryNames.end());
+                    for (const auto& bk : carryBindKeys) pending.push_back(bk);
                     std::unordered_set<std::string> walked;
                     while (!pending.empty()) {
-                        const std::string n = pending.back();
+                        const std::string key = pending.back();
                         pending.pop_back();
-                        if (!walked.insert(n).second) continue;
-                        auto it = declByName.find(n);
-                        if (it == declByName.end()) continue;
+                        if (!walked.insert(key).second) continue;
+                        ast::Node* carried = nullptr;
+                        if (auto it = declByName.find(key); it != declByName.end()) {
+                            carried = it->second;
+                        } else if (auto it = bindByKey.find(key); it != bindByKey.end()) {
+                            carried = it->second;
+                        }
+                        if (!carried) continue;
                         collector.names.clear();
-                        it->second->accept(collector);
+                        carried->accept(collector);
                         for (const auto& ref : collector.names) {
-                            if (moduleDeclNames.count(ref) &&
-                                carryNames.insert(ref).second) {
-                                pending.push_back(ref);
+                            if (moduleDeclNames.count(ref)) {
+                                if (carryNames.insert(ref).second) {
+                                    pending.push_back(ref);
+                                }
+                            }
+                            auto mIt = bindMethodToKeys.find(ref);
+                            if (mIt != bindMethodToKeys.end()) {
+                                for (const auto& bk : mIt->second) {
+                                    if (carryBindKeys.insert(bk).second) {
+                                        pending.push_back(bk);
+                                    }
+                                }
                             }
                         }
                     }
@@ -1292,8 +1329,9 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
 
                     // Binds carry impl methods for (target, aspect) pairs. They have no
                     // symbol name to alias, so they are handled distinctly: carried when the
-                    // module is imported whole or the requested aspect is in the specifier
-                    // list, without consuming a requested-name slot (the aspect declaration
+                    // module is imported whole, the requested aspect is in the specifier
+                    // list, or the dependency closure resolved a method call to this bind,
+                    // without consuming a requested-name slot (the aspect declaration
                     // itself must still be imported).
                     if (auto* bind = dynamic_cast<ast::BindDeclaration*>(importedStmt.get())) {
                         std::string bindKey = declarationName(importedStmt);
@@ -1302,14 +1340,22 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                         }
                         std::string bindTrait = bind->traitType ? bind->traitType->toString() : "";
 
-                        if (!requestedForBinds.empty() &&
-                            (bindTrait.empty() || requestedForBinds.find(bindTrait) == requestedForBinds.end())) {
+                        const bool bindRequested = requestedForBinds.empty() ||
+                            (!bindTrait.empty() && requestedForBinds.find(bindTrait) != requestedForBinds.end());
+                        const bool bindClosureCarried = isSubsetImport && carryBindKeys.count(bindKey);
+                        if (!bindRequested && !bindClosureCarried) {
                             continue;
                         }
                         if (!declarationVisible(bindKey, importedRecord, metadata.bundles, importDecl)) {
                             continue;
                         }
                         if (seenNames.find(bindKey) != seenNames.end()) {
+                            if (bindClosureCarried) {
+                                // The same bind already reached this module through
+                                // another import path (e.g. a core auto-import); the
+                                // dependency closure re-requesting it is harmless.
+                                continue;
+                            }
                             throw std::runtime_error("Duplicate bind after splice: '" + bindKey +
                                                      "' while importing '" + importPath.importSpelling + "' from " +
                                                      importPath.importerFile + ":" + std::to_string(importPath.line));
@@ -1347,6 +1393,15 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                     }
 
                     if (seenNames.find(name) != seenNames.end()) {
+                        const bool explicitlyRequested = requestedRenames.count(originName) > 0;
+                        if (isSubsetImport && !explicitlyRequested) {
+                            // A dependency-closure carry that is already present in
+                            // this module (via a core auto-import or a sibling import
+                            // path) is a duplicate, but skipping it is safe: the
+                            // machinery the carried declaration depended on is already
+                            // here, so re-splicing it would only collide.
+                            continue;
+                        }
                         throw std::runtime_error("Duplicate symbol after splice: '" + name +
                                                  "' while importing '" + importPath.importSpelling + "' from " +
                                                  importPath.importerFile + ":" + std::to_string(importPath.line));

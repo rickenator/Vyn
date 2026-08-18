@@ -134,6 +134,15 @@ static std::string topLevelDeclarationName(const ast::StmtPtr& stmt) {
     if (auto* ns = dynamic_cast<ast::NamespaceDeclaration*>(stmt.get())) {
         return ns->name ? ns->name->name : "";
     }
+    // A bind is owned by the module that defines it (the `bind:SelfType:Aspect`
+    // key is registered in the owner map), so its method bodies resolve against
+    // that module's scope rather than the consumer's. This keeps a carried
+    // bind's supporting structs/aspects/helpers visible wherever the bind runs.
+    if (auto* bindDecl = dynamic_cast<ast::BindDeclaration*>(stmt.get())) {
+        if (bindDecl->selfType && bindDecl->traitType) {
+            return "bind:" + bindDecl->selfType->toString() + ":" + bindDecl->traitType->toString();
+        }
+    }
     return "";
 }
 
