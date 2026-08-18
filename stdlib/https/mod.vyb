@@ -19,8 +19,11 @@ import network::{socket_open, socket_bind, socket_listen, socket_accept,
 import tls::{tls_client_context, tls_client_context_verified, tls_server_context,
              tls_stream, tls_connect, tls_accept, tls_write, tls_read, tls_close,
              tls_free_context, TlsContext, TlsStream}
-share(all) import http::{HttpResponse}
-import http::{http_status_code, http_header_value, http_index_of, http_parse_int}
+# Note: http's helpers and its shared HttpResponse type are imported together in a
+# single subset import. Two separate subset imports of the same module are not
+# yet spliced independently, so a second subset import of http would be ignored.
+share(all) import http::{HttpResponse, http_status_code, http_header_value,
+             http_index_of, http_parse_int}
 
 # Read one CRLF-terminated line (without the CRLF) from a TLS stream. One byte
 # per read, stopping exactly at the line end, mirroring http's reader but over
