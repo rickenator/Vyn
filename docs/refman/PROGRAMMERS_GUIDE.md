@@ -1418,10 +1418,14 @@ Module page: [`process.md`](process.md). Run a trusted command line through the
 shell and read its exit status or captured stdout.
 
 ```vyb
-exec_run(cmd<String>)<Int>          # child exit code, or -1 if not launched
-exec_output(cmd<String>)<String>    # captured stdout ("" on failure)
+exec_run(cmd<String>)<Int>          # freedom-gated: child exit code / -1
+exec_output(cmd<String>)<String>    # freedom-gated: captured stdout
 exec_status()<Int>                  # exit status of the last exec_output
 ```
+
+Running a shell command reaches outside the managed model, so `exec_run` and
+`exec_output` are **gated behind a `freedom` block** (`freedom { exec_run(...) }`).
+The read-only `exec_status` probe is callable from ordinary code.
 
 ### 4.20 `regex` — POSIX extended patterns
 
@@ -1625,6 +1629,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

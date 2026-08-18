@@ -2221,6 +2221,16 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             addError("External function '" + name + "' can only be called inside a freedom block.", node);
         }
 
+        // The `process` module surfaces host-code execution (`exec_run` /
+        // `exec_output`) as freedom-gated capabilities: running a shell command
+        // reaches outside the managed model, so callers must opt in explicitly
+        // with a `freedom` block. `exec_status` is a read-only probe and stays
+        // ungated. Mirroring the `at` / `addr` / `from` checks, this is a
+        // name-based gate applied at the call site.
+        if ((name == "exec_run" || name == "exec_output") && !isInUnsafeBlock()) {
+            addError("'" + name + "' can only be called inside a freedom block.", node);
+        }
+
         // Handle serialization intrinsics (lit, notype, bare, deserial)
         if (name == "lit" || name == "notype" || name == "bare" || name == "deserial") {
             if (node->arguments.empty()) {

@@ -6,6 +6,11 @@
 # trusted command strings. `exec_run` returns the child's exit code (0..255) or
 # -1 if it could not be launched; `exec_output` captures stdout as a String and
 # records the exit status for `exec_status`.
+#
+# Running a shell command reaches outside the managed model, so Vyb gates the
+# two executing helpers behind an explicit `freedom` block: a caller must write
+# `freedom { exec_run("...") }` (or `freedom { exec_output("...") }`). The
+# read-only `exec_status` probe stays ungated and is callable from any code.
 
 share(all)
 exec_run(cmd<String>)<Int> -> {

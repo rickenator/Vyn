@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   small xorshift generator (`import rand`).
 - New `process` stdlib module: `exec_run`, `exec_output`, and `exec_status` to
   run shell commands and capture stdout/exit codes (`import process`).
+  `exec_run` / `exec_output` are gated behind a `freedom` block (host-code
+  execution requires the explicit opt-in); `exec_status` is a read-only probe.
 - New `regex` stdlib module: POSIX extended patterns — `regex_match`,
   `regex_find`, `regex_capture_match`, `regex_capture`, `regex_replace`,
   `regex_replace_all` (`import regex`).

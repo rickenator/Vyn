@@ -1,0 +1,15 @@
+// @test: process stdlib module - exec_run/exec_output require freedom
+// @description: calling the host-code execution helpers from ordinary code is a
+//   semantic error; they are freedom-gated like the pointer/FFI intrinsics.
+// @category: process, stdlib
+// @expect: fail
+// @expect-error: can only be called inside a freedom block
+// @env: VYB_STDLIB=stdlib
+
+import process::{exec_run, exec_output}
+
+main()<Int> -> {
+    exec_run("true")
+    exec_output("printf hi")
+    return 0
+}
