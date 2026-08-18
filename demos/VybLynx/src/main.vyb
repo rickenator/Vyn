@@ -1,26 +1,41 @@
-// vyblynx — a pure-Vyb clone of the lynx line-mode browser, as a package.
-//
-// Fetches HTTP pages over the network stdlib (no user-space C FFI), renders
-// HTML to readable wrapped text with [n] link markers, and pages through with
-// history. Showcases Vyb: structs + the Display aspect, bounded generics,
-// select/match/enums, borrows (their<Vec<T>>), defer, async/await, and the
-// network/term/env/io/collections/time stdlib modules.
-//
-//   VYB_LYNX_HOME=... vyblynx    -> open that URL
-//   interactive (TTY)            -> paged browsing with commands
-//   piped input (non-TTY)        -> first line is the URL; then dump + commands
+# vyblynx - a curses full-screen terminal browser, the flagship Vyb demo.
+#
+# Milestone-2 TUI shell (demos/VybLynx/RFE.md §14, §34, §37, §40): the terminal
+# UI goes through the stdlib `curses` module *exclusively* - no raw libc/escape
+# sequences in the browser. One owner (the UI loop) mutates the screen; network
+# and content work only publish state, which the UI renders. Input is timed
+# (curses_timeout) so the loop polls instead of blocking forever, laying the
+# ground for a future async/select event loop.
+#
+#   VYB_LYNX_HOME=http://example.org  vyblynx   : open that URL at launch
+#   <n>        follow numbered link           b  back
+#   n / space  next page                      r  reload
+#   p          previous page                  h  help
+#   g          open a URL (prompt on stdin)   q  quit
+#
+# Reuses the pure-Vyb url/html renderers and the socket fetch core from the
+# earlier line-mode iteration unchanged; only the terminal layer is new.
+#
+# The event loop owns one `BrowserState` struct that holds the current `Page`
+# and navigation history. Assigning an owned `Page`/`String` into a struct field
+# (through a `their` borrow) now deep-copies / retains the source so the struct
+# owns data independent of the producing local - a whole-struct store used to
+# shallow-copy owned pointers and double-free them at scope exit (fixed in the
+# compiler; see TUI.md). The single-owner screen rule still holds.
 
-import url
+import url::{Url, parse_url, resolve_url, default_port}
 import html::{Link, render_lines, extract_title}
 import network
-import term
+import term::{stdin_read_line}
 import env
-import collections
 import asyncs::{async_sleep_ms}
+import curses
 
 version_id()<String> -> { return "0.1.0" }
 
-# --- Display aspect on Url ---------------------------------------------------
+# --- Polymorphic Display aspect on Url --------------------------------------
+# RFE §3/§4: `aspect` + `bind` model browser behaviour. The general `show`
+# helper (bounded on Display) renders any printable value.
 bind Display -> Url {
     display(self<Url>)<String> -> {
         p<String> = self.path
@@ -33,15 +48,38 @@ bind Display -> Url {
     }
 }
 
-# --- Page model --------------------------------------------------------------
-# A resolved hyperlink (absolute href + rendered label).
-share(all)
+# --- Interactive documents ---------------------------------------------------
+# RFE §3: interactive page elements (here the rendered links) share behaviour
+# through an aspect, bound per concrete struct.
 struct Nav {
     href<String>,
     text<String>
 }
 
-# A rendered page: title, terminal lines, and navigable links.
+aspect Interactive {
+    describe(self)<String>
+    target(self)<String>
+}
+
+bind Interactive -> Nav {
+    describe(self)<String> -> {
+        if (self.text.len() > 0) { return self.text }
+        return self.href
+    }
+    target(self)<String> -> { return self.href }
+}
+
+# Generic bounded on Display (any printable value).
+show<T<Display>>(thing<T>)<String> -> {
+    return thing.display()
+}
+
+# Generic bounded on Interactive: render one numbered link marker.
+link_line<T<Interactive>>(nav<T>, n<Int>)<String> -> {
+    return "[" + n.to_string() + "] " + nav.describe()
+}
+
+# --- Page / response model ---------------------------------------------------
 struct Page {
     title<String>,
     url<String>,
@@ -49,14 +87,73 @@ struct Page {
     navs<Vec<Nav>>
 }
 
-# A raw HTTP response; status < 0 signals a transport error.
 struct Response {
     status<Int>,
     reason<String>,
     body<String>
 }
 
-# Parse a base-10 integer from a leading digit/'-' scan.
+blank_page()<Page> -> {
+    return Page { title = "", url = "", lines = Vec(), navs = Vec() }
+}
+
+# The whole browser's mutable UI/navigation state, owned by the event loop.
+# Pages and history live here; subsystems publish state rather than drawing
+# (RFE §41 single-owner screen). The struct owns a built `Page` and tears it
+# down when run_browser returns - the case that used to double-free until owned
+# struct-field assignment was fixed (see TUI.md).
+struct BrowserState {
+    url<String>,
+    page<Page>,
+    history<Vec<String>>,
+    top<Int>,
+    loading<Bool>,
+    help<Bool>,
+    status<String>
+}
+
+# --- Terminal size + invariant -----------------------------------------------
+# `ensure` guards the invariant (RFE §20) and would fail closed to a sane
+# default rather than draw into a 0-width screen. Multi-value returns + nested
+# destructuring are a core Vyb feature (a single `tty_dims()` pair is
+# destructured here and in the event loop), and nested control flow is exercised
+# by `ensure`, the `if` clamp, and the loop-local reads.
+tty_dims()<Int, Int> -> {
+    return curses_rows(), curses_cols()
+}
+
+content_width()<Int> -> {
+    vr<Int>, vc<Int>
+    vr, vc = tty_dims()
+    ensure vr >= 1 && vc >= 1 else return 40
+    w<Int> = vc - 2
+    if (w < 20) { w = 20 }
+    return w
+}
+
+# --- Security: strip control bytes from remote text --------------------------
+# Content is never trusted at the screen boundary. Control bytes (except tab /
+# LF / CR) become spaces by copying the safe runs between them, so a hostile
+# page cannot inject terminal controls through the curses addstr path.
+sanitize(s<String>)<String> -> {
+    out<String> = ""
+    runStart<Int> = 0
+    i<Int> = 0
+    n<Int> = s.len()
+    while (i < n) {
+        c<Int> = s.char_at(i)
+        if ((c < 32 && c != 9 && c != 10 && c != 13) || c == 127) {
+            if (i > runStart) { out = out + s.substring(runStart, i) }
+            out = out + " "
+            runStart = i + 1
+        }
+        i = i + 1
+    }
+    if (runStart < n) { out = out + s.substring(runStart, n) }
+    return out
+}
+
+# --- HTTP fetch core (unchanged from the line-mode browser) ------------------
 parse_int(s<String>)<Int> -> {
     n<Int> = 0
     i<Int> = 0
@@ -74,7 +171,6 @@ parse_int(s<String>)<Int> -> {
     return n
 }
 
-# The integer value of a header inside a joined response head, or -1.
 header_int(head<String>, name<String>)<Int> -> {
     hl<String> = head.to_lower()
     needle<String> = name.to_lower() + ":"
@@ -86,7 +182,6 @@ header_int(head<String>, name<String>)<Int> -> {
     return parse_int(rest.trim())
 }
 
-# The string value of a header inside a joined response head, or "".
 header_str(head<String>, name<String>)<String> -> {
     hl<String> = head.to_lower()
     needle<String> = name.to_lower() + ":"
@@ -98,7 +193,6 @@ header_str(head<String>, name<String>)<String> -> {
     return rest.trim()
 }
 
-# Split a raw HTTP response at the blank line; trim body to Content-Length.
 parse_response(raw<String>)<Response> -> {
     bad<Response> = Response { status = -1, reason = "", body = "" }
     sep<String> = "\r\n\r\n"
@@ -133,7 +227,6 @@ parse_response(raw<String>)<Response> -> {
     return Response { status = status, reason = reason, body = body }
 }
 
-# Read up to `cap` bytes from a socket; EOF or a read timeout ends the loop.
 read_all(fd<Int>, cap<Int>)<String> -> {
     out<String> = ""
     while (out.len() < cap) {
@@ -144,9 +237,8 @@ read_all(fd<Int>, cap<Int>)<String> -> {
     return out
 }
 
-# Fetch one URL over HTTP (no FFI): resolves the host, picks the address
-# family, arms a read timeout, follows up to `hops` redirects, and never hangs
-# (timeouts surface as a status of -1).
+# Fetch one URL over HTTP: DNS, connect, request, read (capped), follow up to
+# `hops` redirects, and never hang (timeouts surface as a status of -1).
 fetch_url(u<Url>, hops<Int>)<Response> -> {
     bad<Response> = Response { status = -1, reason = "", body = "" }
     if (hops <= 0) { return bad }
@@ -183,9 +275,9 @@ fetch_url(u<Url>, hops<Int>)<Response> -> {
 }
 
 # Render raw HTML into a Page (title, wrapped lines, resolved nav links).
-build_page(html<String>, base<Url>, width<Int>)<Page> -> {
+build_page(htmlSource<String>, base<Url>, width<Int>)<Page> -> {
     rawLinks<Vec<Link>> = Vec()
-    lines<Vec<String>> = render_lines(html, borrow(rawLinks), width)
+    lines<Vec<String>> = render_lines(htmlSource, borrow(rawLinks), width)
     navs<Vec<Nav>> = Vec()
     i<Int> = 0
     while (i < rawLinks.len()) {
@@ -193,20 +285,154 @@ build_page(html<String>, base<Url>, width<Int>)<Page> -> {
         navs.push(Nav { href = abs, text = rawLinks.get(i).text })
         i = i + 1
     }
-    return Page { title = extract_title(html), url = base.display(),
+    return Page { title = extract_title(htmlSource), url = base.display(),
                   lines = lines, navs = navs }
 }
 
-# A generic helper bounded on the Display aspect: renders any printable value.
-show<T<Display>>(thing<T>)<String> -> {
-    return thing.display()
+# A page describing a transport failure, so the browser never crashes.
+error_page(urlStr<String>, status<Int>)<Page> -> {
+    lns<Vec<String>> = Vec()
+    lns.push("unable to load: " + urlStr)
+    if (status == -1) {
+        lns.push("connection, DNS, or timeout failure")
+    } else {
+        lns.push("HTTP status " + status.to_string())
+    }
+    lns.push("")
+    lns.push("press q to quit, b to go back, or <n> to follow a link")
+    return Page { title = "error", url = urlStr, lines = lns, navs = Vec() }
+}
+
+# Structured failure: a page request that cannot be satisfied `fail`s with its
+# status, and the browser `trap`s it at the navigation boundary (RFE §20/§21)
+# so one bad page cannot terminate the program.
+fetch_page(urlStr<String>)<Page> -> {
+    page<Page> = {
+        resp<Response> = fetch_url(parse_url(urlStr), 6)
+        if (resp.status < 200 || resp.status >= 300) {
+            fail<Int>(resp.status)
+        }
+        build_page(resp.body, parse_url(urlStr), content_width())
+    } trap (e<Int>) -> {
+        error_page(urlStr, e)
+    }
+    return page
+}
+
+# The status line text for a freshly loaded target.
+status_for(p<their<Page>>, target<String>)<String> -> {
+    if (p.title == "error") {
+        return "error loading " + target
+    }
+    return "ok  " + p.lines.len().to_string() + " lines  " +
+           p.navs.len().to_string() + " links"
+}
+
+# --- Curses drawing (single screen owner) ------------------------------------
+# Only these helpers touch ncurses. Every text add is clamped to the screen and
+# passed through sanitize() so page content can never inject terminal escapes.
+put(row<Int>, col<Int>, text<String>, maxw<Int>)<Int> -> {
+    t<String> = sanitize(text)
+    if (t.len() > maxw) { t = t.substring(0, maxw) }
+    return curses_move_addstr(row, col, t)
+}
+
+refresh()<Int> -> {
+    return curses_refresh()
+}
+
+clear_screen()<Int> -> {
+    return curses_clear()
+}
+
+draw_header(p<their<Page>>, w<Int>)<Void> -> {
+    title<String> = p.title
+    if (title == "") { title = p.url }
+    put(0, 0, title, w)
+    put(1, 0, "URL  " + p.url, w)
+}
+
+draw_body(p<their<Page>>, top<Int>, r<Int>, w<Int>)<Void> -> {
+    statusRow<Int> = r - 2
+    bodyRows<Int> = statusRow - 2
+    if (bodyRows < 3) { bodyRows = 3 }
+    l<Int> = 0
+    i<Int> = top
+    while (l < bodyRows && i < p.lines.len()) {
+        put(2 + l, 1, p.lines.get(i), w - 2)
+        l = l + 1
+        i = i + 1
+    }
+}
+
+draw_status(p<their<Page>>, top<Int>, status<String>, loading<Bool>, r<Int>, w<Int>)<Void> -> {
+    statusRow<Int> = r - 2
+    text<String> = status
+    if (!loading) {
+        pos<String> = ""
+        if (p.lines.len() > 0) {
+            pos = "  pos " + top.to_string() + "/" +
+                  (p.lines.len() - 1).to_string()
+        }
+        text = text + pos
+    }
+    put(statusRow, 0, text, w)
+    put(r - 1, 0, "n/p page  <n> follow  g url  b back  r reload  h help  q quit", w)
+}
+
+draw_help(r<Int>, w<Int>)<Void> -> {
+    lines<Vec<String>> = Vec()
+    lines.push("vyblynx " + version_id() + " - curses terminal browser")
+    lines.push("")
+    lines.push("  <n>        follow numbered link")
+    lines.push("  n / space  next page")
+    lines.push("  p          previous page")
+    lines.push("  g          open a URL (prompt on the real terminal)")
+    lines.push("  b          back")
+    lines.push("  r          reload")
+    lines.push("  d          save current document to a file (next milestone)")
+    lines.push("  h          close this help")
+    lines.push("  q          quit")
+    lines.push("")
+    lines.push("The screen is owned by the UI loop; network/content only")
+    lines.push("publish state (RFE single-owner rule). Input is timed.")
+    bodyRows<Int> = r - 4
+    if (bodyRows > lines.len()) { bodyRows = lines.len() }
+    l<Int> = 0
+    while (l < bodyRows) {
+        put(2 + l, 1, lines.get(l), w - 2)
+        l = l + 1
+    }
+}
+
+redraw(p<their<Page>>, top<Int>, status<String>, loading<Bool>, help<Bool>,
+       r<Int>, w<Int>)<Void> -> {
+    clear_screen()
+    draw_header(p, w)
+    if (help) {
+        draw_help(r, w)
+    } else {
+        draw_body(p, top, r, w)
+    }
+    draw_status(p, top, status, loading, r, w)
+    refresh()
+}
+
+# --- Navigation --------------------------------------------------------------
+# Resolve a numbered link against the page, or absent when there is no such
+# link (`T?` models the absence, RFE §12/§44).
+# The navs already carry absolute hrefs resolved at build_page time, so a link
+# is followed by returning the stored href (fewer string copies in the borrow).
+follow_page(p<their<Page>>, n<Int>)<String?> -> {
+    if (n < 1 || n > p.navs.len()) { return String?() }
+    return String?(p.navs.get(n - 1).href)
 }
 
 # --- Commands ----------------------------------------------------------------
 enum Cmd {
+    Follow,
     NextPage,
     PrevPage,
-    Follow,
     Back,
     Reload,
     OpenUrl,
@@ -215,218 +441,180 @@ enum Cmd {
     Unknown
 }
 
-cmd_of(line<String>)<Cmd> -> {
-    t<String> = line.trim()
-    if (t == "q" || t == "quit") { return Cmd::Quit }
-    if (t == "n" || t == " " || t == "") { return Cmd::NextPage }
-    if (t == "p") { return Cmd::PrevPage }
-    if (t == "b" || t == "back") { return Cmd::Back }
-    if (t == "r") { return Cmd::Reload }
-    if (t == "h" || t == "help") { return Cmd::Help }
-    if (t.starts_with("g ") || t.starts_with("f ")) { return Cmd::OpenUrl }
-    if (t.len() > 0) {
-        c<Int> = t.char_at(0)
-        if (c >= 48 && c <= 57) { return Cmd::Follow }
-    }
+cmd_of(k<Int>)<Cmd> -> {
+    if (k == 113) { return Cmd::Quit }             # q
+    if (k == 110 || k == 32) { return Cmd::NextPage }  # n / space
+    if (k == 112) { return Cmd::PrevPage }         # p
+    if (k == 98) { return Cmd::Back }              # b
+    if (k == 114) { return Cmd::Reload }           # r
+    if (k == 103) { return Cmd::OpenUrl }          # g
+    if (k == 104) { return Cmd::Help }             # h
+    if (k >= 49 && k <= 57) { return Cmd::Follow } # 1..9
     return Cmd::Unknown
 }
 
-# The numeric suffix of a follow command ("3" or "f 3").
-follow_number(line<String>)<Int> -> {
-    t<String> = line.trim()
-    if (t.starts_with("f ")) { t = t.substring(2, t.len()).trim() }
-    sp<Int> = t.index_of(" ")
-    if (sp >= 0) { t = t.substring(0, sp) }
-    return parse_int(t)
-}
-
-# --- History -----------------------------------------------------------------
-# Threaded by borrow so main keeps ownership.
-push_history(h<their<Vec<String>>>, url<String>)<Void> -> {
-    h.push(url)
-}
-
-# --- Pager -------------------------------------------------------------------
-# Print a window of page lines starting at `top`; returns the next `top`.
-print_window(p<Page>, top<Int>, rows<Int>)<Int> -> {
-    title<String> = p.title
-    if (title == "") { title = p.url }
-    println(title)
-    println("-- " + p.url + " --")
-    body_rows<Int> = rows - 4
-    if (body_rows < 3) { body_rows = 3 }
-    shown<Int> = 0
-    i<Int> = top
-    while (i < p.lines.len() && shown < body_rows) {
-        println(p.lines.get(i))
-        shown = shown + 1
-        i = i + 1
+# --- URL prompt on the real terminal -----------------------------------------
+# The curses layer exposes keys, not whole lines, and there is no char->String
+# builtin yet, so opening an arbitrary URL suspends curses (endwin), reads a
+# line from stdin, then resumes the screen. `T?` models "cancelled/absent".
+open_url_prompt()<String?> -> {
+    curses_close()
+    println("vyblynx> open URL: ")
+    line<String> = stdin_read_line().trim()
+    if (line.len() > 0) {
+        if (curses_init() == 0) {
+            curses_hide_cursor()
+            curses_timeout(80)
+            return String?(line)
+        }
+        println("vyblynx: could not re-enter the screen")
+        return String?()
     }
-    println("-- links: " + p.navs.len().to_string() + " --")
-    return i
-}
-
-print_nav(p<Page>)<Void> -> {
-    maxShow<Int> = 8
-    if (maxShow > p.navs.len()) { maxShow = p.navs.len() }
-    i<Int> = 0
-    while (i < maxShow) {
-        t<String> = p.navs.get(i).text
-        if (t == "") { t = p.navs.get(i).href }
-        println((i + 1).to_string() + ". " + t)
-        i = i + 1
+    if (curses_init() != 0) {
+        println("vyblynx: could not re-enter the screen")
     }
-    if (p.navs.len() > maxShow) {
-        println("... and " + (p.navs.len() - maxShow).to_string() + " more")
-    }
+    return String?()
 }
 
-print_help()<Void> -> {
-    println("vyblynx " + version_id())
-    println("  <n>        follow numbered link")
-    println("  g <url>    open a URL")
-    println("  f <url>    open a URL")
-    println("  n          next page")
-    println("  p          previous page")
-    println("  b          back")
-    println("  r          reload")
-    println("  h          help")
-    println("  q          quit")
-}
-
-# A tiny async showcase: a fiber that yields on a short timer.
+# --- A tiny async showcase ---------------------------------------------------
+# RFE §10/§11: an explicit Future object represents an outstanding operation.
+# Here a warm-up fiber is started and awaited at launch; the next milestone
+# makes the page fetch itself a Future so the network never blocks the UI.
 async warm_up(ms<Int>)<Future<Int>> -> {
     async_sleep_ms(ms)
     return ms
 }
 
-main()<Int> -> {
-    interactive<Bool> = stdin_isatty()
-    println("vyblynx " + version_id())
+# --- The event loop ----------------------------------------------------------
+# One `BrowserState` is owned by the loop. Navigation commits into it by
+# borrowing the struct; a freshly built `Page` is stored into the `page` field
+# (an owned field, so the compiler deep-copies/transfers the source into
+# independent storage) and read back via `borrow(st.page)` by the single-owner
+# screen helpers.
+load_url(st<their<BrowserState>>, target<String>)<Void> -> {
+    st.url = target
+    st.loading = true
+    st.status = "Loading " + target
+    st.top = 0
+    st.page = fetch_page(target)
+    st.loading = false
+    st.status = status_for(borrow(st.page), target)
+}
 
-    # Fire a background fiber; awaiting it yields control while it sleeps.
+scroll_page(st<their<BrowserState>>, r<Int>, forward<Bool>)<Void> -> {
+    bodyRows<Int> = r - 4
+    if (bodyRows < 3) { bodyRows = 3 }
+    if (forward) {
+        nxt<Int> = st.top + bodyRows
+        if (nxt < st.page.lines.len()) { st.top = nxt } else { st.top = 0 }
+    } else {
+        prev<Int> = st.top - bodyRows
+        if (prev < 0) { prev = 0 }
+        st.top = prev
+    }
+}
+
+run_browser(initial<String>)<Int> -> {
+    state<BrowserState> = BrowserState {
+        url = initial,
+        page = blank_page(),
+        history = Vec(),
+        top = 0,
+        loading = false,
+        help = false,
+        status = "ready"
+    }
+
+    load_url(borrow(state), initial)
+
+    looping<Bool> = true
+    while (looping) {
+        r<Int>, c<Int>
+        r, c = tty_dims()
+        if (r < 1) { r = 24 }
+        if (c < 1) { c = 80 }
+        k<Int> = curses_getch()
+        if (k == -1) {
+            continue
+        }
+        cmd<Cmd> = cmd_of(k)
+        if (cmd == Cmd::Quit) {
+            looping = false
+        } else if (cmd == Cmd::NextPage) {
+            if (!state.help) {
+                scroll_page(borrow(state), r, true)
+                redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
+            }
+        } else if (cmd == Cmd::PrevPage) {
+            if (!state.help) {
+                scroll_page(borrow(state), r, false)
+                redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
+            }
+        } else if (cmd == Cmd::Follow) {
+            if (!state.help) {
+                n<Int> = k - 48
+                dest<String> = follow_page(borrow(state.page), n) else ""
+                if (dest.len() > 0) {
+                    state.history.push(state.url)
+                    load_url(borrow(state), dest)
+                } else {
+                    state.status = "no link " + n.to_string()
+                }
+                redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
+            }
+        } else if (cmd == Cmd::Back) {
+            if (state.history.len() > 0) {
+                prevUrl<String> = state.history.get(state.history.len() - 1)
+                state.history.pop()
+                load_url(borrow(state), prevUrl)
+            } else {
+                state.status = "no history"
+            }
+            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
+        } else if (cmd == Cmd::Reload) {
+            load_url(borrow(state), state.url)
+            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
+        } else if (cmd == Cmd::OpenUrl) {
+            target<String> = open_url_prompt() else ""
+            if (target.len() > 0) {
+                state.history.push(state.url)
+                load_url(borrow(state), target)
+            }
+            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
+        } else if (cmd == Cmd::Help) {
+            state.help = !state.help
+            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
+        } else {
+            state.status = "unrecognized key - press h for help"
+            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
+        }
+    }
+    return 0
+}
+
+main()<Int> -> {
+    if (curses_init() != 0) {
+        println("vyblynx: screen unavailable - run under a real terminal/TTY")
+        return 1
+    }
+    curses_hide_cursor()
+    curses_timeout(80)
+
+    # A background fiber is started and awaited before the loop begins.
     startup<Future<Int>> = warm_up(8)
     ok<Int> = await startup
 
-    defer println("---")
-
     start<String> = env_get("VYB_LYNX_HOME")
-    if (!interactive) {
-        first<String> = stdin_read_line()
-        if (first.trim().len() > 0) { start = first.trim() }
-    }
     if (start.trim().len() == 0) {
         start = "http://example.org/"
     }
 
-    history<Vec<String>> = Vec()
-    current<Url> = parse_url(start)
-    currentRaw<String> = start
-    top<Int> = 0
-    width<Int> = term_cols()
-    if (width < 40) { width = 40 }
-
-    looping<Bool> = true
-    while (looping) {
-        resp<Response> = fetch_url(current, 6)
-        p<Page> = Page { title = "fetch error", url = currentRaw,
-                         lines = Vec(), navs = Vec() }
-        if (resp.status >= 200 && resp.status < 300) {
-            p = build_page(resp.body, current, width)
-            top = 0
-        } else {
-            msg<String> = "unable to load: " + currentRaw +
-                          " (status " + resp.status.to_string() + ")"
-            lns<Vec<String>> = Vec()
-            lns.push(msg)
-            if (resp.status == -1) {
-                lns.push("connection, DNS, or timeout failure")
-            }
-            p = Page { title = "error", url = currentRaw, lines = lns, navs = Vec() }
-        }
-
-        if (!interactive) {
-            di<Int> = 0
-            while (di < p.lines.len()) {
-                println(p.lines.get(di))
-                di = di + 1
-            }
-            print_nav(p)
-            cmdLine<String> = stdin_read_line()
-            tree<Cmd> = cmd_of(cmdLine)
-            if (tree == Cmd::Quit) { looping = false }
-            if (tree == Cmd::Back && history.len() > 0) {
-                currentRaw = history.get(history.len() - 1)
-                history.pop()
-                current = parse_url(currentRaw)
-            }
-            if (tree == Cmd::Follow && p.navs.len() > 0) {
-                n<Int> = follow_number(cmdLine)
-                if (n >= 1 && n <= p.navs.len()) {
-                    push_history(borrow(history), currentRaw)
-                    currentRaw = p.navs.get(n - 1).href
-                    current = parse_url(currentRaw)
-                }
-            }
-            continue
-        }
-
-        top = print_window(p, top, term_rows())
-        print_nav(p)
-        eprint("vyblynx> ")
-        stderr_flush()
-        cmdLine<String> = stdin_read_line()
-        cmd<Cmd> = cmd_of(cmdLine)
-
-        match (cmd) {
-            Quit -> { looping = false }
-            Help -> { print_help() }
-            Reload -> { }
-            NextPage -> {
-                body_rows<Int> = term_rows() - 4
-                if (body_rows < 3) { body_rows = 3 }
-                nxt<Int> = top + body_rows
-                if (nxt < p.lines.len()) { top = nxt } else { top = 0 }
-            }
-            PrevPage -> {
-                body_rows<Int> = term_rows() - 4
-                if (body_rows < 3) { body_rows = 3 }
-                prev<Int> = top - body_rows
-                if (prev < 0) { prev = 0 }
-                top = prev
-            }
-            Back -> {
-                if (history.len() > 0) {
-                    currentRaw = history.get(history.len() - 1)
-                    history.pop()
-                    current = parse_url(currentRaw)
-                    top = 0
-                }
-            }
-            OpenUrl -> {
-                sp<Int> = cmdLine.index_of(" ")
-                if (sp >= 0) {
-                    target<String> = cmdLine.substring(sp + 1, cmdLine.len()).trim()
-                    push_history(borrow(history), currentRaw)
-                    currentRaw = target
-                    current = parse_url(currentRaw)
-                    top = 0
-                }
-            }
-            Follow -> {
-                n<Int> = follow_number(cmdLine)
-                if (n >= 1 && n <= p.navs.len()) {
-                    push_history(borrow(history), currentRaw)
-                    currentRaw = p.navs.get(n - 1).href
-                    current = parse_url(currentRaw)
-                    top = 0
-                }
-            }
-            Unknown -> {
-                println("unrecognized command (h for help)")
-            }
-        }
+    result<Int> = {
+        run_browser(start)
+    } ensure -> {
+        curses_show_cursor()
+        curses_close()
     }
 
-    return 0
+    return result
 }

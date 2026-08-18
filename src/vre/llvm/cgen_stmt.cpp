@@ -2464,30 +2464,36 @@ void LLVMCodegen::visit(vyb::ast::TupleDestructureAssignment* node) {
         return;
     }
     
-    // For each identifier, extract the corresponding element and store to its alloca
+    // For each identifier, extract the corresponding element and store to its alloca.
+    // Allocas are always created in the function's ENTRY block (via
+    // createEntryBlockAlloca) rather than at the current insertion point, so a
+    // destructure inside a loop or conditional never yields an alloca that fails
+    // to dominate its uses. Each name gets a fresh entry alloca and is (re)bound
+    // in both the ordinary scope map and m_currentFunctionNamedValues; this also
+    // avoids ever reusing an alloca that belongs to an earlier function (the map
+    // used to be shared across functions, which produced "Instruction does not
+    // dominate all uses!" when a later function reused an earlier one's alloca).
     for (size_t i = 0; i < node->identifiers.size(); ++i) {
         std::string varName = node->identifiers[i]->name;
-        
-        // Look up or create alloca for this variable
-        llvm::AllocaInst* alloca;
-        auto it = m_currentFunctionNamedValues.find(varName);
-        if (it != m_currentFunctionNamedValues.end()) {
-            alloca = it->second;
-        } else {
-            // Create a new alloca - infer type from the struct element type
-            llvm::Type* elemType = structType->getElementType(static_cast<unsigned>(i));
-            alloca = builder->CreateAlloca(elemType, nullptr, ("tuple_destruct_" + varName).c_str());
-            m_currentFunctionNamedValues[varName] = alloca;
+        llvm::Type* elemType = structType->getElementType(static_cast<unsigned>(i));
+        llvm::AllocaInst* alloca = llvm::dyn_cast_or_null<llvm::AllocaInst>(
+            createEntryBlockAlloca(currentFunction, varName, elemType));
+        if (!alloca) {
+            logError(node->loc, "Tuple destructure: failed to create entry alloca for '" + varName + "'");
+            m_currentLLVMValue = nullptr;
+            return;
         }
-        
+        namedValues[varName] = alloca;
+        m_currentFunctionNamedValues[varName] = alloca;
+
         // Extract element i from the struct
-        llvm::Value* elemVal = builder->CreateExtractValue(structVal, {static_cast<unsigned>(i)}, 
+        llvm::Value* elemVal = builder->CreateExtractValue(structVal, {static_cast<unsigned>(i)},
                                                            ("tuple_elem_" + std::to_string(i)).c_str());
-        
+
         // Store to the variable's alloca
         builder->CreateStore(elemVal, alloca);
     }
-    
+
     m_currentLLVMValue = nullptr;
 }
 
