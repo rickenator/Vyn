@@ -1521,6 +1521,14 @@ hand_back_original:
 
 static int vyb_tls_err = 0;
 
+// TLS context construction drives OpenSSL's one-time lazy init and loads the
+// system CA store (X509/pkey decoder spin-up). That path is not safe to run
+// from several worker fibers at once: concurrent SSL_CTX_new() calls corrupt
+// OpenSSL's internal stacks and crash (SEGV deep inside libcrypto's sk_dup /
+// OSSL_DECODER during SSL_CTX_set_default_verify_paths). Serialize it so only
+// one thread ever hits that path; per-connection SSL objects stay independent.
+static pthread_mutex_t g_tls_ctx_lock = PTHREAD_MUTEX_INITIALIZER;
+
 static void vyb_tls_capture_error(void) {
     unsigned long e = ERR_get_error();
     vyb_tls_err = (e == 0) ? 0 : (int)e;
@@ -1528,11 +1536,13 @@ static void vyb_tls_capture_error(void) {
 
 // A shared client SSL_CTX (TLS_client_method), verification off by default.
 VYB_WEAK int64_t __vyb_tls_client_context(void) {
+    pthread_mutex_lock(&g_tls_ctx_lock);
     OPENSSL_init_ssl(0, NULL);
     SSL_CTX* ctx = SSL_CTX_new(TLS_client_method());
-    if (!ctx) { vyb_tls_capture_error(); return -1; }
+    if (!ctx) { vyb_tls_capture_error(); pthread_mutex_unlock(&g_tls_ctx_lock); return -1; }
     SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
     vyb_tls_err = 0;
+    pthread_mutex_unlock(&g_tls_ctx_lock);
     return (int64_t)(intptr_t)ctx;
 }
 
@@ -1551,9 +1561,10 @@ static int vyb_tls_load_ca_pem(SSL_CTX* ctx, const char* pem) {
 // default CA paths when `ca_pem` is empty). An in-memory CA lets a pinned/
 // self-signed server be trusted without touching the host trust store.
 VYB_WEAK int64_t __vyb_tls_client_context_verified(const char* ca_pem) {
+    pthread_mutex_lock(&g_tls_ctx_lock);
     OPENSSL_init_ssl(0, NULL);
     SSL_CTX* ctx = SSL_CTX_new(TLS_client_method());
-    if (!ctx) { vyb_tls_capture_error(); return -1; }
+    if (!ctx) { vyb_tls_capture_error(); pthread_mutex_unlock(&g_tls_ctx_lock); return -1; }
     SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, NULL);
     int ok = 1;
     if (ca_pem && *ca_pem) {
@@ -1561,6 +1572,7 @@ VYB_WEAK int64_t __vyb_tls_client_context_verified(const char* ca_pem) {
     } else {
         ok = (SSL_CTX_set_default_verify_paths(ctx) == 1);
     }
+    pthread_mutex_unlock(&g_tls_ctx_lock);
     if (!ok) {
         vyb_tls_capture_error();
         SSL_CTX_free(ctx);

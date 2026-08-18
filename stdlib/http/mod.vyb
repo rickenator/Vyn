@@ -339,6 +339,47 @@ http_read_all(fd<Int>, max<Int>)<String> -> {
     return buf
 }
 
+# Parse a hexadecimal integer at the start of `s`, stopping at a `;` extension
+# marker or any non-hex digit ("" -> 0, like a 0-size chunk terminator).
+share(all)
+http_parse_hex(s<String>)<Int> -> {
+    v<Int> = 0
+    i<Int> = 0
+    while (i < s.len()) {
+        c<Int> = s.char_at(i)
+        d<Int> = -1
+        if (c >= 48 && c <= 57) { d = c - 48 }
+        else if (c >= 97 && c <= 102) { d = c - 97 + 10 }
+        else if (c >= 65 && c <= 70) { d = c - 65 + 10 }
+        if (d < 0) { break }
+        v = v * 16 + d
+        i = i + 1
+    }
+    return v
+}
+
+# Read the body of a `Transfer-Encoding: chunked` response from `fd`, draining
+# each hex chunk-size line, its data, and the trailing CRLF, until the 0-size
+# terminator and any trailer. Skipping the framing means the renderer no longer
+# sees stray hex sizes like "8000"/"464" as page text.
+share(all)
+http_read_chunked(fd<Int>)<String> -> {
+    body<String> = ""
+    while (true) {
+        hdr<String> = http_read_line(fd)
+        size<Int> = http_parse_hex(hdr)
+        if (size <= 0 || hdr.len() == 0) {
+            # 0-size chunk: drain any trailer lines up to the blank line.
+            t<String> = http_read_line(fd)
+            while (t.len() > 0) { t = http_read_line(fd) }
+            break
+        }
+        body = body.concat(http_read_exact(fd, size))
+        http_read_exact(fd, 2)
+    }
+    return body
+}
+
 # Full HTTP/1.1 GET round-trip. Returns an HttpResponse with the parsed status,
 # reason, headers, and body; status is -1 if the round-trip could not be
 # completed (e.g. connection failure).
@@ -369,6 +410,7 @@ http_get_full(host<String>, port<Int>, path<String>)<HttpResponse> -> {
     hs<Vec<String>> = Vec<String>()
     length<Int> = -1
     has_len<Bool> = false
+    chunked<Bool> = false
     h<String> = http_read_line(fd)
     while (h.len() > 0) {
         hs.push(h)
@@ -377,10 +419,16 @@ http_get_full(host<String>, port<Int>, path<String>)<HttpResponse> -> {
             length = http_parse_int(lv)
             has_len = true
         }
+        te<String> = http_header_value(h, "transfer-encoding")
+        if (http_index_of(te.to_lower(), "chunked") >= 0) {
+            chunked = true
+        }
         h = http_read_line(fd)
     }
     body<String> = ""
-    if (has_len) {
+    if (chunked) {
+        body = http_read_chunked(fd)
+    } else if (has_len) {
         body = http_read_exact(fd, length)
     } else {
         body = http_read_all(fd, 65536)

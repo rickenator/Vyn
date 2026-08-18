@@ -114,7 +114,7 @@ struct BrowserState {
     task<Int>,
     pending<String>,
     gen<Int>,
-    stale<Vec<Int>>
+    dirty<Bool>
 }
 
 # --- Download state (module scratch, owned by the UI loop) -------------------
@@ -424,27 +424,6 @@ commit_fetch(st<their<BrowserState>>)<Bool> -> {
         return true
     }
     return false
-}
-
-# Reclaim any superseded navigation fibers that have finished. Each navigation
-# spawns its own fiber; when the user navigates again the previous handle is
-# parked in `stale` and swept here once per tick, detaching (and thereby freeing)
-# the ones that have already completed.
-reap_stale(st<their<BrowserState>>)<Void> -> {
-    if (st.stale.len() == 0) { return }
-    keep<Vec<Int>> = Vec()
-    i<Int> = 0
-    while (i < st.stale.len()) {
-        h<Int> = st.stale.get(i)
-        p<Int> = async_poll(h)
-        if (p >= 0) {
-            async_detach(h)
-        } else {
-            keep.push(h)
-        }
-        i = i + 1
-    }
-    st.stale = keep
 }
 
 # Only these helpers touch ncurses. Every text add is clamped to the screen and
@@ -800,13 +779,21 @@ async warm_up(ms<Int>)<Future<Int>> -> {
 # commits the result. `gen` is bumped per navigation so a superseded fetch can
 # never clobber the newest one.
 load_url(st<their<BrowserState>>, target<String>)<Void> -> {
-    if (st.task != 0) { st.stale.push(st.task) }
+    st.url = target
+    st.status = "Loading " + target
+    if (st.task != 0) {
+        # A fetch is already in flight. Coalesce instead of spawning a second
+        # fiber: concurrent worker fetches (each doing its own TLS handshake /
+        # page render on a private fiber stack) race the shared publish scratch
+        # and can crash in libcrypto. We remember the newest target and re-issue
+        # it once the current fetch commits, so only one worker is ever active.
+        st.dirty = true
+        return
+    }
     fetch_req_gen = fetch_req_gen + 1
     st.gen = fetch_req_gen
     st.pending = target
-    st.url = target
     st.loading = true
-    st.status = "Loading " + target
     st.top = 0
     st.focus = 0
     r<Int>, c<Int>
@@ -987,7 +974,7 @@ run_browser(initial<String>)<Int> -> {
         task = 0,
         pending = "",
         gen = 0,
-        stale = Vec()
+        dirty = false
     }
 
     load_url(borrow(state), initial)
@@ -1003,10 +990,17 @@ run_browser(initial<String>)<Int> -> {
         r, c = tty_dims()
         if (r < 1) { r = 24 }
         if (c < 1) { c = 80 }
-        # Reclaim finished superseded fetch fibers, commit the current one, and
-        # drain any completed download; each return true when the screen changed.
-        reap_stale(borrow(state))
+        # Commit the current fetch and drain any completed download; each
+        # returns true when the screen changed.
         done<Bool> = commit_fetch(borrow(state))
+        # Re-issue any navigation that arrived while a fetch was in flight: now
+        # that the worker slot is free, load the newest target. Keeps at most one
+        # fetch worker active, which avoids concurrent-TLS crashes.
+        if (!done && state.dirty && state.task == 0) {
+            state.dirty = false
+            load_url(borrow(state), state.url)
+            done = true
+        }
         pdone<Bool> = poll_progress(borrow(state))
         if (done || pdone) {
             redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)

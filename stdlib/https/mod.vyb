@@ -23,7 +23,8 @@ import tls::{tls_client_context, tls_client_context_verified, tls_server_context
 # subset imports of http; the module resolver now splices each subset import
 # independently (deep-cloning http's body per consumer).
 share(all) import http::{HttpResponse}
-import http::{http_status_code, http_header_value, http_index_of, http_parse_int}
+import http::{http_status_code, http_header_value, http_index_of, http_parse_int,
+              http_parse_hex}
 
 # Read one CRLF-terminated line (without the CRLF) from a TLS stream. One byte
 # per read, stopping exactly at the line end, mirroring http's reader but over
@@ -64,6 +65,25 @@ tls_read_all(s<TlsStream>, max<Int>)<String> -> {
         buf = buf.concat(chunk)
     }
     return buf
+}
+
+# Read a `Transfer-Encoding: chunked` body over TLS, stripping the hex framing
+# (mirrors http_read_chunked but through the SSL stream).
+share(all)
+tls_read_chunked(s<TlsStream>)<String> -> {
+    body<String> = ""
+    while (true) {
+        hdr<String> = tls_read_line(s)
+        size<Int> = http_parse_hex(hdr)
+        if (size <= 0 || hdr.len() == 0) {
+            t<String> = tls_read_line(s)
+            while (t.len() > 0) { t = tls_read_line(s) }
+            break
+        }
+        body = body.concat(tls_read_exact(s, size))
+        tls_read_exact(s, 2)
+    }
+    return body
 }
 
 # Full HTTPS/1.1 GET round-trip. Returns an HttpResponse with the parsed status,
@@ -109,6 +129,7 @@ https_fetch(verify_host<String>, connect_ip<String>, port<Int>, path<String>,
     hs<Vec<String>> = Vec<String>()
     length<Int> = -1
     has_len<Bool> = false
+    chunked<Bool> = false
     h<String> = tls_read_line(s)
     while (h.len() > 0) {
         hs.push(h)
@@ -117,10 +138,16 @@ https_fetch(verify_host<String>, connect_ip<String>, port<Int>, path<String>,
             length = http_parse_int(lv)
             has_len = true
         }
+        te<String> = http_header_value(h, "transfer-encoding")
+        if (http_index_of(te.to_lower(), "chunked") >= 0) {
+            chunked = true
+        }
         h = tls_read_line(s)
     }
     body<String> = ""
-    if (has_len) {
+    if (chunked) {
+        body = tls_read_chunked(s)
+    } else if (has_len) {
         body = tls_read_exact(s, length)
     } else {
         body = tls_read_all(s, 65536)
