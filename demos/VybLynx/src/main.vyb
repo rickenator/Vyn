@@ -7,12 +7,12 @@
 # (curses_timeout) so the loop polls instead of blocking forever, and page loads
 # run as background async worker fibers so the network never blocks the UI.
 #
-#   VYB_LYNX_HOME=http://example.org  vyblynx   : open that URL at launch
+#   VYB_LYNX_HOME=local:///welcome.html  vyblynx : open that URL at launch
 #   <n>        follow numbered link           d  download current page
 #   up / down  move link focus (tab cycles)   b  back
 #   enter      follow the focused link        r  reload
 #   n / space  next page                      h  help
-#   p          previous page                  g  open a URL (or q to quit)
+#   p          previous page                  g  type a URL in the box below
 #
 # Content is fetched live through the stdlib `http`/`https` modules via a
 # `ResourceProvider` aspect (dispatched by URL scheme), then rendered with the
@@ -30,7 +30,6 @@ import url::{Url, parse_url, resolve_url, default_port}
 import html::{Link, render_lines, extract_title}
 import http::{http_get_full, http_header, HttpResponse}
 import https::{https_get_full_verified}
-import term::{stdin_read_line}
 import env
 import asyncs::{async_sleep_ms, async_spawn, async_poll, async_detach}
 import agents
@@ -127,6 +126,27 @@ struct BrowserState {
 dl_progress<Int> = 0
 dl_running<Int> = 0
 
+# --- In-window URL editor (address bar) -------------------------------------
+# Pressing `g` turns the bottom status row into a URL edit box (no more leaving
+# the curses screen). Printable keys append a character, backspace removes the
+# last one, enter submits, and esc cancels. While `addr_active` is set the UI
+# routes every key here and `draw_status` renders the field, so the caret stays
+# inside the box.
+addr_text<String> = ""
+addr_active<Int> = 0
+
+# Turn a printable-ASCII key code into its one-character String. There is no
+# char->String builtin yet, so the byte code addresses into a hand-ordered table
+# of every printable ASCII byte, giving back a one-byte slice. Non-printable and
+# extended (KEY_*) codes return "" so arrow keys never append to the URL.
+printable_bytes<String> = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+
+char_str(k<Int>)<String> -> {
+    if (k < 32 || k > 126) { return "" }
+    n<Int> = k - 32
+    return printable_bytes.substring(n, n + 1)
+}
+
 # --- Terminal size + invariant -----------------------------------------------
 # `ensure` guards the invariant (RFE §20) and would fail closed to a sane
 # default rather than draw into a 0-width screen. Multi-value returns + nested
@@ -203,6 +223,61 @@ fetch_with<T<ResourceProvider>>(p<T>, u<Url>)<HttpResponse> -> {
     return p.fetch(u)
 }
 
+# --- Bundled offline pages (the `local:` scheme) ----------------------------
+# VybLynx also serves a few hand-bundled pages under `local:///`, so the demo
+# runs completely offline (and the home URL needs no network at all). Each page
+# is ordinary HTML the shared renderer understands, kept short. They let a bare
+# launch exercise focus/enter/back, an in-box URL, and agent downloads without
+# a connection.
+
+offline_welcome()<String> -> {
+    return "<html><head><title>VybLynx Offline Home</title></head><body>" +
+           "<p>Welcome to VybLynx: a full-screen curses terminal browser." +
+           " This home page is bundled into the binary, so it loads with no network at all.</p>" +
+           "<p><a href=\"/page2.html\">Open the second page</a> and " +
+           "<a href=\"/about.html\">read about this build</a>.</p>" +
+           "<p>Type <b>h</b> for help, <b>d</b> to download this page to a file, " +
+           "and <b>g</b> to type any URL in the box at the bottom of the window.</p>" +
+           "</body></html>"
+}
+
+offline_page2()<String> -> {
+    return "<html><head><title>VybLynx · Second Page</title></head><body>" +
+           "<p>This is page two. The back key (<b>b</b>) returns to the offline home, " +
+           "and agent downloads work here too.</p>" +
+           "<p><a href=\"/welcome.html\">Back to the offline home</a> and " +
+           "<a href=\"/readme.txt\">a bundled plain page</a> you can download.</p>" +
+           "</body></html>"
+}
+
+offline_about()<String> -> {
+    return "<html><head><title>VybLynx · About</title></head><body>" +
+           "<p>VybLynx is the Vyb flagship demo: a box-drawn curses browser with " +
+           "color anchors, keyboard focus, history/back, background fetches, and " +
+           "threaded downloads - all through the stdlib modules.</p>" +
+           "<p><a href=\"/welcome.html\">Back to the offline home</a>.</p>" +
+           "</body></html>"
+}
+
+offline_readme()<String> -> {
+    return "<html><head><title>VybLynx README (offline)</title></head><body>" +
+           "<p>This bundled plain page exercises the download (<b>d</b>) path offline: " +
+           "press <b>d</b> and VybLynx saves it to a local file through the agents module.</p>" +
+           "<p><a href=\"/welcome.html\">Back to the offline home</a>.</p>" +
+           "</body></html>"
+}
+
+# Serve one bundled page by its local path. Unknown paths fall back to the home.
+local_doc(urlStr<String>)<HttpResponse> -> {
+    u<Url> = parse_url(urlStr)
+    body<String> = offline_welcome()
+    if (u.path == "/page2.html") { body = offline_page2() }
+    else if (u.path == "/about.html") { body = offline_about() }
+    else if (u.path == "/readme.txt") { body = offline_readme() }
+    return HttpResponse { status = 200, reason = "OK",
+                          headers = Vec<String>(), body = body }
+}
+
 # Dispatch a URL to its provider by scheme and follow up to `hops` redirects
 # (a bad round-trip yields a status of -1 instead of a crash).
 fetch_resource(urlStr<String>, hops<Int>)<HttpResponse> -> {
@@ -210,6 +285,7 @@ fetch_resource(urlStr<String>, hops<Int>)<HttpResponse> -> {
                                        headers = Vec<String>(), body = "" }
     if (hops <= 0) { return bad }
     u<Url> = parse_url(urlStr)
+    if (u.scheme == "local") { return local_doc(urlStr) }
     resp<HttpResponse> = bad
     if (u.scheme == "https") {
         resp = fetch_with(HttpsResourceProvider {}, u)
@@ -237,6 +313,7 @@ download_fetch(urlStr<String>, hops<Int>)<HttpResponse> -> {
                                        headers = Vec<String>(), body = "" }
     if (hops <= 0) { return bad }
     u<Url> = parse_url(urlStr)
+    if (u.scheme == "local") { return local_doc(urlStr) }
     resp<HttpResponse> = bad
     if (u.scheme == "https") {
         resp = https_get_full_verified(u.host, u.port, u.path, "")
@@ -559,6 +636,21 @@ draw_body(p<their<Page>>, top<Int>, r<Int>, c<Int>, focus<Int>)<Void> -> {
 
 draw_status(p<their<Page>>, top<Int>, status<String>, loading<Bool>, r<Int>, c<Int>, focus<Int>)<Void> -> {
     statusRow<Int> = r - 2
+    if (addr_active == 1) {
+        field<String> = "url> " + addr_text
+        a<Int> = status_attr()
+        if (a != 0) { curses_attr_on(a) }
+        bl<Int> = field.len()
+        pad<String> = ""
+        while (bl < c - 2) { pad = pad + " "; bl = bl + 1 }
+        put(statusRow, 1, field + pad, c - 2)
+        if (a != 0) { curses_attr_off(a) }
+        # Sit the caret right after the typed text so the box edits in place.
+        caret<Int> = field.len()
+        if (caret >= c - 2) { caret = c - 2 }
+        curses_move(statusRow, 1 + caret)
+        return
+    }
     text<String> = status
     if (!loading) {
         pos<String> = "  link " + focus.to_string() + "/" + p.navs.len().to_string()
@@ -585,7 +677,8 @@ draw_help(r<Int>, c<Int>)<Void> -> {
     lines.push("  up / down     move link focus (tab cycles, enter opens)")
     lines.push("  n / space     next page")
     lines.push("  p             previous page")
-    lines.push("  g             open a URL (prompt on the real terminal)")
+    lines.push("  g             type a URL in the box at the bottom")
+    lines.push("                (enter go, esc cancel, <-- backspace)")
     lines.push("  d             download current page to a file (agents)")
     lines.push("  b             back")
     lines.push("  r             reload")
@@ -660,27 +753,24 @@ cmd_of(k<Int>)<Cmd> -> {
     return Cmd::Unknown
 }
 
-# --- URL prompt on the real terminal -----------------------------------------
-# The curses layer exposes keys, not whole lines, and there is no char->String
-# builtin yet, so opening an arbitrary URL suspends curses (endwin), reads a
-# line from stdin, then resumes the screen. `T?` models "cancelled/absent".
-open_url_prompt()<String?> -> {
-    curses_close()
-    println("vyblynx> open URL: ")
-    line<String> = stdin_read_line().trim()
-    if (line.len() > 0) {
-        if (curses_init() == 0) {
-            curses_hide_cursor()
-            curses_timeout(80)
-            return String?(line)
-        }
-        println("vyblynx: could not re-enter the screen")
-        return String?()
-    }
-    if (curses_init() != 0) {
-        println("vyblynx: could not re-enter the screen")
-    }
-    return String?()
+# --- In-window URL editor helpers -------------------------------------------
+# Enters address mode (`g`): starts with an empty field, shows the caret, and
+# sets the module flag so the loop routes keys to the editor and draw_status
+# renders the field at the bottom row. No part of this suspends the screen -
+# the box stays up the whole time.
+enter_address_mode()<Void> -> {
+    addr_text = ""
+    addr_active = 1
+    curses_show_cursor()
+}
+
+# Park the edit caret just past the typed address (used after every redraw so
+# the cursor never jumps back to the screen corner).
+place_addr_caret(r<Int>, c<Int>)<Void> -> {
+    statusRow<Int> = r - 2
+    caret<Int> = 5 + addr_text.len()
+    if (caret >= c - 2) { caret = c - 2 }
+    curses_move(statusRow, 1 + caret)
 }
 
 # --- A tiny async showcase ---------------------------------------------------
@@ -823,7 +913,9 @@ download_path(urlStr<String>)<String> -> {
     }
     if (idx >= 0) { seg = seg.substring(idx + 1, m) }
     if (seg == "" || seg == "/") { seg = "index.html" }
-    return safe_file_part(u.host + "-" + seg)
+    hostPart<String> = u.host
+    if (hostPart == "") { hostPart = "local" }
+    return safe_file_part(hostPart + "-" + seg)
 }
 
 start_download(urlStr<String>)<Void> -> {
@@ -915,6 +1007,43 @@ run_browser(initial<String>)<Int> -> {
         }
         k<Int> = curses_getch()
         if (k == -1) {
+            continue
+        }
+        # While the address bar is open every key edits the field at the bottom
+        # of the box: printable bytes append, backspace removes the last char,
+        # enter submits, esc cancels. Arrow/function keys are ignored so they
+        # never corrupt the URL, and the caret stays put after each redraw.
+        if (addr_active == 1) {
+            if (k >= 32 && k <= 126) {
+                addr_text = addr_text + char_str(k)
+                redraw(borrow(state.page), state.top, state.status,
+                       state.loading, state.help, r, c, state.focus)
+                place_addr_caret(r, c)
+            } else if (k == 263 || k == 127 || k == 8) {
+                if (addr_text.len() > 0) {
+                    addr_text = addr_text.substring(0, addr_text.len() - 1)
+                }
+                redraw(borrow(state.page), state.top, state.status,
+                       state.loading, state.help, r, c, state.focus)
+                place_addr_caret(r, c)
+            } else if (k == 343 || k == 10 || k == 13) {
+                target<String> = addr_text.trim()
+                addr_text = ""
+                addr_active = 0
+                curses_hide_cursor()
+                if (target.len() > 0) {
+                    state.history.push(state.url)
+                    load_url(borrow(state), target)
+                }
+                redraw(borrow(state.page), state.top, state.status,
+                       state.loading, state.help, r, c, state.focus)
+            } else if (k == 27) {
+                addr_text = ""
+                addr_active = 0
+                curses_hide_cursor()
+                redraw(borrow(state.page), state.top, state.status,
+                       state.loading, state.help, r, c, state.focus)
+            }
             continue
         }
         cmd<Cmd> = cmd_of(k)
@@ -1012,12 +1141,12 @@ run_browser(initial<String>)<Int> -> {
             load_url(borrow(state), state.url)
             redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
         } else if (cmd == Cmd::OpenUrl) {
-            target<String> = open_url_prompt() else ""
-            if (target.len() > 0) {
-                state.history.push(state.url)
-                load_url(borrow(state), target)
+            if (!state.help) {
+                enter_address_mode()
+                redraw(borrow(state.page), state.top, state.status,
+                       state.loading, state.help, r, c, state.focus)
+                place_addr_caret(r, c)
             }
-            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
         } else if (cmd == Cmd::Help) {
             state.help = !state.help
             redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
@@ -1045,7 +1174,8 @@ main()<Int> -> {
 
     start<String> = env_get("VYB_LYNX_HOME")
     if (start.trim().len() == 0) {
-        start = "http://example.org/"
+        # Bundled offline home: the demo opens and navigates with no network.
+        start = "local:///welcome.html"
     }
 
     result<Int> = {

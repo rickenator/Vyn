@@ -88,7 +88,8 @@ url_authority(u<Url>)<String> -> {
 share(all)
 resolve_url(base<Url>, reference<String>)<String> -> {
     t<String> = reference.trim()
-    if (t.starts_with("http://") || t.starts_with("https://")) {
+    if (t.starts_with("http://") || t.starts_with("https://") ||
+        t.starts_with("local://")) {
         return t
     }
     if (t.starts_with("//")) {

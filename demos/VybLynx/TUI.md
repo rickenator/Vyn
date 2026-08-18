@@ -14,8 +14,8 @@ redirected stdout, and lets the program exit cleanly with a message instead.
 cd Vyb
 cd demos/VybLynx
 # from the repo root: point VYB_STDLIB at the stdlib dir and run the source
-VYB_STDLIB=stdlib ../../build/vyb src/main.vyb            # opens http://example.org/
-VYB_LYNX_HOME=http://example.com ../../build/vyb src/main.vyb
+VYB_STDLIB=stdlib ../../build/vyb src/main.vyb            # opens local:///welcome.html (offline)
+VYB_LYNX_HOME=http://example.com ../../build/vyb src/main.vyb   # or any live http(s) URL
 ```
 
 ### Controls
@@ -25,7 +25,8 @@ VYB_LYNX_HOME=http://example.com ../../build/vyb src/main.vyb
 - `n` / `space` — next page · `p` — previous page
 - `d` — download the current page to a file (background agent)
 - `b` — back · `r` — reload
-- `g` — open a URL (prompt on the real terminal; see note below)
+- `g` — open a URL by typing it in the box at the bottom of the window
+  (enter goes, esc cancels, backspace edits; the screen never leaves curses)
 - `h` — help · `q` — quit
 
 ## What is wired
@@ -51,7 +52,7 @@ VYB_LYNX_HOME=http://example.com ../../build/vyb src/main.vyb
 - **Navigation is structured.** The `fail`/`trap` lives inside `fetch_page_at`,
   so whether it runs on the worker fiber or the main-thread fallback, one bad
   page becomes an error page, never a crash (RFE §20/§21/§35).
-- **`T?` models absence** for "no such link" and the cancelled URL prompt.
+- **`T?` models absence** for "no such link".
 - **`ensure` guards the render invariant** (non-zero terminal size).
 - **Aspect/bind.** `Display` is bound to `Url`; an `Interactive` aspect is bound
   to the rendered `Nav` links; a `ResourceProvider` aspect is bound to
@@ -94,7 +95,7 @@ VYB_LYNX_HOME=http://example.com ../../build/vyb src/main.vyb
 | `struct` | `Nav`, `Page`, `BrowserState`, `HttpResourceProvider`, `HttpsResourceProvider` |
 | `aspect` / `bind` | `Display->Url`, `Interactive->Nav`, `ResourceProvider`-> providers |
 | generic bounded fn | `show<T<Display>>`, `link_line<T<Interactive>>`, `fetch_with<T<ResourceProvider>>` |
-| `T?` + `else` | `follow_page`, `open_url_prompt`, command handling |
+| `T?` + `else` | `follow_page`, command handling |
 | `ensure` | `content_width()` terminal-size invariant |
 | `fail` / `trap` | `fetch_page` -> `load_url` boundary |
 | collections | `Vec` history stack, page line buffer, navs |
@@ -134,4 +135,5 @@ are recorded here so the fixes are traceable.
 ## Next milestones (per RFE §45)
 - Add a `FileProvider` resource provider for `file://` documents (RFE §6/§44).
 - Resize handling (`curses_resize` shim) and window-based layout (±RFE §14).
-- Proper multi-line visual editor / form fields for the URL prompt.
+- Richer in-box editing (cursor movement, caret-home/end, history) for the
+  bottom-of-window URL bar.
