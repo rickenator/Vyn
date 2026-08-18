@@ -28,6 +28,25 @@ successfully with the current compiler. Support modules live under
 | `module_import.vyb` | local module import from `examples/modules/` |
 | `module_visibility.vyb` | `bundle(...)`, `share(...)`, and selective import aliases |
 
+### Idiomatic language patterns
+
+The `idiomatic/` subdirectory showcases Vyb's distinctive patterns in small,
+self-contained programs. Each file runs with `build/vyb examples/idiomatic/<file>.vyb`
+and exits 0.
+
+| Example | Covers |
+|---------|--------|
+| `aspects.vyb` | `aspect` / `bind`, bounded `<T<Aspect>>` parameters, static dispatch |
+| `errors.vyb` | `fail` / `trap` / `ensure`, rich error structs, wildcard traps |
+| `ownership.vyb` | `our<T>` / `mild<T>` weak views, `grab()`, release on scope, `my<T>` moves |
+| `optionals.vyb` | the native `T?` — `else`, presence `==`, `match` both states |
+| `collections_hop.vyb` | pure-Vyb `map` / `filter` / `reduce`, `sorted`, in-place by-ref forms |
+| `shape_match.vyb` | tagged-union `enum`s, exhaustive `match` / `select` |
+| `json_roundtrip.vyb` | `to_string()` / `Type::from_string()` lossless JSON round trip |
+| `bitpack.vyb` | composing a wider `Int64` from bytes with unsigned `as` casts |
+| `channels_concurrency.vyb` | typed `chan<T>`, threaded producers, `thread_spawn` / `recv` / `join` |
+| `async_fibers.vyb` | `async` functions, `Future<T>`, `await`, overlapping timers |
+
 ### Module path demo
 
 This repository also includes a multi-file `--module-path` demo:

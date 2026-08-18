@@ -1,0 +1,44 @@
+// json_roundtrip.vyb — structs serialize to JSON and back, losslessly.
+//
+// to_string() renders any struct (nested structs, Vec fields, arbitrary depth)
+// to JSON; Type::from_string() rebuilds the struct from that text. A faithful
+// round trip must be byte-identical, which is the simplest possible test that
+// nothing was dropped or reordered.
+
+import collections
+
+struct Point {
+    x<Int>,
+    y<Int>
+}
+struct Person {
+    name<String>,
+    age<Int>,
+    tags<Vec<String>>,
+    home<Point>
+}
+
+main()<Int> -> {
+    p<Person> = Person {
+        name = "Rick",
+        age = 42,
+        tags = Vec(),
+        home = Point { x = 3, y = 4 }
+    }
+    p.tags.push("r");
+    p.tags.push("math")
+
+    # Out, then back in.
+    j<String> = p.to_string()
+    q<Person> = Person::from_string(j)
+
+    # Byte-identical round trip is the whole contract.
+    if (q.to_string() != j) { return 1 }
+    if (q.name != "Rick" || q.age != 42) { return 2 }
+    if (q.tags.len() != 2) { return 3 }
+    if (q.home.x != 3 || q.home.y != 4) { return 4 }
+
+    println(j)
+    println("json round trip ok")
+    return 0
+}

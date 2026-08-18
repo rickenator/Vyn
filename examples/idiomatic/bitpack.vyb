@@ -1,0 +1,32 @@
+// bitpack.vyb — compose a wider integer from bytes with unsigned casts.
+//
+// Eight UInt8 bytes pack into a single Int64. Each byte is widened to Int64 with
+// an unsigned `as` cast (zero-extends, so the high bits stay clear), shifted into
+// its lane, and OR'd together. Widening on read slices the lanes back out.
+//
+// main returns Int64 so the packed result itself is the observable demo value.
+
+main()<Int64> -> {
+    # Bytes low-to-high; the top byte keeps the sign bit clear for a readable value.
+    b0<UInt8> = 0x11
+    b1<UInt8> = 0x22
+    b2<UInt8> = 0x33
+    b3<UInt8> = 0x44
+    b4<UInt8> = 0x55
+    b5<UInt8> = 0x66
+    b6<UInt8> = 0x77
+    b7<UInt8> = 0x08
+
+    packed<Int64> = (b0 as Int64) | ((b1 as Int64) << 8) | ((b2 as Int64) << 16) |
+                    ((b3 as Int64) << 24) | ((b4 as Int64) << 32) | ((b5 as Int64) << 40) |
+                    ((b6 as Int64) << 48) | ((b7 as Int64) << 56)
+
+    # Read lanes back out: mask 0xFF, then narrow back to UInt8 with an `as` cast.
+    r0<UInt8> = (packed & 0xFF) as UInt8
+    r7<UInt8> = ((packed >> 56) & 0xFF) as UInt8
+    if (r0 != b0) { return packed }
+    if (r7 != b7) { return packed }
+
+    println("bitpack ok")
+    return packed
+}

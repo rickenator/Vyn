@@ -1,0 +1,41 @@
+// ownership.vyb — ownership spelled plainly.
+//
+// Vyb's ownership is spelled with keywords that say what a value IS:
+//   our<T>  — shared ownership (the last one out cleans up)
+//   mild<T> — a weak view that doesn't own; grab() upgrades it or returns absent
+//   my<T>   — unique ownership that moves on transfer
+
+struct Node { value<Int> }
+
+// Building a temporary strong owner inside a helper and returning only the weak
+// view: the strong our<T> drops when the helper returns, so the caller-supplied
+// mild observes the release.
+make_weak()<mild<Node>> -> {
+    owner<our<Node>> = our(Node { value = 44 })
+    return soft(owner)
+}
+
+main()<Int> -> {
+    // our<T>: shared. `weak` is a mild (weak) view — it holds no strong ref.
+    shared<our<Node>> = our(Node { value = 7 })
+    weak<mild<Node>> = soft(shared)
+
+    // While the strong owner is alive, grab() upgrades to a present our<Node>?.
+    live<our<Node>?> = weak.grab()
+    if (match (live) { o -> 0, ? -> 1 } != 0) { return 1 }
+    if (weak.released()) { return 2 }
+
+    // my<T>: unique — ownership moves to `unique2`, so `a` can no longer be read.
+    a<my<Node>> = my(Node { value = 3 })
+    unique2<my<Node>> = a
+
+    // Once the strong owner is gone, the mild view reports released() and
+    // grab() returns absent — decoded by the optional '?' arm of the match.
+    dead<mild<Node>> = make_weak()
+    if (dead.released() == false) { return 3 }
+    gone<our<Node>?> = dead.grab()
+    if (match (gone) { o -> 0, ? -> 1 } != 1) { return 4 }
+
+    println("ownership demo ok")
+    return 0
+}

@@ -1,0 +1,44 @@
+// collections_hop.vyb — pure-Vyb higher-order vector combinators.
+//
+// VecHigherOps from `import collections` extends Vec<T> with non-capturing
+// lambda combinators: map (element-wise transform to a fresh vector), filter
+// (keep-only-`true` results), reduce (left fold), plus sorted/min/max and the
+// in-place by-ref forms sort_in_place / retain / map_in_place / reverse_in_place.
+
+import collections
+
+main()<Int> -> {
+    v<Vec<Int>> = Vec()
+    v.push(3); v.push(9); v.push(5); v.push(1)
+
+    # map: fresh transformed vector; the original is untouched.
+    doubled<Vec<Int>> = v.map(|n<Int>| -> n * 2)
+    if (doubled.len() != 4) { return 1 }
+    if (doubled.get(0) != 6 || doubled.get(3) != 2) { return 2 }
+    if (v.get(0) != 3) { return 3 }
+
+    # filter: a fresh vector of only the elements for which f is true.
+    small<Vec<Int>> = v.filter(|n<Int>| -> n < 5)
+    if (small.len() != 2 || small.get(0) != 3 || small.get(1) != 1) { return 4 }
+
+    # reduce: fold left with an accumulator and element.
+    total<Int> = v.reduce(0, |acc<Int>, n<Int>| -> acc + n)
+    if (total != 18) { return 5 }
+
+    # sorted shows fresh ascending order; the by-ref forms mutate in place.
+    ordered<Vec<Int>> = v.sorted()
+    if (ordered.get(0) != 1 || ordered.get(3) != 9) { return 6 }
+    v.sort_in_place()
+    if (v.get(0) != 1 || v.get(3) != 9) { return 7 }
+
+    # combinators are unconstrained: they work on any element type.
+    words<Vec<String>> = Vec()
+    words.push("a"); words.push("bb"); words.push("ccc")
+    shout<Vec<String>> = words.map(|w<String>| -> w + "!")
+    if (shout.get(0) != "a!" || shout.get(2) != "ccc!") { return 8 }
+    joined<String> = words.reduce("", |acc<String>, w<String>| -> acc + w)
+    if (joined != "abbccc") { return 9 }
+
+    println("collections ok")
+    return 0
+}

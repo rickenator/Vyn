@@ -1,0 +1,48 @@
+// shape_match.vyb — tagged unions and exhaustive pattern matching.
+//
+// An enum is a sum type: a value that is exactly one named variant. Data-carrying
+// variants bind payload fields in a match arm; C-like variants match by name.
+// A match/select over an enum is exhaustiveness-checked, so adding a variant
+// later forces every dispatch site to be reconsidered.
+
+enum Shape { Circle(Float), Rect(Float, Float), Unit }
+
+area(s<Shape>)<Float> -> {
+    match (s) {
+        Circle(r) -> { return 3.14 * r * r }
+        Rect(w, h) -> { return w * h }
+        Unit -> { return 0.0 }
+    }
+    return 0.0
+}
+
+enum Color { Red, Green, Blue }
+
+name(c<Color>)<String> -> {
+    return select(c) -> {
+        Red -> "red",
+        Green -> "green",
+        ? -> "blue"
+    }
+}
+
+main()<Int> -> {
+    circle<Shape> = Shape::Circle(2.0)
+    rect<Shape> = Shape::Rect(3.0, 4.0)
+    unit<Shape> = Shape::Unit
+
+    a<Float> = area(circle)
+    b<Float> = area(rect)
+    d<Float> = area(unit)
+
+    if (a == 12.56 && b == 12.0 && d == 0.0) {
+        # checks passed
+    } else {
+        return 1
+    }
+    if (name(Color::Red) != "red") { return 2 }
+    if (name(Color::Blue) != "blue") { return 3 }
+
+    println("shape match ok")
+    return 0
+}

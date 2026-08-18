@@ -1,0 +1,34 @@
+// async_fibers.vyb — async functions run on cooperative fibers.
+//
+// An `async` function returns a Future<T> and can suspend mid-body (here on a
+// timer) without blocking its thread. Future<T> handles are awaited with
+// `await`. Two suspects that each sleep are started back-to-back, so their
+// timers overlap and both finish in roughly the slower sleep — not the sum.
+
+import asyncs::{async_sleep_ms}
+import time::{time_mono_millis}
+
+async wait_and_echo(ms<Int>, tag<Int>)<Future<Int>> -> {
+    async_sleep_ms(ms)
+    return tag
+}
+
+main()<Int> -> {
+    t0<Int> = time_mono_millis()
+
+    # Launch both futures before awaiting either, so the timers overlap.
+    f1<Future<Int>> = wait_and_echo(30, 11)
+    f2<Future<Int>> = wait_and_echo(60, 22)
+
+    a<Int> = await f1
+    b<Int> = await f2
+
+    elapsed<Int> = time_mono_millis() - t0
+    if (a != 11 || b != 22) { return 1 }
+    # Parallel: ~60ms, not the ~90ms you would pay running the two serially.
+    if (elapsed >= 89) { return 2 }
+
+    println("async fibers ok: a=" + a.to_string() + " b=" + b.to_string())
+    println("elapsed_ms=" + elapsed.to_string())
+    return 0
+}

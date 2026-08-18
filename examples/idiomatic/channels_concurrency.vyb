@@ -1,0 +1,48 @@
+// channels_concurrency.vyb — typed channels bridge threads.
+//
+// A chan<T> is a value (a single runtime handle), so passing it to thread_spawn
+// by value shares one channel. Producers send on it from their own threads; the
+// consumer blocks on recv until every value arrives. Payloads may be value types
+// (Int) or heap payloads (String transported under refcounted ownership).
+
+import threads
+
+produce(ch<chan<Int>>, base<Int>)<Int> -> {
+    ch.send(base)
+    ch.send(base + 1)
+    return 0
+}
+
+main()<Int> -> {
+    ch<chan<Int>> = chan<Int>()
+    if (ch == 0) { return 1 }
+
+    # Two producer threads enqueue 10,11 and 20,21 in parallel.
+    p1<Int> = thread_spawn(|| -> { return produce(ch, 10) })
+    p2<Int> = thread_spawn(|| -> { return produce(ch, 20) })
+    if (p1 < 0 || p2 < 0) { return 2 }
+
+    # Consumer blocks until all four values arrive; order is not promised.
+    s1<Int> = ch.recv()
+    s2<Int> = ch.recv()
+    s3<Int> = ch.recv()
+    s4<Int> = ch.recv()
+    if (s1 + s2 + s3 + s4 != 62) { return 3 }
+    if (thread_join(p1) != 0 || thread_join(p2) != 0) { return 4 }
+    if (ch.len() != 0) { return 5 }
+    if (ch.free() != 0) { return 6 }
+
+    # Heap payloads travel too: a String channel under refcounted ownership.
+    sc<chan<String>> = chan<String>()
+    if (sc == 0) { return 7 }
+    q1<Int> = thread_spawn(|| -> { sc.send("alpha"); sc.send("beta"); return 0 })
+    if (q1 < 0) { return 8 }
+    a<String> = sc.recv()
+    b<String> = sc.recv()
+    if (a != "alpha" || b != "beta") { return 9 }
+    if (thread_join(q1) != 0) { return 10 }
+    if (sc.free() != 0) { return 11 }
+
+    println("channels ok")
+    return 0
+}

@@ -1,0 +1,40 @@
+// optionals.vyb — the native `T?`: absence is a first-class, explicit state.
+//
+// A value that may be missing is *typed* as `T?`, so absence is always visible.
+// Read it with `else`, test it with `==`/`!=`, or pattern-match the two states.
+
+import collections
+
+// A read that may come up empty hands back a `String?` — present or absent.
+env_lookup(key<String>)<String?> -> {
+    if (key == "HOME") {
+        return String?("/home/rick")
+    }
+    return String?()
+}
+
+main()<Int> -> {
+    present<Int?> = Int?(10)
+    missing<Int?> = Int?()
+
+    // else: payload when present, your fallback when absent.
+    if ((present else -1) != 10) { return 1 }
+    if ((missing else -1) != -1) { return 2 }
+
+    // presence via ==/!= against the empty optional.
+    if (present == Int?()) { return 3 }
+    if (missing != Int?()) { return 4 }
+
+    // pattern-match the two states directly.
+    label<Int> = match (present) { p -> 0, ? -> 1 }
+    if (label != 0) { return 5 }
+
+    // a helper that may find nothing yields an optional for the caller to decode.
+    home<String?> = env_lookup("HOME")
+    missing_key<String?> = env_lookup("PATH")
+    if ((home else "?") != "/home/rick") { return 6 }
+    if ((missing_key else "?") != "?") { return 7 }
+
+    println("optionals ok, home=" + (home else "?"))
+    return 0
+}

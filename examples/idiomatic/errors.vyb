@@ -1,0 +1,37 @@
+// errors.vyb — fail / trap / ensure for reporting errors.
+//
+// Vyb has no exception machinery in the ordinary sense. A function that can fail
+// just FAILS; the caller wraps a call in a TRAP clause to say what to do with
+// each error, and ENSURE always runs for cleanup. The success path is zero-cost.
+// Errors carry your own structs (rich context), matched by type.
+
+struct FileError { path<String>, reason<Int> }
+
+read_line(path<String>)<String> -> {
+    if (path == "") {
+        fail FileError { path = "<empty>", reason = 1 }
+    }
+    return "data from " + path
+}
+
+main()<Int> -> {
+    // On failure, the trap arm supplies the happy-path fallback value.
+    ok<String> = { read_line("/etc/hosts") } trap (e<FileError>) -> { "" }
+
+    // Wildcard trap: discriminate by runtime type, or handle any error.
+    fallback<String> = { read_line("") } trap (e<?>) -> { "caught" }
+
+    // ensure runs on both success and failure — cleanup always happens.
+    outcome<String> = { read_line("") } trap (e<FileError>) -> { "failed" }
+        ensure -> {
+            # close a handle in real code; runs whether or not the trap caught
+        }
+
+    if (ok != "data from /etc/hosts") { return 1 }
+    if (fallback != "caught") { return 2 }
+    if (outcome != "failed") { return 3 }
+
+    println("ok=" + ok)
+    println("fallback=" + fallback)
+    return 0
+}

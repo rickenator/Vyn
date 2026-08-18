@@ -1,0 +1,51 @@
+// aspects.vyb — polymorphism with zero vtables.
+//
+// The Vyb idiom: a STRUCT is pure data, an ASPECT declares a contract, and a
+// BIND attaches an implementation to a concrete type. Dispatch is resolved at
+// compile time (monomorphized), so there is no runtime pointer indirection —
+// that's the "polymorphism without overhead" Vyb promise.
+
+aspect Named {
+    name(self)<String> -> { }      // contract only; no body
+}
+
+aspect Labeled : Named {           // aspects can extend other aspects
+    label(self)<String> -> { }
+}
+
+struct Point { x<Int> }
+struct Circle { radius<Float> }
+
+bind Named -> Point {
+    name(self<Point>)<String> -> { return "point" }
+}
+
+bind Named -> Circle {
+    name(self<Circle>)<String> -> { return "circle" }
+}
+
+bind Labeled -> Circle {
+    label(self<Circle>)<String> -> { return "c" }
+}
+
+// A bounded type parameter <T<Aspect>> requires every actual to implement the
+// aspect; the call thing.name() dispatches statically to the right bind.
+describe<T<Named>>(thing<T>)<String> -> {
+    return thing.name()
+}
+
+describe_labeled<T<Labeled>>(thing<T>)<String> -> {
+    return thing.name() + "/" + thing.label()
+}
+
+main()<Int> -> {
+    p<Point> = Point { x = 2 }
+    c<Circle> = Circle { radius = 1.0 }
+
+    if (describe(p) != "point") { return 1 }
+    if (describe(c) != "circle") { return 2 }
+    if (describe_labeled(c) != "circle/c") { return 3 }
+
+    println(describe_labeled(c))
+    return 0
+}
