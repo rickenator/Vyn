@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: Apache-2.0
+
+# Test 18: Failable `async ...<Future<Void>>` workers transport errors to the
+# `await` site. A Void future has no payload, but its failable ABI `{i1, i8*}`
+# still carries the error slot, so a `fail` in the body is recovered by the
+# enclosing trap at `await` — the same contract as a value-carrying future.
+// @expect: pass
+// @expect-return: 0
+
+struct Boom { msg<String> }
+
+async failing_task()<Future<Void>> -> {
+    println("fail path body ran")
+    fail Boom { msg = "void boom" }
+}
+
+async ok_task()<Future<Void>> -> {
+    println("ok path body ran")
+}
+
+main()<Int> -> {
+    r1<Int> = {
+        t<Future<Void>> = failing_task()
+        await t
+        0
+    } trap (e<Boom>) -> {
+        println("caught:", e.msg)
+        1
+    }
+
+    r2<Int> = {
+        t2<Future<Void>> = ok_task()
+        await t2
+        0
+    } trap (e<Boom>) -> {
+        println("UNEXPECTED catch:", e.msg)
+        2
+    }
+
+    println("r1:", r1, " r2:", r2)
+    return 0
+}

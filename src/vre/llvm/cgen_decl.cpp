@@ -1829,13 +1829,16 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
             ebErr = llvm::BasicBlock::Create(*context, "entry.err_fail", entry);
         }
 
-        // A worker that yields nothing (Future<Void>) has no payload; LLVM
-        // forbids naming a call that returns void, and there is no result
-        // aggregate to split into success/error. Skip the failable split (and
-        // the untrapped-error path) entirely for such workers.
+        // A worker that yields nothing (Future<Void>) has no LLVM payload value,
+        // so LLVM forbids naming a call that returns bare `void`; it is emitted
+        // unnamed. A failable `Future<Void>` worker still returns the uniform
+        // failable ABI `{i1, i8*}` (i1 is a dummy payload), so the error slot is
+        // split out exactly like any other failable worker and recorded on the
+        // task for the awaiter's trap to recover. The Void case only differs in
+        // that success has no payload to encode: the entry just returns 0.
         const bool workerIsVoid = (kind == AsyncResultKind::Void);
         llvm::Value* wr = nullptr;
-        if (failable && !workerIsVoid) {
+        if (failable) {
             wr = b.CreateCall(worker, args, "async.worker");
             errPtr = b.CreateBitCast(b.CreateExtractValue(wr, 1, "async.err.raw"), int8PtrType, "async.err");
             b.CreateCondBr(b.CreateIsNull(errPtr), ebOk, ebErr);
@@ -1864,7 +1867,7 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
             }
         }
 
-        if (failable && !workerIsVoid) {
+        if (failable) {
             b.SetInsertPoint(ebErr);
             b.CreateCall(setErrFn, {taskIdArg, errPtr}, "async.err.set");
             b.CreateRet(llvm::ConstantInt::get(int64Type, 0));
@@ -1878,9 +1881,17 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
     //    not the failable `{T, i8*}` worker ABI, so it matches the `Future<T>`
     //    type annotations and the await codegen's layout lookup. Failable tasks
     //    flag readiness in the state field (1) so `await` calls take_error.
-    llvm::Type* resultSlotTy = failable
-        ? llvm::cast<llvm::StructType>(worker->getReturnType())->getElementType(0)
-        : worker->getReturnType();
+    // The Future<T> slot holds the *payload* type, matching the `Future<T>`
+    // annotation the caller assigns to. A Void future is `{ void*, i32, i64,
+    // ptr }`; its failable worker ABI is `{i1, i8*}` (i1 is a dummy payload, the
+    // error lives in the i8* slot), so the payload slot must be `void`, not the
+    // worker's dummy i1 field, or the launcher's Future<Int1> would not match
+    // the declared Future<Void>.
+    llvm::Type* resultSlotTy = (kind == AsyncResultKind::Void)
+        ? llvm::Type::getVoidTy(*context)
+        : (failable
+            ? llvm::cast<llvm::StructType>(worker->getReturnType())->getElementType(0)
+            : worker->getReturnType());
     llvm::StructType* futureTy = createFutureStructType(resultSlotTy);
     llvm::FunctionType* launcherTy = llvm::FunctionType::get(futureTy, paramTypes, false);
     llvm::Function* launcher = module->getFunction(base);
