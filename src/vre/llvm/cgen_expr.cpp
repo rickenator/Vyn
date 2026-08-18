@@ -5700,6 +5700,16 @@ void LLVMCodegen::visit(vyb::ast::AssignmentExpression *node) {
     }
 
     // Cast RHS to match destination type if needed
+    // A raw `char*` being stored into a Vyb String struct `{ ptr, i64 }` (e.g.
+    // `s = 7.to_string()` or `s = s + "x"` after a narrowed `.to_string()` in
+    // the chain) must be wrapped with its length into a proper String struct.
+    // Otherwise the store writes only the data pointer field and the length
+    // field keeps its stale, pre-assignment value — corrupting later reads.
+    if (destPointeeType && isVybStringStructType(destPointeeType) &&
+        RHS->getType()->isPointerTy()) {
+        llvm::Value* strRhs = tryCast(RHS, destPointeeType, errorLoc);
+        if (strRhs) RHS = strRhs;
+    }
     if (RHS->getType() != destPointeeType && destPointeeType) {
         if (destPointeeType->isFloatingPointTy() && RHS->getType()->isIntegerTy()) {
             RHS = builder->CreateSIToFP(RHS, destPointeeType, "assigncast");
@@ -9201,6 +9211,24 @@ bool LLVMCodegen::exprProducesOwnedStringTemp(vyb::ast::Expression* expr) {
         // a fresh, owned buffer the caller takes over. Borrow-returning
         // accessors resolve to a non-String type (e.g. `Option<T>`), so they are
         // excluded here.
+        // A `Vec` element access (`p.get(i)`, `p.first()`, `p.last()`, ...)
+        // returns a *borrow* of an element that the vector still owns, not a
+        // fresh buffer — so it is excluded too. Without this, pushing such an
+        // element into a second Vec (or storing it into a String binding) would
+        // hand over a reference the source Vec still reclaims on scope exit,
+        // leaving the destination dangling (a use-after-free).
+        if (auto* member = dynamic_cast<vyb::ast::MemberExpression*>(call->callee.get())) {
+            if (member->object && member->object->type) {
+                const vyb::ast::TypeNode* ot = member->object->type.get();
+                bool receiverIsVec = (dynamic_cast<const vyb::ast::VecType*>(ot) != nullptr);
+                if (!receiverIsVec) {
+                    if (auto* nn = dynamic_cast<const vyb::ast::TypeName*>(ot)) {
+                        if (nn->identifier && nn->identifier->name == "Vec") receiverIsVec = true;
+                    }
+                }
+                if (receiverIsVec) return false;
+            }
+        }
         if (call->type) {
             std::string t = resolveTypeAliasToBaseName(call->type.get());
             if (t.empty()) t = call->type->toString();

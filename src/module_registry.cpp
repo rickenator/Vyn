@@ -1280,6 +1280,11 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                     }
                 };
 
+                // A subset import (`import m::{a, b}`) must splice only the requested
+                // names plus the dependency closure. `requestedNames` is erased as each
+                // requested name is satisfied, so capture whether this was a subset
+                // import once here rather than testing the now-mutated set mid-loop.
+                const bool isSubsetImport = !requestedNames.empty();
                 for (auto& importedStmt : importedRecord.module->body) {
                     if (isMainFunction(importedStmt)) {
                         throw std::runtime_error("Imported module must not define main(): " + importedRecord.sourcePath.string());
@@ -1321,7 +1326,7 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
                     }
                     const std::string originName = name;
 
-                    if (!requestedNames.empty() && carryNames.find(name) == carryNames.end()) {
+                    if (isSubsetImport && carryNames.find(name) == carryNames.end()) {
                         continue;
                     }
 

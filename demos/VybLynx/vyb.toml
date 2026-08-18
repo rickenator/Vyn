@@ -1,0 +1,11 @@
+[package]
+name = "vyblynx"
+version = "0.1.0"
+
+[[bin]]
+name = "vyblynx"
+path = "src/main.vyb"
+
+# Local path dependencies (resolved by `vyb build`):
+# [dependencies]
+# mylib = { path = "../mylib" }

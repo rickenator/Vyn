@@ -1,0 +1,110 @@
+# url — pure-Vyb URL parsing.
+#
+# Splits a raw URL into its scheme, host, port, and path, then folds relative
+# references back onto a base Url. No FFI — everything is plain field and byte
+# work on Strings.
+
+share(all)
+struct Url {
+    scheme<String>,
+    host<String>,
+    port<Int>,
+    path<String>
+}
+
+# Parse a base-10 integer out of digit characters (allowing a leading '-').
+share(all)
+str_to_int(s<String>)<Int> -> {
+    n<Int> = 0
+    i<Int> = 0
+    neg<Bool> = false
+    while (i < s.len()) {
+        c<Int> = s.char_at(i)
+        if (c == 45 && i == 0) {
+            neg = true
+        } else if (c >= 48 && c <= 57) {
+            n = n * 10 + (c - 48)
+        }
+        i = i + 1
+    }
+    if (neg) { n = 0 - n }
+    return n
+}
+
+# The conventional port for a scheme ("" or anything unknown -> 0).
+share(all)
+default_port(scheme<String>)<Int> -> {
+    if (scheme == "https") { return 443 }
+    if (scheme == "http") { return 80 }
+    return 0
+}
+
+# Split a raw URL string into a Url. Relative or blank input keeps an empty
+# host so the caller can tell it apart from a well-formed absolute address.
+share(all)
+parse_url(raw<String>)<Url> -> {
+    s<String> = raw.trim()
+    scheme<String> = "http"
+    rest<String> = s
+    mark<Int> = s.index_of("://")
+    if (mark >= 0) {
+        scheme = s.substring(0, mark).to_lower()
+        rest = s.substring(mark + 3, s.len())
+    }
+    port<Int> = default_port(scheme)
+    path<String> = "/"
+    hostport<String> = rest
+    slash<Int> = rest.index_of("/")
+    if (slash >= 0) {
+        hostport = rest.substring(0, slash)
+        path = rest.substring(slash, rest.len())
+        if (path == "") { path = "/" }
+    }
+    host<String> = hostport
+    colon<Int> = hostport.index_of(":")
+    if (colon >= 0) {
+        host = hostport.substring(0, colon)
+        ps<String> = hostport.substring(colon + 1, hostport.len())
+        if (ps.len() > 0) {
+            port = str_to_int(ps)
+        }
+    }
+    return Url { scheme = scheme, host = host, port = port, path = path }
+}
+
+# The `scheme://host[:port]` prefix for a Url, omitting the port when it is the
+# scheme's conventional default.
+share(all)
+url_authority(u<Url>)<String> -> {
+    hostport<String> = u.host
+    if (u.port != default_port(u.scheme)) {
+        hostport = u.host + ":" + u.port.to_string()
+    }
+    return u.scheme + "://" + hostport
+}
+
+# Fold a (possibly relative) reference against a base Url into an absolute one.
+# References that already carry their own scheme or host pass through untouched.
+share(all)
+resolve_url(base<Url>, reference<String>)<String> -> {
+    t<String> = reference.trim()
+    if (t.starts_with("http://") || t.starts_with("https://")) {
+        return t
+    }
+    if (t.starts_with("//")) {
+        return base.scheme + ":" + t
+    }
+    if (t.starts_with("mailto:") || t.starts_with("ftp:") ||
+        t.starts_with("tel:") || t.starts_with("about:")) {
+        return t
+    }
+    # Drop any in-document fragment and path-traversal run.
+    hash<Int> = t.index_of("#")
+    if (hash >= 0) {
+        t = t.substring(0, hash)
+    }
+    if (t.starts_with("/")) {
+        return url_authority(base) + t
+    }
+    return url_authority(base) + "/" + t
+}

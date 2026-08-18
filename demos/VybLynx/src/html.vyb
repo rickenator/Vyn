@@ -1,0 +1,334 @@
+# html — pure-Vyb HTML-to-text renderer.
+#
+# A self-contained leaf module: raw byte scanning, entity decoding, and
+# whitespace folding over the Vyb String standard library — no FFI and no other
+# module imports. It strips markup into wrapped, terminal-ready lines, numbers
+# hyperlinks as [n], and returns the raw <a href> targets so a caller can
+# resolve them against a page base.
+
+# A hyperlink discovered in a page. `raw_href` is the literal href attribute;
+# `text` is the rendered anchor label. Resolution against the page URL is left
+# to the caller (which owns the Url type).
+share(all)
+struct Link {
+    raw_href<String>,
+    text<String>
+}
+
+# Internal helper: entity replacement text plus how many bytes it consumed.
+share(all)
+struct Ent {
+    text<String>,
+    len<Int>
+}
+
+# Case-insensitive index of `needle` in `s`, or -1.
+share(all)
+find_ci(s<String>, needle<String>)<Int> -> {
+    return s.to_lower().index_of(needle.to_lower())
+}
+
+# True when the byte is horizontal whitespace (space/tab/CR/LF).
+share(all)
+is_ws(c<Int>)<Bool> -> {
+    return (c == 32 || c == 9 || c == 10 || c == 13)
+}
+
+# Decode one HTML entity to its replacement text. Unknown entities decode to
+# "" so they simply disappear from the rendered text.
+share(all)
+entity_text(ent<String>)<String> -> {
+    if (ent == "&amp;" || ent == "&#38;" || ent == "&#x26;") { return "&" }
+    if (ent == "&lt;"  || ent == "&#60;" || ent == "&#x3c;") { return "<" }
+    if (ent == "&gt;"  || ent == "&#62;" || ent == "&#x3e;") { return ">" }
+    if (ent == "&quot;" || ent == "&#34;" || ent == "&#x22;") { return "\"" }
+    if (ent == "&#39;" || ent == "&apos;" || ent == "&#x27;") { return "'" }
+    if (ent == "&nbsp;" || ent == "&#160;" || ent == "&#xa0;") { return " " }
+    if (ent == "&copy;"  || ent == "&#169;") { return "(c)" }
+    if (ent == "&hellip;" || ent == "&#8230;") { return "..." }
+    return ""
+}
+
+# Decode the entity at the start of `s`, returning its text and byte length.
+# A bare '&' with nothing usable after it survives as a literal ampersand.
+share(all)
+match_entity(s<String>)<Ent> -> {
+    if (s.char_at(0) != 38) {
+        return Ent { text = "", len = 0 }
+    }
+    semi<Int> = s.index_of(";")
+    if (semi > 0 && semi < 16) {
+        rep<String> = entity_text(s.substring(0, semi + 1))
+        if (rep.len() > 0) {
+            return Ent { text = rep, len = semi + 1 }
+        }
+    }
+    return Ent { text = "&", len = 1 }
+}
+
+# Collapse runs of spaces and trim; everything becomes single spaces.
+share(all)
+collapse_ws(s<String>)<String> -> {
+    out<String> = ""
+    sep<Bool> = false
+    i<Int> = 0
+    n<Int> = s.len()
+    while (i < n) {
+        if (s.char_at(i) == 32) {
+            sep = true
+        } else {
+            run<Int> = i
+            while (i < n && s.char_at(i) != 32) { i = i + 1 }
+            tok<String> = s.substring(run, i)
+            if (sep && out.len() > 0) { out = out + " " }
+            out = out + tok
+            sep = false
+            i = i - 1
+        }
+        i = i + 1
+    }
+    return out
+}
+
+# Flatten a short span of inline markup into a single-space label, dropping
+# tags and flushing entities. Used for anchor text and the page title.
+share(all)
+flatten(raw<String>)<String> -> {
+    buf<String> = ""
+    i<Int> = 0
+    n<Int> = raw.len()
+    while (i < n) {
+        c<Int> = raw.char_at(i)
+        if (c == 60) {
+            j<Int> = raw.substring(i, n).index_of(">")
+            if (j < 0) { break }
+            i = i + j + 1
+        } else if (c == 38) {
+            en<Ent> = match_entity(raw.substring(i, n))
+            buf = buf + en.text
+            i = i + en.len
+        } else if (is_ws(c)) {
+            buf = buf + " "
+            i = i + 1
+        } else {
+            run<Int> = i
+            while (i < n && !is_ws(raw.char_at(i)) &&
+                   raw.char_at(i) != 60 && raw.char_at(i) != 38) {
+                i = i + 1
+            }
+            buf = buf + raw.substring(run, i)
+        }
+    }
+    return collapse_ws(buf)
+}
+
+# The raw inner text between the first `<name ...>` and its matching `</name>`.
+share(all)
+block_content(html<String>, name<String>)<String> -> {
+    s<Int> = find_ci(html, "<" + name)
+    if (s < 0) { return "" }
+    open<Int> = html.substring(s, html.len()).index_of(">")
+    if (open < 0) { return "" }
+    start<Int> = s + open + 1
+    e<Int> = find_ci(html.substring(start, html.len()), "</" + name)
+    if (e < 0) { return "" }
+    return html.substring(start, start + e)
+}
+
+# The page title from <title>, flattened, or "" when absent.
+share(all)
+extract_title(html<String>)<String> -> {
+    return flatten(block_content(html, "title"))
+}
+
+# Lowercased tag name for an opening tag string that starts with '<'.
+share(all)
+tag_name(tag<String>)<String> -> {
+    t<String> = tag.substring(1).trim()
+    if (t.starts_with("!--")) { return "#comment" }
+    if (t.starts_with("!")) { return "#decl" }
+    if (t.starts_with("/")) { return t.substring(1).trim() }
+    end<Int> = t.index_of(" ")
+    if (end < 0) { end = t.index_of(">") }
+    if (end < 0) { end = t.len() }
+    nm<String> = t.substring(0, end).to_lower()
+    if (nm.ends_with("/")) { nm = nm.substring(0, nm.len() - 1) }
+    return nm
+}
+
+# Block-level tags give the page its rhythm: each starts a fresh paragraph.
+share(all)
+is_block_tag(name<String>)<Bool> -> {
+    return (name == "p" || name == "div" || name == "br" || name == "hr" ||
+            name == "h1" || name == "h2" || name == "h3" || name == "h4" ||
+            name == "h5" || name == "h6" || name == "li" || name == "ul" ||
+            name == "ol" || name == "table" || name == "tr" || name == "td" ||
+            name == "th" || name == "pre" || name == "blockquote" ||
+            name == "section" || name == "article" || name == "header" ||
+            name == "footer" || name == "form" || name == "fieldset" ||
+            name == "dt" || name == "dd" || name == "address" ||
+            name == "nav" || name == "main")
+}
+
+# The value of a `href` attribute inside an `<a ...>` tag string.
+share(all)
+href_value(tag<String>)<String> -> {
+    mark<Int> = find_ci(tag, "href")
+    if (mark < 0) { return "" }
+    after<String> = tag.substring(mark + 4, tag.len())
+    eq<Int> = after.index_of("=")
+    if (eq < 0) { return "" }
+    after = after.substring(eq + 1, after.len()).trim()
+    if (after.len() == 0) { return "" }
+    q<Int> = after.char_at(0)
+    if (q == 34 || q == 39) {
+        close<Int> = after.substring(1).index_of(after.substring(0, 1))
+        if (close < 0) { return "" }
+        return after.substring(1, 1 + close)
+    }
+    sp<Int> = after.index_of(" ")
+    if (sp >= 0) { return after.substring(0, sp) }
+    gt<Int> = after.index_of(">")
+    if (gt >= 0) { return after.substring(0, gt) }
+    return after
+}
+
+# Wrap a single-space-separated paragraph into lines no wider than `width`.
+# Long unbreakable tokens keep their own line (allowed to overflow rather than
+# risk splitting a multi-byte UTF-8 character).
+share(all)
+wrap_para(para<String>, width<Int>)<Vec<String>> -> {
+    lines<Vec<String>> = Vec()
+    cur<String> = ""
+    i<Int> = 0
+    n<Int> = para.len()
+    while (i < n) {
+        sp<Int> = para.substring(i, n).index_of(" ")
+        if (sp < 0) { sp = n - i }
+        word<String> = para.substring(i, i + sp)
+        room<Int> = width - cur.len()
+        if (cur.len() > 0) { room = room - 1 }
+        if (cur.len() > 0 && word.len() > room) {
+            lines.push(cur)
+            cur = word
+        } else if (cur.len() == 0 && word.len() > width) {
+            lines.push(word)
+            cur = ""
+        } else {
+            if (cur.len() > 0) { cur = cur + " " }
+            cur = cur + word
+        }
+        if (sp >= n - i) { i = n } else { i = i + sp + 1 }
+    }
+    if (cur.len() > 0) { lines.push(cur) }
+    return lines
+}
+
+# Render raw HTML into readable, wrapped terminal lines. Inline anchors become
+# "[n]" markers in the text and a Link entry pushed onto `links` (in the same
+# order the markers appear). A blank line separates the top-level blocks.
+share(all)
+render_lines(html<String>, links<their<Vec<Link>>>, width<Int>)<Vec<String>> -> {
+    paras<Vec<String>> = Vec()
+    para<String> = ""
+    i<Int> = 0
+    n<Int> = html.len()
+
+    while (i < n) {
+        c<Int> = html.char_at(i)
+        if (c == 60) {
+            j<Int> = html.substring(i, n).index_of(">")
+            if (j < 0) { break }
+            tagEnd<Int> = i + j
+            tag<String> = html.substring(i, tagEnd + 1)
+            nm<String> = tag_name(tag)
+
+            if (nm == "#comment") {
+                cj<Int> = html.substring(i, n).index_of("-->")
+                if (cj < 0) { break }
+                i = i + cj + 3
+                continue
+            }
+            if (nm == "script" || nm == "style") {
+                cj<Int> = find_ci(html.substring(i, n), "</" + nm)
+                if (cj < 0) { break }
+                i = i + cj
+                continue
+            }
+            if (nm == "a") {
+                href<String> = href_value(tag)
+                ai<Int> = find_ci(html.substring(tagEnd + 1, n), "</a")
+                content<String> = ""
+                advance<Int> = tagEnd + 1
+                if (ai >= 0) {
+                    content = html.substring(tagEnd + 1, tagEnd + 1 + ai)
+                    tail<String> = html.substring(tagEnd + 1 + ai, n)
+                    gg<Int> = tail.index_of(">")
+                    if (gg >= 0) { advance = tagEnd + 1 + ai + gg + 1 } else { advance = n }
+                } else {
+                    content = html.substring(tagEnd + 1, n)
+                    advance = n
+                }
+                label<String> = flatten(content)
+                if (href.len() > 0) {
+                    links.push(Link { raw_href = href, text = label })
+                    para = para + "[" + links.len().to_string() + "]"
+                    if (label.len() > 0) {
+                        para = para + " " + label
+                    }
+                } else if (label.len() > 0) {
+                    para = para + " " + label
+                }
+                i = advance
+                continue
+            }
+            if (is_block_tag(nm)) {
+                if (para.trim().len() > 0) {
+                    paras.push(collapse_ws(para))
+                    para = ""
+                }
+                i = tagEnd + 1
+                continue
+            }
+            i = tagEnd + 1
+            continue
+        }
+
+        if (c == 38) {
+            en<Ent> = match_entity(html.substring(i, n))
+            para = para + en.text
+            i = i + en.len
+            continue
+        }
+        if (is_ws(c)) {
+            para = para + " "
+            i = i + 1
+            continue
+        }
+        run<Int> = i
+        while (i < n && !is_ws(html.char_at(i)) &&
+               html.char_at(i) != 60 && html.char_at(i) != 38) {
+            i = i + 1
+        }
+        para = para + html.substring(run, i)
+    }
+
+    if (para.trim().len() > 0) {
+        paras.push(collapse_ws(para))
+    }
+
+    # Wrap each paragraph into lines, separating blocks with a blank line.
+    out<Vec<String>> = Vec()
+    pi<Int> = 0
+    while (pi < paras.len()) {
+        if (pi > 0) { out.push("") }
+        pLines<Vec<String>> = wrap_para(paras.get(pi), width)
+        li<Int> = 0
+        while (li < pLines.len()) {
+            out.push(pLines.get(li))
+            li = li + 1
+        }
+        pi = pi + 1
+    }
+    return out
+}

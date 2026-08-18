@@ -1,0 +1,432 @@
+// vyblynx — a pure-Vyb clone of the lynx line-mode browser, as a package.
+//
+// Fetches HTTP pages over the network stdlib (no user-space C FFI), renders
+// HTML to readable wrapped text with [n] link markers, and pages through with
+// history. Showcases Vyb: structs + the Display aspect, bounded generics,
+// select/match/enums, borrows (their<Vec<T>>), defer, async/await, and the
+// network/term/env/io/collections/time stdlib modules.
+//
+//   VYB_LYNX_HOME=... vyblynx    -> open that URL
+//   interactive (TTY)            -> paged browsing with commands
+//   piped input (non-TTY)        -> first line is the URL; then dump + commands
+
+import url
+import html::{Link, render_lines, extract_title}
+import network
+import term
+import env
+import collections
+import asyncs::{async_sleep_ms}
+
+version_id()<String> -> { return "0.1.0" }
+
+# --- Display aspect on Url ---------------------------------------------------
+bind Display -> Url {
+    display(self<Url>)<String> -> {
+        p<String> = self.path
+        if (p == "") { p = "/" }
+        suffix<String> = ""
+        if (self.port != default_port(self.scheme)) {
+            suffix = ":" + self.port.to_string()
+        }
+        return self.scheme + "://" + self.host + suffix + p
+    }
+}
+
+# --- Page model --------------------------------------------------------------
+# A resolved hyperlink (absolute href + rendered label).
+share(all)
+struct Nav {
+    href<String>,
+    text<String>
+}
+
+# A rendered page: title, terminal lines, and navigable links.
+struct Page {
+    title<String>,
+    url<String>,
+    lines<Vec<String>>,
+    navs<Vec<Nav>>
+}
+
+# A raw HTTP response; status < 0 signals a transport error.
+struct Response {
+    status<Int>,
+    reason<String>,
+    body<String>
+}
+
+# Parse a base-10 integer from a leading digit/'-' scan.
+parse_int(s<String>)<Int> -> {
+    n<Int> = 0
+    i<Int> = 0
+    neg<Bool> = false
+    while (i < s.len()) {
+        c<Int> = s.char_at(i)
+        if (c == 45 && i == 0) {
+            neg = true
+        } else if (c >= 48 && c <= 57) {
+            n = n * 10 + (c - 48)
+        }
+        i = i + 1
+    }
+    if (neg) { n = 0 - n }
+    return n
+}
+
+# The integer value of a header inside a joined response head, or -1.
+header_int(head<String>, name<String>)<Int> -> {
+    hl<String> = head.to_lower()
+    needle<String> = name.to_lower() + ":"
+    idx<Int> = hl.index_of(needle)
+    if (idx < 0) { return -1 }
+    rest<String> = hl.substring(idx + needle.len(), hl.len())
+    nl<Int> = rest.index_of("\r\n")
+    if (nl >= 0) { rest = rest.substring(0, nl) }
+    return parse_int(rest.trim())
+}
+
+# The string value of a header inside a joined response head, or "".
+header_str(head<String>, name<String>)<String> -> {
+    hl<String> = head.to_lower()
+    needle<String> = name.to_lower() + ":"
+    idx<Int> = hl.index_of(needle)
+    if (idx < 0) { return "" }
+    rest<String> = hl.substring(idx + needle.len(), hl.len())
+    nl<Int> = rest.index_of("\r\n")
+    if (nl >= 0) { rest = rest.substring(0, nl) }
+    return rest.trim()
+}
+
+# Split a raw HTTP response at the blank line; trim body to Content-Length.
+parse_response(raw<String>)<Response> -> {
+    bad<Response> = Response { status = -1, reason = "", body = "" }
+    sep<String> = "\r\n\r\n"
+    idx<Int> = raw.index_of(sep)
+    head<String> = raw
+    body<String> = ""
+    if (idx >= 0) {
+        head = raw.substring(0, idx)
+        body = raw.substring(idx + 4, raw.len())
+    }
+    first<String> = head
+    nl<Int> = head.index_of("\r\n")
+    if (nl >= 0) { first = head.substring(0, nl) }
+    status<Int> = 0
+    reason<String> = ""
+    sp1<Int> = first.index_of(" ")
+    if (sp1 >= 0) {
+        after<String> = first.substring(sp1 + 1, first.len())
+        sp2<Int> = after.index_of(" ")
+        codeStr<String> = after
+        if (sp2 >= 0) {
+            codeStr = after.substring(0, sp2)
+            reason = after.substring(sp2 + 1, after.len())
+        }
+        status = parse_int(codeStr)
+    }
+    if (status == 0) { return bad }
+    cl<Int> = header_int(head, "content-length")
+    if (cl >= 0 && body.len() > cl) {
+        body = body.substring(0, cl)
+    }
+    return Response { status = status, reason = reason, body = body }
+}
+
+# Read up to `cap` bytes from a socket; EOF or a read timeout ends the loop.
+read_all(fd<Int>, cap<Int>)<String> -> {
+    out<String> = ""
+    while (out.len() < cap) {
+        chunk<String> = socket_recv(fd, 16384)
+        if (chunk.len() == 0) { break }
+        out = out + chunk
+    }
+    return out
+}
+
+# Fetch one URL over HTTP (no FFI): resolves the host, picks the address
+# family, arms a read timeout, follows up to `hops` redirects, and never hangs
+# (timeouts surface as a status of -1).
+fetch_url(u<Url>, hops<Int>)<Response> -> {
+    bad<Response> = Response { status = -1, reason = "", body = "" }
+    if (hops <= 0) { return bad }
+    ip<String> = socket_resolve(u.host)
+    if (ip.len() == 0) { return bad }
+    domain<Int> = Socket::AF_INET
+    if (ip.index_of(":") >= 0) { domain = Socket::AF_INET6 }
+    fd<Int> = socket_open(domain, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
+    if (fd < 0) { return bad }
+    socket_set_timeout(fd, 12000)
+    if (socket_connect(fd, ip, u.port) < 0) {
+        socket_close(fd)
+        return bad
+    }
+    hosthead<String> = u.host
+    if (u.port != default_port(u.scheme)) {
+        hosthead = u.host + ":" + u.port.to_string()
+    }
+    req<String> = "GET " + u.path + " HTTP/1.1\r\nHost: " + hosthead +
+                  "\r\nUser-Agent: vyblynx/" + version_id() +
+                  "\r\nAccept: text/html\r\nConnection: close\r\n\r\n"
+    socket_send(fd, req)
+    raw<String> = read_all(fd, 262144)
+    socket_close(fd)
+    resp<Response> = parse_response(raw)
+    if (resp.status == 301 || resp.status == 302 || resp.status == 303 ||
+        resp.status == 307 || resp.status == 308) {
+        locStr<String> = header_str(raw, "location")
+        if (locStr.len() > 0) {
+            return fetch_url(parse_url(resolve_url(u, locStr)), hops - 1)
+        }
+    }
+    return resp
+}
+
+# Render raw HTML into a Page (title, wrapped lines, resolved nav links).
+build_page(html<String>, base<Url>, width<Int>)<Page> -> {
+    rawLinks<Vec<Link>> = Vec()
+    lines<Vec<String>> = render_lines(html, borrow(rawLinks), width)
+    navs<Vec<Nav>> = Vec()
+    i<Int> = 0
+    while (i < rawLinks.len()) {
+        abs<String> = resolve_url(base, rawLinks.get(i).raw_href)
+        navs.push(Nav { href = abs, text = rawLinks.get(i).text })
+        i = i + 1
+    }
+    return Page { title = extract_title(html), url = base.display(),
+                  lines = lines, navs = navs }
+}
+
+# A generic helper bounded on the Display aspect: renders any printable value.
+show<T<Display>>(thing<T>)<String> -> {
+    return thing.display()
+}
+
+# --- Commands ----------------------------------------------------------------
+enum Cmd {
+    NextPage,
+    PrevPage,
+    Follow,
+    Back,
+    Reload,
+    OpenUrl,
+    Help,
+    Quit,
+    Unknown
+}
+
+cmd_of(line<String>)<Cmd> -> {
+    t<String> = line.trim()
+    if (t == "q" || t == "quit") { return Cmd::Quit }
+    if (t == "n" || t == " " || t == "") { return Cmd::NextPage }
+    if (t == "p") { return Cmd::PrevPage }
+    if (t == "b" || t == "back") { return Cmd::Back }
+    if (t == "r") { return Cmd::Reload }
+    if (t == "h" || t == "help") { return Cmd::Help }
+    if (t.starts_with("g ") || t.starts_with("f ")) { return Cmd::OpenUrl }
+    if (t.len() > 0) {
+        c<Int> = t.char_at(0)
+        if (c >= 48 && c <= 57) { return Cmd::Follow }
+    }
+    return Cmd::Unknown
+}
+
+# The numeric suffix of a follow command ("3" or "f 3").
+follow_number(line<String>)<Int> -> {
+    t<String> = line.trim()
+    if (t.starts_with("f ")) { t = t.substring(2, t.len()).trim() }
+    sp<Int> = t.index_of(" ")
+    if (sp >= 0) { t = t.substring(0, sp) }
+    return parse_int(t)
+}
+
+# --- History -----------------------------------------------------------------
+# Threaded by borrow so main keeps ownership.
+push_history(h<their<Vec<String>>>, url<String>)<Void> -> {
+    h.push(url)
+}
+
+# --- Pager -------------------------------------------------------------------
+# Print a window of page lines starting at `top`; returns the next `top`.
+print_window(p<Page>, top<Int>, rows<Int>)<Int> -> {
+    title<String> = p.title
+    if (title == "") { title = p.url }
+    println(title)
+    println("-- " + p.url + " --")
+    body_rows<Int> = rows - 4
+    if (body_rows < 3) { body_rows = 3 }
+    shown<Int> = 0
+    i<Int> = top
+    while (i < p.lines.len() && shown < body_rows) {
+        println(p.lines.get(i))
+        shown = shown + 1
+        i = i + 1
+    }
+    println("-- links: " + p.navs.len().to_string() + " --")
+    return i
+}
+
+print_nav(p<Page>)<Void> -> {
+    maxShow<Int> = 8
+    if (maxShow > p.navs.len()) { maxShow = p.navs.len() }
+    i<Int> = 0
+    while (i < maxShow) {
+        t<String> = p.navs.get(i).text
+        if (t == "") { t = p.navs.get(i).href }
+        println((i + 1).to_string() + ". " + t)
+        i = i + 1
+    }
+    if (p.navs.len() > maxShow) {
+        println("... and " + (p.navs.len() - maxShow).to_string() + " more")
+    }
+}
+
+print_help()<Void> -> {
+    println("vyblynx " + version_id())
+    println("  <n>        follow numbered link")
+    println("  g <url>    open a URL")
+    println("  f <url>    open a URL")
+    println("  n          next page")
+    println("  p          previous page")
+    println("  b          back")
+    println("  r          reload")
+    println("  h          help")
+    println("  q          quit")
+}
+
+# A tiny async showcase: a fiber that yields on a short timer.
+async warm_up(ms<Int>)<Future<Int>> -> {
+    async_sleep_ms(ms)
+    return ms
+}
+
+main()<Int> -> {
+    interactive<Bool> = stdin_isatty()
+    println("vyblynx " + version_id())
+
+    # Fire a background fiber; awaiting it yields control while it sleeps.
+    startup<Future<Int>> = warm_up(8)
+    ok<Int> = await startup
+
+    defer println("---")
+
+    start<String> = env_get("VYB_LYNX_HOME")
+    if (!interactive) {
+        first<String> = stdin_read_line()
+        if (first.trim().len() > 0) { start = first.trim() }
+    }
+    if (start.trim().len() == 0) {
+        start = "http://example.org/"
+    }
+
+    history<Vec<String>> = Vec()
+    current<Url> = parse_url(start)
+    currentRaw<String> = start
+    top<Int> = 0
+    width<Int> = term_cols()
+    if (width < 40) { width = 40 }
+
+    looping<Bool> = true
+    while (looping) {
+        resp<Response> = fetch_url(current, 6)
+        p<Page> = Page { title = "fetch error", url = currentRaw,
+                         lines = Vec(), navs = Vec() }
+        if (resp.status >= 200 && resp.status < 300) {
+            p = build_page(resp.body, current, width)
+            top = 0
+        } else {
+            msg<String> = "unable to load: " + currentRaw +
+                          " (status " + resp.status.to_string() + ")"
+            lns<Vec<String>> = Vec()
+            lns.push(msg)
+            if (resp.status == -1) {
+                lns.push("connection, DNS, or timeout failure")
+            }
+            p = Page { title = "error", url = currentRaw, lines = lns, navs = Vec() }
+        }
+
+        if (!interactive) {
+            di<Int> = 0
+            while (di < p.lines.len()) {
+                println(p.lines.get(di))
+                di = di + 1
+            }
+            print_nav(p)
+            cmdLine<String> = stdin_read_line()
+            tree<Cmd> = cmd_of(cmdLine)
+            if (tree == Cmd::Quit) { looping = false }
+            if (tree == Cmd::Back && history.len() > 0) {
+                currentRaw = history.get(history.len() - 1)
+                history.pop()
+                current = parse_url(currentRaw)
+            }
+            if (tree == Cmd::Follow && p.navs.len() > 0) {
+                n<Int> = follow_number(cmdLine)
+                if (n >= 1 && n <= p.navs.len()) {
+                    push_history(borrow(history), currentRaw)
+                    currentRaw = p.navs.get(n - 1).href
+                    current = parse_url(currentRaw)
+                }
+            }
+            continue
+        }
+
+        top = print_window(p, top, term_rows())
+        print_nav(p)
+        eprint("vyblynx> ")
+        stderr_flush()
+        cmdLine<String> = stdin_read_line()
+        cmd<Cmd> = cmd_of(cmdLine)
+
+        match (cmd) {
+            Quit -> { looping = false }
+            Help -> { print_help() }
+            Reload -> { }
+            NextPage -> {
+                body_rows<Int> = term_rows() - 4
+                if (body_rows < 3) { body_rows = 3 }
+                nxt<Int> = top + body_rows
+                if (nxt < p.lines.len()) { top = nxt } else { top = 0 }
+            }
+            PrevPage -> {
+                body_rows<Int> = term_rows() - 4
+                if (body_rows < 3) { body_rows = 3 }
+                prev<Int> = top - body_rows
+                if (prev < 0) { prev = 0 }
+                top = prev
+            }
+            Back -> {
+                if (history.len() > 0) {
+                    currentRaw = history.get(history.len() - 1)
+                    history.pop()
+                    current = parse_url(currentRaw)
+                    top = 0
+                }
+            }
+            OpenUrl -> {
+                sp<Int> = cmdLine.index_of(" ")
+                if (sp >= 0) {
+                    target<String> = cmdLine.substring(sp + 1, cmdLine.len()).trim()
+                    push_history(borrow(history), currentRaw)
+                    currentRaw = target
+                    current = parse_url(currentRaw)
+                    top = 0
+                }
+            }
+            Follow -> {
+                n<Int> = follow_number(cmdLine)
+                if (n >= 1 && n <= p.navs.len()) {
+                    push_history(borrow(history), currentRaw)
+                    currentRaw = p.navs.get(n - 1).href
+                    current = parse_url(currentRaw)
+                    top = 0
+                }
+            }
+            Unknown -> {
+                println("unrecognized command (h for help)")
+            }
+        }
+    }
+
+    return 0
+}
