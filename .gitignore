@@ -14,3 +14,7 @@ _codeql_build_dir/
 # Python tooling
 __pycache__/
 *.pyc
+
+# IDE / editor config
+.settings/
+.vscode/
