@@ -8,10 +8,11 @@
 # run as background async worker fibers so the network never blocks the UI.
 #
 #   VYB_LYNX_HOME=http://example.org  vyblynx   : open that URL at launch
-#   <n>        follow numbered link           b  back
-#   n / space  next page                      r  reload
-#   p          previous page                  h  help
-#   g          open a URL (prompt on stdin)   q  quit
+#   <n>        follow numbered link           d  download current page
+#   up / down  move link focus (tab cycles)   b  back
+#   enter      follow the focused link        r  reload
+#   n / space  next page                      h  help
+#   p          previous page                  g  open a URL (or q to quit)
 #
 # Content is fetched live through the stdlib `http`/`https` modules via a
 # `ResourceProvider` aspect (dispatched by URL scheme), then rendered with the
@@ -32,6 +33,9 @@ import https::{https_get_full_verified}
 import term::{stdin_read_line}
 import env
 import asyncs::{async_sleep_ms, async_spawn, async_poll, async_detach}
+import agents
+import channels
+import io::{open_write, write_str, close, error_message}
 import curses
 
 version_id()<String> -> { return "0.1.0" }
@@ -104,6 +108,7 @@ struct BrowserState {
     page<Page>,
     history<Vec<String>>,
     top<Int>,
+    focus<Int>,
     loading<Bool>,
     help<Bool>,
     status<String>,
@@ -112,6 +117,15 @@ struct BrowserState {
     gen<Int>,
     stale<Vec<Int>>
 }
+
+# --- Download state (module scratch, owned by the UI loop) -------------------
+# Downloads run on an `agents` worker fiber so the blocking network + file I/O
+# never stalls the curses loop. The worker sends exactly one String result into
+# this progress channel; the loop drains it with strchan_try each tick (non-
+# blocking) and reports it in the status bar. `dl_running` is the agent handle
+# while a transfer is in flight (0 when idle).
+dl_progress<Int> = 0
+dl_running<Int> = 0
 
 # --- Terminal size + invariant -----------------------------------------------
 # `ensure` guards the invariant (RFE §20) and would fail closed to a sane
@@ -143,6 +157,9 @@ sanitize(s<String>)<String> -> {
     n<Int> = s.len()
     while (i < n) {
         c<Int> = s.char_at(i)
+        # char_at yields a *signed* byte; normalize to 0..255 or every UTF-8
+        # byte (>= 0x80) reads as negative and is wrongly treated as a control.
+        if (c < 0) { c = c + 256 }
         if ((c < 32 && c != 9 && c != 10 && c != 13) || c == 127) {
             if (i > runStart) { out = out + s.substring(runStart, i) }
             out = out + " "
@@ -205,6 +222,32 @@ fetch_resource(urlStr<String>, hops<Int>)<HttpResponse> -> {
         if (locHdr.len() > 0) {
             next<String> = resolve_url(u, locHdr)
             return fetch_resource(next, hops - 1)
+        }
+    }
+    return resp
+}
+
+# Direct-scheme fetch for the download agent. This mirrors `fetch_resource` but
+# dispatches by URL scheme *without* the bounded-generic ResourceProvider aspect:
+# a generic/trait bound hanging inside an agent worker thread would stall the
+# download forever (the worker never publishes its result). Direct calls are used
+# throughout the worker path so downloading cannot block on that edge.
+download_fetch(urlStr<String>, hops<Int>)<HttpResponse> -> {
+    bad<HttpResponse> = HttpResponse { status = -1, reason = "",
+                                       headers = Vec<String>(), body = "" }
+    if (hops <= 0) { return bad }
+    u<Url> = parse_url(urlStr)
+    resp<HttpResponse> = bad
+    if (u.scheme == "https") {
+        resp = https_get_full_verified(u.host, u.port, u.path, "")
+    } else {
+        resp = http_get_full(u.host, u.port, u.path)
+    }
+    if (resp.status == 301 || resp.status == 302 || resp.status == 303 ||
+        resp.status == 307 || resp.status == 308) {
+        locHdr<String> = http_header(resp, "location")
+        if (locHdr.len() > 0) {
+            return download_fetch(resolve_url(u, locHdr), hops - 1)
         }
     }
     return resp
@@ -321,13 +364,66 @@ reap_stale(st<their<BrowserState>>)<Void> -> {
     st.stale = keep
 }
 
-# --- Curses drawing (single screen owner) ------------------------------------
 # Only these helpers touch ncurses. Every text add is clamped to the screen and
 # passed through sanitize() so page content can never inject terminal escapes.
+# The window is a box-drawn rectangle; the header, anchors, status bar and border
+# carry color pairs (with plain-attribute fallbacks when the terminal has no
+# color support). Anchors appear as `[n]` markers: the focused one draws in the
+# focus color/bold, the rest in the link color/bold. Color is initialized once at
+# startup, and the module `color_ok` flag records whether pairs are usable.
+color_ok<Int> = 1
+
+init_colors()<Void> -> {
+    if (curses_has_color() == 0) {
+        color_ok = 0
+        return
+    }
+    if (curses_start_color() != 0) {
+        color_ok = 0
+        return
+    }
+    curses_init_pair(1, CursColor::Cyan, CursColor::Default)
+    curses_init_pair(2, CursColor::Red, CursColor::Default)
+    curses_init_pair(3, CursColor::White, CursColor::Blue)
+    curses_init_pair(4, CursColor::White, CursColor::Magenta)
+    color_ok = 1
+}
+
+title_attr()<Int> -> {
+    if (color_ok == 1) { return curses_color_pair(1) }
+    return curses_attr_bold()
+}
+
+link_attr()<Int> -> {
+    if (color_ok == 1) { return curses_color_pair(2) | curses_attr_bold() }
+    return curses_attr_bold() | curses_attr_underline()
+}
+
+focus_attr()<Int> -> {
+    if (color_ok == 1) { return curses_color_pair(4) | curses_attr_bold() }
+    return curses_attr_reverse() | curses_attr_bold()
+}
+
+status_attr()<Int> -> {
+    if (color_ok == 1) { return curses_color_pair(3) }
+    return curses_attr_reverse()
+}
+
+bar_attr()<Int> -> {
+    if (color_ok == 1) { return curses_color_pair(3) }
+    return curses_attr_reverse()
+}
+
 put(row<Int>, col<Int>, text<String>, maxw<Int>)<Int> -> {
     t<String> = sanitize(text)
     if (t.len() > maxw) { t = t.substring(0, maxw) }
     return curses_move_addstr(row, col, t)
+}
+
+# Raw add-str for box-drawing UTF-8 cells (put()'s byte-width clamp would
+# truncate a multi-byte column glyph). sanitize() still runs at the boundary.
+bput(row<Int>, col<Int>, text<String>)<Int> -> {
+    return curses_move_addstr(row, col, sanitize(text))
 }
 
 refresh()<Int> -> {
@@ -338,76 +434,186 @@ clear_screen()<Int> -> {
     return curses_clear()
 }
 
-draw_header(p<their<Page>>, w<Int>)<Void> -> {
-    title<String> = p.title
-    if (title == "") { title = p.url }
-    put(0, 0, title, w)
-    put(1, 0, "URL  " + p.url, w)
+# A single `[n]` marker found in a rendered line (start byte index + link number).
+struct Mark { start<Int>, num<Int> }
+
+# Scan a wrapped line for `[n]` markers (n >= 1). They drive both the colorful
+# anchors and keyboard focus, and derive purely from the rendered text, so the
+# html renderer needs no per-line anchor bookkeeping.
+markers(s<String>)<Vec<Mark>> -> {
+    out<Vec<Mark>> = Vec()
+    i<Int> = 0
+    n<Int> = s.len()
+    while (i < n) {
+        if (s.char_at(i) == 91) {
+            j<Int> = i + 1
+            num<Int> = 0
+            got<Bool> = false
+            while (j < n) {
+                ch<Int> = s.char_at(j)
+                if (ch < 48 || ch > 57) { break }
+                num = num * 10 + (ch - 48)
+                j = j + 1
+                got = true
+            }
+            if (got && j < n && s.char_at(j) == 93) {
+                out.push(Mark { start = i, num = num })
+                i = j + 1
+            } else {
+                i = i + 1
+            }
+        } else {
+            i = i + 1
+        }
+    }
+    return out
 }
 
-draw_body(p<their<Page>>, top<Int>, r<Int>, w<Int>)<Void> -> {
-    statusRow<Int> = r - 2
-    bodyRows<Int> = statusRow - 2
-    if (bodyRows < 3) { bodyRows = 3 }
+body_rows(r<Int>)<Int> -> {
+    b<Int> = r - 5
+    if (b < 3) { b = 3 }
+    return b
+}
+
+draw_hborder(row<Int>, c<Int>, left<String>, hor<String>, right<String>)<Void> -> {
+    a<Int> = bar_attr()
+    if (a != 0) { curses_attr_on(a) }
+    bl<Int> = 0
+    s<String> = left
+    while (bl < c - 2) { s = s + hor; bl = bl + 1 }
+    s = s + right
+    bput(row, 0, s)
+    if (a != 0) { curses_attr_off(a) }
+}
+
+draw_border(r<Int>, c<Int>)<Void> -> {
+    draw_hborder(0, c, "┌", "─", "┐")
+    l<Int> = 1
+    while (l < r - 1) {
+        a<Int> = bar_attr()
+        if (a != 0) { curses_attr_on(a) }
+        bput(l, 0, "│")
+        bput(l, c - 1, "│")
+        if (a != 0) { curses_attr_off(a) }
+        l = l + 1
+    }
+    draw_hborder(r - 1, c, "└", "─", "┘")
+}
+
+draw_header(p<their<Page>>, c<Int>)<Void> -> {
+    title<String> = p.title
+    if (title == "") { title = p.url }
+    a<Int> = title_attr()
+    if (a != 0) { curses_attr_on(a) }
+    put(1, 1, title, c - 2)
+    if (a != 0) { curses_attr_off(a) }
+    put(2, 1, "URL  " + p.url, c - 2)
+}
+
+# Draw one body line, colouring `[n]` anchors (link color) and the focused
+# anchor (focus color). Non-anchor runs draw plain.
+draw_line(row<Int>, col<Int>, line<String>, maxw<Int>, focus<Int>, navCount<Int>)<Void> -> {
+    ms<Vec<Mark>> = markers(line)
+    if (ms.len() == 0) {
+        put(row, col, line, maxw)
+        return
+    }
+    cur<Int> = 0
+    m<Int> = 0
+    while (m < ms.len()) {
+        mk<Mark> = ms.get(m)
+        numStr<String> = "[" + mk.num.to_string() + "]"
+        mlen<Int> = numStr.len()
+        if (mk.start > cur) {
+            put(row, col + cur, line.substring(cur, mk.start), maxw)
+        }
+        a<Int> = 0
+        if (mk.num >= 1 && mk.num <= navCount) {
+            if (mk.num == focus + 1) {
+                a = focus_attr()
+            } else {
+                a = link_attr()
+            }
+        }
+        if (a != 0) { curses_attr_on(a) }
+        put(row, col + mk.start, numStr, maxw)
+        if (a != 0) { curses_attr_off(a) }
+        cur = mk.start + mlen
+        m = m + 1
+    }
+    if (cur < line.len()) {
+        put(row, col + cur, line.substring(cur, line.len()), maxw)
+    }
+}
+
+draw_body(p<their<Page>>, top<Int>, r<Int>, c<Int>, focus<Int>)<Void> -> {
+    bodyRows<Int> = body_rows(r)
     l<Int> = 0
     i<Int> = top
     while (l < bodyRows && i < p.lines.len()) {
-        put(2 + l, 1, p.lines.get(i), w - 2)
+        draw_line(3 + l, 1, p.lines.get(i), c - 2, focus, p.navs.len())
         l = l + 1
         i = i + 1
     }
 }
 
-draw_status(p<their<Page>>, top<Int>, status<String>, loading<Bool>, r<Int>, w<Int>)<Void> -> {
+draw_status(p<their<Page>>, top<Int>, status<String>, loading<Bool>, r<Int>, c<Int>, focus<Int>)<Void> -> {
     statusRow<Int> = r - 2
     text<String> = status
     if (!loading) {
-        pos<String> = ""
+        pos<String> = "  link " + focus.to_string() + "/" + p.navs.len().to_string()
         if (p.lines.len() > 0) {
-            pos = "  pos " + top.to_string() + "/" +
+            pos = pos + "  pos " + top.to_string() + "/" +
                   (p.lines.len() - 1).to_string()
         }
         text = text + pos
     }
-    put(statusRow, 0, text, w)
-    put(r - 1, 0, "n/p page  <n> follow  g url  b back  r reload  h help  q quit", w)
+    a<Int> = status_attr()
+    if (a != 0) { curses_attr_on(a) }
+    bl<Int> = text.len()
+    pad<String> = ""
+    while (bl < c - 2) { pad = pad + " "; bl = bl + 1 }
+    put(statusRow, 1, text + pad, c - 2)
+    if (a != 0) { curses_attr_off(a) }
 }
 
-draw_help(r<Int>, w<Int>)<Void> -> {
+draw_help(r<Int>, c<Int>)<Void> -> {
     lines<Vec<String>> = Vec()
     lines.push("vyblynx " + version_id() + " - curses terminal browser")
     lines.push("")
-    lines.push("  <n>        follow numbered link")
-    lines.push("  n / space  next page")
-    lines.push("  p          previous page")
-    lines.push("  g          open a URL (prompt on the real terminal)")
-    lines.push("  b          back")
-    lines.push("  r          reload")
-    lines.push("  d          save current document to a file (next milestone)")
-    lines.push("  h          close this help")
-    lines.push("  q          quit")
+    lines.push("  <n> / enter   follow numbered / focused link")
+    lines.push("  up / down     move link focus (tab cycles, enter opens)")
+    lines.push("  n / space     next page")
+    lines.push("  p             previous page")
+    lines.push("  g             open a URL (prompt on the real terminal)")
+    lines.push("  d             download current page to a file (agents)")
+    lines.push("  b             back")
+    lines.push("  r             reload")
+    lines.push("  h             close this help")
+    lines.push("  q             quit")
     lines.push("")
-    lines.push("The screen is owned by the UI loop; network/content only")
-    lines.push("publish state (RFE single-owner rule). Input is timed.")
-    bodyRows<Int> = r - 4
+    lines.push("The screen is owned by the UI loop; network/content and")
+    lines.push("downloads run on background agents/workers that publish state.")
+    bodyRows<Int> = body_rows(r)
     if (bodyRows > lines.len()) { bodyRows = lines.len() }
     l<Int> = 0
     while (l < bodyRows) {
-        put(2 + l, 1, lines.get(l), w - 2)
+        put(3 + l, 1, lines.get(l), c - 2)
         l = l + 1
     }
 }
 
 redraw(p<their<Page>>, top<Int>, status<String>, loading<Bool>, help<Bool>,
-       r<Int>, w<Int>)<Void> -> {
+       r<Int>, c<Int>, focus<Int>)<Void> -> {
     clear_screen()
-    draw_header(p, w)
+    draw_border(r, c)
+    draw_header(p, c)
     if (help) {
-        draw_help(r, w)
+        draw_help(r, c)
     } else {
-        draw_body(p, top, r, w)
+        draw_body(p, top, r, c, focus)
     }
-    draw_status(p, top, status, loading, r, w)
+    draw_status(p, top, status, loading, r, c, focus)
     refresh()
 }
 
@@ -424,6 +630,10 @@ follow_page(p<their<Page>>, n<Int>)<String?> -> {
 # --- Commands ----------------------------------------------------------------
 enum Cmd {
     Follow,
+    FollowEnter,
+    FocusNext,
+    FocusPrev,
+    Download,
     NextPage,
     PrevPage,
     Back,
@@ -442,6 +652,10 @@ cmd_of(k<Int>)<Cmd> -> {
     if (k == 114) { return Cmd::Reload }           # r
     if (k == 103) { return Cmd::OpenUrl }          # g
     if (k == 104) { return Cmd::Help }             # h
+    if (k == 100) { return Cmd::Download }         # d
+    if (k == 258 || k == 9) { return Cmd::FocusNext }  # down / tab
+    if (k == 259) { return Cmd::FocusPrev }        # up
+    if (k == 343 || k == 10 || k == 13) { return Cmd::FollowEnter }  # enter
     if (k >= 49 && k <= 57) { return Cmd::Follow } # 1..9
     return Cmd::Unknown
 }
@@ -498,13 +712,14 @@ load_url(st<their<BrowserState>>, target<String>)<Void> -> {
     st.loading = true
     st.status = "Loading " + target
     st.top = 0
+    st.focus = 0
     r<Int>, c<Int>
     r, c = tty_dims()
     if (r < 1) { r = 24 }
     if (c < 1) { c = 80 }
     # Show the loading frame immediately so the first paint and navigation
     # feedback are instant, independent of how long the fetch takes.
-    redraw(borrow(st.page), st.top, st.status, st.loading, st.help, r, c)
+    redraw(borrow(st.page), st.top, st.status, st.loading, st.help, r, c, st.focus)
     wd<Int> = content_width()
     g<Int> = st.gen
     h<Int> = async_spawn(|| -> {
@@ -529,7 +744,7 @@ load_url(st<their<BrowserState>>, target<String>)<Void> -> {
 }
 
 scroll_page(st<their<BrowserState>>, r<Int>, forward<Bool>)<Void> -> {
-    bodyRows<Int> = r - 4
+    bodyRows<Int> = body_rows(r)
     if (bodyRows < 3) { bodyRows = 3 }
     if (forward) {
         nxt<Int> = st.top + bodyRows
@@ -541,12 +756,133 @@ scroll_page(st<their<BrowserState>>, r<Int>, forward<Bool>)<Void> -> {
     }
 }
 
+# --- Keyboard link focus (up/down/tab/enter) --------------------------------
+# The focused link is a 0-based index into `Page.navs`; it renders as the
+# highlighted `[n]` marker and follows (via enter) to its URL. Focus wraps at
+# both ends, and the window auto-scrolls so the focused marker stays visible.
+nav_line_index(p<their<Page>>, num<Int>)<Int> -> {
+    i<Int> = 0
+    while (i < p.lines.len()) {
+        ms<Vec<Mark>> = markers(p.lines.get(i))
+        j<Int> = 0
+        while (j < ms.len()) {
+            if (ms.get(j).num == num) { return i }
+            j = j + 1
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+
+# Return the focused link's href ("" when there is none). The loop follows it
+# through the owned `state`, matching the numbered-`<n>` path; loading inside
+# here would re-borrow a `their` param and trip a generated-code ownership
+# edge (the redraw after the nested borrow crashed reading the old title).
+follow_focus(st<their<BrowserState>>)<String> -> {
+    if (st.page.navs.len() == 0) { return "" }
+    n<Int> = st.focus + 1
+    return follow_page(borrow(st.page), n) else ""
+}
+
+# --- Downloads (RFE agents): non-blocking saves via an agent worker ----------
+# A download runs on a dedicated agent (its own thread) so the blocking
+# network fetch + file write never stalls the curses loop. The agent sends
+# exactly one String (the result) into `dl_progress`; the loop drains it each
+# tick with strchan_try and reports it in the status bar, then reclaims the
+# agent. `safe_file_part` keeps the on-disk name free of path separators.
+safe_file_part(b<String>)<String> -> {
+    out<String> = ""
+    start<Int> = 0
+    i<Int> = 0
+    n<Int> = b.len()
+    while (i < n) {
+        c<Int> = b.char_at(i)
+        ok<Bool> = (c >= 97 && c <= 122) || (c >= 48 && c <= 57) ||
+                   c == 46 || c == 95 || c == 45
+        if (!ok) {
+            if (i > start) { out = out + b.substring(start, i) }
+            start = i + 1
+        }
+        i = i + 1
+    }
+    if (start < n) { out = out + b.substring(start, n) }
+    if (out == "") { out = "download" }
+    return out
+}
+
+download_path(urlStr<String>)<String> -> {
+    u<Url> = parse_url(urlStr)
+    seg<String> = u.path
+    m<Int> = seg.len()
+    idx<Int> = -1
+    k<Int> = 0
+    while (k < m) {
+        if (seg.char_at(k) == 47) { idx = k }
+        k = k + 1
+    }
+    if (idx >= 0) { seg = seg.substring(idx + 1, m) }
+    if (seg == "" || seg == "/") { seg = "index.html" }
+    return safe_file_part(u.host + "-" + seg)
+}
+
+start_download(urlStr<String>)<Void> -> {
+    do<Int> = agent_start_string(|s<String>| -> {
+        # Derive everything from the mailbox String `s` (stable for the whole
+        # behavior run). A String local in start_download is freed when this
+        # function returns - before the agent thread runs - so capturing it here
+        # would be a use-after-free (the worker would see garbage instead of
+        # the path). The module-global dl_progress channel stays live.
+        outPath<String> = download_path(s)
+        resp<HttpResponse> = download_fetch(s, 6)
+        if (resp.status >= 200 && resp.status < 300) {
+            f<File> = open_write(outPath)
+            if (f.fd >= 0) {
+                nb<Int> = write_str(f, resp.body)
+                close(f)
+                strchan_send(dl_progress, "saved " + outPath + " (" + nb.to_string() + " bytes)")
+            } else {
+                strchan_send(dl_progress, "error writing " + outPath + ": " + error_message() )
+            }
+        } else {
+            strchan_send(dl_progress, "download failed: HTTP " + resp.status.to_string())
+        }
+    })
+    if (do == 0) {
+        strchan_send(dl_progress, "download could not be started")
+        return
+    }
+    dl_running = do
+    sent<Int> = agent_send_string(do, urlStr)
+    if (sent == 0) {
+        dl_running = 0
+        agent_close(do)
+        agent_free(do)
+        strchan_send(dl_progress, "download message could not be delivered")
+    }
+}
+
+# Drain one download result (non-blocking) into the status bar and reclaim the
+# finished agent. Returns true when the status changed (caller redraws).
+poll_progress(st<their<BrowserState>>)<Bool> -> {
+    msg<String> = strchan_try(dl_progress)
+    if (msg.len() == 0) { return false }
+    st.status = msg
+    if (dl_running != 0) {
+        agent_close(dl_running)
+        agent_free(dl_running)
+        dl_running = 0
+    }
+    return true
+}
+
 run_browser(initial<String>)<Int> -> {
     state<BrowserState> = BrowserState {
         url = initial,
         page = blank_page(),
         history = Vec(),
         top = 0,
+        focus = 0,
         loading = false,
         help = false,
         status = "ready",
@@ -561,7 +897,7 @@ run_browser(initial<String>)<Int> -> {
     r, c = tty_dims()
     if (r < 1) { r = 24 }
     if (c < 1) { c = 80 }
-    redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
+    redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
 
     looping<Bool> = true
     while (looping) {
@@ -569,11 +905,13 @@ run_browser(initial<String>)<Int> -> {
         r, c = tty_dims()
         if (r < 1) { r = 24 }
         if (c < 1) { c = 80 }
-        # Reclaim finished superseded fetch fibers, then commit the current one.
+        # Reclaim finished superseded fetch fibers, commit the current one, and
+        # drain any completed download; each return true when the screen changed.
         reap_stale(borrow(state))
         done<Bool> = commit_fetch(borrow(state))
-        if (done) {
-            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
+        pdone<Bool> = poll_progress(borrow(state))
+        if (done || pdone) {
+            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
         }
         k<Int> = curses_getch()
         if (k == -1) {
@@ -585,12 +923,48 @@ run_browser(initial<String>)<Int> -> {
         } else if (cmd == Cmd::NextPage) {
             if (!state.help) {
                 scroll_page(borrow(state), r, true)
-                redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
+                redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
             }
         } else if (cmd == Cmd::PrevPage) {
             if (!state.help) {
                 scroll_page(borrow(state), r, false)
-                redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
+                redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
+            }
+        } else if (cmd == Cmd::FocusNext) {
+            if (!state.help) {
+                if (state.page.navs.len() > 0) {
+                    state.focus = state.focus + 1
+                    if (state.focus >= state.page.navs.len()) { state.focus = 0 }
+                }
+                # Auto-scroll so the focused marker stays on screen. Operates on the
+                # owned `state` and `borrow(state.page)` (the draw path) rather than
+                # re-borrowing a `their` param, which tripped a generated-code
+                # ownership edge (crashed reading `page.lines`).
+                if (state.page.navs.len() > 0) {
+                    li<Int> = nav_line_index(borrow(state.page), state.focus + 1)
+                    if (li >= 0) {
+                        br<Int> = body_rows(r)
+                        if (li < state.top) { state.top = li }
+                        else if (li >= state.top + br) { state.top = li - br + 1 }
+                    }
+                }
+                redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
+            }
+        } else if (cmd == Cmd::FocusPrev) {
+            if (!state.help) {
+                if (state.page.navs.len() > 0) {
+                    state.focus = state.focus - 1
+                    if (state.focus < 0) { state.focus = state.page.navs.len() - 1 }
+                }
+                if (state.page.navs.len() > 0) {
+                    li<Int> = nav_line_index(borrow(state.page), state.focus + 1)
+                    if (li >= 0) {
+                        br<Int> = body_rows(r)
+                        if (li < state.top) { state.top = li }
+                        else if (li >= state.top + br) { state.top = li - br + 1 }
+                    }
+                }
+                redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
             }
         } else if (cmd == Cmd::Follow) {
             if (!state.help) {
@@ -602,7 +976,28 @@ run_browser(initial<String>)<Int> -> {
                 } else {
                     state.status = "no link " + n.to_string()
                 }
-                redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
+                redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
+            }
+        } else if (cmd == Cmd::FollowEnter) {
+            if (!state.help) {
+                dest<String> = follow_focus(borrow(state))
+                if (dest.len() > 0) {
+                    state.history.push(state.url)
+                    load_url(borrow(state), dest)
+                } else {
+                    state.status = "no links to follow"
+                }
+                redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
+            }
+        } else if (cmd == Cmd::Download) {
+            if (!state.help) {
+                if (dl_running == 0) {
+                    start_download(state.url)
+                    state.status = "downloading " + state.url
+                } else {
+                    state.status = "download already in progress"
+                }
+                redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
             }
         } else if (cmd == Cmd::Back) {
             if (state.history.len() > 0) {
@@ -612,23 +1007,23 @@ run_browser(initial<String>)<Int> -> {
             } else {
                 state.status = "no history"
             }
-            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
+            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
         } else if (cmd == Cmd::Reload) {
             load_url(borrow(state), state.url)
-            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
+            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
         } else if (cmd == Cmd::OpenUrl) {
             target<String> = open_url_prompt() else ""
             if (target.len() > 0) {
                 state.history.push(state.url)
                 load_url(borrow(state), target)
             }
-            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
+            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
         } else if (cmd == Cmd::Help) {
             state.help = !state.help
-            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
+            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
         } else {
             state.status = "unrecognized key - press h for help"
-            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
+            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
         }
     }
     return 0
@@ -641,6 +1036,8 @@ main()<Int> -> {
     }
     curses_hide_cursor()
     curses_timeout(80)
+    init_colors()
+    dl_progress = strchan_new()
 
     # A background fiber is started and awaited before the loop begins.
     startup<Future<Int>> = warm_up(8)
@@ -656,6 +1053,16 @@ main()<Int> -> {
     } ensure -> {
         curses_show_cursor()
         curses_close()
+    }
+
+    if (dl_running != 0) {
+        agent_close(dl_running)
+        agent_free(dl_running)
+        dl_running = 0
+    }
+    if (dl_progress != 0) {
+        strchan_free(dl_progress)
+        dl_progress = 0
     }
 
     return result

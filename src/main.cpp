@@ -190,8 +190,14 @@ extern "C" {
     int64_t __vyb_curses_has_color(void);
     int64_t __vyb_curses_start_color(void);
     int64_t __vyb_curses_color_pair(int64_t n);
+    int64_t __vyb_curses_init_pair(int64_t pair, int64_t fg, int64_t bg);
     int64_t __vyb_curses_attr_on(int64_t attr);
     int64_t __vyb_curses_attr_off(int64_t attr);
+    int64_t __vyb_curses_attr_normal(void);
+    int64_t __vyb_curses_attr_bold(void);
+    int64_t __vyb_curses_attr_underline(void);
+    int64_t __vyb_curses_attr_reverse(void);
+    int64_t __vyb_curses_attr_blink(void);
     int64_t __vyb_curses_getch(void);
     int64_t __vyb_curses_nodelay(int64_t flag);
     int64_t __vyb_curses_timeout(int64_t ms);
@@ -661,13 +667,34 @@ int link_vyb_executable(const std::vector<std::string>& objectFiles,
         runtimeUnits.push_back({ intrinsicsSrc.string(), "intrinsics.o", "c++" });
     }
 
+    // Some runtime atoms (OpenSSL TLS shims, ncurses TUI shims) are compiled out
+    // when their -D feature flag is absent. Detect, from the program's own
+    // compiled object, whether it references those intrinsics, and only then
+    // enable the matching runtime feature + link library. Plain standalone
+    // binaries without TLS/`curses` keep a light footprint and build even on
+    // systems without OpenSSL/ncurses dev packages.
+    bool needTls = false;
+    bool needCurses = false;
+    for (const auto& objFile : objectFiles) {
+        if (!needTls && system(("grep -aq __vyb_tls_ " + objFile).c_str()) == 0) {
+            needTls = true;
+        }
+        if (!needCurses && system(("grep -aq __vyb_curses_ " + objFile).c_str()) == 0) {
+            needCurses = true;
+        }
+    }
+
     std::vector<std::string> runtimeObjects;
     for (const auto& unit : runtimeUnits) {
         fs::path runtimeObject = exeOutDir / unit.obj;
         std::cout << "Compiling Vyb runtime library (" << unit.src << ")..." << std::endl;
         std::string compileCmd = unit.compiler + " -c -O2 -fPIC " + unit.src +
                                  " -o " + runtimeObject.string();
-        if (unit.compiler == "cc") compileCmd += " -D_GNU_SOURCE";
+        if (unit.compiler == "cc") {
+            compileCmd += " -D_GNU_SOURCE";
+            if (needTls) compileCmd += " -DVYB_HAVE_OPENSSL";
+            if (needCurses) compileCmd += " -DVYB_HAVE_NCURSES";
+        }
         if (unit.compiler == "c++") {
             compileCmd += " -D_GNU_SOURCE";
             compileCmd += " -std=c++17 -I" + (repoRoot / "include").string();
@@ -765,6 +792,18 @@ int link_vyb_executable(const std::vector<std::string>& objectFiles,
         return "-l" + linkArg;
     };
     for (const auto& linkArg : userLinkArgs) linkerArgs.push_back(normalizeLinkArg(linkArg));
+
+    // Link the optional runtime libraries the program's intrinsics require.
+    if (needTls) {
+        linkerArgs.push_back("-lssl");
+        linkerArgs.push_back("-lcrypto");
+    }
+    if (needCurses) {
+        linkerArgs.push_back("-lncursesw");
+#ifndef __APPLE__
+        linkerArgs.push_back("-ltinfo");
+#endif
+    }
 
     // Link against the C standard library and math library.
     if (staticLink) {
@@ -1457,10 +1496,22 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_start_color), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_curses_color_pair")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_color_pair), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_init_pair")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_init_pair), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_curses_attr_on")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_attr_on), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_curses_attr_off")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_attr_off), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_attr_normal")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_attr_normal), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_attr_bold")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_attr_bold), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_attr_underline")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_attr_underline), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_attr_reverse")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_attr_reverse), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_curses_attr_blink")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_attr_blink), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_curses_getch")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_getch), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_curses_nodelay")] = llvm::orc::ExecutorSymbolDef(

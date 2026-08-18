@@ -20,7 +20,10 @@ VYB_LYNX_HOME=http://example.com ../../build/vyb src/main.vyb
 
 ### Controls
 - `<n>` — follow the numbered link (single digit 1..9)
+- `up` / `down` — move link focus (wraps at both ends; `tab` cycles forward)
+- `enter` — follow the focused (highlighted) link
 - `n` / `space` — next page · `p` — previous page
+- `d` — download the current page to a file (background agent)
 - `b` — back · `r` — reload
 - `g` — open a URL (prompt on the real terminal; see note below)
 - `h` — help · `q` — quit
@@ -34,7 +37,17 @@ VYB_LYNX_HOME=http://example.com ../../build/vyb src/main.vyb
   in one select-style loop (RFE §38).
 - **Sanitize boundary.** Every text add passes through `sanitize()`, which
   drops control bytes (and `0x7f`) from remote content so a hostile page cannot
-  inject terminal control sequences (RFE §46 checklist).
+  inject terminal control sequences (RFE §46 checklist). `char_at` yields a
+  *signed* byte, so `sanitize()` normalizes to `0..255` first or every UTF-8
+  byte (`>= 0x80`) would read as a control and strip the box-drawing border.
+- **Rectangular, colourful window.** A box-drawn border (`┌─┐│└┘`) frames the
+  screen; the header/title, anchors, focused anchor, and status/border each use
+  a dedicated color pair (with plain-attribute fallback when the terminal has
+  no color). The curses shims render text through a locale-independent UTF-8 →
+  wide decoder (`waddnwstr`) so multi-byte box glyphs display correctly.
+- **Keyboard link focus.** `up`/`down`/`tab` move a 0-based focus; the focused
+  `[n]` marker draws highlighted (white-on-magenta/bold) and `enter` follows
+  it. Focus wraps and auto-scrolls so the focused marker stays on screen.
 - **Navigation is structured.** The `fail`/`trap` lives inside `fetch_page_at`,
   so whether it runs on the worker fiber or the main-thread fallback, one bad
   page becomes an error page, never a crash (RFE §20/§21/§35).
@@ -52,7 +65,17 @@ VYB_LYNX_HOME=http://example.com ../../build/vyb src/main.vyb
 - **Ownership.** The event loop owns one `BrowserState` (current `Page`,
   history, cursor, status). `load_url`/`draw`/`follow_page` take `their<...>`
   borrows so one owner holds the data (RFE §13/§41); assigning an owned
-  `Page`/`String` into a struct field deep-copies/retains the source.
+  `Page`/`String` into a struct field deep-copies/retains the source. The
+  focus/download helpers operate on the owned `state` (via `borrow(state.page)`,
+  the same borrow shape the draw path uses) rather than re-borrowing a `their`
+  param, which previously tripped a generated-code ownership edge.
+- **Downloads (background agent).** `d` spawns a `DownloadAgent` that fetches
+  the current URL and writes it (through stdlib `io`) to a `host-...-file` name
+  in the working directory; progress is reported non-blockingly through a
+  string channel drained each tick, and the agent is reclaimed on completion.
+  The worker derives its path from the mailbox string (no captured stack locals)
+  and disptaches by URL scheme directly, sidestepping a generic-bound call that
+  would stall inside an agent thread.
 - **Multi-value returns.** `tty_dims()` returns a pair of `Int`s that is
   destructured in `content_width()` and in the event loop (RFE §22).
 - **asyncs / Future — non-blocking fetch (Milestone 5).** A warm-up fiber is
@@ -110,5 +133,5 @@ are recorded here so the fixes are traceable.
 
 ## Next milestones (per RFE §45)
 - Add a `FileProvider` resource provider for `file://` documents (RFE §6/§44).
-- Downloads via a `DownloadAgent` + file I/O + progress (RFE §23-§29).
 - Resize handling (`curses_resize` shim) and window-based layout (±RFE §14).
+- Proper multi-line visual editor / form fields for the URL prompt.

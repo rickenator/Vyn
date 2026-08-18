@@ -2111,8 +2111,11 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_curses_clear" || name == "vyb_curses_move" ||
             name == "vyb_curses_addstr" || name == "vyb_curses_move_addstr" ||
             name == "vyb_curses_has_color" || name == "vyb_curses_start_color" ||
-            name == "vyb_curses_color_pair" || name == "vyb_curses_attr_on" ||
-            name == "vyb_curses_attr_off" || name == "vyb_curses_getch" ||
+            name == "vyb_curses_color_pair" || name == "vyb_curses_init_pair" ||
+            name == "vyb_curses_attr_on" || name == "vyb_curses_attr_off" ||
+            name == "vyb_curses_attr_normal" || name == "vyb_curses_attr_bold" ||
+            name == "vyb_curses_attr_underline" || name == "vyb_curses_attr_reverse" ||
+            name == "vyb_curses_attr_blink" || name == "vyb_curses_getch" ||
             name == "vyb_curses_nodelay" || name == "vyb_curses_timeout" ||
             name == "vyb_curses_keypad" || name == "vyb_curses_show_cursor" ||
             name == "vyb_curses_hide_cursor" ||
@@ -2612,7 +2615,10 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 "vyb_curses_clear", "vyb_curses_move", "vyb_curses_addstr",
                 "vyb_curses_move_addstr", "vyb_curses_has_color",
                 "vyb_curses_start_color", "vyb_curses_color_pair",
-                "vyb_curses_attr_on", "vyb_curses_attr_off", "vyb_curses_getch",
+                "vyb_curses_init_pair", "vyb_curses_attr_on", "vyb_curses_attr_off",
+                "vyb_curses_attr_normal", "vyb_curses_attr_bold",
+                "vyb_curses_attr_underline", "vyb_curses_attr_reverse",
+                "vyb_curses_attr_blink", "vyb_curses_getch",
                 "vyb_curses_nodelay", "vyb_curses_timeout", "vyb_curses_keypad",
                 "vyb_curses_show_cursor", "vyb_curses_hide_cursor"
             };

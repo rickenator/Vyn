@@ -960,6 +960,15 @@ void LLVMCodegen::visit(vyb::ast::WhileStatement* node) {
         builder->CreateBr(loopHeaderBB); // Jump back to header
     }
 
+    // Continue codegen in the exit block. If the loop body contains an `if`,
+    // that if's merge block will have been appended *after* loop.exit, leaving
+    // loop.exit out of the back() slot so the implicit-return epilogue would
+    // miss (or mis-terminate) it and fail IR verification. Move loop.exit to
+    // the very end of the block list now that the body is complete.
+    if (parentFunc->size() > 1) {
+        loopExitBB->moveAfter(&parentFunc->back());
+    }
+
     // Continue codegen in the exit block
     builder->SetInsertPoint(loopExitBB);
     m_currentLLVMValue = nullptr; // While statement itself doesn't produce a value

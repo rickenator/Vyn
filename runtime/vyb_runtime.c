@@ -33,6 +33,8 @@
 #include <openssl/pem.h>
 #if defined(VYB_HAVE_NCURSES)
 #include <ncursesw/curses.h>
+#include <locale.h>
+#include <wchar.h>
 #endif
 #endif
 
@@ -40,6 +42,46 @@
 #define VYB_WEAK __attribute__((weak))
 #else
 #define VYB_WEAK
+#endif
+
+// ============================================================================
+// RAW-IO HELPERS (avoid libc symbol interposition)
+// ============================================================================
+// Vyb free functions are exported under their bare LLVM symbol name, so a
+// stdlib function such as `open`/`close` collides with the same-named POSIX
+// C-library symbol when the runtime C is co-linked into a standalone
+// executable: the runtime's call to `open()` then binds to the Vyb function
+// and recurses forever. Route every libc file primitive through raw syscalls
+// (Linux) so the runtime never references the colliding `open`/`close`/`read`/
+// `write` symbols directly. On non-Linux platforms we fall back to the libc
+// calls, which still works where the collision does not occur.
+#if defined(__linux__)
+#include <sys/syscall.h>
+static int vyb_raw_open(const char* path, int flags, unsigned mode) {
+    return (int)syscall(SYS_openat, AT_FDCWD, path, flags, mode);
+}
+static int vyb_raw_close(int fd) {
+    return (int)syscall(SYS_close, fd);
+}
+static ssize_t vyb_raw_read(int fd, void* buf, size_t count) {
+    return syscall(SYS_read, fd, buf, count);
+}
+static ssize_t vyb_raw_write(int fd, const void* buf, size_t count) {
+    return syscall(SYS_write, fd, buf, count);
+}
+#else
+static int vyb_raw_open(const char* path, int flags, unsigned mode) {
+    return open(path, flags, mode);
+}
+static int vyb_raw_close(int fd) {
+    return close(fd);
+}
+static ssize_t vyb_raw_read(int fd, void* buf, size_t count) {
+    return read(fd, buf, count);
+}
+static ssize_t vyb_raw_write(int fd, const void* buf, size_t count) {
+    return write(fd, buf, count);
+}
 #endif
 
 // ============================================================================
@@ -361,13 +403,13 @@ VYB_WEAK int64_t __vyb_file_open(const char* path, int64_t flags) {
     if (flags & VYB_FILE_O_CREAT) oflags |= O_CREAT;
     if (flags & VYB_FILE_O_TRUNC) oflags |= O_TRUNC;
     if (flags & VYB_FILE_O_APPEND) oflags |= O_APPEND;
-    int fd = open(path ? path : "", oflags, 0644);
+    int fd = vyb_raw_open(path ? path : "", oflags, 0644);
     vyb_file_err = (fd < 0) ? errno : 0;
     return (int64_t)fd;
 }
 
 VYB_WEAK int64_t __vyb_file_close(int64_t fd) {
-    int r = close((int)fd);
+    int r = vyb_raw_close((int)fd);
     vyb_file_err = (r < 0) ? errno : 0;
     return (int64_t)r;
 }
@@ -378,7 +420,7 @@ VYB_WEAK int64_t __vyb_file_write(int64_t fd, const char* data, int64_t len) {
     const char* p = data;
     int64_t left = len;
     while (left > 0) {
-        ssize_t n = write((int)fd, p, (size_t)left);
+        ssize_t n = vyb_raw_write((int)fd, p, (size_t)left);
         if (n > 0) { p += n; left -= n; }
         else if (n == 0) break;
         else { vyb_file_err = errno; return -1; }
@@ -401,7 +443,7 @@ VYB_WEAK vyb_file_str __vyb_file_read_all(int64_t fd) {
             if (!nb) { vyb_file_err = errno; free(buf); return r; }
             buf = nb;
         }
-        ssize_t n = read((int)fd, buf + len, cap - len);
+        ssize_t n = vyb_raw_read((int)fd, buf + len, cap - len);
         if (n > 0) {
             len += (size_t)n;
         } else if (n == 0) {
@@ -450,7 +492,7 @@ VYB_WEAK vyb_file_str __vyb_stdin_read(int64_t maxlen) {
     size_t cap = (size_t)maxlen;
     char* buf = (char*)malloc(cap + 1);
     if (!buf) return r;
-    ssize_t n = read(STDIN_FILENO, buf, cap);
+    ssize_t n = vyb_raw_read(STDIN_FILENO, buf, cap);
     if (n > 0) {
         buf[n] = '\0';
         __vyb_string_register(buf);
@@ -473,7 +515,7 @@ VYB_WEAK vyb_file_str __vyb_stdin_read_line(void) {
     // not consume bytes the stdio buffer would otherwise hand to stdin_read().
     for (;;) {
         unsigned char c;
-        ssize_t n = read(STDIN_FILENO, &c, 1);
+        ssize_t n = vyb_raw_read(STDIN_FILENO, &c, 1);
         if (n <= 0) break;              // EOF or error
         if (c == '\n') break;          // end of line (stripped)
         if (len + 1 >= cap) {
@@ -592,10 +634,56 @@ static int vyb_curses_active = 0;
 
 #define VYB_CURSES_GUARD if (!vyb_curses_active) return -1
 
+// Helper: decode one UTF-8 code point from `s` (narrow bytes) into `*cp`.
+// Returns the number of bytes consumed (>=1). Invalid/stray bytes pass through
+// as their raw value so rendering degrades gracefully instead of dropping text.
+static size_t vyb_utf8_next(const unsigned char* s, int64_t avail, uint32_t* cp) {
+    if (avail <= 0) { *cp = 0; return 0; }
+    unsigned char c = s[0];
+    if (c < 0x80) { *cp = c; return 1; }
+    int n; uint32_t v;
+    if ((c & 0xE0) == 0xC0)      { n = 2; v = c & 0x1F; }
+    else if ((c & 0xF0) == 0xE0) { n = 3; v = c & 0x0F; }
+    else if ((c & 0xF8) == 0xF0) { n = 4; v = c & 0x07; }
+    else { *cp = c; return 1; }                       // stray continuation byte
+    if (avail < n) { *cp = c; return 1; }             // truncated sequence
+    for (int i = 1; i < n; ++i) v = (v << 6) | (s[i] & 0x3F);
+    *cp = v;
+    return (size_t)n;
+}
+
+// Add `len` bytes as UTF-8 to `win` using the wide-ncurses path (waddnwstr).
+// Narrow waddnstr treats each byte as one char and cannot render the multi-byte
+// box-drawing glyphs the browser draws, so the byte string is decoded to wide
+// chars (locale-independently) and written column-accurately, clipping at the
+// right margin.
+static int64_t curses_add_utf8(WINDOW* w, const char* s, int64_t len) {
+    if (!s || len <= 0) return 0;
+    if (len > INT_MAX) len = INT_MAX;
+    wchar_t* wb = (wchar_t*)malloc(sizeof(wchar_t) * ((size_t)len + 1));
+    if (!wb) return -1;
+    const char* p = s;
+    const char* end = s + len;
+    wchar_t* wp = wb;
+    while (p < end) {
+        uint32_t cp;
+        size_t adv = vyb_utf8_next((const unsigned char*)p, end - p, &cp);
+        if (adv == 0) break;
+        *wp++ = (wchar_t)cp;
+        p += adv;
+    }
+    size_t n = (size_t)(wp - wb);
+    int r = waddnwstr(w, wb, (int)n) == ERR ? -1 : 0;
+    free(wb);
+    return r;
+}
+
 VYB_WEAK int64_t __vyb_curses_init(void) {
     if (vyb_curses_active) return 0;
     // ncurses needs a real terminal; refuse to run with redirected stdio.
     if (!isatty(STDOUT_FILENO)) return -1;
+    // Enable the user's locale (usually UTF-8) so wide/box glyphs decode.
+    setlocale(LC_ALL, "");
     if (initscr() == NULL) return -1;
     cbreak();
     noecho();
@@ -643,17 +731,13 @@ VYB_WEAK int64_t __vyb_curses_move(int64_t y, int64_t x) {
 
 VYB_WEAK int64_t __vyb_curses_addstr(const char* s, int64_t len) {
     VYB_CURSES_GUARD;
-    if (len < 0) len = 0;
-    if (len > INT_MAX) len = INT_MAX;
-    return waddnstr(stdscr, s, (int)len) == ERR ? -1 : 0;
+    return curses_add_utf8(stdscr, s, len);
 }
 
 VYB_WEAK int64_t __vyb_curses_move_addstr(int64_t y, int64_t x, const char* s, int64_t len) {
     VYB_CURSES_GUARD;
-    if (len < 0) len = 0;
-    if (len > INT_MAX) len = INT_MAX;
     if (wmove(stdscr, (int)y, (int)x) == ERR) return -1;
-    return waddnstr(stdscr, s, (int)len) == ERR ? -1 : 0;
+    return curses_add_utf8(stdscr, s, len);
 }
 
 VYB_WEAK int64_t __vyb_curses_has_color(void) {
@@ -670,6 +754,11 @@ VYB_WEAK int64_t __vyb_curses_color_pair(int64_t n) {
     return (int64_t)COLOR_PAIR((int)n);
 }
 
+VYB_WEAK int64_t __vyb_curses_init_pair(int64_t pair, int64_t fg, int64_t bg) {
+    VYB_CURSES_GUARD;
+    return init_pair((short)pair, (short)fg, (short)bg) == ERR ? -1 : 0;
+}
+
 VYB_WEAK int64_t __vyb_curses_attr_on(int64_t attr) {
     VYB_CURSES_GUARD;
     return attr_on((attr_t)attr, NULL) == ERR ? -1 : 0;
@@ -679,6 +768,12 @@ VYB_WEAK int64_t __vyb_curses_attr_off(int64_t attr) {
     VYB_CURSES_GUARD;
     return attr_off((attr_t)attr, NULL) == ERR ? -1 : 0;
 }
+
+VYB_WEAK int64_t __vyb_curses_attr_normal(void) { return (int64_t)A_NORMAL; }
+VYB_WEAK int64_t __vyb_curses_attr_bold(void)   { return (int64_t)A_BOLD; }
+VYB_WEAK int64_t __vyb_curses_attr_underline(void) { return (int64_t)A_UNDERLINE; }
+VYB_WEAK int64_t __vyb_curses_attr_reverse(void) { return (int64_t)A_REVERSE; }
+VYB_WEAK int64_t __vyb_curses_attr_blink(void)  { return (int64_t)A_BLINK; }
 
 VYB_WEAK int64_t __vyb_curses_getch(void) {
     VYB_CURSES_GUARD;
@@ -729,8 +824,14 @@ VYB_WEAK int64_t __vyb_curses_move_addstr(int64_t y, int64_t x, const char* s, i
 VYB_WEAK int64_t __vyb_curses_has_color(void) { return 0; }
 VYB_WEAK int64_t __vyb_curses_start_color(void) { return -1; }
 VYB_WEAK int64_t __vyb_curses_color_pair(int64_t n) { (void)n; return 0; }
+VYB_WEAK int64_t __vyb_curses_init_pair(int64_t pair, int64_t fg, int64_t bg) { (void)pair; (void)fg; (void)bg; return -1; }
 VYB_WEAK int64_t __vyb_curses_attr_on(int64_t attr) { (void)attr; return -1; }
 VYB_WEAK int64_t __vyb_curses_attr_off(int64_t attr) { (void)attr; return -1; }
+VYB_WEAK int64_t __vyb_curses_attr_normal(void) { return 0; }
+VYB_WEAK int64_t __vyb_curses_attr_bold(void) { return 0; }
+VYB_WEAK int64_t __vyb_curses_attr_underline(void) { return 0; }
+VYB_WEAK int64_t __vyb_curses_attr_reverse(void) { return 0; }
+VYB_WEAK int64_t __vyb_curses_attr_blink(void) { return 0; }
 VYB_WEAK int64_t __vyb_curses_getch(void) { return -1; }
 VYB_WEAK int64_t __vyb_curses_nodelay(int64_t flag) { (void)flag; return -1; }
 VYB_WEAK int64_t __vyb_curses_timeout(int64_t ms) { (void)ms; return -1; }
@@ -785,7 +886,7 @@ VYB_WEAK int64_t __vyb_net_open(int64_t domain, int64_t t, int64_t protocol) {
 }
 
 VYB_WEAK int64_t __vyb_net_close(int64_t fd) {
-    int r = close((int)fd);
+    int r = vyb_raw_close((int)fd);
     vyb_net_err = (r < 0) ? errno : 0;
     return (int64_t)r;
 }
@@ -1583,7 +1684,7 @@ VYB_WEAK int64_t __vyb_tls_close(int64_t sslp, int64_t fd) {
         SSL_free(ssl);
     }
     int r = 0;
-    if (fd >= 0) r = close((int)fd);
+    if (fd >= 0) r = vyb_raw_close((int)fd);
     vyb_tls_err = 0;
     return (int64_t)r;
 }
@@ -3088,7 +3189,7 @@ static void async_selfpipe_ensure(void) {
 
 // Wake the pump (a new wait was registered, or shutdown). Not a lock-bearer.
 static void async_pump_wake(void) {
-    if (g_selfpipe[1] >= 0) { char b = 1; ssize_t w_ = write(g_selfpipe[1], &b, 1); (void)w_; }
+    if (g_selfpipe[1] >= 0) { char b = 1; ssize_t w_ = vyb_raw_write(g_selfpipe[1], &b, 1); (void)w_; }
 }
 
 // Unlink + free a wait entry from the global list. Lock held.
@@ -3132,7 +3233,7 @@ static void* async_pump_main(void* arg) {
             // Self-pipe woke us (new registration or shutdown): drain it and let
             // the loop rebuild the full set before re-polling.
             char b[64];
-            while (read(g_selfpipe[0], b, sizeof(b)) > 0) {}
+            while (vyb_raw_read(g_selfpipe[0], b, sizeof(b)) > 0) {}
             continue;
         }
         if (pr > 0) {

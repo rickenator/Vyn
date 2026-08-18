@@ -156,3 +156,60 @@ share(all)
 curses_hide_cursor()<Int> -> {
     return vyb_curses_hide_cursor()
 }
+
+# --- Color support ---------------------------------------------------------
+# The ncurses COLOR_* values are 0..7 and stable; a 0-based color-pair index is
+# defined with curses_init_pair then applied via curses_color_pair(n).
+share(all)
+enum CursColor {
+    Black = 0
+    Red = 1
+    Green = 2
+    Yellow = 3
+    Blue = 4
+    Magenta = 5
+    Cyan = 6
+    White = 7
+    Default = -1
+}
+
+# Define color-pair `pair` as foreground `fg` on background `bg` (both CursColor).
+# Only pairs you define here will show color; undefined pairs render as defaults.
+# Call after curses_start_color(). Returns 0 on success, -1 on error.
+share(all)
+curses_init_pair(pair<Int>, fg<Int>, bg<Int>)<Int> -> {
+    return vyb_curses_init_pair(pair, fg, bg)
+}
+
+# --- Attribute constants (ncurses A_* values, resolved by the runtime) ------
+share(all)
+curses_attr_normal()<Int> -> { return vyb_curses_attr_normal() }
+share(all)
+curses_attr_bold()<Int> -> { return vyb_curses_attr_bold() }
+share(all)
+curses_attr_underline()<Int> -> { return vyb_curses_attr_underline() }
+share(all)
+curses_attr_reverse()<Int> -> { return vyb_curses_attr_reverse() }
+share(all)
+curses_attr_blink()<Int> -> { return vyb_curses_attr_blink() }
+
+# --- Key codes (ncurses KEY_* values; getch returns these for arrow/f keys) --
+# Character codes (newline/tab/escape) may also arrive directly from the keypad.
+share(all)
+enum CursKey {
+    down = 258
+    up = 259
+    left = 260
+    right = 261
+    home = 262
+    backspace = 263
+    pgdown = 338
+    pgup = 339
+    enter = 343
+    end = 360
+    tab = 9
+    newline = 10
+    carriage = 13
+    esc = 27
+    space = 32
+}

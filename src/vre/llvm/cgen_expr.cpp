@@ -2928,8 +2928,14 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_curses_has_color") rtName = "__vyb_curses_has_color";
         else if (fname == "vyb_curses_start_color") rtName = "__vyb_curses_start_color";
         else if (fname == "vyb_curses_color_pair") rtName = "__vyb_curses_color_pair";
+        else if (fname == "vyb_curses_init_pair") rtName = "__vyb_curses_init_pair";
         else if (fname == "vyb_curses_attr_on") rtName = "__vyb_curses_attr_on";
         else if (fname == "vyb_curses_attr_off") rtName = "__vyb_curses_attr_off";
+        else if (fname == "vyb_curses_attr_normal") rtName = "__vyb_curses_attr_normal";
+        else if (fname == "vyb_curses_attr_bold") rtName = "__vyb_curses_attr_bold";
+        else if (fname == "vyb_curses_attr_underline") rtName = "__vyb_curses_attr_underline";
+        else if (fname == "vyb_curses_attr_reverse") rtName = "__vyb_curses_attr_reverse";
+        else if (fname == "vyb_curses_attr_blink") rtName = "__vyb_curses_attr_blink";
         else if (fname == "vyb_curses_getch") rtName = "__vyb_curses_getch";
         else if (fname == "vyb_curses_nodelay") rtName = "__vyb_curses_nodelay";
         else if (fname == "vyb_curses_timeout") rtName = "__vyb_curses_timeout";
@@ -2994,6 +3000,20 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                     int64Type, {int64Type, int64Type, int8PtrType, int64Type}, false);
                 m_currentLLVMValue = builder->CreateCall(
                     getCurseFn(ft), {toI64(row), toI64(col), toStrPtr(s), strLen(s)}, "curses.moveadd");
+                return;
+            } else if (fname == "vyb_curses_init_pair") {
+                if (node->arguments.size() != 3) {
+                    logError(node->loc, rtName + " expects 3 arguments (pair, fg, bg)");
+                    m_currentLLVMValue = nullptr; return;
+                }
+                node->arguments[0]->accept(*this); llvm::Value* pair = m_currentLLVMValue;
+                node->arguments[1]->accept(*this); llvm::Value* fg = m_currentLLVMValue;
+                node->arguments[2]->accept(*this); llvm::Value* bg = m_currentLLVMValue;
+                if (!pair || !fg || !bg) { m_currentLLVMValue = nullptr; return; }
+                llvm::FunctionType* ft = llvm::FunctionType::get(
+                    int64Type, {int64Type, int64Type, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(
+                    getCurseFn(ft), {toI64(pair), toI64(fg), toI64(bg)}, "curses.initpair");
                 return;
             } else {
                 // 1-arg Int helpers: color_pair, attr_on, attr_off, nodelay, timeout, keypad
