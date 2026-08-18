@@ -39,7 +39,14 @@ VYB_LYNX_HOME=http://example.com ../../build/vyb src/main.vyb
 - **`T?` models absence** for "no such link" and the cancelled URL prompt.
 - **`ensure` guards the render invariant** (non-zero terminal size).
 - **Aspect/bind.** `Display` is bound to `Url`; an `Interactive` aspect is bound
-  to the rendered `Nav` links (RFE §3/§4).
+  to the rendered `Nav` links; a `ResourceProvider` aspect is bound to
+  `HttpResourceProvider`/`HttpsResourceProvider` and dispatched by URL scheme
+  (RFE §3/§4/§6/§44).
+- **Live fetch (Milestone 4).** Content is fetched through the stdlib `http`/
+  `https` modules, not raw sockets. `fetch_resource` picks the provider by
+  scheme and follows up to 6 redirects; a bad round-trip becomes an error page
+  rather than a crash. Verified TLS + hostname/SNI check via
+  `https_get_full_verified`; network resolution is IPv4-only.
 - **Ownership.** The event loop owns one `BrowserState` (current `Page`,
   history, cursor, status). `load_url`/`draw`/`follow_page` take `their<...>`
   borrows so one owner holds the data (RFE §13/§41); assigning an owned
@@ -53,15 +60,16 @@ VYB_LYNX_HOME=http://example.com ../../build/vyb src/main.vyb
 ## Language-feature → code map
 | Feature | Where |
 |---|---|
-| `struct` | `Nav`, `Page`, `Response`, `BrowserState` |
-| `aspect` / `bind` | `Display->Url`, `Interactive->Nav` |
-| generic bounded fn | `show<T<Display>>`, `link_line<T<Interactive>>` |
+| `struct` | `Nav`, `Page`, `BrowserState`, `HttpResourceProvider`, `HttpsResourceProvider` |
+| `aspect` / `bind` | `Display->Url`, `Interactive->Nav`, `ResourceProvider`-> providers |
+| generic bounded fn | `show<T<Display>>`, `link_line<T<Interactive>>`, `fetch_with<T<ResourceProvider>>` |
 | `T?` + `else` | `follow_page`, `open_url_prompt`, command handling |
 | `ensure` | `content_width()` terminal-size invariant |
-| `fail` / `trap` | `fetch_page` -> `navigate` boundary |
+| `fail` / `trap` | `fetch_page` -> `load_url` boundary |
 | collections | `Vec` history stack, page line buffer, navs |
 | ownership (`their`/`borrow`) | load_url/draw/follow_page |
 | multi-value returns | `tty_dims()` + nested destructuring |
+| http/https (stdlib) | `ResourceProvider` fetch path |
 | asyncs / Future | `warm_up`, `await` |
 | curses (stdlib) | entire terminal layer |
 | sanitize | control-byte scrubbing (RFE security) |
@@ -94,7 +102,6 @@ are recorded here so the fixes are traceable.
 ## Next milestones (per RFE §45)
 - Make the page fetch a `Future` and add a timed/select event loop so a slow
   load never blocks the UI (RFE §8/§38).
-- Route through the stdlib `http`/`https` modules (`ResourceProvider` aspect,
-  RFE §3/§6/§44) instead of the raw-socket path.
+- Add a `FileProvider` resource provider for `file://` documents (RFE §6/§44).
 - Downloads via a `DownloadAgent` + file I/O + progress (RFE §23-§29).
 - Resize handling (`curses_resize` shim) and window-based layout (±RFE §14).

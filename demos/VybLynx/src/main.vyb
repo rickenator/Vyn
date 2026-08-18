@@ -13,8 +13,10 @@
 #   p          previous page                  h  help
 #   g          open a URL (prompt on stdin)   q  quit
 #
-# Reuses the pure-Vyb url/html renderers and the socket fetch core from the
-# earlier line-mode iteration unchanged; only the terminal layer is new.
+# Content is fetched live through the stdlib `http`/`https` modules via a
+# `ResourceProvider` aspect (dispatched by URL scheme), then rendered with the
+# same pure-Vyb url/html renderers as the line-mode iteration. The terminal layer
+# is curses-only and the single-owner screen rule holds.
 #
 # The event loop owns one `BrowserState` struct that holds the current `Page`
 # and navigation history. Assigning an owned `Page`/`String` into a struct field
@@ -25,7 +27,8 @@
 
 import url::{Url, parse_url, resolve_url, default_port}
 import html::{Link, render_lines, extract_title}
-import network
+import http::{http_get_full, http_header, HttpResponse}
+import https::{https_get_full_verified}
 import term::{stdin_read_line}
 import env
 import asyncs::{async_sleep_ms}
@@ -79,18 +82,12 @@ link_line<T<Interactive>>(nav<T>, n<Int>)<String> -> {
     return "[" + n.to_string() + "] " + nav.describe()
 }
 
-# --- Page / response model ---------------------------------------------------
+# --- Page model --------------------------------------------------------------
 struct Page {
     title<String>,
     url<String>,
     lines<Vec<String>>,
     navs<Vec<Nav>>
-}
-
-struct Response {
-    status<Int>,
-    reason<String>,
-    body<String>
 }
 
 blank_page()<Page> -> {
@@ -153,122 +150,57 @@ sanitize(s<String>)<String> -> {
     return out
 }
 
-# --- HTTP fetch core (unchanged from the line-mode browser) ------------------
-parse_int(s<String>)<Int> -> {
-    n<Int> = 0
-    i<Int> = 0
-    neg<Bool> = false
-    while (i < s.len()) {
-        c<Int> = s.char_at(i)
-        if (c == 45 && i == 0) {
-            neg = true
-        } else if (c >= 48 && c <= 57) {
-            n = n * 10 + (c - 48)
-        }
-        i = i + 1
-    }
-    if (neg) { n = 0 - n }
-    return n
+# --- Resource providers (RFE §3/§6/§44) -------------------------------------
+# Content is fetched through a `ResourceProvider` aspect, dispatched by URL
+# scheme. Each provider wraps the stdlib `http`/`https` module client, so the
+# browser has no raw-socket code of its own. A bounded-generic dispatcher calls
+# whichever provider's `fetch` was selected, exactly like `show<T<Display>>`.
+aspect ResourceProvider {
+    scheme(self)<String>
+    fetch(self, u<Url>)<HttpResponse>
 }
 
-header_int(head<String>, name<String>)<Int> -> {
-    hl<String> = head.to_lower()
-    needle<String> = name.to_lower() + ":"
-    idx<Int> = hl.index_of(needle)
-    if (idx < 0) { return -1 }
-    rest<String> = hl.substring(idx + needle.len(), hl.len())
-    nl<Int> = rest.index_of("\r\n")
-    if (nl >= 0) { rest = rest.substring(0, nl) }
-    return parse_int(rest.trim())
+struct HttpResourceProvider {}
+bind ResourceProvider -> HttpResourceProvider {
+    scheme(self)<String> -> { return "http" }
+    fetch(self, u<Url>)<HttpResponse> -> {
+        return http_get_full(u.host, u.port, u.path)
+    }
 }
 
-header_str(head<String>, name<String>)<String> -> {
-    hl<String> = head.to_lower()
-    needle<String> = name.to_lower() + ":"
-    idx<Int> = hl.index_of(needle)
-    if (idx < 0) { return "" }
-    rest<String> = hl.substring(idx + needle.len(), hl.len())
-    nl<Int> = rest.index_of("\r\n")
-    if (nl >= 0) { rest = rest.substring(0, nl) }
-    return rest.trim()
+struct HttpsResourceProvider {}
+bind ResourceProvider -> HttpsResourceProvider {
+    scheme(self)<String> -> { return "https" }
+    fetch(self, u<Url>)<HttpResponse> -> {
+        # Verified TLS with the system trust store and hostname/SNI check.
+        return https_get_full_verified(u.host, u.port, u.path, "")
+    }
 }
 
-parse_response(raw<String>)<Response> -> {
-    bad<Response> = Response { status = -1, reason = "", body = "" }
-    sep<String> = "\r\n\r\n"
-    idx<Int> = raw.index_of(sep)
-    head<String> = raw
-    body<String> = ""
-    if (idx >= 0) {
-        head = raw.substring(0, idx)
-        body = raw.substring(idx + 4, raw.len())
-    }
-    first<String> = head
-    nl<Int> = head.index_of("\r\n")
-    if (nl >= 0) { first = head.substring(0, nl) }
-    status<Int> = 0
-    reason<String> = ""
-    sp1<Int> = first.index_of(" ")
-    if (sp1 >= 0) {
-        after<String> = first.substring(sp1 + 1, first.len())
-        sp2<Int> = after.index_of(" ")
-        codeStr<String> = after
-        if (sp2 >= 0) {
-            codeStr = after.substring(0, sp2)
-            reason = after.substring(sp2 + 1, after.len())
-        }
-        status = parse_int(codeStr)
-    }
-    if (status == 0) { return bad }
-    cl<Int> = header_int(head, "content-length")
-    if (cl >= 0 && body.len() > cl) {
-        body = body.substring(0, cl)
-    }
-    return Response { status = status, reason = reason, body = body }
+# Generic bounded on ResourceProvider: one call site for any provider.
+fetch_with<T<ResourceProvider>>(p<T>, u<Url>)<HttpResponse> -> {
+    return p.fetch(u)
 }
 
-read_all(fd<Int>, cap<Int>)<String> -> {
-    out<String> = ""
-    while (out.len() < cap) {
-        chunk<String> = socket_recv(fd, 16384)
-        if (chunk.len() == 0) { break }
-        out = out + chunk
-    }
-    return out
-}
-
-# Fetch one URL over HTTP: DNS, connect, request, read (capped), follow up to
-# `hops` redirects, and never hang (timeouts surface as a status of -1).
-fetch_url(u<Url>, hops<Int>)<Response> -> {
-    bad<Response> = Response { status = -1, reason = "", body = "" }
+# Dispatch a URL to its provider by scheme and follow up to `hops` redirects
+# (a bad round-trip yields a status of -1 instead of a crash).
+fetch_resource(urlStr<String>, hops<Int>)<HttpResponse> -> {
+    bad<HttpResponse> = HttpResponse { status = -1, reason = "",
+                                       headers = Vec<String>(), body = "" }
     if (hops <= 0) { return bad }
-    ip<String> = socket_resolve(u.host)
-    if (ip.len() == 0) { return bad }
-    domain<Int> = Socket::AF_INET
-    if (ip.index_of(":") >= 0) { domain = Socket::AF_INET6 }
-    fd<Int> = socket_open(domain, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
-    if (fd < 0) { return bad }
-    socket_set_timeout(fd, 12000)
-    if (socket_connect(fd, ip, u.port) < 0) {
-        socket_close(fd)
-        return bad
+    u<Url> = parse_url(urlStr)
+    resp<HttpResponse> = bad
+    if (u.scheme == "https") {
+        resp = fetch_with(HttpsResourceProvider {}, u)
+    } else {
+        resp = fetch_with(HttpResourceProvider {}, u)
     }
-    hosthead<String> = u.host
-    if (u.port != default_port(u.scheme)) {
-        hosthead = u.host + ":" + u.port.to_string()
-    }
-    req<String> = "GET " + u.path + " HTTP/1.1\r\nHost: " + hosthead +
-                  "\r\nUser-Agent: vyblynx/" + version_id() +
-                  "\r\nAccept: text/html\r\nConnection: close\r\n\r\n"
-    socket_send(fd, req)
-    raw<String> = read_all(fd, 262144)
-    socket_close(fd)
-    resp<Response> = parse_response(raw)
     if (resp.status == 301 || resp.status == 302 || resp.status == 303 ||
         resp.status == 307 || resp.status == 308) {
-        locStr<String> = header_str(raw, "location")
-        if (locStr.len() > 0) {
-            return fetch_url(parse_url(resolve_url(u, locStr)), hops - 1)
+        locHdr<String> = http_header(resp, "location")
+        if (locHdr.len() > 0) {
+            next<String> = resolve_url(u, locHdr)
+            return fetch_resource(next, hops - 1)
         }
     }
     return resp
@@ -308,7 +240,7 @@ error_page(urlStr<String>, status<Int>)<Page> -> {
 # so one bad page cannot terminate the program.
 fetch_page(urlStr<String>)<Page> -> {
     page<Page> = {
-        resp<Response> = fetch_url(parse_url(urlStr), 6)
+        resp<HttpResponse> = fetch_resource(urlStr, 6)
         if (resp.status < 200 || resp.status >= 300) {
             fail<Int>(resp.status)
         }
@@ -496,6 +428,13 @@ load_url(st<their<BrowserState>>, target<String>)<Void> -> {
     st.loading = true
     st.status = "Loading " + target
     st.top = 0
+    # Show the loading frame before the (possibly slow) network/TLS fetch so the
+    # first paint is immediate and navigation has visible feedback.
+    r<Int>, c<Int>
+    r, c = tty_dims()
+    if (r < 1) { r = 24 }
+    if (c < 1) { c = 80 }
+    redraw(borrow(st.page), st.top, st.status, st.loading, st.help, r, c)
     st.page = fetch_page(target)
     st.loading = false
     st.status = status_for(borrow(st.page), target)
@@ -526,6 +465,11 @@ run_browser(initial<String>)<Int> -> {
     }
 
     load_url(borrow(state), initial)
+    r<Int>, c<Int>
+    r, c = tty_dims()
+    if (r < 1) { r = 24 }
+    if (c < 1) { c = 80 }
+    redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
 
     looping<Bool> = true
     while (looping) {

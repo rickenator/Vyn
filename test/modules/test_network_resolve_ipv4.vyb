@@ -1,0 +1,38 @@
+// @test: network stdlib module - hostname resolution is IPv4-only
+// @description: socket_resolve of a dual-stack hostname yields a dotted-quad
+//   IPv4 address (never an IPv6 literal), so it pairs with the AF_INET sockets
+//   Vyb clients open (an IPv6 literal handed to an AF_INET connect would fail
+//   with EAFNOSUPPORT). Skips (still passes) when there is no external DNS.
+// @category: modules, network, stdlib, ffi, io
+// @expect: pass
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import network::{socket_resolve}
+
+main()<Int> -> {
+    ip<String> = socket_resolve("example.com")
+    if (ip.len() == 0) {
+        println("resolve skipped")
+        return 0
+    }
+    i<Int> = 0
+    dots<Int> = 0
+    hasColon<Bool> = false
+    while (i < ip.len()) {
+        c<Int> = ip.char_at(i)
+        if (c == 58) { hasColon = true }   # ':'
+        if (c == 46) { dots = dots + 1 }   # '.'
+        i = i + 1
+    }
+    if (hasColon) {
+        println("resolve returned IPv6: " + ip)
+        return 1
+    }
+    if (dots != 3) {
+        println("resolve did not return a dotted-quad IPv4: " + ip)
+        return 2
+    }
+    println("resolve ipv4 ok: " + ip)
+    return 0
+}

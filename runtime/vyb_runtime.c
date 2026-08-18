@@ -880,16 +880,17 @@ VYB_WEAK vyb_file_str __vyb_net_resolve(const char* host) {
     if (!host || !*host) { vyb_net_err = EINVAL; return r; }
     struct addrinfo hints;
     memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC;   // resolve v4 or v6
+    // IPv4-only resolution. Vyb's client sockets open AF_INET, so resolving a
+    // hostname to an IPv6 literal would hand back an address connect() rejects
+    // with EAFNOSUPPORT ("address family not supported"). Prefer/force IPv4.
+    hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     struct addrinfo* res = NULL;
     int g = getaddrinfo(host, NULL, &hints, &res);
     if (g != 0) { vyb_net_err = (errno ? errno : EINVAL); return r; }
     char ip[INET6_ADDRSTRLEN] = "";
     const struct sockaddr* sa = res ? res->ai_addr : NULL;
-    if (sa && sa->sa_family == AF_INET6)
-        inet_ntop(AF_INET6, &((const struct sockaddr_in6*)sa)->sin6_addr, ip, sizeof(ip));
-    else if (sa && sa->sa_family == AF_INET)
+    if (sa && sa->sa_family == AF_INET)
         inet_ntop(AF_INET, &((const struct sockaddr_in*)sa)->sin_addr, ip, sizeof(ip));
     if (ip[0]) {
         char* copy = strdup(ip);
