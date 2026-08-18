@@ -16,12 +16,12 @@
 # Reuses the pure-Vyb url/html renderers and the socket fetch core from the
 # earlier line-mode iteration unchanged; only the terminal layer is new.
 #
-# Design note on ownership: the current page and history are kept as *locals* of
-# the event loop and reassigned on each navigation (the same shape as the
-# line-mode browser). A persistent `BrowserState` struct that holds a built
-# `Page` is deferred: tearing one down at function return currently triggers a
-# compiler/JIT double free (see TUI.md). The loop-local shape is clean and the
-# single-owner screen rule still holds.
+# The event loop owns one `BrowserState` struct that holds the current `Page`
+# and navigation history. Assigning an owned `Page`/`String` into a struct field
+# (through a `their` borrow) now deep-copies / retains the source so the struct
+# owns data independent of the producing local - a whole-struct store used to
+# shallow-copy owned pointers and double-free them at scope exit (fixed in the
+# compiler; see TUI.md). The single-owner screen rule still holds.
 
 import url::{Url, parse_url, resolve_url, default_port}
 import html::{Link, render_lines, extract_title}
@@ -97,14 +97,34 @@ blank_page()<Page> -> {
     return Page { title = "", url = "", lines = Vec(), navs = Vec() }
 }
 
+# The whole browser's mutable UI/navigation state, owned by the event loop.
+# Pages and history live here; subsystems publish state rather than drawing
+# (RFE §41 single-owner screen). The struct owns a built `Page` and tears it
+# down when run_browser returns - the case that used to double-free until owned
+# struct-field assignment was fixed (see TUI.md).
+struct BrowserState {
+    url<String>,
+    page<Page>,
+    history<Vec<String>>,
+    top<Int>,
+    loading<Bool>,
+    help<Bool>,
+    status<String>
+}
+
 # --- Terminal size + invariant -----------------------------------------------
 # `ensure` guards the invariant (RFE §20) and would fail closed to a sane
-# default rather than draw into a 0-width screen. (Multi-value returns are a Vyb
-# feature - see the test suite - but are avoided here while a codegen interaction
-# with nested control flow is being tracked; see TUI.md.)
+# default rather than draw into a 0-width screen. Multi-value returns + nested
+# destructuring are a core Vyb feature (a single `tty_dims()` pair is
+# destructured here and in the event loop), and nested control flow is exercised
+# by `ensure`, the `if` clamp, and the loop-local reads.
+tty_dims()<Int, Int> -> {
+    return curses_rows(), curses_cols()
+}
+
 content_width()<Int> -> {
-    vr<Int> = curses_rows()
-    vc<Int> = curses_cols()
+    vr<Int>, vc<Int>
+    vr, vc = tty_dims()
     ensure vr >= 1 && vc >= 1 else return 40
     w<Int> = vc - 2
     if (w < 20) { w = 20 }
@@ -466,33 +486,53 @@ async warm_up(ms<Int>)<Future<Int>> -> {
 }
 
 # --- The event loop ----------------------------------------------------------
-# The current page and history are loop locals (reassigned on navigation), the
-# same shape as the proven-clean line-mode browser; see the header note about
-# the deferred BrowserState struct.
-run_browser(initial<String>)<Int> -> {
-    url<String> = initial
-    top<Int> = 0
-    page<Page> = blank_page()
-    history<Vec<String>> = Vec()
-    loading<Bool> = false
-    help<Bool> = false
-    status<String> = "ready"
-    r<Int> = curses_rows()
-    c<Int> = curses_cols()
+# One `BrowserState` is owned by the loop. Navigation commits into it by
+# borrowing the struct; a freshly built `Page` is stored into the `page` field
+# (an owned field, so the compiler deep-copies/transfers the source into
+# independent storage) and read back via `borrow(st.page)` by the single-owner
+# screen helpers.
+load_url(st<their<BrowserState>>, target<String>)<Void> -> {
+    st.url = target
+    st.loading = true
+    st.status = "Loading " + target
+    st.top = 0
+    st.page = fetch_page(target)
+    st.loading = false
+    st.status = status_for(borrow(st.page), target)
+}
 
-    # Initial load.
-    loading = true
-    status = "Loading " + url
-    redraw(borrow(page), top, status, loading, help, r, c)
-    page = fetch_page(url)
-    loading = false
-    status = status_for(borrow(page), url)
-    redraw(borrow(page), top, status, loading, help, r, c)
+scroll_page(st<their<BrowserState>>, r<Int>, forward<Bool>)<Void> -> {
+    bodyRows<Int> = r - 4
+    if (bodyRows < 3) { bodyRows = 3 }
+    if (forward) {
+        nxt<Int> = st.top + bodyRows
+        if (nxt < st.page.lines.len()) { st.top = nxt } else { st.top = 0 }
+    } else {
+        prev<Int> = st.top - bodyRows
+        if (prev < 0) { prev = 0 }
+        st.top = prev
+    }
+}
+
+run_browser(initial<String>)<Int> -> {
+    state<BrowserState> = BrowserState {
+        url = initial,
+        page = blank_page(),
+        history = Vec(),
+        top = 0,
+        loading = false,
+        help = false,
+        status = "ready"
+    }
+
+    load_url(borrow(state), initial)
 
     looping<Bool> = true
     while (looping) {
-        r = curses_rows()
-        c = curses_cols()
+        r<Int>, c<Int>
+        r, c = tty_dims()
+        if (r < 1) { r = 24 }
+        if (c < 1) { c = 80 }
         k<Int> = curses_getch()
         if (k == -1) {
             continue
@@ -501,90 +541,52 @@ run_browser(initial<String>)<Int> -> {
         if (cmd == Cmd::Quit) {
             looping = false
         } else if (cmd == Cmd::NextPage) {
-            if (!help) {
-                bodyRows<Int> = r - 4
-                if (bodyRows < 3) { bodyRows = 3 }
-                nxt<Int> = top + bodyRows
-                if (nxt < page.lines.len()) { top = nxt } else { top = 0 }
-                redraw(borrow(page), top, status, loading, help, r, c)
+            if (!state.help) {
+                scroll_page(borrow(state), r, true)
+                redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
             }
         } else if (cmd == Cmd::PrevPage) {
-            if (!help) {
-                bodyRows<Int> = r - 4
-                if (bodyRows < 3) { bodyRows = 3 }
-                prev<Int> = top - bodyRows
-                if (prev < 0) { prev = 0 }
-                top = prev
-                redraw(borrow(page), top, status, loading, help, r, c)
+            if (!state.help) {
+                scroll_page(borrow(state), r, false)
+                redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
             }
         } else if (cmd == Cmd::Follow) {
-            if (!help) {
+            if (!state.help) {
                 n<Int> = k - 48
-                dest<String> = follow_page(borrow(page), n) else ""
+                dest<String> = follow_page(borrow(state.page), n) else ""
                 if (dest.len() > 0) {
-                    history.push(url)
-                    loading = true
-                    status = "Loading " + dest
-                    redraw(borrow(page), top, status, loading, help, r, c)
-                    url = dest
-                    top = 0
-                    page = fetch_page(dest)
-                    loading = false
-                    status = status_for(borrow(page), dest)
-                    redraw(borrow(page), top, status, loading, help, r, c)
+                    state.history.push(state.url)
+                    load_url(borrow(state), dest)
                 } else {
-                    status = "no link " + n.to_string()
-                    redraw(borrow(page), top, status, loading, help, r, c)
+                    state.status = "no link " + n.to_string()
                 }
+                redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
             }
         } else if (cmd == Cmd::Back) {
-            if (history.len() > 0) {
-                prevUrl<String> = history.get(history.len() - 1)
-                history.pop()
-                loading = true
-                status = "Loading " + prevUrl
-                redraw(borrow(page), top, status, loading, help, r, c)
-                url = prevUrl
-                top = 0
-                page = fetch_page(prevUrl)
-                loading = false
-                status = status_for(borrow(page), prevUrl)
-                redraw(borrow(page), top, status, loading, help, r, c)
+            if (state.history.len() > 0) {
+                prevUrl<String> = state.history.get(state.history.len() - 1)
+                state.history.pop()
+                load_url(borrow(state), prevUrl)
             } else {
-                status = "no history"
-                redraw(borrow(page), top, status, loading, help, r, c)
+                state.status = "no history"
             }
+            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
         } else if (cmd == Cmd::Reload) {
-            target<String> = url
-            loading = true
-            status = "Loading " + target
-            redraw(borrow(page), top, status, loading, help, r, c)
-            page = fetch_page(target)
-            loading = false
-            status = status_for(borrow(page), target)
-            redraw(borrow(page), top, status, loading, help, r, c)
+            load_url(borrow(state), state.url)
+            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
         } else if (cmd == Cmd::OpenUrl) {
             target<String> = open_url_prompt() else ""
             if (target.len() > 0) {
-                history.push(url)
-                loading = true
-                status = "Loading " + target
-                redraw(borrow(page), top, status, loading, help, r, c)
-                url = target
-                top = 0
-                page = fetch_page(target)
-                loading = false
-                status = status_for(borrow(page), target)
-                redraw(borrow(page), top, status, loading, help, r, c)
-            } else {
-                redraw(borrow(page), top, status, loading, help, r, c)
+                state.history.push(state.url)
+                load_url(borrow(state), target)
             }
+            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
         } else if (cmd == Cmd::Help) {
-            help = !help
-            redraw(borrow(page), top, status, loading, help, r, c)
+            state.help = !state.help
+            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
         } else {
-            status = "unrecognized key - press h for help"
-            redraw(borrow(page), top, status, loading, help, r, c)
+            state.status = "unrecognized key - press h for help"
+            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c)
         }
     }
     return 0

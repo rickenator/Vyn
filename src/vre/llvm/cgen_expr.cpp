@@ -5964,8 +5964,12 @@ void LLVMCodegen::visit(vyb::ast::AssignmentExpression *node) {
     // transfer (concat / to_string / a String-returning call) whose single owned
     // reference is handed over as-is, or a shared borrow that this location must
     // retain (+1). The outgoing buffer is released after the store so a
-    // self-assignment's retain/release on the same buffer net to zero.
-    bool stringOverwrite = isAssignToVar && destPointeeType && isVybStringStructType(destPointeeType);
+    // self-assignment's retain/release on the same buffer net to zero. Applies
+    // to identifier *and* member destinations (a `st.field = src` through a
+    // `their<Struct>` borrow): without the retain the destination shared the
+    // source's buffer and the source's scope-exit release could drop it to
+    // zero, leaving the member dangling.
+    bool stringOverwrite = destPointeeType && isVybStringStructType(destPointeeType);
     llvm::Value* oldStringVal = nullptr;
     if (stringOverwrite) {
         oldStringVal = builder->CreateLoad(destPointeeType, LHS, "assign.old_string");
@@ -6054,6 +6058,41 @@ void LLVMCodegen::visit(vyb::ast::AssignmentExpression *node) {
         if (!exprIsMildTransfer(node->right.get())) {
             retainMildControlBlock(RHS, "assign.mild");
         }
+    }
+
+    // A plain struct-typed destination whose fields own heap data (Strings,
+    // Vecs, nested owning structs) must use by-value (deep) assignment
+    // semantics: the outgoing struct's owned fields are reclaimed, and when the
+    // source is a *borrowed read* (a bare owning binding or member read that
+    // will itself be reclaimed on scope exit) the source is deep-copied so the
+    // destination owns data independent of the source. Without this a whole-
+    // struct store (`st.page = pg`, say) shallow-copied the owned pointers, so
+    // both the destination and the source reclaimed the same buffers later -
+    // "free(): double free detected" (the destructor double-free the VybLynx
+    // BrowserState surfaced). A transfer-producing RHS (a call / constructor)
+    // hands over a fresh single owner and is stored as-is after reclaiming the
+    // outgoing value.
+    const vyb::ast::TypeNode* ownedStructAst = nullptr;
+    if (destPointeeType && llvm::isa<llvm::StructType>(destPointeeType)) {
+        const vyb::ast::TypeNode* astType = lhsTypeNode.get();
+        auto vtIt = valueTypeMap.find(LHS);
+        if (vtIt != valueTypeMap.end() && vtIt->second) astType = vtIt->second.get();
+        if (astType && isKnownStructTypeNode(astType) && structTypeHasOwnedFields(astType)) {
+            ownedStructAst = astType;
+        }
+    }
+    if (ownedStructAst) {
+        auto* llvStruct = llvm::cast<llvm::StructType>(destPointeeType);
+        bool borrowedRead =
+            dynamic_cast<ast::Identifier*>(node->right.get()) != nullptr ||
+            dynamic_cast<ast::MemberExpression*>(node->right.get()) != nullptr ||
+            selectAllArmsAreOwnedReads(node->right.get());
+        if (borrowedRead) {
+            llvm::Value* dc = generateStructDeepCopy(RHS, ownedStructAst, llvStruct);
+            if (dc) RHS = dc;
+        }
+        std::set<std::string> visited;
+        reclaimStructOwnedFieldsAt(LHS, ownedStructAst, llvStruct, visited);
     }
 
     // Create the store instruction with proper alignment
