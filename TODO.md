@@ -40,7 +40,7 @@ is the working audit for what needs to be implemented next.
 | Introspection (`typeof`/`typename`) | ~75% | Downcasting, type assertions |
 | Auto-serialization | ~80% | Edge cases remain |
 | Pattern matching | ~85% | Struct destructuring, guards, range/`?`/comparison patterns, data-enum variants, `match`-as-expression shipped |
-| Package manager / `vyb.toml` | ~0% | Not started |
+| Package manager / `vyb.toml` | ~40% | `vyb.toml` manifest, `vyb build` (multi-file, local path deps), `vyb new`, `vyb.lock` for resolved path deps shipped; git/version dependency fetching + package registry pending |
 | Language server (LSP) | ~0% | Not started |
 | REPL | ~0% | Not started |
 | Self-hosting compiler | ~0% | Long-term goal |
@@ -645,11 +645,12 @@ with `pass` for multi-statement case bodies. Needs polishing:
 ## Developer Experience — Needed for 1.0
 
 ### Package Manager
-- [ ] **`vyb.toml`** — Project manifest with `[package]`, `[dependencies]`, `[[bin]]`
-- [ ] **`vyb build`** — Build multi-file projects from manifest
-- [ ] **Dependency resolution** — Version constraints and lock file (`vyb.lock`)
+- [x] **`vyb.toml`** — Project manifest with `[package]`, `[dependencies]`, `[[bin]]`
+- [x] **`vyb build`** — Build multi-file projects from manifest (reuses the module registry + native compile/link pipeline; local `{ path = ... }` dependencies resolve to module search paths)
+- [x] **`vyb new`** — Scaffold a new Vyb project (`vyb.toml` + `src/main.vyb`)
+- [x] **Lock file** — `vyb.lock` written for resolved local path dependencies
+- [ ] **Remote dependency resolution** — version/git dependency fetching + registry-gated lock pins (path deps are resolved today)
 - [ ] **Package registry** — Central registry for published packages
-- [ ] **`vyb new`** — Scaffold a new Vyb project
 
 ### Language Server Protocol (LSP)
 - [ ] **Go-to-definition** — Jump to symbol definitions across files
@@ -988,7 +989,7 @@ For Vyb to be considered production-ready at 1.0, **all of the following must be
 - [x] String methods complete (`split` and formatting done; see `.split()`/`.format()`)
 - [x] `HashMap<K, V>` and basic collections (HashMap/HashSet/BTreeMap, `Vec` iterators, growth)
 - [x] FFI (`extern "C"`) working — extern blocks, ABI aliases, `#[repr(C)]`, native `--link` (variadics/bindgen still open)
-- [ ] `vyb.toml` and `vyb build` project system
+- [x] `vyb.toml` and `vyb build` project system (foundation shipped: manifest, multi-file/path-dep build, `vyb new`, `vyb.lock`; remote git/version dependency fetching is a staged follow-up)
 - [x] Wildcard trap handler (`trap (e<?>)`) with `typeof` discrimination
 - [ ] All open contradictions resolved (see section above; 4 pre-existing trap/vec failures remain)
 
@@ -1130,6 +1131,6 @@ Non-blocking I/O (epoll/kqueue/IOCP) integration is planned for v0.6 alongside `
 ---
 
 *Last Updated: 2026-08-17 (doc-reconciliation)*
-*Current Version: Vyb v0.7.0 (freedom-1.0 series)*
+*Current Version: Vyb v0.7.1 (freedom-1.0 series)*
 *Overall Status: ~60-65% complete toward 1.0 — 993 tests, 989 passing (full --execute-jit directory sweep; 4 pre-existing trap/vec failures remain)*
 *SUGGESTIONS.md merged into this document.*

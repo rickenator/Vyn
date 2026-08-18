@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.7.1] - 2026-08-17
+
+### Added
+- Project system foundation: `vyb.toml` manifest (`[package]`, `[dependencies]`,
+  `[[bin]]`), `vyb build` (build every bin from the manifest, wiring local path
+  dependencies into the module search paths), `vyb new` project scaffolding, and
+  `vyb.lock` written for resolved local path dependencies.
+
+### Changed
+- Native `--build` / `-b` now reliably produces runnable executables: the link
+  step includes the C++ runtime atoms (`error_handling.cpp`, `intrinsics.cpp` —
+  which define `__vyb_register_typename` and `__vyb_closure_retain/release`) and
+  drives the final link through the C++ compiler driver so CRT, libstdc++ and
+  libgcc resolve (previously native links left these symbols undefined).
+- Runtime and stdlib search paths for native builds are now resolved relative to
+  the compiler executable, so `vyb build` works from any project directory.
+- README: projects (`vyb.toml`) documentation; version bump to 0.7.1.
+
 ## [0.7.0] - 2026-08-17
 
 ### Added

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(VybParser VERSION 0.7.0)
+project(VybParser VERSION 0.7.1)
 
 set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_CXX_STANDARD 17)
@@ -162,7 +162,7 @@ set(RUNTIME_HEADERS
 )
 
 # Main and tests
-set(MAIN_SOURCES src/main.cpp src/bindgen.cpp src/module_registry.cpp src/tests.cpp)
+set(MAIN_SOURCES src/main.cpp src/bindgen.cpp src/module_registry.cpp src/manifest.cpp src/tests.cpp)
 
 add_executable(vyb
     ${PARSER_SOURCES}

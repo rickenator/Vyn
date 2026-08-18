@@ -5,6 +5,7 @@
 #include "vyb/parser/parser.hpp"  // For vyb::Parser
 #include "vyb/semantic.hpp"       // For vyb::SemanticAnalyzer
 #include "vyb/module_registry.hpp"
+#include "vyb/manifest.hpp"
 #include "vyb/vre/llvm/codegen.hpp" // For vyb::LLVMCodegen
 #include "vyb/bindgen.hpp"      // For vyb::bindgen::generateBindings
 #include <catch2/catch_session.hpp>
@@ -530,122 +531,156 @@ int link_vyb_executable(const std::vector<std::string>& objectFiles,
                         bool staticLink = false) {
     std::cout << "Linking executable: " << outputExecutable << std::endl;
 
-    // First, compile the runtime support files if needed.
-    std::vector<std::pair<std::string, std::string>> runtimeUnits = {
-        {"runtime/vyb_runtime.c", "runtime/vyb_runtime.o"},
-        {"runtime/vyb_type_metadata.c", "runtime/vyb_type_metadata.o"}
-    };
-    std::vector<std::string> runtimeObjects;
-
-    for (const auto& unit : runtimeUnits) {
-        const std::string& runtimeSource = unit.first;
-        const std::string& runtimeObject = unit.second;
-        if (access(runtimeSource.c_str(), F_OK) == 0) {
-            std::cout << "Compiling Vyb runtime library..." << std::endl;
-
-            std::string compileCmd = "cc -c " + runtimeSource + " -o " + runtimeObject + " -O2";
-            int compileResult = system(compileCmd.c_str());
-            if (compileResult != 0) {
-                std::cerr << "Failed to compile runtime library" << std::endl;
-                return 1;
-            }
-            runtimeObjects.push_back(runtimeObject);
+    // Locate the runtime source directory: prefer the CWD `runtime/` (the legacy
+    // single-file `--build` from the source tree), else derive it from the vyb
+    // executable location so `vyb build` works from any project directory.
+    fs::path runtimeDir;
+    {
+        fs::path exeDir = fs::path(g_module_parse_options.executablePath).parent_path();
+        std::vector<fs::path> candidates = {
+            fs::path("runtime"),
+            exeDir / ".." / "runtime",
+            exeDir / "runtime"
+        };
+        for (const auto& c : candidates) {
+            if (fs::exists(c / "vyb_runtime.c")) { runtimeDir = c; break; }
         }
     }
-
-    // Detect platform and choose linker
-    std::string linker = "ld";
-    std::vector<std::string> linkerArgs;
-
-#ifdef __APPLE__
-    // macOS uses different linker and flags
-    linker = "ld";
-    linkerArgs.push_back("-macosx_version_min");
-    linkerArgs.push_back("10.15");
-    linkerArgs.push_back("-arch");
-    linkerArgs.push_back("x86_64");
-    // macOS dynamic linker
-    linkerArgs.push_back("-dynamic");
-    linkerArgs.push_back("-dylib");
-    // System library search paths
-    linkerArgs.push_back("-L/usr/lib");
-    linkerArgs.push_back("-L/usr/local/lib");
-#else
-    // Linux - try lld first (faster), fallback to ld
-    if (system("which lld >/dev/null 2>&1") == 0) {
-        linker = "lld";
-    } else if (system("which ld.lld >/dev/null 2>&1") == 0) {
-        linker = "ld.lld";
-    } else {
-        linker = "ld";
+    if (runtimeDir.empty()) {
+        std::cerr << "Error: cannot locate the Vyb runtime (runtime/vyb_runtime.c). "
+                     "Run vyb from its installation directory or set the install layout "
+                     "so the runtime sits next to the compiler." << std::endl;
+        return 1;
     }
 
-    // Dynamic linker path for Linux
-    linkerArgs.push_back("-dynamic-linker");
-    linkerArgs.push_back("/lib64/ld-linux-x86-64.so.2");
-#endif
+    // Compile the runtime support objects next to the output executable. The C
+    // units live in runtimeDir; the type/metadata helpers are in the compiler's
+    // C++ runtime source (self-contained, no LLVM dependency) and are compiled
+    // as a separate C++ object so codegen-emitted `__vyb_*` symbols resolve.
+    fs::path exeOutDir = fs::path(outputExecutable).parent_path();
+    fs::path repoRoot = fs::path(g_module_parse_options.executablePath).parent_path() / "..";
 
-    // Output file
-    linkerArgs.push_back("-o");
-    linkerArgs.push_back(outputExecutable);
-
-    // Add CRT startup files for proper C runtime initialization
-#ifdef __APPLE__
-    // macOS doesn't need crt files explicitly in modern versions
-#else
-    // Linux needs crt files
-    std::vector<std::string> crtPaths = {
-        "/usr/lib/x86_64-linux-gnu/",
-        "/usr/lib64/",
-        "/usr/lib/",
-        "/lib/x86_64-linux-gnu/",
-        "/lib64/",
-        "/lib/"
+    struct RuntimeUnit { std::string src, obj, compiler; };
+    std::vector<RuntimeUnit> runtimeUnits{
+        { (runtimeDir / "vyb_runtime.c").string(), "vyb_runtime.o", "cc" },
+        { (runtimeDir / "vyb_type_metadata.c").string(), "vyb_type_metadata.o", "cc" }
     };
+    fs::path cppRuntime = repoRoot / "src/runtime/error_handling.cpp";
+    if (!fs::exists(cppRuntime)) {
+        fs::path cwdCpp = fs::current_path() / "src/runtime/error_handling.cpp";
+        if (fs::exists(cwdCpp)) cppRuntime = cwdCpp;
+    }
+    if (fs::exists(cppRuntime)) {
+        runtimeUnits.push_back({ cppRuntime.string(), "error_handling.o", "c++" });
+    }
+    // The compiler's intrinsic library also lives in C++ source (self-contained,
+    // extern "C"). It defines __vyb_closure_retain/release and other codegen-emitted
+    // `__vyb_*` helpers, so native apps must link it too.
+    fs::path intrinsicsSrc = repoRoot / "src/vre/intrinsics.cpp";
+    if (!fs::exists(intrinsicsSrc)) {
+        fs::path cwdIntr = fs::current_path() / "src/vre/intrinsics.cpp";
+        if (fs::exists(cwdIntr)) intrinsicsSrc = cwdIntr;
+    }
+    if (fs::exists(intrinsicsSrc)) {
+        runtimeUnits.push_back({ intrinsicsSrc.string(), "intrinsics.o", "c++" });
+    }
 
-    auto findCrtFile = [&](const std::string& filename) -> std::string {
-        for (const auto& path : crtPaths) {
-            std::string fullPath = path + filename;
-            if (access(fullPath.c_str(), F_OK) == 0) {
-                return fullPath;
-            }
+    std::vector<std::string> runtimeObjects;
+    for (const auto& unit : runtimeUnits) {
+        fs::path runtimeObject = exeOutDir / unit.obj;
+        std::cout << "Compiling Vyb runtime library (" << unit.src << ")..." << std::endl;
+        std::string compileCmd = unit.compiler + " -c -O2 -fPIC " + unit.src +
+                                 " -o " + runtimeObject.string();
+        if (unit.compiler == "cc") compileCmd += " -D_GNU_SOURCE";
+        if (unit.compiler == "c++") {
+            compileCmd += " -D_GNU_SOURCE";
+            compileCmd += " -std=c++17 -I" + (repoRoot / "include").string();
+        }
+        if (system(compileCmd.c_str()) != 0) {
+            std::cerr << "Failed to compile runtime library" << std::endl;
+            return 1;
+        }
+        runtimeObjects.push_back(runtimeObject.string());
+    }
+
+    // Prefer the C++ compiler driver for the final link: it pulls in CRT
+    // startup objects, libstdc++ and libgcc automatically (which raw ld cannot),
+    // which is required once the C++ runtime atom (error_handling.o) is linked.
+    auto findCompilerDriver = []() -> std::string {
+        if (const char* cxx = std::getenv("CXX")) {
+            if (*cxx) return std::string(cxx);
+        }
+        for (const char* cand : {"c++", "g++", "clang++"}) {
+            if (std::system((std::string("which ") + cand + " >/dev/null 2>&1").c_str()) == 0)
+                return std::string(cand);
         }
         return "";
     };
+    std::string linker = findCompilerDriver();
+    std::vector<std::string> linkerArgs;
+    bool useCompilerDriver = !linker.empty();
 
-    std::string crt1 = findCrtFile("crt1.o");
-    std::string crti = findCrtFile("crti.o");
-    std::string crtn = findCrtFile("crtn.o");
+    if (useCompilerDriver) {
+        linkerArgs.push_back("-o");
+        linkerArgs.push_back(outputExecutable);
+        if (staticLink) linkerArgs.push_back("-static");
+        linkerArgs.push_back("-Wl,--no-as-needed");
+    } else {
+#ifdef __APPLE__
+        linker = "ld";
+        linkerArgs.push_back("-macosx_version_min");
+        linkerArgs.push_back("10.15");
+        linkerArgs.push_back("-arch");
+        linkerArgs.push_back("x86_64");
+        linkerArgs.push_back("-dynamic");
+        linkerArgs.push_back("-dylib");
+        linkerArgs.push_back("-L/usr/lib");
+        linkerArgs.push_back("-L/usr/local/lib");
+        linkerArgs.push_back("-o");
+        linkerArgs.push_back(outputExecutable);
+#else
+        if (std::system("which lld >/dev/null 2>&1") == 0) linker = "lld";
+        else if (std::system("which ld.lld >/dev/null 2>&1") == 0) linker = "ld.lld";
+        else linker = "ld";
+        linkerArgs.push_back("-dynamic-linker");
+        linkerArgs.push_back("/lib64/ld-linux-x86-64.so.2");
+        linkerArgs.push_back("-o");
+        linkerArgs.push_back(outputExecutable);
 
-    if (!crt1.empty()) linkerArgs.push_back(crt1);
-    if (!crti.empty()) linkerArgs.push_back(crti);
+        std::vector<std::string> crtPaths = {
+            "/usr/lib/x86_64-linux-gnu/", "/usr/lib64/", "/usr/lib/",
+            "/lib/x86_64-linux-gnu/", "/lib64/", "/lib/"
+        };
+        auto findCrtFile = [&](const std::string& filename) -> std::string {
+            for (const auto& path : crtPaths)
+                if (access((path + filename).c_str(), F_OK) == 0) return path + filename;
+            return "";
+        };
+        std::string crt1 = findCrtFile("crt1.o");
+        std::string crti = findCrtFile("crti.o");
+        if (!crt1.empty()) linkerArgs.push_back(crt1);
+        if (!crti.empty()) linkerArgs.push_back(crti);
 #endif
-
-    // Add all object files
-    for (const auto& objFile : objectFiles) {
-        linkerArgs.push_back(objFile);
     }
 
-    // Add runtime libraries if they were compiled
-    for (const auto& runtimeObject : runtimeObjects) {
-        if (access(runtimeObject.c_str(), F_OK) == 0) {
-            linkerArgs.push_back(runtimeObject);
-        }
-    }
+    // Add all object files, then the compiled runtime atoms.
+    for (const auto& objFile : objectFiles) linkerArgs.push_back(objFile);
+    for (const auto& runtimeObject : runtimeObjects)
+        if (access(runtimeObject.c_str(), F_OK) == 0) linkerArgs.push_back(runtimeObject);
 
-    // Add C runtime library paths
+    if (!useCompilerDriver) {
 #ifndef __APPLE__
-    linkerArgs.push_back("-L/usr/lib/x86_64-linux-gnu");
-    linkerArgs.push_back("-L/usr/lib64");
-    linkerArgs.push_back("-L/usr/lib");
+        linkerArgs.push_back("-L/usr/lib/x86_64-linux-gnu");
+        linkerArgs.push_back("-L/usr/lib64");
+        linkerArgs.push_back("-L/usr/lib");
 #endif
+    }
 
     auto normalizeLinkArg = [](const std::string& linkArg) -> std::string {
         auto endsWith = [](const std::string& value, const std::string& suffix) -> bool {
             return value.size() >= suffix.size() &&
                    value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
         };
-
         if (linkArg.empty() || linkArg[0] == '-' || linkArg.find('/') != std::string::npos ||
             endsWith(linkArg, ".a") || endsWith(linkArg, ".so") ||
             endsWith(linkArg, ".dylib") || endsWith(linkArg, ".o")) {
@@ -653,28 +688,15 @@ int link_vyb_executable(const std::vector<std::string>& objectFiles,
         }
         return "-l" + linkArg;
     };
+    for (const auto& linkArg : userLinkArgs) linkerArgs.push_back(normalizeLinkArg(linkArg));
 
-    for (const auto& linkArg : userLinkArgs) {
-        linkerArgs.push_back(normalizeLinkArg(linkArg));
-    }
-
-    // Link against C standard library and math library
+    // Link against the C standard library and math library.
     if (staticLink) {
-        linkerArgs.push_back("-static");
-        linkerArgs.push_back("-lc");
+        if (!useCompilerDriver) linkerArgs.push_back("-lc");
         linkerArgs.push_back("-lm");
     } else {
-        linkerArgs.push_back("-lc");
         linkerArgs.push_back("-lm");
     }
-
-    // Add crtn at the end (Linux)
-#ifdef __APPLE__
-    // macOS doesn't need this
-#else
-    if (!crtn.empty()) linkerArgs.push_back(crtn);
-#endif
-
     // Build command for display
     std::string command = linker;
     for (const auto& arg : linkerArgs) {
@@ -727,6 +749,198 @@ int link_vyb_executable(const std::vector<std::string>& objectFiles,
         }
     }
 }
+
+// ===========================================================================
+// Project system: `vyb build` and `vyb new`
+// ===========================================================================
+namespace {
+
+std::string read_source_file(const std::string& filename) {
+    std::ifstream file(filename);
+    std::string s((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    return s;
+}
+
+// Module search paths for a project: the project root + src/, then each local
+// path dependency (the dependency dir and its src subdir). Local imports in the
+// project's own src tree and in dependency trees resolve through these paths.
+std::vector<fs::path> project_module_paths(const vyb::Manifest& m) {
+    std::vector<fs::path> paths;
+    paths.push_back(m.rootDir);
+    auto srcDir = m.rootDir / "src";
+    if (fs::is_directory(srcDir)) paths.push_back(srcDir);
+    for (const auto& d : m.dependencies) {
+        if (d.source != "path") continue;
+        fs::path p = d.path.empty() ? fs::path(d.name) : fs::path(d.path);
+        if (p.is_relative()) p = m.rootDir / p;
+        p = fs::absolute(p).lexically_normal();
+        paths.push_back(p);
+        auto depSrc = p / "src";
+        if (fs::is_directory(depSrc)) paths.push_back(depSrc);
+    }
+    return paths;
+}
+
+// Record the resolved dependency set to vyb.lock.
+void write_lockfile(const vyb::Manifest& m) {
+    fs::path lock = m.rootDir / "vyb.lock";
+    std::ofstream out(lock);
+    out << "# vyb.lock - generated by `vyb build`. Do not edit by hand.\n";
+    out << "version = 1\n\n";
+    for (const auto& d : m.dependencies) {
+        if (d.source == "path") {
+            fs::path p = d.path.empty() ? fs::path(d.name) : fs::path(d.path);
+            if (p.is_relative()) p = m.rootDir / p;
+            out << "[[" << d.name << "]]\n";
+            out << "source = \"path\"\n";
+            out << "resolved = \"" << fs::absolute(p).lexically_normal().string() << "\"\n\n";
+        } else {
+            out << "[[" << d.name << "]]\n";
+            out << "source = \"" << d.source << "\"\n";
+            out << "resolved = \"UNRESOLVED - dependency backend not implemented\"\n\n";
+        }
+    }
+}
+
+int run_build_command(int argc, char** argv, const std::string& exeArg) {
+    std::string dir = ".";
+    std::vector<std::string> linkArgs;
+    bool staticLink = false;
+    int opt = 2;
+    for (int i = 0; i < argc; ++i) {
+        std::string a = argv[i];
+        if (a == "--link" && i + 1 < argc) {
+            linkArgs.push_back(argv[++i]);
+        } else if (a == "--static") {
+            staticLink = true;
+        } else if (a.compare(0, 2, "-O") == 0 && a.length() >= 3) {
+            int lvl = a[2] - '0';
+            opt = (lvl >= 0 && lvl <= 3) ? lvl : 2;
+        } else if (a == "-C" && i + 1 < argc) {
+            dir = argv[++i];
+        } else if (!a.empty() && a[0] != '-') {
+            dir = a;
+        } else {
+            std::cerr << "Error: unknown argument '" << a << "' for vyb build" << std::endl;
+            return 1;
+        }
+    }
+
+    std::error_code dirErr;
+    fs::path root = fs::absolute(dir, dirErr);
+    if (dirErr || !fs::is_directory(root)) {
+        std::cerr << "Error: project directory not found: " << dir << std::endl;
+        return 1;
+    }
+
+    std::string merr;
+    auto manifest = vyb::load_manifest(root, &merr);
+    if (!manifest) {
+        std::cerr << "Error: " << merr << std::endl;
+        std::cerr << "Run `vyb new <name>` to scaffold a project, or create a vyb.toml." << std::endl;
+        return 1;
+    }
+
+    for (const auto& d : manifest->dependencies) {
+        if (d.source != "path") {
+            std::cerr << "Error: dependency '" << d.name << "' uses the '" << d.source
+                      << "' source, which is not implemented yet; use a local path dependency."
+                      << std::endl;
+            return 1;
+        }
+    }
+
+    g_module_parse_options.cliModulePaths = project_module_paths(*manifest);
+    // The registry derives the stdlib search path from the executable location;
+    // set it here because the normal arg loop that does this is bypassed.
+    std::error_code exePathError;
+    g_module_parse_options.executablePath = fs::absolute(exeArg, exePathError);
+    if (exePathError) g_module_parse_options.executablePath = exeArg;
+
+    fs::path targetDir = root / "target";
+    fs::create_directories(targetDir);
+
+    std::cout << "Building project '" << manifest->name << "' v" << manifest->version
+              << " in " << root.string() << std::endl;
+
+    int failures = 0;
+    for (const auto& bin : manifest->bins) {
+        fs::path src = root / bin.path;
+        if (!fs::exists(src)) {
+            std::cerr << "Error: bin source not found: " << src.string() << std::endl;
+            ++failures;
+            continue;
+        }
+        std::cout << "\n== bin '" << bin.name << "' ==\n";
+        fs::path obj = targetDir / (bin.name + ".o");
+        std::string source = read_source_file(src.string());
+        int r = compile_vyb_to_object(source, src.string(), obj.string(), opt);
+        if (r != 0) {
+            ++failures;
+            continue;
+        }
+        fs::path exe = targetDir / bin.name;
+        int lr = link_vyb_executable({ obj.string() }, exe.string(), linkArgs, staticLink);
+        if (lr != 0) {
+            ++failures;
+            continue;
+        }
+        std::cout << "Built " << exe.string() << std::endl;
+    }
+
+    write_lockfile(*manifest);
+
+    if (failures == 0) {
+        std::cout << "\nBuild successful. Binaries in " << targetDir.string() << std::endl;
+        return 0;
+    }
+    std::cerr << "\nBuild finished with " << failures << " failed target(s)." << std::endl;
+    return 1;
+}
+
+int run_new_command(int argc, char** argv) {
+    std::string name;
+    std::string version = "0.1.0";
+    for (int i = 0; i < argc; ++i) {
+        std::string a = argv[i];
+        if (a == "--version" && i + 1 < argc) {
+            version = argv[++i];
+        } else if (!a.empty() && a[0] != '-') {
+            name = a;
+        } else {
+            std::cerr << "Error: unknown argument '" << a << "' for vyb new" << std::endl;
+            return 1;
+        }
+    }
+    if (name.empty()) {
+        std::cerr << "Usage: vyb new <name> [--version X.Y.Z]" << std::endl;
+        return 1;
+    }
+
+    fs::path root = fs::current_path() / name;
+    fs::path srcDir = root / "src";
+    if (fs::exists(root)) {
+        std::cerr << "Error: '" << root.string() << "' already exists." << std::endl;
+        return 1;
+    }
+    fs::create_directories(srcDir);
+
+    std::ofstream manifestFile(root / "vyb.toml");
+    manifestFile << vyb::default_manifest_toml(name, version);
+
+    std::ofstream mainFile(srcDir / "main.vyb");
+    mainFile << "// " << name << " — scaffolded by `vyb new`.\n\n"
+             << "main()<Int> -> {\n"
+             << "    println(\"Hello from " << name << "!\")\n"
+             << "    return 0\n"
+             << "}\n";
+
+    std::cout << "Created project '" << name << "' in " << root.string() << std::endl;
+    std::cout << "  cd " << name << " && vyb build" << std::endl;
+    return 0;
+}
+
+} // namespace
 
 // Function to execute Vyb code using LLVM JIT
 int run_vyb_code(const std::string& source, const std::string& fileName, bool generateLLVMIR) {
@@ -1606,6 +1820,17 @@ int main(int argc, char* argv[]) {
             std::cout << bindings;
         }
         return 0;
+    }
+
+    // `vyb build [dir] [--link lib]* [--static] [-O0..3] [-C dir]`: build every
+    // [[bin]] in a vyb.toml project, resolving local path dependencies and
+    // reusing the module registry + native compile/link pipeline.
+    // `vyb new <name>`: scaffold a fresh project.
+    if (argc >= 2 && std::string(argv[1]) == "build") {
+        return run_build_command(argc - 2, argv + 2, std::string(argv[0]));
+    }
+    if (argc >= 2 && std::string(argv[1]) == "new") {
+        return run_new_command(argc - 2, argv + 2);
     }
 
     std::vector<std::string> catch_args;
