@@ -1,0 +1,31 @@
+// @test: select over Bool with a block arm containing an if/else
+// @description: regression: a `select` used as a statement over a Bool whose
+//   first arm is a block containing a local declaration and an if/else used to
+//   leave the preview's continuation block dangling, failing LLVM module
+//   verification ("Basic Block ... does not have a terminator").
+// @category: control_flow, select
+// @expect: pass
+// @expect-output: fwd=15 back=15
+// @expect-return: 0
+
+step_scroll(top<Int>, len<Int>, rows<Int>, forward<Bool>)<Int> -> {
+    select (forward) -> {
+        true -> {
+            nxt<Int> = top + rows
+            if (nxt < len) { top = nxt } else { top = 0 }
+        }
+        false -> {
+            prv<Int> = top - rows
+            if (prv < 0) { prv = 0 }
+            top = prv
+        }
+    }
+    return top
+}
+
+main()<Int> -> {
+    fwd<Int> = step_scroll(5, 100, 10, true)
+    back<Int> = step_scroll(25, 100, 10, false)
+    println("fwd=" + fwd.to_string() + " back=" + back.to_string())
+    return 0
+}

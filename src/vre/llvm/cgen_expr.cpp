@@ -8770,12 +8770,20 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
 
     // Determine result type from first case (TODO: proper type inference)
     if (!node->cases.empty() && node->cases[0].second) {
-        // Save current insertion point
+        // Save current insertion point and the function's current size. Any
+        // basic blocks created while typing the first arm below (its temporary
+        // block plus whatever control-flow blocks the body allocates, e.g. an
+        // `if` statement's continuation) are appended to the function's tail and
+        // must be erased afterwards: leaving them dangling makes them unterminated
+        // and fails LLVM module verification ("Basic Block ... does not have a
+        // terminator").
         llvm::BasicBlock* savedBB = builder->GetInsertBlock();
         llvm::BasicBlock::iterator savedIP = builder->GetInsertPoint();
+        llvm::Function* previewFunc = savedBB->getParent();
+        unsigned previewStartSize = previewFunc->size();
 
         // Create a temporary block for type inference
-        llvm::BasicBlock* tempBB = llvm::BasicBlock::Create(*context, "select.type_infer", func);
+        llvm::BasicBlock* tempBB = llvm::BasicBlock::Create(*context, "select.type_infer", previewFunc);
         builder->SetInsertPoint(tempBB);
 
         // Enable type inference mode
@@ -8795,8 +8803,16 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
         // Disable type inference mode
         infer_types_only = false;
 
-        // Delete the temporary block (it was just for type inference)
-        tempBB->eraseFromParent();
+        // Erase every block the preview allocated (the temp block and the first
+        // arm's control-flow blocks), then drop any value that lives in one of
+        // them. They are only reachable from the temp block, so walking the
+        // tail of the function is safe.
+        while (previewFunc->size() > previewStartSize) {
+            llvm::Function::iterator stray = previewFunc->end();
+            --stray;
+            stray->eraseFromParent();
+        }
+        m_currentLLVMValue = nullptr;
 
         // Restore insertion point
         builder->SetInsertPoint(savedBB, savedIP);
