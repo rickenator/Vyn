@@ -868,3 +868,17 @@ Any future `url` consumer would otherwise need to over-import the helpers.
 Direction: root the bind-method body's scope at the defining module's resolvable
 scope (matching free-function bodies) rather than the importer's `currentScope`.
 Not now.
+
+### RFE-C: stdlib `qt` module — native GUI bindings
+
+Add a stdlib `qt` module (mirroring how `curses` was folded into the standard
+library) so Vyb programs can build native desktop GUIs: windows/widgets, an
+event loop + signals/slots, layout, common controls, and timers. Proposal only
+for now; open questions before any work:
+
+- binding strategy (pure-Vyb wrapper vs C FFI shim over Qt5/Qt6),
+- scope (Widgets vs Quick/QML),
+- how the Qt event loop interacts with the stdlib `asyncs` executor and the
+  existing curses-based VybLynx TUI.
+
+Not started.
