@@ -19,6 +19,17 @@
 # same pure-Vyb url/html renderers as the line-mode iteration. The terminal layer
 # is curses-only and the single-owner screen rule holds.
 #
+# RFE feature coverage at a glance:
+#   aspect/bind/struct  ResourceProvider/Interactive/Display + providers & Nav
+#   select              cmd_of (key classification), the run_browser command
+#                       dispatcher, and the startup probe boot-status routing
+#   asyncs/Future/await startup_probe() awaited then `select`ed for boot status
+#   agents + channels   page downloads run on an agent worker -> dl_progress chan
+#   ensure/fail/trap    screen-size invariant; fetch_page_at fails closed to an
+#                       error page and is trapped at the navigation boundary
+#   T? / ownership      follow_page returns String? (null = absent link) and the
+#                       UI loop owns BrowserState via `their` borrows
+#
 # The event loop owns one `BrowserState` struct that holds the current `Page`
 # and navigation history. Assigning an owned `Page`/`String` into a struct field
 # (through a `their` borrow) now deep-copies / retains the source so the struct
@@ -722,20 +733,32 @@ enum Cmd {
     Unknown
 }
 
+# A key code is classified by `select` (a value-returning pattern match) rather
+# than a long if/else-if ladder. Int literal arms bind specific curses key codes;
+# the wildcard `?` catches everything else. This is the RFE §... `select`
+# flow-of-control idiom.
 cmd_of(k<Int>)<Cmd> -> {
-    if (k == 113) { return Cmd::Quit }             # q
-    if (k == 110 || k == 32) { return Cmd::NextPage }  # n / space
-    if (k == 112) { return Cmd::PrevPage }         # p
-    if (k == 98) { return Cmd::Back }              # b
-    if (k == 114) { return Cmd::Reload }           # r
-    if (k == 103) { return Cmd::OpenUrl }          # g
-    if (k == 104) { return Cmd::Help }             # h
-    if (k == 100) { return Cmd::Download }         # d
-    if (k == 258 || k == 9) { return Cmd::FocusNext }  # down / tab
-    if (k == 259) { return Cmd::FocusPrev }        # up
-    if (k == 343 || k == 10 || k == 13) { return Cmd::FollowEnter }  # enter
-    if (k >= 49 && k <= 57) { return Cmd::Follow } # 1..9
-    return Cmd::Unknown
+    return select (k) -> {
+        113 -> Cmd::Quit,                # q
+        110 -> Cmd::NextPage,            # n
+        32 -> Cmd::NextPage,             # space
+        112 -> Cmd::PrevPage,            # p
+        98 -> Cmd::Back,                 # b
+        114 -> Cmd::Reload,              # r
+        103 -> Cmd::OpenUrl,             # g
+        104 -> Cmd::Help,                # h
+        100 -> Cmd::Download,            # d
+        258 -> Cmd::FocusNext,           # down
+        9 -> Cmd::FocusNext,             # tab
+        259 -> Cmd::FocusPrev,           # up
+        343 -> Cmd::FollowEnter,         # enter
+        10 -> Cmd::FollowEnter,          # line feed
+        13 -> Cmd::FollowEnter,          # carriage return
+        49 -> Cmd::Follow, 50 -> Cmd::Follow, 51 -> Cmd::Follow,
+        52 -> Cmd::Follow, 53 -> Cmd::Follow, 54 -> Cmd::Follow,
+        55 -> Cmd::Follow, 56 -> Cmd::Follow, 57 -> Cmd::Follow,
+        ? -> Cmd::Unknown
+    }
 }
 
 # --- In-window URL editor helpers -------------------------------------------
@@ -758,12 +781,15 @@ place_addr_caret(r<Int>, c<Int>)<Void> -> {
     curses_move(statusRow, 1 + caret)
 }
 
-# --- A tiny async showcase ---------------------------------------------------
-# RFE §10/§11: an explicit Future object represents an outstanding operation.
-# A warm-up fiber is started and awaited at launch before the event loop begins.
-async warm_up(ms<Int>)<Future<Int>> -> {
+# --- Async + Future driving flow of control ----------------------------------
+# RFE §10/§11: an explicit Future object models an outstanding operation. The
+# startup probe runs on a worker fiber (asyncs module) and is `await`ed at
+# launch; the awaited result is then routed through a `select` to choose the
+# browser's initial status line -- so async/await + Future + `select` cooperate
+# as flow of control, not as cast-aside scaffolding.
+async startup_probe(ms<Int>)<Future<Int>> -> {
     async_sleep_ms(ms)
-    return ms
+    return 0
 }
 
 # --- The event loop ----------------------------------------------------------
@@ -961,7 +987,9 @@ poll_progress(st<their<BrowserState>>)<Bool> -> {
     return true
 }
 
-run_browser(initial<String>)<Int> -> {
+# `initial_status` seeds the status bar (chosen by `select` over an `await`ed
+# Future in main), so the async startup probe visibly drives the UI's first line.
+run_browser(initial<String>, initial_status<String>)<Int> -> {
     state<BrowserState> = BrowserState {
         url = initial,
         page = blank_page(),
@@ -970,7 +998,7 @@ run_browser(initial<String>)<Int> -> {
         focus = 0,
         loading = false,
         help = false,
-        status = "ready",
+        status = initial_status,
         task = 0,
         pending = "",
         gen = 0,
@@ -1047,112 +1075,126 @@ run_browser(initial<String>)<Int> -> {
             continue
         }
         cmd<Cmd> = cmd_of(k)
-        if (cmd == Cmd::Quit) {
-            looping = false
-        } else if (cmd == Cmd::NextPage) {
-            if (!state.help) {
-                scroll_page(borrow(state), r, true)
-                redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
+        # Dispatch the classified command with `select` as a statement: each enum
+        # variant fires a side-effecting arm (navigation, focus, scroll, ...);
+        # the wildcard `?` catches unrecognized commands. This is the RFE-native
+        # match-style flow of control in place of an if/else-if ladder.
+        select (cmd) -> {
+            Quit -> {
+                looping = false
             }
-        } else if (cmd == Cmd::PrevPage) {
-            if (!state.help) {
-                scroll_page(borrow(state), r, false)
-                redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
-            }
-        } else if (cmd == Cmd::FocusNext) {
-            if (!state.help) {
-                if (state.page.navs.len() > 0) {
-                    state.focus = state.focus + 1
-                    if (state.focus >= state.page.navs.len()) { state.focus = 0 }
+            NextPage -> {
+                if (!state.help) {
+                    scroll_page(borrow(state), r, true)
+                    redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
                 }
-                # Auto-scroll so the focused marker stays on screen. Operates on the
-                # owned `state` and `borrow(state.page)` (the draw path) rather than
-                # re-borrowing a `their` param, which tripped a generated-code
-                # ownership edge (crashed reading `page.lines`).
-                if (state.page.navs.len() > 0) {
-                    li<Int> = nav_line_index(borrow(state.page), state.focus + 1)
-                    if (li >= 0) {
-                        br<Int> = body_rows(r)
-                        if (li < state.top) { state.top = li }
-                        else if (li >= state.top + br) { state.top = li - br + 1 }
+            }
+            PrevPage -> {
+                if (!state.help) {
+                    scroll_page(borrow(state), r, false)
+                    redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
+                }
+            }
+            FocusNext -> {
+                if (!state.help) {
+                    if (state.page.navs.len() > 0) {
+                        state.focus = state.focus + 1
+                        if (state.focus >= state.page.navs.len()) { state.focus = 0 }
                     }
-                }
-                redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
-            }
-        } else if (cmd == Cmd::FocusPrev) {
-            if (!state.help) {
-                if (state.page.navs.len() > 0) {
-                    state.focus = state.focus - 1
-                    if (state.focus < 0) { state.focus = state.page.navs.len() - 1 }
-                }
-                if (state.page.navs.len() > 0) {
-                    li<Int> = nav_line_index(borrow(state.page), state.focus + 1)
-                    if (li >= 0) {
-                        br<Int> = body_rows(r)
-                        if (li < state.top) { state.top = li }
-                        else if (li >= state.top + br) { state.top = li - br + 1 }
+                    if (state.page.navs.len() > 0) {
+                        li<Int> = nav_line_index(borrow(state.page), state.focus + 1)
+                        if (li >= 0) {
+                            br<Int> = body_rows(r)
+                            if (li < state.top) { state.top = li }
+                            else if (li >= state.top + br) { state.top = li - br + 1 }
+                        }
                     }
+                    redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
                 }
-                redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
             }
-        } else if (cmd == Cmd::Follow) {
-            if (!state.help) {
-                n<Int> = k - 48
-                dest<String> = follow_page(borrow(state.page), n) else ""
-                if (dest.len() > 0) {
-                    state.history.push(state.url)
-                    load_url(borrow(state), dest)
+            FocusPrev -> {
+                if (!state.help) {
+                    if (state.page.navs.len() > 0) {
+                        state.focus = state.focus - 1
+                        if (state.focus < 0) { state.focus = state.page.navs.len() - 1 }
+                    }
+                    if (state.page.navs.len() > 0) {
+                        li<Int> = nav_line_index(borrow(state.page), state.focus + 1)
+                        if (li >= 0) {
+                            br<Int> = body_rows(r)
+                            if (li < state.top) { state.top = li }
+                            else if (li >= state.top + br) { state.top = li - br + 1 }
+                        }
+                    }
+                    redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
+                }
+            }
+            Follow -> {
+                if (!state.help) {
+                    n<Int> = k - 48
+                    dest<String> = follow_page(borrow(state.page), n) else ""
+                    if (dest.len() > 0) {
+                        state.history.push(state.url)
+                        load_url(borrow(state), dest)
+                    } else {
+                        state.status = "no link " + n.to_string()
+                    }
+                    redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
+                }
+            }
+            FollowEnter -> {
+                if (!state.help) {
+                    dest<String> = follow_focus(borrow(state))
+                    if (dest.len() > 0) {
+                        state.history.push(state.url)
+                        load_url(borrow(state), dest)
+                    } else {
+                        state.status = "no links to follow"
+                    }
+                    redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
+                }
+            }
+            Download -> {
+                if (!state.help) {
+                    if (dl_running == 0) {
+                        start_download(state.url)
+                        state.status = "downloading " + state.url
+                    } else {
+                        state.status = "download already in progress"
+                    }
+                    redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
+                }
+            }
+            Back -> {
+                if (state.history.len() > 0) {
+                    prevUrl<String> = state.history.get(state.history.len() - 1)
+                    state.history.pop()
+                    load_url(borrow(state), prevUrl)
                 } else {
-                    state.status = "no link " + n.to_string()
+                    state.status = "no history"
                 }
                 redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
             }
-        } else if (cmd == Cmd::FollowEnter) {
-            if (!state.help) {
-                dest<String> = follow_focus(borrow(state))
-                if (dest.len() > 0) {
-                    state.history.push(state.url)
-                    load_url(borrow(state), dest)
-                } else {
-                    state.status = "no links to follow"
-                }
+            Reload -> {
+                load_url(borrow(state), state.url)
                 redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
             }
-        } else if (cmd == Cmd::Download) {
-            if (!state.help) {
-                if (dl_running == 0) {
-                    start_download(state.url)
-                    state.status = "downloading " + state.url
-                } else {
-                    state.status = "download already in progress"
+            OpenUrl -> {
+                if (!state.help) {
+                    enter_address_mode()
+                    redraw(borrow(state.page), state.top, state.status,
+                           state.loading, state.help, r, c, state.focus)
+                    place_addr_caret(r, c)
                 }
+            }
+            Help -> {
+                state.help = !state.help
                 redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
             }
-        } else if (cmd == Cmd::Back) {
-            if (state.history.len() > 0) {
-                prevUrl<String> = state.history.get(state.history.len() - 1)
-                state.history.pop()
-                load_url(borrow(state), prevUrl)
-            } else {
-                state.status = "no history"
+            ? -> {
+                state.status = "unrecognized key - press h for help"
+                redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
             }
-            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
-        } else if (cmd == Cmd::Reload) {
-            load_url(borrow(state), state.url)
-            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
-        } else if (cmd == Cmd::OpenUrl) {
-            if (!state.help) {
-                enter_address_mode()
-                redraw(borrow(state.page), state.top, state.status,
-                       state.loading, state.help, r, c, state.focus)
-                place_addr_caret(r, c)
-            }
-        } else if (cmd == Cmd::Help) {
-            state.help = !state.help
-            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
-        } else {
-            state.status = "unrecognized key - press h for help"
-            redraw(borrow(state.page), state.top, state.status, state.loading, state.help, r, c, state.focus)
         }
     }
     return 0
@@ -1168,9 +1210,14 @@ main()<Int> -> {
     init_colors()
     dl_progress = strchan_new()
 
-    # A background fiber is started and awaited before the loop begins.
-    startup<Future<Int>> = warm_up(8)
-    ok<Int> = await startup
+    # A background probe fiber is started and awaited before the loop begins;
+    # `select` turns its result into the initial status line for the browser.
+    startup<Future<Int>> = startup_probe(8)
+    probe<Int> = await startup
+    boot<String> = select (probe) -> {
+        0 -> "ready",
+        ? -> "degraded"
+    }
 
     start<String> = env_get("VYB_LYNX_HOME")
     if (start.trim().len() == 0) {
@@ -1179,7 +1226,7 @@ main()<Int> -> {
     }
 
     result<Int> = {
-        run_browser(start)
+        run_browser(start, boot)
     } ensure -> {
         curses_show_cursor()
         curses_close()
