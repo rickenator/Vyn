@@ -1,0 +1,16 @@
+// @test: payload-binding enum variants are rejected inside a set
+// @description: Circle(r) binds a payload and is not a plain literal/variant
+//   name, so it cannot appear in a {...} select set.
+// @category: select, parser, error
+// @expect: fail
+// @expect-error: Payload-binding enum variants
+
+enum Shape { Circle(Float), Rect(Float, Float) }
+
+main()<Int> -> {
+    v<Int> = select(Shape::Circle(1.0)) -> {
+        {Circle(r)} -> 1,
+        ?           -> 2
+    }
+    return v
+}

@@ -8905,10 +8905,11 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
         llvm::BasicBlock* caseBB = llvm::BasicBlock::Create(*context, "select.case", func);
         nextCaseBB = llvm::BasicBlock::Create(*context, "select.next");
 
-        // Exact/literal match comparison, used when the pattern is not a
-        // comparison operator or a known enum variant.
-        auto buildLiteralCond = [&]() -> llvm::Value* {
-            pattern->accept(*this);
+        // Exact/literal match comparison of a single pattern/element against the
+        // select target. Used when the pattern is not a comparison operator or a
+        // known (unit) enum variant.
+        auto buildLiteralCond = [&](const ast::ExprPtr& p) -> llvm::Value* {
+            p->accept(*this);
             llvm::Value* pv = m_currentLLVMValue;
             if (!pv) return nullptr;
             if (pv->getType()->isIntegerTy() && matchValue->getType()->isIntegerTy())
@@ -8920,8 +8921,28 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
                     builder->CreatePtrToInt(matchValue, llvm::Type::getInt64Ty(*context)),
                     builder->CreatePtrToInt(pv, llvm::Type::getInt64Ty(*context)), "select.ptrcmp");
             }
-            logWarning(pattern->loc, "Complex select pattern not fully implemented");
+            logWarning(p->loc, "Complex select pattern not fully implemented");
             return llvm::ConstantInt::getFalse(*context);
+        };
+
+        // Build the match condition for a single set element: dispatch on the
+        // element's enum-variant tag when it names a unit variant, otherwise
+        // fall back to literal equality (which also resolves qualified scalar
+        // variants like `Shape::Square`).
+        auto buildElementCond = [&](const ast::ExprPtr& elem) -> llvm::Value* {
+            if (auto* pid = dynamic_cast<ast::Identifier*>(elem.get())) {
+                if (matchedEnum) {
+                    auto tagIt = matchedEnum->variantTags.find(pid->name);
+                    if (tagIt != matchedEnum->variantTags.end()) {
+                        llvm::Value* tagVal = matchedEnum->isScalar
+                            ? matchValue
+                            : builder->CreateExtractValue(matchValue, 0, "select.enum.tag");
+                        return builder->CreateICmpEQ(
+                            tagVal, llvm::ConstantInt::get(int64Type, tagIt->second, true), "select.variant.tag");
+                    }
+                }
+            }
+            return buildLiteralCond(elem);
         };
 
         // Check if this is a comparison pattern
@@ -9027,11 +9048,21 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
                 }
             }
             if (!cond) {
-                cond = buildLiteralCond();
+                cond = buildLiteralCond(pattern);
             }
+        } else if (auto* setp = dynamic_cast<ast::SetPattern*>(pattern.get())) {
+            // Brace-delimited set pattern `{ v1, v2, ... }`: matches if the
+            // target equals ANY element (OR of per-element equality checks).
+            cond = nullptr;
+            for (auto& elem : setp->elements) {
+                llvm::Value* ec = buildElementCond(elem);
+                if (!ec) { cond = llvm::ConstantInt::getFalse(*context); break; }
+                cond = cond ? builder->CreateOr(cond, ec, "select.set.or") : ec;
+            }
+            if (!cond) cond = llvm::ConstantInt::getFalse(*context);
         } else {
             // Exact match pattern (literal value)
-            cond = buildLiteralCond();
+            cond = buildLiteralCond(pattern);
         }
 
         if (cond) {

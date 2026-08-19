@@ -1642,6 +1642,28 @@ void StructPattern::accept(Visitor& visitor) {
     visitor.visit(this);
 }
 
+// --- SetPattern ---
+SetPattern::SetPattern(SourceLocation loc, std::vector<ExprPtr> elements)
+    : Expression(loc), elements(std::move(elements)) {}
+
+NodeType SetPattern::getType() const {
+    return NodeType::SET_PATTERN;
+}
+
+std::string SetPattern::toString() const {
+    std::string str = "{ ";
+    for (size_t i = 0; i < elements.size(); ++i) {
+        if (i) str += ", ";
+        str += elements[i] ? elements[i]->toString() : "?";
+    }
+    str += " }";
+    return str;
+}
+
+void SetPattern::accept(Visitor& visitor) {
+    visitor.visit(this);
+}
+
 // --- TypeofExpression ---
 TypeofExpression::TypeofExpression(SourceLocation loc, ExprPtr operand)
     : Expression(loc), operand(std::move(operand)), operandFromWildcardError(false) {}

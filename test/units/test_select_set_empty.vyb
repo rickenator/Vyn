@@ -1,0 +1,13 @@
+// @test: an empty select set pattern is rejected
+// @description: {} has no values to match against and is a parse error.
+// @category: select, parser, error
+// @expect: fail
+// @expect-error: Empty select set pattern
+
+main()<Int> -> {
+    v<Int> = select(1) -> {
+        { } -> 1,
+        ?   -> 2
+    }
+    return v
+}

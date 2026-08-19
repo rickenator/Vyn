@@ -5507,6 +5507,10 @@ void SemanticAnalyzer::visit(ast::SelectExpression* node) {
             comp->accept(*this);
         } else if (auto* ctor = dynamic_cast<ast::ConstructionExpression*>(pattern.get())) {
             // Enum variant pattern with payload: `Circle(r)`, `Rect(w, h)`.
+            if (wildcardIndex != SIZE_MAX) {
+                addError("Pattern after wildcard in case " +
+                        std::to_string(wildcardIndex + 1) + " is unreachable", pattern.get());
+            }
             bool handled = false;
             if (!selectTypeStr.empty()) {
                 auto variantsIt = enumVariantPayloadTypes.find(selectTypeStr);
@@ -5551,6 +5555,10 @@ void SemanticAnalyzer::visit(ast::SelectExpression* node) {
             }
         } else if (auto* vid = dynamic_cast<ast::Identifier*>(pattern.get())) {
             // Enum unit-variant pattern: `Unit`.
+            if (wildcardIndex != SIZE_MAX) {
+                addError("Pattern after wildcard in case " +
+                        std::to_string(wildcardIndex + 1) + " is unreachable", pattern.get());
+            }
             bool handled = false;
             if (!selectTypeStr.empty()) {
                 auto variantsIt = enumVariantPayloadTypes.find(selectTypeStr);
@@ -5561,8 +5569,118 @@ void SemanticAnalyzer::visit(ast::SelectExpression* node) {
             if (!handled) {
                 vid->accept(*this);
             }
+        } else if (auto* setp = dynamic_cast<ast::SetPattern*>(pattern.get())) {
+            // Brace-delimited set pattern `{ v1, v2, ... }`.
+            if (wildcardIndex != SIZE_MAX) {
+                addError("Pattern after wildcard in case " +
+                        std::to_string(wildcardIndex + 1) + " is unreachable", pattern.get());
+            }
+
+            // Visit each element. Enum unit-variant names above the select's enum
+            // are recognized so they are not treated as free identifiers; all
+            // other elements (literals, qualified variant names) are visited
+            // normally so their types are recorded for the consistency check.
+            for (auto& elem : setp->elements) {
+                if (auto* vid = dynamic_cast<ast::Identifier*>(elem.get())) {
+                    bool handled = false;
+                    if (!selectTypeStr.empty()) {
+                        auto variantsIt = enumVariantPayloadTypes.find(selectTypeStr);
+                        if (variantsIt != enumVariantPayloadTypes.end() && variantsIt->second.count(vid->name)) {
+                            handled = true;
+                        }
+                    }
+                    if (!handled) vid->accept(*this);
+                } else {
+                    elem->accept(*this);
+                }
+            }
+
+            // Type consistency across elements: every literal element must share
+            // the type of the other literals and of the select target. Enum
+            // variant elements are inherently the target's (enum) type.
+            auto setElemTypeStr = [](const ast::ExprPtr& e) -> std::string {
+                if (auto* li = dynamic_cast<ast::IntegerLiteral*>(e.get()))
+                    return li->isUnsigned ? "UInt64" : "Int";
+                if (auto* fl = dynamic_cast<ast::FloatLiteral*>(e.get())) return "Float";
+                if (auto* sl = dynamic_cast<ast::StringLiteral*>(e.get())) return "String";
+                if (auto* bl = dynamic_cast<ast::BooleanLiteral*>(e.get())) return "Bool";
+                if (auto* nl = dynamic_cast<ast::NilLiteral*>(e.get())) return "nil";
+                return "";
+            };
+            // Strip ownership wrappers (my<>/our<>/their<>/mild<>) and trailing
+            // generic arguments from a type string for core-type comparison.
+            auto coreSetType = [](std::string t) -> std::string {
+                bool stripped = true;
+                while (stripped) {
+                    stripped = false;
+                    size_t lt = t.find('<');
+                    if (lt != std::string::npos) {
+                        std::string head = t.substr(0, lt);
+                        if (head == "my" || head == "our" || head == "their" || head == "mild") {
+                            size_t gt = t.rfind('>');
+                            if (gt != std::string::npos && gt > lt) {
+                                t = t.substr(lt + 1, gt - lt - 1);
+                                stripped = true;
+                            }
+                        }
+                    }
+                }
+                size_t lt = t.find('<');
+                if (lt != std::string::npos) t = t.substr(0, lt);
+                return t;
+            };
+            std::string established;
+            for (auto& elem : setp->elements) {
+                std::string et = setElemTypeStr(elem);
+                if (et.empty()) continue;  // enum variant element
+                if (established.empty()) established = et;
+                if (et != established) {
+                    addError("Type mismatch in select set: element of type '" + et +
+                             "' does not match '" + established + "'", setp);
+                    break;
+                }
+                if (!selectTypeStr.empty() && coreSetType(selectTypeStr) != et) {
+                    addError("Type mismatch in select set: element of type '" + et +
+                             "' does not match select target type '" + selectTypeStr + "'", setp);
+                    break;
+                }
+            }
+
+            // Every non-literal element must be a bare enum-variant name of the
+            // select's (enum) target. Arbitrary expressions / variable references
+            // are not permitted inside a set.
+            for (auto& elem : setp->elements) {
+                if (auto* li = dynamic_cast<ast::IntegerLiteral*>(elem.get())) { (void)li; continue; }
+                if (auto* fl = dynamic_cast<ast::FloatLiteral*>(elem.get())) { (void)fl; continue; }
+                if (auto* sl = dynamic_cast<ast::StringLiteral*>(elem.get())) { (void)sl; continue; }
+                if (auto* bl = dynamic_cast<ast::BooleanLiteral*>(elem.get())) { (void)bl; continue; }
+                if (auto* nl = dynamic_cast<ast::NilLiteral*>(elem.get())) { (void)nl; continue; }
+                std::string cand;
+                if (auto* idp = dynamic_cast<ast::Identifier*>(elem.get())) {
+                    cand = idp->name;
+                } else if (auto* member = dynamic_cast<ast::MemberExpression*>(elem.get())) {
+                    if (auto* idp = dynamic_cast<ast::Identifier*>(member->property.get())) cand = idp->name;
+                }
+                bool ok = false;
+                if (!selectTypeStr.empty()) {
+                    auto variantsIt = enumVariantPayloadTypes.find(selectTypeStr);
+                    if (variantsIt != enumVariantPayloadTypes.end()
+                        && !cand.empty() && variantsIt->second.count(cand)) {
+                        ok = true;
+                    }
+                }
+                if (!ok) {
+                    addError("Element '" + (elem ? elem->toString() : "?") + "' in a select set must be a "
+                             "literal or a bare enum variant of '" +
+                             (selectTypeStr.empty() ? "(unknown target type)" : selectTypeStr) + "'", setp);
+                }
+            }
         } else {
             // Other pattern types
+            if (wildcardIndex != SIZE_MAX) {
+                addError("Pattern after wildcard in case " +
+                        std::to_string(wildcardIndex + 1) + " is unreachable", pattern.get());
+            }
             pattern->accept(*this);
         }
 
@@ -5584,15 +5702,25 @@ void SemanticAnalyzer::visit(ast::SelectExpression* node) {
             std::set<std::string> covered;
             for (auto& c : node->cases) {
                 if (!c.first) { covered.insert("__wildcard__"); break; }
-                std::string vname;
-                if (auto* ctor = dynamic_cast<ast::ConstructionExpression*>(c.first.get())) {
-                    auto* tv = ctor->constructedType
-                        ? dynamic_cast<ast::TypeName*>(ctor->constructedType.get()) : nullptr;
-                    if (tv && tv->identifier) vname = tv->identifier->name;
-                } else if (auto* idp = dynamic_cast<ast::Identifier*>(c.first.get())) {
-                    vname = idp->name;
+                auto addVariantName = [&](ast::Expression* p) {
+                    std::string vname;
+                    if (auto* ctor = dynamic_cast<ast::ConstructionExpression*>(p)) {
+                        auto* tv = ctor->constructedType
+                            ? dynamic_cast<ast::TypeName*>(ctor->constructedType.get()) : nullptr;
+                        if (tv && tv->identifier) vname = tv->identifier->name;
+                    } else if (auto* idp = dynamic_cast<ast::Identifier*>(p)) {
+                        vname = idp->name;
+                    } else if (auto* member = dynamic_cast<ast::MemberExpression*>(p)) {
+                        if (auto* idp = dynamic_cast<ast::Identifier*>(member->property.get()))
+                            vname = idp->name;
+                    }
+                    if (variants.count(vname)) covered.insert(vname);
+                };
+                if (auto* setp = dynamic_cast<ast::SetPattern*>(c.first.get())) {
+                    for (auto& elem : setp->elements) addVariantName(elem.get());
+                } else {
+                    addVariantName(c.first.get());
                 }
-                if (variants.count(vname)) covered.insert(vname);
             }
             if (!covered.count("__wildcard__") && covered.size() < variants.size()) {
                 std::string uncovered;

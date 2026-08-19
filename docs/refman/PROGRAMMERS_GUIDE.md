@@ -2046,6 +2046,22 @@ recognized as type-name starts).
 Value-returning `select(expr) -> { … }` and `match (expr) { … }` over the
 same pattern set.
 
+Select arms may group several discrete values into one arm with a
+brace-delimited set: the arm matches when the target equals *any* element.
+Sets hold literals and bare enum-variant names only (no comparison patterns,
+no payload-binding variants, no expressions); empty `{}` is rejected. The
+`?` wildcard must remain the last arm.
+
+```vyb
+parity(x<Int>)<String> -> {
+    return select(x) -> {
+        {1, 3, 5, 7, 9} -> "odd",
+        {2, 4, 6, 8}    -> "even",
+        ?               -> "out of bounds"
+    }
+}
+```
+
 **Verification**
 
 Verified `import` and flexible `smuggle`, both with the namespace

@@ -151,6 +151,10 @@ public:
         ty(node->typeName);
         for (const auto& b : node->bindings) if (b) b->accept(*this);
     }
+    void visit(ast::SetPattern* node) override {
+        if (!node) return;
+        for (const auto& e : node->elements) expr(e);
+    }
     void visit(ast::TypeofExpression* node) override {
         if (!node) return;
         expr(node->operand);
@@ -621,6 +625,9 @@ public:
     void visit(ast::StructPattern* node) override {
         result_ = std::make_unique<ast::StructPattern>(node->loc, cloneTy(node->typeName.get()), cloneIds(node->bindings));
     }
+    void visit(ast::SetPattern* node) override {
+        result_ = std::make_unique<ast::SetPattern>(node->loc, cloneExprs(node->elements));
+    }
     void visit(ast::TypeofExpression* node) override {
         if (node->operand) {
             result_ = std::make_unique<ast::TypeofExpression>(node->loc, cloneExpr(node->operand.get()));
@@ -1078,6 +1085,8 @@ static void rewriteNamespaceExpr(ast::ExprPtr& expr, const ModuleNSMap& localNS)
         }
     } else if (auto* n = dynamic_cast<ast::ComparisonPattern*>(expr.get())) {
         rewriteNamespaceExpr(n->value, localNS);
+    } else if (auto* n = dynamic_cast<ast::SetPattern*>(expr.get())) {
+        for (auto& e : n->elements) rewriteNamespaceExpr(e, localNS);
     } else if (auto* n = dynamic_cast<ast::TypeofExpression*>(expr.get())) {
         rewriteNamespaceExpr(n->operand, localNS);
     } else if (auto* n = dynamic_cast<ast::TypenameExpression*>(expr.get())) {

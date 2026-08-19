@@ -63,6 +63,7 @@ class BlockExpression; // Block as expression for match arms
 class SelectExpression; // Select expression for pattern matching with returns
 class ComparisonPattern; // Comparison pattern for match/select (e.g., >= 18)
 class StructPattern; // Struct destructuring pattern (e.g., Point { x, y })
+class SetPattern; // Brace-delimited set pattern { v1, v2, ... } in select arms
 class TypeofExpression; // Introspection: typeof(expr) returns Type
 class TypenameExpression; // Introspection: typename(expr) returns String
 class AsExpression; // Introspection/safe downcasting: value as TargetType
@@ -221,6 +222,7 @@ enum class NodeType {
     SELECT_EXPRESSION, // Select expression for pattern matching
     COMPARISON_PATTERN, // Comparison pattern for match/select
     STRUCT_PATTERN, // Struct destructuring pattern (e.g., Point { x, y })
+    SET_PATTERN, // Brace-delimited set pattern { v1, v2, ... } in select arms
     TYPEOF_EXPRESSION, // Introspection: typeof(expr) returns Type
     TYPENAME_EXPRESSION, // Introspection: typename(expr) returns String
     AS_EXPRESSION, // Safe downcasting: value as TargetType
@@ -330,6 +332,7 @@ public:
     virtual void visit(SelectExpression* node) = 0;
     virtual void visit(ComparisonPattern* node) = 0;
     virtual void visit(StructPattern* node) = 0;
+    virtual void visit(SetPattern* node) {}
     virtual void visit(TypeofExpression* node) = 0;
     virtual void visit(TypenameExpression* node) = 0;
     virtual void visit(AsExpression* node) {}
@@ -1470,6 +1473,19 @@ public:
     std::vector<std::unique_ptr<Identifier>> bindings; // Bound variable names (== field names)
 
     StructPattern(SourceLocation loc, ast::TypeNodePtr typeName, std::vector<std::unique_ptr<Identifier>> bindings);
+    NodeType getType() const override;
+    std::string toString() const override;
+    void accept(Visitor& visitor) override;
+};
+
+// --- SetPattern ---
+// Represents a brace-delimited set pattern `{ v1, v2, ... }` in select arms.
+// Matches if the target equals ANY element (OR of equality checks).
+class SetPattern : public Expression {
+public:
+    std::vector<ExprPtr> elements;  // Literal or bare enum-variant elements
+
+    SetPattern(SourceLocation loc, std::vector<ExprPtr> elements);
     NodeType getType() const override;
     std::string toString() const override;
     void accept(Visitor& visitor) override;

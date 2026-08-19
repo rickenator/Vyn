@@ -158,6 +158,7 @@ namespace vyb { // Changed Vyb to vyb
         vyb::ast::ExprPtr parse_literal();
         vyb::ast::ExprPtr parse_call_expression(vyb::ast::ExprPtr callee_expr);
         vyb::ast::ExprPtr parse_member_access(vyb::ast::ExprPtr object);
+        vyb::ast::ExprPtr parse_set_pattern();
 
         // Helper for binary expressions
         vyb::ast::ExprPtr parse_binary_expression(std::function<vyb::ast::ExprPtr()> parse_higher_precedence, const std::vector<TokenType>& operators);

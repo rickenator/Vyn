@@ -1,0 +1,14 @@
+// @test: mixed-type set-pattern elements are rejected
+// @description: every element in a {...} set must share the select target's
+//   type; mixed literal types (Int + String) are a compile error.
+// @category: select, semantic, error
+// @expect: fail
+// @expect-error: Type mismatch in select set
+
+main()<Int> -> {
+    v<Int> = select(1) -> {
+        {1, "two"} -> 1,
+        ?          -> 2
+    }
+    return v
+}

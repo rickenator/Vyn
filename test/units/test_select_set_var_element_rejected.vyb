@@ -1,0 +1,15 @@
+// @test: non-literal, non-variant set elements are rejected
+// @description: a bare variable reference is not a literal or enum variant, so
+//   it is not allowed inside a {...} select set.
+// @category: select, semantic, error
+// @expect: fail
+// @expect-error: must be a literal or a bare enum variant
+
+main()<Int> -> {
+    x<Int> = 5
+    v<Int> = select(x) -> {
+        {1, x} -> 1,
+        ?      -> 2
+    }
+    return v
+}

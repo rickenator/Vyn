@@ -1,0 +1,25 @@
+// @test: select set patterns on a C-like enum with bare variant names
+// @description: {...} arms group several enum unit variants; matching is
+//   any-element and arm order is preserved.
+// @category: enum, select, pattern-matching, jit
+// @execute-jit: true
+// @expect: pass
+// @expect-output: primary
+// @expect-return: 0
+
+enum Color { Red, Green, Blue }
+
+name(c<Color>)<String> -> {
+    return select(c) -> {
+        {Red, Blue}  -> "primary",
+        {Green}      -> "green",
+        ?            -> "unknown"
+    }
+}
+
+main()<Int> -> {
+    println(name(Color::Red))
+    println(name(Color::Green))
+    println(name(Color::Blue))
+    return 0
+}

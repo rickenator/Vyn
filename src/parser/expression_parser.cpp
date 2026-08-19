@@ -186,6 +186,9 @@ namespace vyb {
                     pattern = std::make_unique<vyb::ast::ComparisonPattern>(
                         op_token.location, op_token, std::move(value)
                     );
+                } else if (peek().type == TokenType::LBRACE) {
+                    // Brace-delimited set pattern `{ v1, v2, ... }`.
+                    pattern = parse_set_pattern();
                 } else {
                     pattern = parse_primary();
                     if (!pattern) {
@@ -1487,6 +1490,56 @@ regular_array_literal:
         // a first step, then extending to full TypeParser if an LPAREN follows.
 
         return parse_postfix_expr();
+    }
+
+    // Parse a brace-delimited select set pattern `{ v1, v2, ... }`. Only
+    // literals (int/float/string/bool/null) and bare enum-variant names are
+    // permitted; everything else is rejected with a clear error.
+    vyb::ast::ExprPtr ExpressionParser::parse_set_pattern() {
+        SourceLocation loc = peek().location;
+        auto errAt = [&](SourceLocation l, const std::string& msg) {
+            return error(token::Token(TokenType::IDENTIFIER, "", l), msg);
+        };
+        expect(TokenType::LBRACE, "Expected '{' to begin select set pattern");
+        std::vector<vyb::ast::ExprPtr> elements;
+
+        while (!check(TokenType::RBRACE) && !IsAtEnd()) {
+            while (match(TokenType::NEWLINE)) {}
+            if (check(TokenType::RBRACE)) break;
+
+            vyb::ast::ExprPtr elem = parse_postfix_expr();
+            if (!elem) {
+                throw error(peek(), "Expected literal or bare enum variant name in select set pattern");
+            }
+            switch (elem->getType()) {
+                case ast::NodeType::INTEGER_LITERAL:
+                case ast::NodeType::FLOAT_LITERAL:
+                case ast::NodeType::STRING_LITERAL:
+                case ast::NodeType::BOOLEAN_LITERAL:
+                case ast::NodeType::NIL_LITERAL:
+                case ast::NodeType::IDENTIFIER:
+                case ast::NodeType::MEMBER_EXPRESSION:
+                    break;
+                case ast::NodeType::CALL_EXPRESSION:
+                    throw errAt(elem->loc,
+                        "Payload-binding enum variants (e.g. Circle(r)) are not allowed in a select set; use a bare variant name such as Circle");
+                default:
+                    throw errAt(elem->loc,
+                        "Only literals and bare enum variant names are allowed in a select set");
+            }
+            elements.push_back(std::move(elem));
+
+            while (match(TokenType::NEWLINE)) {}
+            // Optional comma; a trailing comma before '}' is accepted.
+            if (!match(TokenType::COMMA)) break;
+        }
+
+        expect(TokenType::RBRACE, "Expected '}' after select set pattern");
+        if (elements.empty()) {
+            token::Token tok(TokenType::LBRACE, "{", loc);
+            throw error(tok, "Empty select set pattern {} is not allowed");
+        }
+        return std::make_unique<vyb::ast::SetPattern>(loc, std::move(elements));
     }
 
     // Helper to parse postfix operations like calls, member access, subscripting

@@ -1,0 +1,24 @@
+// @test: duplicate set-pattern values resolve first-arm-wins
+// @description: A value listed in more than one {...} arm is claimed by the
+//   earliest arm; the later duplicate has no effect (no error).
+// @category: select, pattern-matching, jit
+// @execute-jit: true
+// @expect: pass
+// @expect-output: 100
+// @expect-return: 0
+
+main()<Int> -> {
+    a<Int> = select(3) -> {
+        {1, 3, 5} -> 100,
+        {3, 7}    -> 200,
+        ?         -> 300
+    }
+    b<Int> = select(7) -> {
+        {1, 3, 5} -> 100,
+        {3, 7}    -> 200,
+        ?         -> 300
+    }
+    println_int(a)
+    println_int(b)
+    return 0
+}
