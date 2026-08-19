@@ -330,7 +330,10 @@ llvm::AllocaInst* LLVMCodegen::createEntryBlockAlloca(llvm::Type* type, const st
 }
 
 void LLVMCodegen::pushLoop(llvm::BasicBlock* header, llvm::BasicBlock* body, llvm::BasicBlock* update, llvm::BasicBlock* exit, const std::string& label) {
-    loopStack.push_back({header, body, update, exit, label});
+    // The scope depth at loop entry is the baseline: a break/continue inside the
+    // body must release the scopes the loop body opened (and any nested ones),
+    // but must leave scopes that predate the loop untouched.
+    loopStack.push_back({header, body, update, exit, label, scopeStack.size()});
 }
 
 void LLVMCodegen::popLoop() {

@@ -92,6 +92,12 @@ void LLVMCodegen::handleVecPush(vyb::ast::CallExpression* node, llvm::Value* vec
         return;
     }
 
+    // Store a String element in one canonical form. A raw `char*` (e.g. the
+    // direct result of `__vyb_string_concat` / `__vyb_int_to_string`) is wrapped
+    // into the 16-byte { ptr, i64 } String struct so every Vec<String> element
+    // shares the same layout (get/set/clear all stride by that struct).
+    valueToAdd = normalizeVecStringElement(valueToAdd);
+
     // Get element type from the value being pushed
     llvm::Type* elementType = valueToAdd->getType();
 
@@ -414,16 +420,18 @@ void LLVMCodegen::handleVecSet(vyb::ast::CallExpression* node, llvm::Value* vecP
         return;
     }
 
+    // Same single-layout normalization as push: a raw char* String element must
+    // live in the Vec as the canonical { ptr, i64 } struct.
+    value = normalizeVecStringElement(value);
+
     // Determine the element type from the value argument so element size is right.
     llvm::Type* elementLLVMType = llvm::Type::getInt64Ty(*context);
     uint64_t elementSizeBytes = 8;
-    if (node->arguments[1]->type) {
-        llvm::Type* t = codegenType(node->arguments[1]->type.get());
-        if (t) {
-            elementLLVMType = t;
-            llvm::DataLayout dataLayout(module.get());
-            elementSizeBytes = dataLayout.getTypeAllocSize(elementLLVMType);
-        }
+    llvm::Type* t = value->getType();
+    if (t) {
+        elementLLVMType = t;
+        llvm::DataLayout dataLayout(module.get());
+        elementSizeBytes = dataLayout.getTypeAllocSize(elementLLVMType);
     }
 
     llvm::Value* dataPtr = builder->CreateLoad(
@@ -471,6 +479,30 @@ void LLVMCodegen::handleVecPushArray(vyb::ast::CallExpression* node, llvm::Value
     // For now, placeholder implementation - would need proper array iteration
     // Return the Vec reference for method chaining
     m_currentLLVMValue = vecPtr;
+}
+
+llvm::Value* LLVMCodegen::normalizeVecStringElement(llvm::Value* value) {
+    if (!value) return value;
+    // A raw `char*` String value (from __vyb_string_concat, __vyb_int_to_string,
+    // and friends) is wrapped into the canonical anonymous { ptr, i64 } String
+    // struct on store. Everything else (already-struct Strings, Ints, owned
+    // struct pointers, ...) is left untouched.
+    if (value->getType() != int8PtrType) return value;
+
+    llvm::StructType* strTy = llvm::StructType::get(*context,
+        {int8PtrType, llvm::Type::getInt64Ty(*context)}, /*isPacked=*/false);
+    llvm::Function* strlenF = module->getFunction("strlen");
+    if (!strlenF) {
+        llvm::FunctionType* ft = llvm::FunctionType::get(
+            llvm::Type::getInt64Ty(*context), {int8PtrType}, false);
+        strlenF = llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
+                                         "strlen", module.get());
+    }
+    llvm::Value* len = builder->CreateCall(strlenF, {value}, "vec.str.len");
+    llvm::Value* v = llvm::UndefValue::get(strTy);
+    v = builder->CreateInsertValue(v, value, 0, "vec.str.ptr");
+    v = builder->CreateInsertValue(v, len, 1, "vec.str.struct");
+    return v;
 }
 
 void LLVMCodegen::handleVecToArray(vyb::ast::CallExpression* node, llvm::Value* vecPtr, llvm::Type* vecStructType) {

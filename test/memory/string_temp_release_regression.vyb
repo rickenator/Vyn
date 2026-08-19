@@ -1,13 +1,18 @@
 // Regression: owned String temporaries must be reclaimed, not leaked, when a
 // function returns, a mixed `String + Int` concat runs, a computed String
-// receiver is used once, and a Vec<String> is dropped.
+// receiver is used once, a Vec<String> is dropped, or a loop body is escaped
+// via break/continue.
 //
 // These used to leak heap buffers kept alive by the runtime String registry:
 //   - a freshly-allocated String operand in a mixed concat (`"x" + i.to_string()`)
 //   - a computed String receiver passed to another String method
 //   - a fresh String temp handed to a call by value
 //   - a Vec<String> whose element buffer had the wrong stride in the bulk
-//     release helper, so only half the elements were freed.
+//     release helper (raw char* pushes were stored 8-byte while the teardown
+//     read a 16-byte struct), so only part of the elements, and their string
+//     length fields, were misinterpreted.
+//   - a String (or Vec<String>) local declared inside a loop body that is left
+//     via `break` / `continue`, which used to skip the body's scope cleanup.
 // Each loop burns enough distinct buffers that any of those leaks would keep
 // RSS growing (or, in a reintroduced-use-after-free, crash under ASAN).
 // @expect-output: ok
@@ -25,13 +30,37 @@ vec_stress(rounds<Int>)<Int> -> {
     i<Int> = 0
     while (i < rounds) {
         v<Vec<String>> = Vec<String>()
-        j<Int> = 0
-        while (j < 4) {
-            v.push("h" + j.to_string())
-            j = j + 1
-        }
-        if (v.len() != 4) { return 2 }
+        v.push("h" + i.to_string())
+        v.push("j-" + i.to_string())
+        if (v.len() != 2) { return 2 }
+        if (v.get(0).len() <= 0) { return 3 }
         i = i + 1
+    }
+    return 0
+}
+
+# A String / Vec<String> local is live when the loop body is left via a break;
+# both must be released instead of leaked.
+break_stress(rounds<Int>)<Int> -> {
+    i<Int> = 0
+    while (i < rounds) {
+        s<String> = "b" + i.to_string()
+        v<Vec<String>> = Vec<String>()
+        v.push("e" + i.to_string())
+        if (s.len() > 100) { return 4 }
+        if (v.len() > 0) { break }
+        i = i + 1
+    }
+    return 0
+}
+
+# A `continue` leaves the loop body with its String local still live.
+continue_stress(rounds<Int>)<Int> -> {
+    i<Int> = 0
+    while (i < rounds) {
+        s<String> = "c" + i.to_string()
+        i = i + 1
+        continue
     }
     return 0
 }
@@ -39,6 +68,8 @@ vec_stress(rounds<Int>)<Int> -> {
 main()<Int> -> {
     if (concat_stress(20000) != 0) { return 1 }
     if (vec_stress(20000) != 0) { return 2 }
+    if (break_stress(20000) != 0) { return 3 }
+    if (continue_stress(20000) != 0) { return 4 }
     println("ok")
     return 0
 }

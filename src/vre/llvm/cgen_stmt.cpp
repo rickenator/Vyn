@@ -1039,6 +1039,9 @@ void LLVMCodegen::visit(vyb::ast::BreakStatement* node) {
          m_currentLLVMValue = nullptr;
          return;
     }
+    // Release owned resources declared in scopes the loop opened before leaving
+    // it; without this, a break skips the loop body's end-of-scope cleanup.
+    cleanupScopesToBaseline(currentLoop.scopeBaseline);
     builder->CreateBr(currentLoop.loopExit);
     m_currentLLVMValue = nullptr;
     // Note: After a break, the current block is terminated.
@@ -1073,6 +1076,9 @@ void LLVMCodegen::visit(vyb::ast::ContinueStatement* node) {
          m_currentLLVMValue = nullptr;
          return;
     }
+    // The current iteration's loop-body scopes are being left; release anything
+    // they own before jumping back to the header so it isn't leaked.
+    cleanupScopesToBaseline(currentLoop.scopeBaseline);
     builder->CreateBr(currentLoop.loopUpdate);
     m_currentLLVMValue = nullptr;
     // Similar to break, continue terminates the current path in the block.

@@ -125,6 +125,22 @@ void LLVMCodegen::exitToFunctionBaseline() {
     scopeStack = std::move(savedStack);
 }
 
+void LLVMCodegen::cleanupScopesToBaseline(size_t baseline) {
+    // A `break` / `continue` escapes the loop body without reaching the body's
+    // normal end-of-scope cleanup, so owned resources declared inside the body
+    // (or in nested blocks within it) would leak. Release every scope stacked
+    // strictly above the loop's entry baseline, then restore the stack so that
+    // sibling/continuation paths still see those scopes intact. The cleanup IR
+    // lands in this branch's own basic blocks, which are mutually exclusive with
+    // any continuation path, so nothing is freed twice at runtime.
+    if (scopeStack.size() <= baseline) return;
+    auto savedStack = scopeStack;
+    while (!scopeStack.empty() && scopeStack.size() > baseline) {
+        exitScope();
+    }
+    scopeStack = std::move(savedStack);
+}
+
 void LLVMCodegen::registerVariable(const std::string& name, llvm::Value* allocaInst, llvm::Value* value,
                                   ast::OwnershipKind ownership, llvm::Type* type, bool needsCleanup) {
     if (scopeStack.empty()) {

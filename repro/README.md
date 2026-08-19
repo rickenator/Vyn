@@ -61,3 +61,29 @@ released. Fixed together under `fix(llvm): reclaim owned String temps`:
 To observe the fixed behavior, loop a `Vec<String>`/mixed-concat build and watch
 RSS stay flat; the http repro (`repro/http_loop_uaf.vyb`) now exits `ok` with a
 flat RSS instead of growing ~1 header buffer per request.
+
+## Scope-escape String leaks (break / continue leave loop-body resources behind)
+
+Beyond per-load leaks, owned resources declared inside a loop body were not
+released when the body was exited with `break` / `continue` — those statements
+jumped straight to the loop exit/update blocks, skipping the body's end-of-scope
+cleanup. Every `break`/`continue` with a live `String` (or `Vec<String>`,
+`our<T>`, owned struct) local leaked one buffer.
+
+Fixed so resources clean up when they leave scope:
+- `LoopContext` now records the scope depth at loop entry (`scopeBaseline`).
+- `break` / `continue` run `cleanupScopesToBaseline()` first, releasing every
+  scope stacked strictly above the loop's baseline (mirroring how `return`
+  releases to the function baseline), then restore the scope stack for sibling
+  control-flow paths.
+
+## Vec<String> element normalization (raw char* elements)
+
+The bulk release/retain helpers stride one `{ ptr, len }` struct per element,
+and generated `Vec<String>` code stores that struct uniformly now. `push`/`set`
+wrap a raw `char*` String value (the direct result of `__vyb_string_concat`,
+`__vyb_int_to_string`, etc.) into the canonical 16-byte String struct on store
+(computing its length with `strlen`), so every `Vec<String>` element shares one
+layout. Previously such Vecs stored 8-byte pointers with no length, so `get`/`set`
+and the bulk teardown disagreed about element width (a latent OOB/length bug for
+raw-string Vecs).

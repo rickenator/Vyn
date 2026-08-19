@@ -61,6 +61,8 @@ struct LoopContext {
     llvm::BasicBlock *loopUpdate; // Block for the loop increment/update
     llvm::BasicBlock *loopExit;   // Block after the loop
     std::string label;            // loop label ("" = none) for labeled break/continue
+    size_t scopeBaseline = 0;     // Scope-stack depth at loop entry; a break/continue
+                                  // releases only scopes stacked strictly above this.
 };
 
 // Helper struct to manage value-yielding contexts (select expressions and
@@ -395,6 +397,7 @@ private:
     void handleVecGet(vyb::ast::CallExpression* node, llvm::Value* vecPtr, llvm::Type* vecStructType);
     void handleVecSet(vyb::ast::CallExpression* node, llvm::Value* vecPtr, llvm::Type* vecStructType);
     void handleVecPushArray(vyb::ast::CallExpression* node, llvm::Value* vecPtr, llvm::Type* vecStructType);
+    llvm::Value* normalizeVecStringElement(llvm::Value* value);
     void handleVecToArray(vyb::ast::CallExpression* node, llvm::Value* vecPtr, llvm::Type* vecStructType);
     void handleVecClear(vyb::ast::CallExpression* node, llvm::Value* vecPtr, llvm::Type* vecStructType);
     void handleVecIsEmpty(vyb::ast::CallExpression* node, llvm::Value* vecPtr, llvm::Type* vecStructType);
@@ -433,6 +436,7 @@ private:
     void enterScope();
     void exitScope();
     void exitToFunctionBaseline();
+    void cleanupScopesToBaseline(size_t baseline);
     void registerVariable(const std::string& name, llvm::Value* allocaInst, llvm::Value* value, ast::OwnershipKind ownership, llvm::Type* type, bool needsCleanup = false);
     void cleanupVariable(const ScopeVariable& var);
     void incrementRefCount(const std::string& name);
