@@ -38,7 +38,7 @@
 # shallow-copy owned pointers and double-free them at scope exit (fixed in the
 # compiler; see TUI.md). The single-owner screen rule still holds.
 
-import url::{Url, parse_url, resolve_url, default_port}
+import url::{Url, UrlOps, parse_url, default_port, ref_scheme, is_absolute_scheme}
 import html::{Link, render_lines, extract_title}
 import http::{http_get_full, http_header, HttpResponse}
 import https::{https_get_full_verified}
@@ -308,7 +308,7 @@ fetch_resource(urlStr<String>, hops<Int>)<HttpResponse> -> {
         resp.status == 307 || resp.status == 308) {
         locHdr<String> = http_header(resp, "location")
         if (locHdr.len() > 0) {
-            next<String> = resolve_url(u, locHdr)
+            next<String> = u.resolve(locHdr)
             return fetch_resource(next, hops - 1)
         }
     }
@@ -336,7 +336,7 @@ download_fetch(urlStr<String>, hops<Int>)<HttpResponse> -> {
         resp.status == 307 || resp.status == 308) {
         locHdr<String> = http_header(resp, "location")
         if (locHdr.len() > 0) {
-            return download_fetch(resolve_url(u, locHdr), hops - 1)
+            return download_fetch(u.resolve(locHdr), hops - 1)
         }
     }
     return resp
@@ -349,7 +349,7 @@ build_page(htmlSource<String>, base<Url>, width<Int>)<Page> -> {
     navs<Vec<Nav>> = Vec()
     i<Int> = 0
     while (i < rawLinks.len()) {
-        abs<String> = resolve_url(base, rawLinks.get(i).raw_href)
+        abs<String> = base.resolve(rawLinks.get(i).raw_href)
         navs.push(Nav { href = abs, text = rawLinks.get(i).text })
         i = i + 1
     }

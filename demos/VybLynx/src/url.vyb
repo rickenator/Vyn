@@ -1,8 +1,18 @@
-# url — pure-Vyb URL parsing.
+# url — pure-Vyb URL parsing, with behaviour bound to the Url struct.
 #
-# Splits a raw URL into its scheme, host, port, and path, then folds relative
-# references back onto a base Url. No FFI — everything is plain field and byte
-# work on Strings.
+# A Url is a small piece of pure data (scheme / host / port / path). All the
+# *behaviour* hangs off it through Vyb's aspect + bind model: the `UrlOps`
+# aspect declares `authority` and `resolve`, and the `bind UrlOps -> Url` below
+# implements them as methods on the struct (`u.authority()`, `u.resolve(ref)`).
+# Scheme classification is expressed with `select` — single-value String arms for
+# the conventional ports, and a brace-delimited *set pattern* for the absolute
+# schemes — so the "which schemes do we know?" knowledge lives in one declarative
+# place instead of a chain of starts_with checks. No FFI; everything is plain
+# field and byte work on Strings.
+#
+# Construction stays a free function (`parse_url`): a factory has no `self` to
+# call on, so it cannot be an instance method. Everything else that operates on
+# an already-built Url is a UrlOps method.
 
 share(all)
 struct Url {
@@ -31,12 +41,38 @@ str_to_int(s<String>)<Int> -> {
     return n
 }
 
-# The conventional port for a scheme ("" or anything unknown -> 0).
+# The conventional port for a scheme name, classified with a single-value String
+# `select`. Unknown schemes ("" or anything not listed) fall to the wildcard -> 0.
 share(all)
 default_port(scheme<String>)<Int> -> {
-    if (scheme == "https") { return 443 }
-    if (scheme == "http") { return 80 }
-    return 0
+    return select(scheme) -> {
+        "https" -> 443,
+        "http"  -> 80,
+        ?       -> 0
+    }
+}
+
+# The schemes this browser treats as *absolute* references: a reference that
+# already carries one of these scheme names is passed through untouched rather
+# than folded onto a base. Expressed as a brace-delimited set pattern — the arm
+# matches when the scheme equals ANY element. This subsumes both the authority
+# form (`http://`, `https://`, `local://`) and the opaque form (`mailto:`,
+# `ftp:`, `tel:`, `about:`) that the old starts_with chain handled separately.
+share(all)
+is_absolute_scheme(sch<String>)<Bool> -> {
+    return select(sch) -> {
+        {"http", "https", "local", "mailto", "ftp", "tel", "about"} -> true,
+        ? -> false
+    }
+}
+
+# The scheme name of a reference (the text before the first ':', lower-cased),
+# or "" when the reference has no scheme at all.
+share(all)
+ref_scheme(t<String>)<String> -> {
+    c<Int> = t.index_of(":")
+    if (c < 0) { return "" }
+    return t.substring(0, c).to_lower()
 }
 
 # Split a raw URL string into a Url. Relative or blank input keeps an empty
@@ -72,40 +108,51 @@ parse_url(raw<String>)<Url> -> {
     return Url { scheme = scheme, host = host, port = port, path = path }
 }
 
-# The `scheme://host[:port]` prefix for a Url, omitting the port when it is the
-# scheme's conventional default.
+# --- Behaviour bound to the Url struct ---------------------------------------
+# The `UrlOps` aspect declares the two operations that act on an already-built
+# Url: `authority` (the `scheme://host[:port]` prefix) and `resolve` (fold a
+# possibly-relative reference onto this base). The bind below implements them as
+# methods, so callers write `u.authority()` and `u.resolve(ref)` instead of
+# passing the Url as an explicit argument to a free function.
 share(all)
-url_authority(u<Url>)<String> -> {
-    hostport<String> = u.host
-    if (u.port != default_port(u.scheme)) {
-        hostport = u.host + ":" + u.port.to_string()
-    }
-    return u.scheme + "://" + hostport
+aspect UrlOps {
+    authority(self<Url>)<String> -> { }
+    resolve(self<Url>, reference<String>)<String> -> { }
 }
 
-# Fold a (possibly relative) reference against a base Url into an absolute one.
-# References that already carry their own scheme or host pass through untouched.
 share(all)
-resolve_url(base<Url>, reference<String>)<String> -> {
-    t<String> = reference.trim()
-    if (t.starts_with("http://") || t.starts_with("https://") ||
-        t.starts_with("local://")) {
-        return t
+bind UrlOps -> Url {
+    # The `scheme://host[:port]` prefix for this Url, omitting the port when it
+    # is the scheme's conventional default.
+    authority(self<Url>)<String> -> {
+        hostport<String> = self.host
+        if (self.port != default_port(self.scheme)) {
+            hostport = self.host + ":" + self.port.to_string()
+        }
+        return self.scheme + "://" + hostport
     }
-    if (t.starts_with("//")) {
-        return base.scheme + ":" + t
+
+    # Fold a (possibly relative) reference against this base Url into an absolute
+    # one. A reference that already carries a known absolute scheme passes through
+    # untouched; a scheme-relative `//host/...` borrows this base's scheme; a
+    # fragment is dropped; and a bare path is folded onto the authority.
+    resolve(self<Url>, reference<String>)<String> -> {
+        t<String> = reference.trim()
+        sch<String> = ref_scheme(t)
+        if (sch != "" && is_absolute_scheme(sch)) {
+            return t
+        }
+        if (t.starts_with("//")) {
+            return self.scheme + ":" + t
+        }
+        # Drop any in-document fragment.
+        hash<Int> = t.index_of("#")
+        if (hash >= 0) {
+            t = t.substring(0, hash)
+        }
+        if (t.starts_with("/")) {
+            return self.authority() + t
+        }
+        return self.authority() + "/" + t
     }
-    if (t.starts_with("mailto:") || t.starts_with("ftp:") ||
-        t.starts_with("tel:") || t.starts_with("about:")) {
-        return t
-    }
-    # Drop any in-document fragment and path-traversal run.
-    hash<Int> = t.index_of("#")
-    if (hash >= 0) {
-        t = t.substring(0, hash)
-    }
-    if (t.starts_with("/")) {
-        return url_authority(base) + t
-    }
-    return url_authority(base) + "/" + t
 }
