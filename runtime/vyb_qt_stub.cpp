@@ -9,7 +9,9 @@
 // unavailable (qt_init/… return 0, status/query helpers return -1/0) instead of
 // an unresolved-symbol JIT failure.
 // ============================================================================
-#if !defined(VYB_HAVE_QT5)
+// Shared stub helpers: needed whenever either the core Qt or the optional
+// QWebEngineView stub set compiles (i.e. Qt5 and/or QtWebEngine is absent).
+#if !defined(VYB_HAVE_QT5) || !defined(VYB_HAVE_QT_WEBENGINE)
 #include <cstdint>
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -20,7 +22,9 @@
 
 struct vyb_qt_str { char* ptr; int64_t len; };
 static vyb_qt_str qt_stub_str() { return { nullptr, 0 }; }
+#endif // !VYB_HAVE_QT5 || !VYB_HAVE_QT_WEBENGINE
 
+#if !defined(VYB_HAVE_QT5)
 extern "C" {
 
 // gen_qt[stub]: begin
@@ -133,3 +137,24 @@ VYB_WEAK int64_t __vyb_qt_grid_add(int64_t layout, int64_t child, int64_t row, i
 // gen_qt[stub]: end
 } // extern "C"
 #endif // !VYB_HAVE_QT5
+
+// QWebEngineView stubs: resolve the __vyb_qt_web_* symbols so the qt module's
+// web surface degrades gracefully when QtWebEngine is not linked into the build
+// (qt_web_create returns 0; qt_web_load returns -1; queries return "" / 0).
+#if !defined(VYB_HAVE_QT_WEBENGINE)
+extern "C" {
+// gen_qt[web_stub]: begin
+VYB_WEAK int64_t __vyb_qt_web_create(int64_t parent) { (void)parent; return 0; }
+VYB_WEAK int64_t __vyb_qt_web_load(int64_t web, const char* url, int64_t len)
+    { (void)web; (void)url; return -1; }
+VYB_WEAK vyb_qt_str __vyb_qt_web_url(int64_t web)
+    { (void)web; return qt_stub_str(); }
+VYB_WEAK vyb_qt_str __vyb_qt_web_title(int64_t web)
+    { (void)web; return qt_stub_str(); }
+VYB_WEAK int64_t __vyb_qt_web_loading(int64_t web) { (void)web; return 0; }
+VYB_WEAK int64_t __vyb_qt_web_back(int64_t web) { (void)web; return -1; }
+VYB_WEAK int64_t __vyb_qt_web_forward(int64_t web) { (void)web; return -1; }
+VYB_WEAK int64_t __vyb_qt_web_reload(int64_t web) { (void)web; return -1; }
+// gen_qt[web_stub]: end
+} // extern "C"
+#endif // !VYB_HAVE_QT_WEBENGINE

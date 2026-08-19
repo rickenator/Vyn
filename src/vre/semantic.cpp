@@ -2134,6 +2134,10 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_strchan_len" || name == "vyb_strchan_close" ||
             name == "vyb_strchan_free" ||
         // gen_qt[sem_allow]: begin
+            name == "vyb_qt_web_create" || name == "vyb_qt_web_load" ||
+            name == "vyb_qt_web_url" || name == "vyb_qt_web_title" ||
+            name == "vyb_qt_web_loading" || name == "vyb_qt_web_back" ||
+            name == "vyb_qt_web_forward" || name == "vyb_qt_web_reload" ||
             name == "vyb_qt_init" || name == "vyb_qt_quit" ||
             name == "vyb_qt_active" || name == "vyb_qt_process_events" ||
             name == "vyb_qt_set_timer" || name == "vyb_qt_timer_fired" ||
@@ -2673,6 +2677,14 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             // codegen.
             static const std::set<std::string> qtIntFuncs = {
         // gen_qt[sem_int]: begin
+                "vyb_qt_web_create",
+                "vyb_qt_web_load",
+                "vyb_qt_web_url",
+                "vyb_qt_web_title",
+                "vyb_qt_web_loading",
+                "vyb_qt_web_back",
+                "vyb_qt_web_forward",
+                "vyb_qt_web_reload",
                 "vyb_qt_init",
                 "vyb_qt_quit",
                 "vyb_qt_active",
@@ -2747,6 +2759,8 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             };
             static const std::set<std::string> qtStrFuncs = {
         // gen_qt[sem_str]: begin
+                "vyb_qt_web_url",
+                "vyb_qt_web_title",
                 "vyb_qt_window_title",
                 "vyb_qt_label_text",
                 "vyb_qt_button_text",

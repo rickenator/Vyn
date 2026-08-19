@@ -260,15 +260,41 @@ QT_FUNCS = [
          stub="-1", doc="Add widget `child` to grid-layout `layout` at (row, col). Returns 0."),
 ]
 
+QT_WEB_FUNCS = [
+    # QWebEngineView (optional QtWebEngine): the symbols always resolve (stub
+    # fallback) but actual rendering needs QtWebEngine linked into the build.
+    dict(mod="qt_web_create", vn="vyb_qt_web_create", cn="__vyb_qt_web_create", args=[("parent", "Int")],
+         ret="Int", shape="int1", stub="0",
+         doc="Create a QWebEngineView under `parent`; returns its handle or 0 (needs QtWebEngine)."),
+    dict(mod="qt_web_load", vn="vyb_qt_web_load", cn="__vyb_qt_web_load",
+         args=[("web", "Int"), ("url", "String")], ret="Int", shape="text", stub="-1",
+         doc="Begin loading `url` in the web view (async). Returns 0, or -1 on a bad handle."),
+    dict(mod="qt_web_url", vn="vyb_qt_web_url", cn="__vyb_qt_web_url", args=[("web", "Int")],
+         ret="String", shape="str1", stub="qt_stub_str()", doc="Current page URL (String); \"\" on a bad handle."),
+    dict(mod="qt_web_title", vn="vyb_qt_web_title", cn="__vyb_qt_web_title", args=[("web", "Int")],
+         ret="String", shape="str1", stub="qt_stub_str()", doc="Current page title (String); \"\" on a bad handle."),
+    dict(mod="qt_web_loading", vn="vyb_qt_web_loading", cn="__vyb_qt_web_loading", args=[("web", "Int")],
+         ret="Bool", shape="int1", stub="0", doc="true while the page is still loading."),
+    dict(mod="qt_web_back", vn="vyb_qt_web_back", cn="__vyb_qt_web_back", args=[("web", "Int")],
+         ret="Int", shape="int1", stub="-1", doc="Go back in history. Returns 0, or -1 on a bad handle."),
+    dict(mod="qt_web_forward", vn="vyb_qt_web_forward", cn="__vyb_qt_web_forward", args=[("web", "Int")],
+         ret="Int", shape="int1", stub="-1", doc="Go forward in history. Returns 0, or -1 on a bad handle."),
+    dict(mod="qt_web_reload", vn="vyb_qt_web_reload", cn="__vyb_qt_web_reload", args=[("web", "Int")],
+         ret="Int", shape="int1", stub="-1", doc="Reload the page. Returns 0, or -1 on a bad handle."),
+]
+
+QT_ALL = QT_WEB_FUNCS + QT_FUNCS
+
 QT_EVENTS = [
     ("none", 0), ("click", 1), ("textChanged", 2), ("toggled", 3),
     ("indexChanged", 4), ("valueChanged", 5),
+    ("loadFinished", 6), ("titleChanged", 7), ("loadProgress", 8),
 ]
 
 QT_WIDGETS = [
     ("none", 0), ("window", 1), ("label", 2), ("button", 3), ("edit", 4),
     ("checkbox", 5), ("progress", 6), ("combo", 7), ("spin", 8), ("slider", 9),
-    ("dial", 10), ("group", 11), ("textEdit", 12), ("radio", 13),
+    ("dial", 10), ("group", 11), ("textEdit", 12), ("radio", 13), ("web", 14),
 ]
 
 
@@ -410,12 +436,12 @@ BRANCH = {
 def emit_cgen():
     from collections import OrderedDict
     groups = OrderedDict()
-    for f in QT_FUNCS:
+    for f in QT_ALL:
         groups.setdefault(f["shape"], []).append(f["vn"])
     out = []
     out.append("        const std::string& fname = identCallee->name;")
     out.append("        std::string rtName;")
-    for i, f in enumerate(QT_FUNCS):
+    for i, f in enumerate(QT_ALL):
         kw = "if" if i == 0 else "else if"
         out.append('        %s (fname == "%s") rtName = "%s";' % (kw, f["vn"], f["cn"]))
     out.append("        if (!rtName.empty()) {")
@@ -477,7 +503,7 @@ def emit_cgen():
 
 
 def emit_sem_allow():
-    names = [f["vn"] for f in QT_FUNCS]
+    names = [f["vn"] for f in QT_ALL]
     lines = []
     for i in range(0, len(names), 2):
         pair = names[i:i + 2]
@@ -490,16 +516,16 @@ def emit_sem_allow():
 
 
 def emit_sem_int():
-    return "\n".join('                "%s",' % f["vn"] for f in QT_FUNCS)
+    return "\n".join('                "%s",' % f["vn"] for f in QT_ALL)
 
 
 def emit_sem_str():
-    return "\n".join('                "%s",' % f["vn"] for f in QT_FUNCS if f["ret"] == "String")
+    return "\n".join('                "%s",' % f["vn"] for f in QT_ALL if f["ret"] == "String")
 
 
 def emit_main_decl():
     out = []
-    for f in QT_FUNCS:
+    for f in QT_ALL:
         ret = "vyb_file_str" if f["ret"] == "String" else "int64_t"
         out.append("    %s %s(%s);" % (ret, f["cn"], cpp_args(f)))
     return "\n".join(out)
@@ -507,7 +533,7 @@ def emit_main_decl():
 
 def emit_main_reg():
     out = []
-    for f in QT_FUNCS:
+    for f in QT_ALL:
         out.append('        runtimeSymbols[mangle("%s")] = llvm::orc::ExecutorSymbolDef(' % f["cn"])
         out.append("            llvm::orc::ExecutorAddr::fromPtr(&%s), llvm::JITSymbolFlags::Exported);" % f["cn"])
     return "\n".join(out)
@@ -515,6 +541,10 @@ def emit_main_reg():
 
 def emit_stub_funcs():
     return "\n".join(stub_body(f) for f in QT_FUNCS)
+
+
+def emit_web_stub_funcs():
+    return "\n".join(stub_body(f) for f in QT_WEB_FUNCS)
 
 
 def emit_mod_enums():
@@ -525,7 +555,7 @@ def emit_mod_enums():
 
 def emit_mod_wrappers():
     out = []
-    for f in QT_FUNCS:
+    for f in QT_ALL:
         out.append("# %s" % f["doc"])
         out.append("share(all)")
         if "wrap_sig" in f:
@@ -547,6 +577,7 @@ def emit_mod_wrappers():
 
 FILES = [
     ("runtime/vyb_qt_stub.cpp", "cpp", "stub", emit_stub_funcs),
+    ("runtime/vyb_qt_stub.cpp", "cpp", "web_stub", emit_web_stub_funcs),
     ("src/vre/llvm/cgen_expr.cpp", "cpp", "cgen", emit_cgen),
     ("src/vre/semantic.cpp", "cpp", "sem_allow", emit_sem_allow),
     ("src/vre/semantic.cpp", "cpp", "sem_int", emit_sem_int),

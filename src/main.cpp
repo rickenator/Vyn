@@ -214,6 +214,14 @@ extern "C" {
     // button/edit-text getters return an owned, registry-registered
     // { ptr, len } buffer that a Vyb String adopts.
         // gen_qt[main_decl]: begin
+    int64_t __vyb_qt_web_create(int64_t parent);
+    int64_t __vyb_qt_web_load(int64_t web, const char* url, int64_t len);
+    vyb_file_str __vyb_qt_web_url(int64_t web);
+    vyb_file_str __vyb_qt_web_title(int64_t web);
+    int64_t __vyb_qt_web_loading(int64_t web);
+    int64_t __vyb_qt_web_back(int64_t web);
+    int64_t __vyb_qt_web_forward(int64_t web);
+    int64_t __vyb_qt_web_reload(int64_t web);
     int64_t __vyb_qt_init();
     int64_t __vyb_qt_quit();
     int64_t __vyb_qt_active();
@@ -1606,6 +1614,22 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_hide_cursor), llvm::JITSymbolFlags::Exported);
 #endif
         // gen_qt[main_reg]: begin
+        runtimeSymbols[mangle("__vyb_qt_web_create")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_web_create), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_web_load")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_web_load), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_web_url")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_web_url), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_web_title")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_web_title), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_web_loading")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_web_loading), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_web_back")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_web_back), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_web_forward")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_web_forward), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_web_reload")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_web_reload), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_init")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_init), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_quit")] = llvm::orc::ExecutorSymbolDef(

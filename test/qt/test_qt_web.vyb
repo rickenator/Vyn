@@ -1,0 +1,48 @@
+// @test: qt stdlib module - optional QWebEngineView surface
+// @description: Covers the qt_web_* surface (QWebEngineView). When QtWebEngine
+//   is not linked into the build the stub shims report the surface unavailable
+//   (qt_web_create == 0) and every qt_web_* call returns its documented default
+//   without crashing; when it is present, a headless smoke creates a web view,
+//   checks its QtWidgetKind, loads about:blank (no network), and reloads.
+// @category: qt, stdlib, gui, web
+// @expect: pass
+// @expect-output: qt-web-ok
+// @env: VYB_STDLIB=stdlib
+// @env: QT_QPA_PLATFORM=offscreen
+
+import qt
+
+main()<Int> -> {
+    if (qt_init() == false) {
+        println("qt-web-ok (Qt5 unavailable)")
+        return 0
+    }
+    if (qt_active() == false) { return 1 }
+    w<Int> = qt_window_create()
+    if (w == 0) { return 2 }
+
+    web<Int> = qt_web_create(w)
+    if (web == 0) {
+        // QtWebEngine not linked into this build: the stub surface must still
+        // resolve each call to its documented default (no crash / no JIT miss).
+        if (qt_web_load(0, "http://example.org/") != -1) { return 3 }
+        if (qt_web_url(0) != "") { return 4 }
+        if (qt_web_title(0) != "") { return 5 }
+        if (qt_web_loading(0) != false) { return 6 }
+        if (qt_web_back(0) != -1) { return 7 }
+        if (qt_web_forward(0) != -1) { return 8 }
+        if (qt_web_reload(0) != -1) { return 9 }
+        qt_quit()
+        println("qt-web-ok (QtWebEngine unavailable)")
+        return 0
+    }
+
+    // QtWebEngine present: headless smoke (about:blank needs no network).
+    if (qt_kind(web) != QtWidgetKind::web) { return 20 }
+    if (qt_web_load(web, "about:blank") != 0) { return 21 }
+    if (qt_web_reload(web) != 0) { return 22 }
+
+    qt_quit()
+    println("qt-web-ok")
+    return 0
+}

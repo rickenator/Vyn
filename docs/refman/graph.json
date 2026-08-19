@@ -1,5 +1,5 @@
 {
-  "git_rev": "0df5acd56eb94c85af954e9832b388436412bbd0",
+  "git_rev": "e439fd3c6a582abcc1897c7d030e67b927475fd6",
   "modules": [
     "agents",
     "asyncs",
@@ -152,7 +152,7 @@
         "files": [
           "stdlib/qt/mod.vyb"
         ],
-        "exported": 72,
+        "exported": 80,
         "fan_in": 0,
         "fan_out": 0
       },
@@ -559,6 +559,14 @@
         "path": "stdlib/qt/mod.vyb",
         "module": "qt",
         "symbols": [
+          "qt_web_create",
+          "qt_web_load",
+          "qt_web_url",
+          "qt_web_title",
+          "qt_web_loading",
+          "qt_web_back",
+          "qt_web_forward",
+          "qt_web_reload",
           "qt_init",
           "qt_quit",
           "qt_active",
@@ -3058,7 +3066,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_init()<Bool> ->",
-        "summary": "gen_qt[mod_wrappers]: begin",
+        "summary": "Initialize the QApplication (once); true if the GUI is available.",
         "fan_in": 0
       },
       {
@@ -3311,6 +3319,78 @@
         "kind": "fn",
         "signature": "qt_wait_event(timeout<Int>)<Bool> ->",
         "summary": "Pump Qt until a control event (true) or `timeout` ms lapses (false); negative waits.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_web_back",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_web_back(web<Int>)<Int> ->",
+        "summary": "Go back in history. Returns 0, or -1 on a bad handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_web_create",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_web_create(parent<Int>)<Int> ->",
+        "summary": "gen_qt[mod_wrappers]: begin",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_web_forward",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_web_forward(web<Int>)<Int> ->",
+        "summary": "Go forward in history. Returns 0, or -1 on a bad handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_web_load",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_web_load(web<Int>, url<String>)<Int> ->",
+        "summary": "Begin loading `url` in the web view (async). Returns 0, or -1 on a bad handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_web_loading",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_web_loading(web<Int>)<Bool> ->",
+        "summary": "true while the page is still loading.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_web_reload",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_web_reload(web<Int>)<Int> ->",
+        "summary": "Reload the page. Returns 0, or -1 on a bad handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_web_title",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_web_title(web<Int>)<String> ->",
+        "summary": "Current page title (String); \"\" on a bad handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_web_url",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_web_url(web<Int>)<String> ->",
+        "summary": "Current page URL (String); \"\" on a bad handle.",
         "fan_in": 0
       },
       {
@@ -6947,6 +7027,54 @@
       "from_module": "qt",
       "from_symbol": "qt_wait_event",
       "to_symbol": "vyb_qt_wait_event"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_web_back",
+      "to_symbol": "vyb_qt_web_back"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_web_create",
+      "to_symbol": "vyb_qt_web_create"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_web_forward",
+      "to_symbol": "vyb_qt_web_forward"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_web_load",
+      "to_symbol": "vyb_qt_web_load"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_web_loading",
+      "to_symbol": "vyb_qt_web_loading"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_web_reload",
+      "to_symbol": "vyb_qt_web_reload"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_web_title",
+      "to_symbol": "vyb_qt_web_title"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_web_url",
+      "to_symbol": "vyb_qt_web_url"
     },
     {
       "type": "runtimeRef",

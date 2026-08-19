@@ -3231,7 +3231,15 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         // gen_qt[cgen]: begin
         const std::string& fname = identCallee->name;
         std::string rtName;
-        if (fname == "vyb_qt_init") rtName = "__vyb_qt_init";
+        if (fname == "vyb_qt_web_create") rtName = "__vyb_qt_web_create";
+        else if (fname == "vyb_qt_web_load") rtName = "__vyb_qt_web_load";
+        else if (fname == "vyb_qt_web_url") rtName = "__vyb_qt_web_url";
+        else if (fname == "vyb_qt_web_title") rtName = "__vyb_qt_web_title";
+        else if (fname == "vyb_qt_web_loading") rtName = "__vyb_qt_web_loading";
+        else if (fname == "vyb_qt_web_back") rtName = "__vyb_qt_web_back";
+        else if (fname == "vyb_qt_web_forward") rtName = "__vyb_qt_web_forward";
+        else if (fname == "vyb_qt_web_reload") rtName = "__vyb_qt_web_reload";
+        else if (fname == "vyb_qt_init") rtName = "__vyb_qt_init";
         else if (fname == "vyb_qt_quit") rtName = "__vyb_qt_quit";
         else if (fname == "vyb_qt_active") rtName = "__vyb_qt_active";
         else if (fname == "vyb_qt_process_events") rtName = "__vyb_qt_process_events";
@@ -3356,7 +3364,12 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 llvm::FunctionType* ft0 = llvm::FunctionType::get(int64Type, {}, false);
                 m_currentLLVMValue = builder->CreateCall(getQtFn(ft0), {}, "qt.ret");
                 return;
-            } else if (fname == "vyb_qt_set_timer" || fname == "vyb_qt_window_close" ||
+            } else if (fname == "vyb_qt_web_create" || fname == "vyb_qt_web_loading" ||
+                fname == "vyb_qt_web_back" ||
+                fname == "vyb_qt_web_forward" ||
+                fname == "vyb_qt_web_reload" ||
+                fname == "vyb_qt_set_timer" ||
+                fname == "vyb_qt_window_close" ||
                 fname == "vyb_qt_window_width" ||
                 fname == "vyb_qt_window_height" ||
                 fname == "vyb_qt_window_show" ||
@@ -3382,7 +3395,9 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
                 m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a)}, "qt.i1");
                 return;
-            } else if (fname == "vyb_qt_window_title" || fname == "vyb_qt_label_text" ||
+            } else if (fname == "vyb_qt_web_url" || fname == "vyb_qt_web_title" ||
+                fname == "vyb_qt_window_title" ||
+                fname == "vyb_qt_label_text" ||
                 fname == "vyb_qt_button_text" ||
                 fname == "vyb_qt_edit_text" ||
                 fname == "vyb_qt_text_edit_text") {
@@ -3398,7 +3413,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 llvm::FunctionType* ft = llvm::FunctionType::get(qtStrRet(), {int64Type, int64Type}, false);
                 m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a), toI64(b)}, "qt.s2");
                 return;
-            } else if (fname == "vyb_qt_window_set_title" || fname == "vyb_qt_label_create" ||
+            } else if (fname == "vyb_qt_web_load" || fname == "vyb_qt_window_set_title" ||
+                fname == "vyb_qt_label_create" ||
                 fname == "vyb_qt_label_set_text" ||
                 fname == "vyb_qt_button_create" ||
                 fname == "vyb_qt_button_set_text" ||

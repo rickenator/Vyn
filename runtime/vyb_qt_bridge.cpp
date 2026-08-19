@@ -49,6 +49,9 @@
 #include <QTimer>
 #include <QString>
 #include <QByteArray>
+#if defined(VYB_HAVE_QT_WEBENGINE)
+#include <QWebEngineView>
+#endif
 #include <chrono>
 #include <deque>
 #include <mutex>
@@ -101,6 +104,14 @@ static std::mutex g_events_mtx;
 static void vyb_qt_enqueue(int64_t handle, int64_t kind) {
     std::lock_guard<std::mutex> lk(g_events_mtx);
     g_events.push_back(vyb_qt_event{handle, kind});
+}
+
+// Exposed so the optional QWebEngineView bridge (a separate translation unit,
+// compiled only when QtWebEngine is linked) can enqueue its control events into
+// the same polled queue that qt_on_event / qt_event_* drain.
+extern "C" VYB_WEAK int64_t __vyb_qt_event_enqueue_widget(int64_t handle, int64_t kind) {
+    vyb_qt_enqueue(handle, kind);
+    return 0;
 }
 
 // ----------------------------------------------------------------------------
@@ -542,6 +553,9 @@ extern "C" VYB_WEAK int64_t __vyb_qt_kind(int64_t h) {
     if (dynamic_cast<QGroupBox*>(w))       return 11; // GroupBox
     if (dynamic_cast<QPlainTextEdit*>(w))  return 12; // TextEdit
     if (dynamic_cast<QRadioButton*>(w))    return 13; // Radio
+#if defined(VYB_HAVE_QT_WEBENGINE)
+    if (dynamic_cast<QWebEngineView*>(w))  return 14; // Web
+#endif
     if (dynamic_cast<QLabel*>(w))          return 2; // Label
     return 1;                                        // Window (plain QWidget)
 }

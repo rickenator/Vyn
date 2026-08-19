@@ -161,6 +161,15 @@ if(VYB_USE_QT5)
     if(Qt5Widgets_FOUND)
         message(STATUS "Qt5: ${Qt5Widgets_VERSION} (qt module enabled)")
         set(VYB_QT_BRIDGE runtime/vyb_qt_bridge.cpp)
+        # QtWebEngine (QWebEngineView) is an optional extra on top of Widgets;
+        # when absent the `qt_web_*` surface resolves to stub shims instead.
+        find_package(Qt5 COMPONENTS WebEngineWidgets QUIET)
+        if(Qt5WebEngineWidgets_FOUND)
+            message(STATUS "Qt5 WebEngine: ${Qt5WebEngineWidgets_VERSION} (qt web surface enabled)")
+            set(VYB_QT_WEB_BRIDGE runtime/vyb_qt_webengine_bridge.cpp)
+        else()
+            message(STATUS "Qt5 WebEngine not found; stdlib qt web surface disabled (stub fallback)")
+        endif()
     else()
         message(WARNING "Qt5 Widgets not found; stdlib qt module disabled")
     endif()
@@ -175,6 +184,9 @@ set(RUNTIME_SOURCES
 )
 if(VYB_QT_BRIDGE)
     list(APPEND RUNTIME_SOURCES ${VYB_QT_BRIDGE})
+endif()
+if(VYB_QT_WEB_BRIDGE)
+    list(APPEND RUNTIME_SOURCES ${VYB_QT_WEB_BRIDGE})
 endif()
 
 # Runtime headers
@@ -238,6 +250,14 @@ endif()
 if(VYB_QT_BRIDGE AND Qt5Widgets_FOUND)
     target_link_libraries(vyb PRIVATE Qt5::Widgets)
     target_compile_definitions(vyb PRIVATE VYB_HAVE_QT5)
+endif()
+
+# QtWebEngine: link the web bridge's dependencies so the JIT's process-symbol
+# generator can resolve the __vyb_qt_web_* symbols. When WebEngine is absent the
+# guarded stubs in vyb_qt_stub.cpp resolve instead and qt_web_* degrades.
+if(VYB_QT_WEB_BRIDGE AND Qt5WebEngineWidgets_FOUND)
+    target_link_libraries(vyb PRIVATE Qt5::WebEngineWidgets)
+    target_compile_definitions(vyb PRIVATE VYB_HAVE_QT_WEBENGINE)
 endif()
 
 if(VYB_HAVE_LIBCLANG)

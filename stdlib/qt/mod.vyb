@@ -27,6 +27,14 @@
 # asyncs keep running on their worker threads and their enqueued results reach
 # the handler through the same queue-draining loop.
 #
+# An optional web surface (`qt_web_*`, QWebEngineView) sits on top of Widgets and
+# is only usable when QtWebEngine is linked into the build (CMake finds
+# Qt5WebEngineWidgets). With QtWebEngine absent the surface resolves to stub
+# shims: qt_web_create() returns 0 and the other qt_web_* calls return their
+# documented defaults, so web-capable programs degrade gracefully. Loading a URL
+# is asynchronous; loadFinished/titleChanged/loadProgress enqueue the shared
+# QtEvent kinds and flow through the same qt_on_event / qt_event_* dispatch.
+#
 # Everything returns 0 on success and -1 on error (handle lookups fail on a 0/
 # stale or non-matching handle; operation with no QApplication returns -1),
 # except the documented deviations: qt_init/qt_active/qt_window_visible/
@@ -35,6 +43,54 @@
 # current size (or -1 on a bad handle).
 
 # gen_qt[mod_wrappers]: begin
+# Create a QWebEngineView under `parent`; returns its handle or 0 (needs QtWebEngine).
+share(all)
+qt_web_create(parent<Int>)<Int> -> {
+    return vyb_qt_web_create(parent)
+}
+
+# Begin loading `url` in the web view (async). Returns 0, or -1 on a bad handle.
+share(all)
+qt_web_load(web<Int>, url<String>)<Int> -> {
+    return vyb_qt_web_load(web, url)
+}
+
+# Current page URL (String); "" on a bad handle.
+share(all)
+qt_web_url(web<Int>)<String> -> {
+    return vyb_qt_web_url(web)
+}
+
+# Current page title (String); "" on a bad handle.
+share(all)
+qt_web_title(web<Int>)<String> -> {
+    return vyb_qt_web_title(web)
+}
+
+# true while the page is still loading.
+share(all)
+qt_web_loading(web<Int>)<Bool> -> {
+    return vyb_qt_web_loading(web) == 1
+}
+
+# Go back in history. Returns 0, or -1 on a bad handle.
+share(all)
+qt_web_back(web<Int>)<Int> -> {
+    return vyb_qt_web_back(web)
+}
+
+# Go forward in history. Returns 0, or -1 on a bad handle.
+share(all)
+qt_web_forward(web<Int>)<Int> -> {
+    return vyb_qt_web_forward(web)
+}
+
+# Reload the page. Returns 0, or -1 on a bad handle.
+share(all)
+qt_web_reload(web<Int>)<Int> -> {
+    return vyb_qt_web_reload(web)
+}
+
 # Initialize the QApplication (once); true if the GUI is available.
 share(all)
 qt_init()<Bool> -> {
@@ -477,6 +533,9 @@ enum QtEvent {
     toggled = 3
     indexChanged = 4
     valueChanged = 5
+    loadFinished = 6
+    titleChanged = 7
+    loadProgress = 8
 }
 
 share(all)
@@ -495,5 +554,6 @@ enum QtWidgetKind {
     group = 11
     textEdit = 12
     radio = 13
+    web = 14
 }
 # gen_qt[mod_enums]: end

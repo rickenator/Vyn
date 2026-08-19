@@ -1592,6 +1592,9 @@ qt_radio_create(parent<Int>, text<String>)<Int>           qt_radio_checked(r<Int
 qt_radio_set_checked(r<Int>, on<Bool>)<Int>
 qt_widget_set_enabled(h<Int>, on<Bool>)<Int>              qt_widget_enabled(h<Int>)<Bool>
 qt_grid(parent<Int>)<Int>             qt_grid_add(g<Int>, child<Int>, row<Int>, col<Int>)<Int>
+qt_web_create(parent<Int>)<Int>       qt_web_load(w<Int>, url<String>)<Int>
+qt_web_url(w<Int>)<String>            qt_web_title(w<Int>)<String>
+qt_web_loading(w<Int>)<Bool>          qt_web_back/forward/reload(w<Int>)<Int>
 qt_wait_event(timeout<Int>)<Bool>
 qt_run()<Int>                  qt_run_stop()<Int>            qt_active()<Bool>
 qt_on_event(handler<fn(Int, Int) -> Void>)<Int>
@@ -1601,13 +1604,17 @@ The public API + stub, codegen dispatch, semantic lists, JIT registrations, and
 wrappers/enums are generated from `tools/gen_qt.py` (one table row per function);
 add a widget by adding a row and writing the bridge implementation, then run
 `python3 tools/gen_qt.py` (or `--check` to verify no drift). QtWidgetKind now tops
-out at `radio` (13) — group/textEdit/radio join window/label/button/edit/checkbox/
-progress/combo/spin/slider/dial. A multi-line `text_edit` enqueues
+out at `web` (14) — web/group/textEdit/radio join window/label/button/edit/
+checkbox/progress/combo/spin/slider/dial. A multi-line `text_edit` enqueues
 `QtEvent::TextChanged`; radio and checkbox enqueue `QtEvent::Toggled`;
 combo/spin/slider/dial enqueue `QtEvent::IndexChanged`/`ValueChanged`. `qt_grid`
 is `QGridLayout` (`qt_grid_add` takes a row/col); `qt_group_create` is a titled
 `QGroupBox` container; `qt_widget_set_enabled`/`qt_widget_enabled` work on any
-widget.
+widget. The `qt_web_*` surface is an optional `QWebEngineView` that only works
+when QtWebEngine is linked (CMake finds `Qt5WebEngineWidgets`); otherwise it
+degrades to stubs (`qt_web_create()==0`). Loading is async — `loadFinished`/
+`titleChanged`/`loadProgress` are `QtEvent`s that flow through `qt_on_event` and
+the `qt_event_*` poll.
 
 Call `qt_init()` once. `QApplication` must live on the main thread (a Vyb
 program's `main`), and construction needs a Qt platform — xcb under a display,
@@ -1828,6 +1835,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 
