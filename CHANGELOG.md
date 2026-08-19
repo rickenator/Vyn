@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.7.3] - 2026-08-19
+
 ### Added
 - New `utf8` stdlib module: codepoint-aware helpers over Vyb byte strings
   (`utf8_len`, `utf8_at`, `utf8_index`, `utf8_valid`) via weak runtime helpers
@@ -32,6 +36,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deterministic tests: `test/env/`, `test/utf8/`, `test/rand/`, `test/process/`,
   `test/regex/`, plus `test/modules/test_network_timeout.vyb` and
   `test/modules/test_network_ipv6.vyb`.
+- New `curses` stdlib module: a whole-terminal ncurses TUI surface
+  (`import curses`) — init/close, refresh/clear, move/addstr, color pairs +
+  attributes, blocking or polled `getch` via nodelay/timeout, and stable
+  `enum CursColor` / `enum CursKey` surfaces. The ncurses ABI stays in weak
+  runtime shims (`__vyb_curses_*` in `runtime/vyb_runtime.c`); Vyb sees only
+  Int keycodes/attributes/dimensions and String text.
+- New `qt` stdlib module: Qt5 Widgets native GUI bindings (`import qt`) over a
+  C++ bridge (`runtime/vyb_qt_bridge.cpp`, `__vyb_qt_*` extern "C" shims). A
+  window + label (title/size/show/hide/visibility), a polled event loop
+  (`qt_process_events`), and a steady-clock repeat timer (`qt_set_timer` /
+  `qt_timer_fired`). Deterministically testable under the `offscreen` QPA
+  platform; degrades to stub shims (the GUI reported unavailable) when Qt5 is
+  absent.
+- `select` gained brace-delimited set arms: `{v1, v2, ...} -> ...` matches when
+  the target equals any listed literal or bare enum-variant, keeping single-
+  pattern arms and `?` wildcard (still last) as-is. Duplicate values across
+  arms keep first-match-wins; an empty `{}` set is an error.
+- VybLynx browser demo (curses-based `demos/`): a boxed TUI window with
+  keyboard navigation and highlighted anchors, fetching pages off the UI thread
+  via stdlib `http`/`https` through async worker fibers, per-task reclamation
+  with `async_detach` (#39), offline `local:` pages, an in-window URL editor,
+  chunked-body decoding, and a select-driven `html.vyb`/`url.vyb` rewrite.
+- Module imports now deep-clone the dependency AST, so the same module can be
+  imported from multiple consumers (the previous single-consumer import defect
+  is fixed); bind/module-resolution gaps across subset imports were closed.
 
 ### Fixed
 - String literals now process backslash escapes. Previously the lexer copied
@@ -40,6 +69,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Bad request version". Supported: `\n`, `\r`, `\t`, `\\`, `\"`, `\'`, `\0`,
   and `\xHH`; any other `\X` is preserved verbatim (regex/path-friendly).
   Regression test: `test/string/string_escapes_test.vyb`.
+- Owned String temporaries and `Vec<String>` elements are reclaimed
+  deterministically (token-slot tombstoning stops freed registry slots being
+  reused); scope-escape cleanup normalizes `Vec<String>` element handling.
+  `exprIsStringTransfer`-driven stalls in select codegen were cleaned up.
+
+### Changed
+- Version bumped to 0.7.3 to match the shipped `qt` stdlib module
+  (`CMakeLists.txt`, `README.md`, `doc/FEATURE_STATUS.md`, `TODO.md`).
+  `tools/refman.py` now runs on push so the stdlib reference manual and
+  Programmer's Guide API index stay in sync.
 
 ---
 
