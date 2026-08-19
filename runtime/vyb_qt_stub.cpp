@@ -155,6 +155,19 @@ VYB_WEAK int64_t __vyb_qt_list_set_current(int64_t list, int64_t idx)
     { (void)list; (void)idx; return -1; }
 VYB_WEAK vyb_qt_str __vyb_qt_list_item_text(int64_t list, int64_t idx)
     { (void)list; (void)idx; return qt_stub_str(); }
+VYB_WEAK int64_t __vyb_qt_main_window_create() { return 0; }
+VYB_WEAK int64_t __vyb_qt_menubar(int64_t mw) { (void)mw; return 0; }
+VYB_WEAK int64_t __vyb_qt_menu_add(int64_t mw, const char* title, int64_t len)
+    { (void)mw; (void)title; return 0; }
+VYB_WEAK int64_t __vyb_qt_action_add(int64_t menu, const char* text, int64_t len)
+    { (void)menu; (void)text; return 0; }
+VYB_WEAK int64_t __vyb_qt_action_count(int64_t menu) { (void)menu; return -1; }
+VYB_WEAK int64_t __vyb_qt_statusbar_message(int64_t mw, const char* text, int64_t len)
+    { (void)mw; (void)text; return -1; }
+VYB_WEAK vyb_qt_str __vyb_qt_statusbar_text(int64_t mw)
+    { (void)mw; return qt_stub_str(); }
+VYB_WEAK int64_t __vyb_qt_toolbar_create(int64_t mw, const char* title, int64_t len)
+    { (void)mw; (void)title; return 0; }
 // gen_qt[stub]: end
 } // extern "C"
 #endif // !VYB_HAVE_QT5

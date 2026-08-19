@@ -2179,7 +2179,11 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_qt_tabs_current" || name == "vyb_qt_tabs_set_current" ||
             name == "vyb_qt_list_create" || name == "vyb_qt_list_add" ||
             name == "vyb_qt_list_count" || name == "vyb_qt_list_current" ||
-            name == "vyb_qt_list_set_current" || name == "vyb_qt_list_item_text") {
+            name == "vyb_qt_list_set_current" || name == "vyb_qt_list_item_text" ||
+            name == "vyb_qt_main_window_create" || name == "vyb_qt_menubar" ||
+            name == "vyb_qt_menu_add" || name == "vyb_qt_action_add" ||
+            name == "vyb_qt_action_count" || name == "vyb_qt_statusbar_message" ||
+            name == "vyb_qt_statusbar_text" || name == "vyb_qt_toolbar_create") {
 // gen_qt[sem_allow]: end
             isIntrinsic = true;
         }
@@ -2776,6 +2780,14 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 "vyb_qt_list_current",
                 "vyb_qt_list_set_current",
                 "vyb_qt_list_item_text",
+                "vyb_qt_main_window_create",
+                "vyb_qt_menubar",
+                "vyb_qt_menu_add",
+                "vyb_qt_action_add",
+                "vyb_qt_action_count",
+                "vyb_qt_statusbar_message",
+                "vyb_qt_statusbar_text",
+                "vyb_qt_toolbar_create",
 // gen_qt[sem_int]: end
             };
             static const std::set<std::string> qtStrFuncs = {
@@ -2789,6 +2801,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 "vyb_qt_combo_item_text",
                 "vyb_qt_text_edit_text",
                 "vyb_qt_list_item_text",
+                "vyb_qt_statusbar_text",
 // gen_qt[sem_str]: end
             };
             if (qtIntFuncs.count(name) || qtStrFuncs.count(name)) {

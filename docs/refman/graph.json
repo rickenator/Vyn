@@ -1,5 +1,5 @@
 {
-  "git_rev": "b6fd4967f937f730b33a66c8a1d5c2e8072c9f54",
+  "git_rev": "ce67dd232132a9a4fd8da1155a53d17957ca26b6",
   "modules": [
     "agents",
     "asyncs",
@@ -152,7 +152,7 @@
         "files": [
           "stdlib/qt/mod.vyb"
         ],
-        "exported": 94,
+        "exported": 102,
         "fan_in": 0,
         "fan_out": 0
       },
@@ -651,6 +651,14 @@
           "qt_list_current",
           "qt_list_set_current",
           "qt_list_item_text",
+          "qt_main_window_create",
+          "qt_menubar",
+          "qt_menu_add",
+          "qt_action_add",
+          "qt_action_count",
+          "qt_statusbar_message",
+          "qt_statusbar_text",
+          "qt_toolbar_create",
           "QtEvent",
           "QtWidgetKind"
         ]
@@ -2814,6 +2822,24 @@
         "fan_in": 0
       },
       {
+        "name": "qt_action_add",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_action_add(menu<Int>, text<String>)<Int> ->",
+        "summary": "Add an action to `menu`; its trigger enqueues QtEvent::Click. Returns the action handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_action_count",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_action_count(menu<Int>)<Int> ->",
+        "summary": "Number of actions in `menu`, or -1 on a bad handle.",
+        "fan_in": 0
+      },
+      {
         "name": "qt_active",
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
@@ -3183,6 +3209,33 @@
         "fan_in": 0
       },
       {
+        "name": "qt_main_window_create",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_main_window_create()<Int> ->",
+        "summary": "Create a top-level QMainWindow (kind Window) with menubar/statusbar/toolbar support; returns its handle or 0.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_menu_add",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_menu_add(mw<Int>, title<String>)<Int> ->",
+        "summary": "Add a top-level menu titled `title` to the menu bar; returns its menu handle or 0.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_menubar",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_menubar(mw<Int>)<Int> ->",
+        "summary": "The main window's menu bar handle (created on demand).",
+        "fan_in": 0
+      },
+      {
         "name": "qt_on_event",
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
@@ -3345,6 +3398,24 @@
         "fan_in": 0
       },
       {
+        "name": "qt_statusbar_message",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_statusbar_message(mw<Int>, text<String>)<Int> ->",
+        "summary": "Show `text` in the main window's status bar. Returns 0, or -1 on a bad handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_statusbar_text",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_statusbar_text(mw<Int>)<String> ->",
+        "summary": "Current status-bar message (String); \"\" on a bad handle.",
+        "fan_in": 0
+      },
+      {
         "name": "qt_tabs_add",
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
@@ -3423,6 +3494,15 @@
         "kind": "fn",
         "signature": "qt_timer_fired()<Bool> ->",
         "summary": "true once the armed timer has fired since the last check (read clears).",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_toolbar_create",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_toolbar_create(mw<Int>, title<String>)<Int> ->",
+        "summary": "Add a toolbar titled `title` to the main window; returns its handle or 0.",
         "fan_in": 0
       },
       {
@@ -6823,6 +6903,18 @@
     {
       "type": "runtimeRef",
       "from_module": "qt",
+      "from_symbol": "qt_action_add",
+      "to_symbol": "vyb_qt_action_add"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_action_count",
+      "to_symbol": "vyb_qt_action_count"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
       "from_symbol": "qt_active",
       "to_symbol": "vyb_qt_active"
     },
@@ -7069,6 +7161,24 @@
     {
       "type": "runtimeRef",
       "from_module": "qt",
+      "from_symbol": "qt_main_window_create",
+      "to_symbol": "vyb_qt_main_window_create"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_menu_add",
+      "to_symbol": "vyb_qt_menu_add"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_menubar",
+      "to_symbol": "vyb_qt_menubar"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
       "from_symbol": "qt_on_event",
       "to_symbol": "vyb_qt_on_event"
     },
@@ -7177,6 +7287,18 @@
     {
       "type": "runtimeRef",
       "from_module": "qt",
+      "from_symbol": "qt_statusbar_message",
+      "to_symbol": "vyb_qt_statusbar_message"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_statusbar_text",
+      "to_symbol": "vyb_qt_statusbar_text"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
       "from_symbol": "qt_tabs_add",
       "to_symbol": "vyb_qt_tabs_add"
     },
@@ -7227,6 +7349,12 @@
       "from_module": "qt",
       "from_symbol": "qt_timer_fired",
       "to_symbol": "vyb_qt_timer_fired"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_toolbar_create",
+      "to_symbol": "vyb_qt_toolbar_create"
     },
     {
       "type": "runtimeRef",

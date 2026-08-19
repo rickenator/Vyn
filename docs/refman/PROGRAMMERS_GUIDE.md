@@ -1602,6 +1602,11 @@ qt_tabs_count/current(t<Int>)<Int>  qt_tabs_set_current(t<Int>, idx<Int>)<Int>
 qt_list_create(parent<Int>)<Int>    qt_list_add(l<Int>, text<String>)<Int>
 qt_list_count/current(l<Int>)<Int>  qt_list_set_current(l<Int>, idx<Int>)<Int>
 qt_list_item_text(l<Int>, idx<Int>)<String>
+qt_main_window_create()<Int>      qt_menubar(mw<Int>)<Int>
+qt_menu_add(mw<Int>, title<String>)<Int>  qt_action_add(menu<Int>, text<String>)<Int>
+qt_action_count(menu<Int>)<Int>
+qt_statusbar_message(mw<Int>, text<String>)<Int>  qt_statusbar_text(mw<Int>)<String>
+qt_toolbar_create(mw<Int>, title<String>)<Int>
 qt_wait_event(timeout<Int>)<Bool>
 qt_run()<Int>                  qt_run_stop()<Int>            qt_active()<Bool>
 qt_on_event(handler<fn(Int, Int) -> Void>)<Int>
@@ -1615,7 +1620,14 @@ out at `list` (16) — list/tabs/web/group/textEdit/radio join window/label/butt
 edit/checkbox/progress/combo/spin/slider/dial. A multi-line `text_edit` enqueues
 `QtEvent::TextChanged`; radio and checkbox enqueue `QtEvent::Toggled`;
 combo/spin/slider/dial enqueue `QtEvent::IndexChanged`/`ValueChanged`; a tab or
-list selection change enqueues `QtEvent::CurrentChanged`. `qt_grid` is
+list selection change enqueues `QtEvent::CurrentChanged`. A main window
+(`qt_main_window_create`) adds menubar/menu/action/statusbar/toolbar support on
+top of the plain `QWidget` window — `qt_menubar`/`qt_menu_add`/`qt_action_add`
+build the menu tree, `qt_statusbar_message`/`qt_statusbar_text` show a status
+message, `qt_toolbar_create` adds a toolbar. An action's trigger enqueues
+`QtEvent::Click` carrying the action handle, so a `qt_on_event` handler replies
+to menu picks (action handles are not widgets — don't pass them to widget APIs).
+`qt_grid` is
 `QGridLayout` (`qt_grid_add` takes a row/col); `qt_group_create` is a titled
 `QGroupBox` container; `qt_tabs_*` is a `QTabWidget` (`qt_tabs_add` returns a page
 handle you lay out on) and `qt_list_*` a `QListWidget`; `qt_widget_set_enabled`/
@@ -1848,6 +1860,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

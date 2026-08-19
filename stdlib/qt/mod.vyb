@@ -609,6 +609,54 @@ share(all)
 qt_list_item_text(list<Int>, idx<Int>)<String> -> {
     return vyb_qt_list_item_text(list, idx)
 }
+
+# Create a top-level QMainWindow (kind Window) with menubar/statusbar/toolbar support; returns its handle or 0.
+share(all)
+qt_main_window_create()<Int> -> {
+    return vyb_qt_main_window_create()
+}
+
+# The main window's menu bar handle (created on demand).
+share(all)
+qt_menubar(mw<Int>)<Int> -> {
+    return vyb_qt_menubar(mw)
+}
+
+# Add a top-level menu titled `title` to the menu bar; returns its menu handle or 0.
+share(all)
+qt_menu_add(mw<Int>, title<String>)<Int> -> {
+    return vyb_qt_menu_add(mw, title)
+}
+
+# Add an action to `menu`; its trigger enqueues QtEvent::Click. Returns the action handle.
+share(all)
+qt_action_add(menu<Int>, text<String>)<Int> -> {
+    return vyb_qt_action_add(menu, text)
+}
+
+# Number of actions in `menu`, or -1 on a bad handle.
+share(all)
+qt_action_count(menu<Int>)<Int> -> {
+    return vyb_qt_action_count(menu)
+}
+
+# Show `text` in the main window's status bar. Returns 0, or -1 on a bad handle.
+share(all)
+qt_statusbar_message(mw<Int>, text<String>)<Int> -> {
+    return vyb_qt_statusbar_message(mw, text)
+}
+
+# Current status-bar message (String); "" on a bad handle.
+share(all)
+qt_statusbar_text(mw<Int>)<String> -> {
+    return vyb_qt_statusbar_text(mw)
+}
+
+# Add a toolbar titled `title` to the main window; returns its handle or 0.
+share(all)
+qt_toolbar_create(mw<Int>, title<String>)<Int> -> {
+    return vyb_qt_toolbar_create(mw, title)
+}
 # gen_qt[mod_wrappers]: end
 
 # gen_qt[mod_enums]: begin
@@ -645,5 +693,8 @@ enum QtWidgetKind {
     web = 14
     tabs = 15
     list = 16
+    menuBar = 17
+    menu = 18
+    toolbar = 19
 }
 # gen_qt[mod_enums]: end

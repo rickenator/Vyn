@@ -3323,6 +3323,14 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_qt_list_current") rtName = "__vyb_qt_list_current";
         else if (fname == "vyb_qt_list_set_current") rtName = "__vyb_qt_list_set_current";
         else if (fname == "vyb_qt_list_item_text") rtName = "__vyb_qt_list_item_text";
+        else if (fname == "vyb_qt_main_window_create") rtName = "__vyb_qt_main_window_create";
+        else if (fname == "vyb_qt_menubar") rtName = "__vyb_qt_menubar";
+        else if (fname == "vyb_qt_menu_add") rtName = "__vyb_qt_menu_add";
+        else if (fname == "vyb_qt_action_add") rtName = "__vyb_qt_action_add";
+        else if (fname == "vyb_qt_action_count") rtName = "__vyb_qt_action_count";
+        else if (fname == "vyb_qt_statusbar_message") rtName = "__vyb_qt_statusbar_message";
+        else if (fname == "vyb_qt_statusbar_text") rtName = "__vyb_qt_statusbar_text";
+        else if (fname == "vyb_qt_toolbar_create") rtName = "__vyb_qt_toolbar_create";
         if (!rtName.empty()) {
             auto getQtFn = [&](llvm::FunctionType* ft) -> llvm::Function* {
                 llvm::Function* f2 = module->getFunction(rtName);
@@ -3373,7 +3381,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_event_kind" ||
                 fname == "vyb_qt_event_pop" ||
                 fname == "vyb_qt_run" ||
-                fname == "vyb_qt_run_stop") {
+                fname == "vyb_qt_run_stop" ||
+                fname == "vyb_qt_main_window_create") {
                 if (!checkArity(0)) return;
                 llvm::FunctionType* ft0 = llvm::FunctionType::get(int64Type, {}, false);
                 m_currentLLVMValue = builder->CreateCall(getQtFn(ft0), {}, "qt.ret");
@@ -3410,7 +3419,9 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_tabs_current" ||
                 fname == "vyb_qt_list_create" ||
                 fname == "vyb_qt_list_count" ||
-                fname == "vyb_qt_list_current") {
+                fname == "vyb_qt_list_current" ||
+                fname == "vyb_qt_menubar" ||
+                fname == "vyb_qt_action_count") {
                 if (!checkArity(1)) return;
                 llvm::Value* a = needArg(0); if (!a) return;
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
@@ -3421,7 +3432,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_label_text" ||
                 fname == "vyb_qt_button_text" ||
                 fname == "vyb_qt_edit_text" ||
-                fname == "vyb_qt_text_edit_text") {
+                fname == "vyb_qt_text_edit_text" ||
+                fname == "vyb_qt_statusbar_text") {
                 if (!checkArity(1)) return;
                 llvm::Value* a = needArg(0); if (!a) return;
                 llvm::FunctionType* ft = llvm::FunctionType::get(qtStrRet(), {int64Type}, false);
@@ -3448,7 +3460,11 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_text_edit_set_text" ||
                 fname == "vyb_qt_radio_create" ||
                 fname == "vyb_qt_tabs_add" ||
-                fname == "vyb_qt_list_add") {
+                fname == "vyb_qt_list_add" ||
+                fname == "vyb_qt_menu_add" ||
+                fname == "vyb_qt_action_add" ||
+                fname == "vyb_qt_statusbar_message" ||
+                fname == "vyb_qt_toolbar_create") {
                 if (!checkArity(2)) return;
                 llvm::Value* a = needArg(0); llvm::Value* s = needArg(1);
                 if (!a || !s) return;

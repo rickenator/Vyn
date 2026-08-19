@@ -301,6 +301,29 @@ QT_FUNCS = [
     dict(mod="qt_list_item_text", vn="vyb_qt_list_item_text", cn="__vyb_qt_list_item_text",
          args=[("list", "Int"), ("idx", "Int")], ret="String", shape="str2", stub="qt_stub_str()",
          doc="Text of list item `idx` (String); \"\" on a bad handle/index."),
+
+    # Main-window chrome (QMainWindow): menubar, menus, actions, statusbar, toolbar.
+    dict(mod="qt_main_window_create", vn="vyb_qt_main_window_create", cn="__vyb_qt_main_window_create",
+         args=[], ret="Int", shape="int0", stub="0",
+         doc="Create a top-level QMainWindow (kind Window) with menubar/statusbar/toolbar support; returns its handle or 0."),
+    dict(mod="qt_menubar", vn="vyb_qt_menubar", cn="__vyb_qt_menubar", args=[("mw", "Int")],
+         ret="Int", shape="int1", stub="0", doc="The main window's menu bar handle (created on demand)."),
+    dict(mod="qt_menu_add", vn="vyb_qt_menu_add", cn="__vyb_qt_menu_add",
+         args=[("mw", "Int"), ("title", "String")], ret="Int", shape="text", stub="0",
+         doc="Add a top-level menu titled `title` to the menu bar; returns its menu handle or 0."),
+    dict(mod="qt_action_add", vn="vyb_qt_action_add", cn="__vyb_qt_action_add",
+         args=[("menu", "Int"), ("text", "String")], ret="Int", shape="text", stub="0",
+         doc="Add an action to `menu`; its trigger enqueues QtEvent::Click. Returns the action handle."),
+    dict(mod="qt_action_count", vn="vyb_qt_action_count", cn="__vyb_qt_action_count", args=[("menu", "Int")],
+         ret="Int", shape="int1", stub="-1", doc="Number of actions in `menu`, or -1 on a bad handle."),
+    dict(mod="qt_statusbar_message", vn="vyb_qt_statusbar_message", cn="__vyb_qt_statusbar_message",
+         args=[("mw", "Int"), ("text", "String")], ret="Int", shape="text", stub="-1",
+         doc="Show `text` in the main window's status bar. Returns 0, or -1 on a bad handle."),
+    dict(mod="qt_statusbar_text", vn="vyb_qt_statusbar_text", cn="__vyb_qt_statusbar_text", args=[("mw", "Int")],
+         ret="String", shape="str1", stub="qt_stub_str()", doc="Current status-bar message (String); \"\" on a bad handle."),
+    dict(mod="qt_toolbar_create", vn="vyb_qt_toolbar_create", cn="__vyb_qt_toolbar_create",
+         args=[("mw", "Int"), ("title", "String")], ret="Int", shape="text", stub="0",
+         doc="Add a toolbar titled `title` to the main window; returns its handle or 0."),
 ]
 
 QT_WEB_FUNCS = [
@@ -339,7 +362,7 @@ QT_WIDGETS = [
     ("none", 0), ("window", 1), ("label", 2), ("button", 3), ("edit", 4),
     ("checkbox", 5), ("progress", 6), ("combo", 7), ("spin", 8), ("slider", 9),
     ("dial", 10), ("group", 11), ("textEdit", 12), ("radio", 13), ("web", 14),
-    ("tabs", 15), ("list", 16),
+    ("tabs", 15), ("list", 16), ("menuBar", 17), ("menu", 18), ("toolbar", 19),
 ]
 
 

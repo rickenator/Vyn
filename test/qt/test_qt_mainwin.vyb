@@ -1,0 +1,73 @@
+// @test: qt stdlib module - QMainWindow chrome (menus, actions, statusbar, toolbar)
+// @description: Headless-deterministic coverage for the main-window layer: a
+//   QMainWindow, its on-demand menu bar, a top-level menu and actions (with an
+//   action trigger -> qt_on_event click handoff), a status-bar message, and a
+//   toolbar. Runs on the offscreen QPA platform.
+// @category: qt, stdlib, gui
+// @expect: pass
+// @expect-output: qt-mainwin-ok
+// @env: VYB_STDLIB=stdlib
+// @env: QT_QPA_PLATFORM=offscreen
+
+import qt
+
+main()<Int> -> {
+    if (qt_init() == false) {
+        println("qt-mainwin-ok (Qt5 unavailable)")
+        return 0
+    }
+    if (qt_active() == false) { return 1 }
+
+    mw<Int> = qt_main_window_create()
+    if (mw == 0) { return 2 }
+    // A QMainWindow is still a plain window to the existing qt_window_* API.
+    if (qt_window_set_title(mw, "App") != 0) { return 3 }
+    if (qt_window_title(mw) != "App") { return 4 }
+
+    mb<Int> = qt_menubar(mw)
+    if (mb == 0) { return 5 }
+    if (qt_kind(mb) != QtWidgetKind::menuBar) { return 6 }
+
+    file<Int> = qt_menu_add(mw, "File")
+    if (file == 0) { return 7 }
+    if (qt_kind(file) != QtWidgetKind::menu) { return 8 }
+
+    open<Int> = qt_action_add(file, "Open")
+    quit<Int> = qt_action_add(file, "Quit")
+    if (open == 0 || quit == 0) { return 9 }
+    if (qt_action_count(file) != 2) { return 10 }
+    if (qt_action_add(file, "About") == 0) { return 11 }
+    if (qt_action_count(file) != 3) { return 12 }
+
+    // Status bar message round-trip.
+    if (qt_statusbar_message(mw, "ready") != 0) { return 13 }
+    if (qt_statusbar_text(mw) != "ready") { return 14 }
+
+    // Toolbar.
+    tb<Int> = qt_toolbar_create(mw, "Main")
+    if (tb == 0) { return 15 }
+    if (qt_kind(tb) != QtWidgetKind::toolbar) { return 16 }
+
+    // An action trigger flows through qt_run as a Click carrying the action
+    // handle. Simulate the trigger cross-thread with qt_post_event and resolve
+    // it inside the qt_run handler.
+    opened<Bool> = false
+    if (qt_on_event(|h<Int>, k<Int>| -> {
+        if (k == QtEvent::click && h == open) { opened = true; qt_run_stop() }
+    }) != 0) { return 17 }
+
+    // Preserve `open` across the handler via a captured global? Use a label to
+    // prove the handler ran instead (immutable captures snapshot handles).
+    if (qt_post_event(open, QtEvent::click) != 0) { return 18 }
+    rc<Int> = qt_run()
+    if (qt_active() == false) { return 19 }   // graceful stop
+    if (qt_statusbar_message(mw, "clicked") != 0) { return 20 }
+    if (qt_statusbar_text(mw) != "clicked") { return 21 }
+
+    // The mutable `opened` flag is written back by the handler; verify it here.
+    if (opened == false) { return 22 }
+
+    qt_quit()
+    println("qt-mainwin-ok")
+    return 0
+}

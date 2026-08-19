@@ -48,6 +48,12 @@
 #include <QHBoxLayout>
 #include <QTabWidget>
 #include <QListWidget>
+#include <QMainWindow>
+#include <QMenuBar>
+#include <QMenu>
+#include <QAction>
+#include <QStatusBar>
+#include <QToolBar>
 #include <QTimer>
 #include <QString>
 #include <QByteArray>
@@ -566,6 +572,9 @@ extern "C" VYB_WEAK int64_t __vyb_qt_kind(int64_t h) {
     if (dynamic_cast<QGroupBox*>(w))       return 11; // GroupBox
     if (dynamic_cast<QTabWidget*>(w))      return 15; // Tabs
     if (dynamic_cast<QListWidget*>(w))     return 16; // List
+    if (dynamic_cast<QMenuBar*>(w))        return 17; // MenuBar
+    if (dynamic_cast<QMenu*>(w))           return 18; // Menu
+    if (dynamic_cast<QToolBar*>(w))        return 19; // Toolbar
     if (dynamic_cast<QPlainTextEdit*>(w))  return 12; // TextEdit
     if (dynamic_cast<QRadioButton*>(w))    return 13; // Radio
 #if defined(VYB_HAVE_QT_WEBENGINE)
@@ -1000,4 +1009,66 @@ extern "C" VYB_WEAK vyb_qt_str __vyb_qt_list_item_text(int64_t h, int64_t idx) {
     QListWidgetItem* item = l->item((int)idx);
     if (!item) return { nullptr, 0 };
     return qt_to_owned(item->text());
+}
+
+// ----------------------------------------------------------------------------
+// Main-window chrome (QMainWindow): menubar, menus, actions, statusbar, toolbar
+// ----------------------------------------------------------------------------
+// A QMainWindow behaves like a plain window (qt_window_* apply) but also owns a
+// menubar and status bar. QAction handles are opaque and NOT QWidgets — their
+// triggered signal enqueues a Click record whose handle is the action handle, so
+// a qt_on_event handler can match it; avoid passing an action handle to widget
+// APIs.
+extern "C" VYB_WEAK int64_t __vyb_qt_main_window_create(void) {
+    if (!g_app) return 0;
+    return reinterpret_cast<int64_t>(new QMainWindow());
+}
+
+// The main window's menu bar (created on demand). Returns its handle, or 0 on a
+// bad / non-QMainWindow handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_menubar(int64_t h) {
+    QMainWindow* mw = dynamic_cast<QMainWindow*>(htowed(h)); if (!mw) return 0;
+    return reinterpret_cast<int64_t>(mw->menuBar());
+}
+
+// Add a top-level menu titled `title` to the menu bar. Returns its menu handle,
+// or 0 on a bad / non-QMainWindow handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_menu_add(int64_t h, const char* s, int64_t len) {
+    QMainWindow* mw = dynamic_cast<QMainWindow*>(htowed(h)); if (!mw) return 0;
+    return reinterpret_cast<int64_t>(mw->menuBar()->addMenu(qt_from_bytes(s, len)));
+}
+
+// Add an action to `menu`; its trigger enqueues QtEvent::Click with the action
+// handle. Returns the action handle, or 0 on a bad / non-QMenu handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_action_add(int64_t h, const char* s, int64_t len) {
+    QMenu* m = dynamic_cast<QMenu*>(htowed(h)); if (!m) return 0;
+    QAction* a = m->addAction(qt_from_bytes(s, len));
+    QObject::connect(a, &QAction::triggered,
+        [a](bool) { vyb_qt_enqueue(reinterpret_cast<int64_t>(a), VYB_QT_EVT_CLICK); });
+    return reinterpret_cast<int64_t>(a);
+}
+
+// Number of actions in `menu`, or -1 on a bad / non-QMenu handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_action_count(int64_t h) {
+    QMenu* m = dynamic_cast<QMenu*>(htowed(h)); if (!m) return -1;
+    return (int64_t)m->actions().size();
+}
+
+// Show `text` in the main window's status bar. Returns 0, or -1 on a bad handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_statusbar_message(int64_t h, const char* s, int64_t len) {
+    QMainWindow* mw = dynamic_cast<QMainWindow*>(htowed(h)); if (!mw) return -1;
+    mw->statusBar()->showMessage(qt_from_bytes(s, len));
+    return 0;
+}
+
+// Current status-bar message (String); "" on a bad handle.
+extern "C" VYB_WEAK vyb_qt_str __vyb_qt_statusbar_text(int64_t h) {
+    QMainWindow* mw = dynamic_cast<QMainWindow*>(htowed(h)); if (!mw) return { nullptr, 0 };
+    return qt_to_owned(mw->statusBar()->currentMessage());
+}
+
+// Add a toolbar titled `title` to the main window. Returns its handle, or 0.
+extern "C" VYB_WEAK int64_t __vyb_qt_toolbar_create(int64_t h, const char* s, int64_t len) {
+    QMainWindow* mw = dynamic_cast<QMainWindow*>(htowed(h)); if (!mw) return 0;
+    return reinterpret_cast<int64_t>(mw->addToolBar(qt_from_bytes(s, len)));
 }
