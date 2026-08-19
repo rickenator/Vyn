@@ -21,8 +21,9 @@
 #
 # RFE feature coverage at a glance:
 #   aspect/bind/struct  ResourceProvider/Interactive/Display + providers & Nav
-#   select              cmd_of (key classification), the run_browser command
-#                       dispatcher, and the startup probe boot-status routing
+#   select              cmd_of (key classification), the scroll_page Bool
+#                       direction, the run_browser command dispatcher, and the
+#                       startup probe boot-status routing
 #   asyncs/Future/await startup_probe() awaited then `select`ed for boot status
 #   agents + channels   page downloads run on an agent worker -> dl_progress chan
 #   ensure/fail/trap    screen-size invariant; fetch_page_at fails closed to an
@@ -855,13 +856,18 @@ load_url(st<their<BrowserState>>, target<String>)<Void> -> {
 scroll_page(st<their<BrowserState>>, r<Int>, forward<Bool>)<Void> -> {
     bodyRows<Int> = body_rows(r)
     if (bodyRows < 3) { bodyRows = 3 }
-    if (forward) {
-        nxt<Int> = st.top + bodyRows
-        if (nxt < st.page.lines.len()) { st.top = nxt } else { st.top = 0 }
-    } else {
-        prev<Int> = st.top - bodyRows
-        if (prev < 0) { prev = 0 }
-        st.top = prev
+    # The scroll direction is itself a `select` over the Bool we parsed out as a
+    # bare early exit, keeping the whole function pattern-match driven.
+    select (forward) -> {
+        true -> {
+            nxt<Int> = st.top + bodyRows
+            if (nxt < st.page.lines.len()) { st.top = nxt } else { st.top = 0 }
+        }
+        false -> {
+            prev<Int> = st.top - bodyRows
+            if (prev < 0) { prev = 0 }
+            st.top = prev
+        }
     }
 }
 
