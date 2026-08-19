@@ -307,6 +307,18 @@ qt_layout_add(layout<Int>, child<Int>)<Int> -> {
     return vyb_qt_layout_add(layout, child)
 }
 
+# Nest sub-layout `sub` inside box-layout `layout` (adds it as the next item). Returns 0.
+share(all)
+qt_layout_add_layout(layout<Int>, sub<Int>)<Int> -> {
+    return vyb_qt_layout_add_layout(layout, sub)
+}
+
+# Set the stretch factor of the item at `index` (add order, 0-based) to `stretch`. Returns 0.
+share(all)
+qt_layout_set_stretch(layout<Int>, index<Int>, stretch<Int>)<Int> -> {
+    return vyb_qt_layout_set_stretch(layout, index, stretch)
+}
+
 # Static widget kind (QtWidgetKind) of handle `h`, or 0 if not a widget.
 share(all)
 qt_kind(h<Int>)<Int> -> {

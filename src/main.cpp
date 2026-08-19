@@ -257,6 +257,8 @@ extern "C" {
     int64_t __vyb_qt_vbox(int64_t parent);
     int64_t __vyb_qt_hbox(int64_t parent);
     int64_t __vyb_qt_layout_add(int64_t layout, int64_t child);
+    int64_t __vyb_qt_layout_add_layout(int64_t layout, int64_t sub);
+    int64_t __vyb_qt_layout_set_stretch(int64_t layout, int64_t index, int64_t stretch);
     int64_t __vyb_qt_kind(int64_t h);
     int64_t __vyb_qt_event_count();
     int64_t __vyb_qt_event_handle();
@@ -1752,6 +1754,10 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_hbox), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_layout_add")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_layout_add), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_layout_add_layout")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_layout_add_layout), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_layout_set_stretch")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_layout_set_stretch), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_kind")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_kind), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_event_count")] = llvm::orc::ExecutorSymbolDef(

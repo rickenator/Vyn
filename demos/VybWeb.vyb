@@ -1,0 +1,96 @@
+// VybWeb - a small native browser using the stdlib `qt` module (QWebEngineView).
+//
+// Shows a QMainWindow-less web app: a window whose vertical column nests a
+// horizontal toolbar (back / forward / reload / address bar / Go / Quit) above a
+// QtWebEngine web view that fills the rest of the window. The address bar is
+// kept in sync with the current URL on every loadFinished, and the title bar
+// tracks the page title. Drops you on https://www.google.com/.
+//
+// Requires a build with Qt5 WebEngine (CMake finds Qt5WebEngineWidgets); if the
+// surface is unavailable qt_web_create returns 0 and the app reports it.
+//
+//   build/vyb demos/VybWeb.vyb
+//
+// On a headless box run with a GUI value of QT_QPA_PLATFORM (offscreen works);
+// a container that restricts Chromium's namespace sandbox may need
+// QTWEBENGINE_DISABLE_SANDBOX=1 (or --disable-ns-setgroups) to let the renderer
+// launch. Quit with the Quit button (or Ctrl-C).
+
+import qt
+
+main()<Int> -> {
+    if (qt_init() == false) {
+        println("VybWeb: Qt5 unavailable in this build")
+        return 1
+    }
+
+    w<Int> = qt_window_create()
+    if (w == 0) { return 1 }
+    if (qt_window_resize(w, 1100, 720) != 0) { return 1 }
+    if (qt_window_set_title(w, "VybWeb") != 0) { return 1 }
+
+    // Column layout + nested toolbar row.
+    col<Int> = qt_vbox(w)
+    if (col == 0) { return 1 }
+    bar<Int> = qt_hbox(0)
+    if (bar == 0) { return 1 }
+
+    // Toolbar controls (parented to the window, placed by the toolbar row).
+    btnBack<Int> = qt_button_create(w, "< Back")
+    btnFwd<Int>  = qt_button_create(w, "Fwd >")
+    btnReload<Int> = qt_button_create(w, "Reload")
+    url<Int>     = qt_edit_create(w, "https://www.google.com/")
+    btnGo<Int>   = qt_button_create(w, "Go")
+    btnQuit<Int> = qt_button_create(w, "Quit")
+
+    if (qt_layout_add(bar, btnBack) != 0) { return 1 }
+    if (qt_layout_add(bar, btnFwd) != 0) { return 1 }
+    if (qt_layout_add(bar, btnReload) != 0) { return 1 }
+    if (qt_layout_add(bar, url) != 0) { return 1 }
+    if (qt_layout_add(bar, btnGo) != 0) { return 1 }
+    if (qt_layout_add(bar, btnQuit) != 0) { return 1 }
+
+    // The web view fills the column; the toolbar row keeps its natural height.
+    if (qt_layout_add_layout(col, bar) != 0) { return 1 }
+    web<Int> = qt_web_create(w)
+    if (web == 0) {
+        println("VybWeb: QtWebEngine unavailable in this build")
+        qt_quit()
+        return 1
+    }
+    if (qt_layout_add(col, web) != 0) { return 1 }
+    if (qt_layout_set_stretch(col, 1, 1) != 0) { return 1 }
+
+    // Navigation handler: buttons drive the page; a finished load syncs the
+    // address bar and window title to the rendered page.
+    if (qt_on_event(|h<Int>, k<Int>| -> {
+        if (k == QtEvent::click) {
+            if (h == btnQuit) {
+                qt_quit()
+            } else {
+                if (h == btnBack) { qt_web_back(web) }
+                if (h == btnFwd)  { qt_web_forward(web) }
+                if (h == btnReload) { qt_web_reload(web) }
+                if (h == btnGo) {
+                    qt_web_load(web, qt_edit_text(url))
+                }
+            }
+        } else {
+            if (h == web && k == QtEvent::loadFinished) {
+                qt_edit_set_text(url, qt_web_url(web))
+                title<String> = qt_web_title(web)
+                if (title != "") { qt_window_set_title(w, "VybWeb - " + title) }
+            }
+        }
+    }) != 0) { return 1 }
+
+    // Build the tree before showing (offscreen visibility semantics).
+    if (qt_window_show(w) != 0) { return 1 }
+
+    // Start on Google and hand control to Qt's native event loop. The handler
+    // (above) drives everything; qt_quit() from Quit unwinds the loop and tears
+    // the GUI down, after which we return.
+    qt_web_load(web, "https://www.google.com/")
+    qt_run()
+    return 0
+}

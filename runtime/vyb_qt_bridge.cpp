@@ -583,6 +583,26 @@ extern "C" VYB_WEAK int64_t __vyb_qt_layout_add(int64_t layout, int64_t child) {
     return 0;
 }
 
+// Nest `sub` (a QLayout) inside `layout` as the next item, so a browser can put
+// a horizontal toolbar row inside a vertical page column. Returns 0, -1 on a
+// bad handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_layout_add_layout(int64_t layout, int64_t sub) {
+    QBoxLayout* l = dynamic_cast<QBoxLayout*>(htolay(layout)); if (!l) return -1;
+    QLayout* s = htolay(sub); if (!s) return -1;
+    l->addLayout(s);
+    return 0;
+}
+
+// Set the stretch factor of the item at `index` (add order, 0-based) so e.g.
+// the web view fills the column while the toolbar stays thin. Returns 0, -1 on
+// a bad handle / index.
+extern "C" VYB_WEAK int64_t __vyb_qt_layout_set_stretch(int64_t layout, int64_t index, int64_t stretch) {
+    QBoxLayout* l = dynamic_cast<QBoxLayout*>(htolay(layout)); if (!l) return -1;
+    if (index < 0 || stretch < 0 || (size_t)index >= (size_t)l->count()) return -1;
+    l->setStretch((int)index, (int)stretch);
+    return 0;
+}
+
 // ----------------------------------------------------------------------------
 // Kind introspection
 // ----------------------------------------------------------------------------

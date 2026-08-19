@@ -1,16 +1,50 @@
-// @test: qt stdlib module - optional QWebEngineView surface
+// @test: qt stdlib module - QWebEngineView surface + web navigation
 // @description: Covers the qt_web_* surface (QWebEngineView). When QtWebEngine
 //   is not linked into the build the stub shims report the surface unavailable
 //   (qt_web_create == 0) and every qt_web_* call returns its documented default
-//   without crashing; when it is present, a headless smoke creates a web view,
-//   checks its QtWidgetKind, loads about:blank (no network), and reloads.
+//   without crashing. When it is present, a headless pass (a) checks the widget
+//   kind, (b) navigates a deterministic network-free data: URL pair and verifies
+//   back/forward/reload update the page url + title, and (c) loads
+//   https://www.google.com/ and confirms a real page renders (a titleChanged /
+//   loadProgress control event + a non-empty url and title).
 // @category: qt, stdlib, gui, web
 // @expect: pass
 // @expect-output: qt-web-ok
-// @env: VYB_STDLIB=stdlib
-// @env: QT_QPA_PLATFORM=offscreen
+// @env: VYB_STDLIB=stdlib; QT_QPA_PLATFORM=offscreen; QTWEBENGINE_DISABLE_SANDBOX=1; QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-setuid-sandbox --disable-gpu
 
 import qt
+import time::{sleep_ms}
+
+// Pump until a control event for `web` with kind `expect` has been seen, or
+// `max` iterations (~20ms each) elapse. Returns 1 on success, else 0.
+saw_web_event(web<Int>, expect<Int>, max<Int>)<Int> -> {
+    n<Int> = 0
+    while (n < max) {
+        qt_process_events()
+        while (qt_event_count() > 0) {
+            h<Int> = qt_event_handle()
+            k<Int> = qt_event_kind()
+            if (h == web && k == expect) { return 1 }
+            qt_event_pop()
+        }
+        n = n + 1
+        sleep_ms(20)
+    }
+    return 0
+}
+
+// Wait until the page title equals `expect` (deterministic navigation check).
+wait_title(web<Int>, expect<String>)<Int> -> {
+    n<Int> = 0
+    while (n < 200) {
+        qt_process_events()
+        while (qt_event_count() > 0) { qt_event_pop() }
+        if (qt_web_title(web) == expect) { return 1 }
+        n = n + 1
+        sleep_ms(20)
+    }
+    return 0
+}
 
 main()<Int> -> {
     if (qt_init() == false) {
@@ -37,10 +71,32 @@ main()<Int> -> {
         return 0
     }
 
-    // QtWebEngine present: headless smoke (about:blank needs no network).
+    // QtWebEngine present.
     if (qt_kind(web) != QtWidgetKind::web) { return 20 }
     if (qt_web_load(web, "about:blank") != 0) { return 21 }
     if (qt_web_reload(web) != 0) { return 22 }
+
+    // Deterministic navigation with network-free data: URLs.
+    ua<String> = "data:text/html,<title>VybA</title>a"
+    ub<String> = "data:text/html,<title>VybB</title>b"
+    if (qt_web_load(web, ua) != 0) { return 30 }
+    if (wait_title(web, "VybA") != 1) { return 31 }
+    if (qt_web_load(web, ub) != 0) { return 32 }
+    if (wait_title(web, "VybB") != 1) { return 33 }
+    if (qt_web_back(web) != 0) { return 34 }
+    if (wait_title(web, "VybA") != 1) { return 35 }
+    if (qt_web_forward(web) != 0) { return 36 }
+    if (wait_title(web, "VybB") != 1) { return 37 }
+    if (qt_web_reload(web) != 0) { return 38 }
+    if (wait_title(web, "VybB") != 1) { return 39 }
+
+    // Real network load: google.com renders a page offscreen.
+    if (qt_web_load(web, "https://www.google.com/") != 0) { return 40 }
+    active<Int> = saw_web_event(web, QtEvent::titleChanged, 400)
+    if (active == 0) { active = saw_web_event(web, QtEvent::loadProgress, 400) }
+    if (active == 0) { return 41 }
+    if (qt_web_url(web) == "") { return 42 }
+    if (qt_web_title(web) == "") { return 43 }
 
     qt_quit()
     println("qt-web-ok")

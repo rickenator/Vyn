@@ -137,6 +137,12 @@ QT_FUNCS = [
          stub="0", doc="Create a horizontal box layout on window `parent`. Returns a layout handle."),
     dict(mod="qt_layout_add", vn="vyb_qt_layout_add", cn="__vyb_qt_layout_add", args=[("layout", "Int"), ("child", "Int")],
          ret="Int", shape="value", stub="-1", doc="Add widget `child` to box-layout `layout`. Returns 0."),
+    dict(mod="qt_layout_add_layout", vn="vyb_qt_layout_add_layout", cn="__vyb_qt_layout_add_layout",
+         args=[("layout", "Int"), ("sub", "Int")], ret="Int", shape="value", stub="-1",
+         doc="Nest sub-layout `sub` inside box-layout `layout` (adds it as the next item). Returns 0."),
+    dict(mod="qt_layout_set_stretch", vn="vyb_qt_layout_set_stretch", cn="__vyb_qt_layout_set_stretch",
+         args=[("layout", "Int"), ("index", "Int"), ("stretch", "Int")], ret="Int", shape="3int", stub="-1",
+         doc="Set the stretch factor of the item at `index` (add order, 0-based) to `stretch`. Returns 0."),
 
     # Kind introspection
     dict(mod="qt_kind", vn="vyb_qt_kind", cn="__vyb_qt_kind", args=[("h", "Int")], ret="Int", shape="int1", stub="0",

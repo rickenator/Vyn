@@ -1,5 +1,5 @@
 {
-  "git_rev": "33582f7f2628c8ab92ae2beac1d1ff5a9c194fe5",
+  "git_rev": "492a068c613add6fed3beba1889d744c34ba34b2",
   "modules": [
     "agents",
     "asyncs",
@@ -152,7 +152,7 @@
         "files": [
           "stdlib/qt/mod.vyb"
         ],
-        "exported": 132,
+        "exported": 134,
         "fan_in": 0,
         "fan_out": 0
       },
@@ -602,6 +602,8 @@
           "qt_vbox",
           "qt_hbox",
           "qt_layout_add",
+          "qt_layout_add_layout",
+          "qt_layout_set_stretch",
           "qt_kind",
           "qt_event_count",
           "qt_event_handle",
@@ -3308,6 +3310,24 @@
         "kind": "fn",
         "signature": "qt_layout_add(layout<Int>, child<Int>)<Int> ->",
         "summary": "Add widget `child` to box-layout `layout`. Returns 0.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_layout_add_layout",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_layout_add_layout(layout<Int>, sub<Int>)<Int> ->",
+        "summary": "Nest sub-layout `sub` inside box-layout `layout` (adds it as the next item). Returns 0.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_layout_set_stretch",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_layout_set_stretch(layout<Int>, index<Int>, stretch<Int>)<Int> ->",
+        "summary": "Set the stretch factor of the item at `index` (add order, 0-based) to `stretch`. Returns 0.",
         "fan_in": 0
       },
       {
@@ -7505,6 +7525,18 @@
       "from_module": "qt",
       "from_symbol": "qt_layout_add",
       "to_symbol": "vyb_qt_layout_add"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_layout_add_layout",
+      "to_symbol": "vyb_qt_layout_add_layout"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_layout_set_stretch",
+      "to_symbol": "vyb_qt_layout_set_stretch"
     },
     {
       "type": "runtimeRef",

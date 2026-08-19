@@ -3274,6 +3274,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_qt_vbox") rtName = "__vyb_qt_vbox";
         else if (fname == "vyb_qt_hbox") rtName = "__vyb_qt_hbox";
         else if (fname == "vyb_qt_layout_add") rtName = "__vyb_qt_layout_add";
+        else if (fname == "vyb_qt_layout_add_layout") rtName = "__vyb_qt_layout_add_layout";
+        else if (fname == "vyb_qt_layout_set_stretch") rtName = "__vyb_qt_layout_set_stretch";
         else if (fname == "vyb_qt_kind") rtName = "__vyb_qt_kind";
         else if (fname == "vyb_qt_event_count") rtName = "__vyb_qt_event_count";
         else if (fname == "vyb_qt_event_handle") rtName = "__vyb_qt_event_handle";
@@ -3547,6 +3549,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_progress_create" ||
                 fname == "vyb_qt_progress_set_value" ||
                 fname == "vyb_qt_layout_add" ||
+                fname == "vyb_qt_layout_add_layout" ||
                 fname == "vyb_qt_post_event" ||
                 fname == "vyb_qt_combo_set_current_index" ||
                 fname == "vyb_qt_spin_set_value" ||
@@ -3565,7 +3568,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type}, false);
                 m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a), toI64(b)}, "qt.v2");
                 return;
-            } else if (fname == "vyb_qt_window_resize" || fname == "vyb_qt_spin_create" ||
+            } else if (fname == "vyb_qt_window_resize" || fname == "vyb_qt_layout_set_stretch" ||
+                fname == "vyb_qt_spin_create" ||
                 fname == "vyb_qt_slider_create" ||
                 fname == "vyb_qt_dial_create") {
                 if (!checkArity(3)) return;

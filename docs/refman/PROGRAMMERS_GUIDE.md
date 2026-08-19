@@ -1576,6 +1576,7 @@ qt_checkbox_create(parent<Int>, text<String>)<Int>          qt_checkbox_checked(
 qt_checkbox_set_checked(c<Int>, on<Bool>)<Int>
 qt_progress_create(parent<Int>, max<Int>)<Int>              qt_progress_set_value(p<Int>, value<Int>)<Int>
 qt_vbox(parent<Int>)<Int>     qt_hbox(parent<Int>)<Int>     qt_layout_add(layout<Int>, child<Int>)<Int>
+qt_layout_add_layout(layout<Int>, sub<Int>)<Int>      qt_layout_set_stretch(layout<Int>, index<Int>, stretch<Int>)<Int>
 qt_combo_create(parent<Int>)<Int>                       qt_combo_add_item(c<Int>, text<String>)<Int>
 qt_combo_count(c<Int>)<Int>   qt_combo_current_index(c<Int>)<Int>
 qt_combo_set_current_index(c<Int>, idx<Int>)<Int>       qt_combo_item_text(c<Int>, idx<Int>)<String>
@@ -1654,7 +1655,13 @@ degrades to stubs (`qt_web_create()==0`). Loading is async — `loadFinished`/
 the `qt_event_*` poll. `qt_post_event(h, kind)` enqueues a synthetic event from
 any thread (the queue is mutex-guarded) — a background `asyncs` fiber uses it to
 signal the UI loop without touching a QWidget off the main thread, and the
-`qt_run` handler or `qt_event_*` poll resolves it on the main thread.
+`qt_run` handler or `qt_event_*` poll resolves it on the main thread. Box
+layouts nest: `qt_layout_add_layout(parent, sub)` adopts a sub-`QBoxLayout`
+inside another (a browser column can host a horizontal toolbar row), and
+`qt_layout_set_stretch(layout, index, stretch)` makes a child (e.g. the web
+view) fill the leftover space while the toolbar stays thin. `demos/VybWeb.vyb`
+is a small native browser built on this — it drops on `https://www.google.com/`
+with back/forward/reload, a live address bar, Go, and Quit.
 
 The modal dialog tier adds native `QMessageBox`/`QFileDialog` pickers
 (`qt_msg_info`/`qt_msg_warn`/`qt_msg_error`/`qt_msg_about`/`qt_msg_question` and
@@ -1897,6 +1904,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

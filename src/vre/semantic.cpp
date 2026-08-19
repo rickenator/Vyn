@@ -2155,7 +2155,8 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_qt_checkbox_checked" || name == "vyb_qt_checkbox_set_checked" ||
             name == "vyb_qt_progress_create" || name == "vyb_qt_progress_set_value" ||
             name == "vyb_qt_vbox" || name == "vyb_qt_hbox" ||
-            name == "vyb_qt_layout_add" || name == "vyb_qt_kind" ||
+            name == "vyb_qt_layout_add" || name == "vyb_qt_layout_add_layout" ||
+            name == "vyb_qt_layout_set_stretch" || name == "vyb_qt_kind" ||
             name == "vyb_qt_event_count" || name == "vyb_qt_event_handle" ||
             name == "vyb_qt_event_kind" || name == "vyb_qt_event_pop" ||
             name == "vyb_qt_wait_event" || name == "vyb_qt_run" ||
@@ -2746,6 +2747,8 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 "vyb_qt_vbox",
                 "vyb_qt_hbox",
                 "vyb_qt_layout_add",
+                "vyb_qt_layout_add_layout",
+                "vyb_qt_layout_set_stretch",
                 "vyb_qt_kind",
                 "vyb_qt_event_count",
                 "vyb_qt_event_handle",

@@ -82,6 +82,10 @@ VYB_WEAK int64_t __vyb_qt_vbox(int64_t parent) { (void)parent; return 0; }
 VYB_WEAK int64_t __vyb_qt_hbox(int64_t parent) { (void)parent; return 0; }
 VYB_WEAK int64_t __vyb_qt_layout_add(int64_t layout, int64_t child)
     { (void)layout; (void)child; return -1; }
+VYB_WEAK int64_t __vyb_qt_layout_add_layout(int64_t layout, int64_t sub)
+    { (void)layout; (void)sub; return -1; }
+VYB_WEAK int64_t __vyb_qt_layout_set_stretch(int64_t layout, int64_t index, int64_t stretch)
+    { (void)layout; (void)index; (void)stretch; return -1; }
 VYB_WEAK int64_t __vyb_qt_kind(int64_t h) { (void)h; return 0; }
 VYB_WEAK int64_t __vyb_qt_event_count() { return 0; }
 VYB_WEAK int64_t __vyb_qt_event_handle() { return 0; }

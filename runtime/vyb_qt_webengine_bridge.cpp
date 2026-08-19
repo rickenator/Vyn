@@ -21,6 +21,8 @@
 #include <QString>
 #include <QByteArray>
 #include <QApplication>
+#include <unordered_map>
+#include <mutex>
 
 #include <cstdint>
 #include <cstdlib>
@@ -51,6 +53,18 @@ extern "C" int64_t __vyb_qt_event_enqueue_widget(int64_t handle, int64_t kind);
 static QWidget* htowed(int64_t h) { return reinterpret_cast<QWidget*>(h); }
 static int64_t wetoh(QWidget* w) { return reinterpret_cast<int64_t>(w); }
 static QWebEngineView* htowe(int64_t h) { return dynamic_cast<QWebEngineView*>(htowed(h)); }
+
+// Qt does not expose an isLoading() getter on QWebEngineView in 5.15, so the
+// bridge tracks loading state from the page lifecycle signals (loadStarted ->
+// loading, loadFinished -> idle). Signals and reads both happen on the main
+// thread (Qt thread affinity), but the map is mutex-guarded for safety.
+static std::unordered_map<int64_t, bool> g_loading;
+static std::mutex g_loading_mtx;
+
+static void vyb_qt_set_loading(int64_t h, bool loading) {
+    std::lock_guard<std::mutex> lk(g_loading_mtx);
+    g_loading[h] = loading;
+}
 
 // Decode a { ptr, len } byte buffer as UTF-8 into a QString.
 static QString qt_from_bytes(const char* ptr, int64_t len) {
@@ -85,13 +99,20 @@ extern "C" VYB_WEAK int64_t __vyb_qt_web_create(int64_t parent) {
     if (!QApplication::instance()) return 0;
     QWidget* pw = parent ? htowed(parent) : nullptr;
     QWebEngineView* v = new QWebEngineView(pw);
+    int64_t handle = wetoh(v);
+    vyb_qt_set_loading(handle, false);
+    QObject::connect(v, &QWebEngineView::loadStarted,
+        [handle]() { vyb_qt_set_loading(handle, true); });
     QObject::connect(v, &QWebEngineView::loadFinished,
-        [v](bool) { __vyb_qt_event_enqueue_widget(wetoh(v), VYB_QT_EVT_LOADFINISHED); });
+        [handle](bool) {
+            vyb_qt_set_loading(handle, false);
+            __vyb_qt_event_enqueue_widget(handle, VYB_QT_EVT_LOADFINISHED);
+        });
     QObject::connect(v, &QWebEngineView::titleChanged,
-        [v](const QString&) { __vyb_qt_event_enqueue_widget(wetoh(v), VYB_QT_EVT_TITLECHANGED); });
+        [handle](const QString&) { __vyb_qt_event_enqueue_widget(handle, VYB_QT_EVT_TITLECHANGED); });
     QObject::connect(v, &QWebEngineView::loadProgress,
-        [v](int) { __vyb_qt_event_enqueue_widget(wetoh(v), VYB_QT_EVT_LOADPROGRESS); });
-    return wetoh(v);
+        [handle](int) { __vyb_qt_event_enqueue_widget(handle, VYB_QT_EVT_LOADPROGRESS); });
+    return handle;
 }
 
 // Begin loading `url` in the web view (asynchronous). Returns 0, or -1 on a bad
@@ -116,8 +137,9 @@ extern "C" VYB_WEAK vyb_qt_str __vyb_qt_web_title(int64_t h) {
 
 // 1 while the page is still loading, else 0.
 extern "C" VYB_WEAK int64_t __vyb_qt_web_loading(int64_t h) {
-    QWebEngineView* v = htowe(h); if (!v) return 0;
-    return v->isLoading() ? 1 : 0;
+    std::lock_guard<std::mutex> lk(g_loading_mtx);
+    auto it = g_loading.find(h);
+    return it == g_loading.end() ? 0 : (it->second ? 1 : 0);
 }
 
 // Go back in history. Returns 0 on success, -1 on a bad handle.
