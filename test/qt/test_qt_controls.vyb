@@ -1,0 +1,118 @@
+// @test: qt stdlib module - controls, layouts, and polled signal queue
+// @description: Headless-deterministic Qt5 Widgets coverage for the Phase A+B
+//   surface: buttons, text edits, checkboxes, progress bars, box layouts,
+//   kind introspection, and the polled signal event queue. Signal emission is
+//   exercised deterministically via programmatic setChecked() (QCheckBox emits
+//   toggled synchronously when the state changes) and setText() (QLineEdit
+//   emits textChanged). When Qt5 is unavailable the stub shims degrade
+//   gracefully and the test still passes.
+// @category: qt, stdlib, gui
+// @expect: pass
+// @expect-output: qt-controls-ok
+// @env: VYB_STDLIB=stdlib
+// @env: QT_QPA_PLATFORM=offscreen
+
+import qt
+
+main()<Int> -> {
+    if (qt_init() == false) {
+        // Qt5 not linked into this build (stub shims): degrade gracefully.
+        println("qt-controls-ok (Qt5 unavailable)")
+        return 0
+    }
+    if (qt_active() == false) { return 1 }
+
+    w<Int> = qt_window_create()
+    if (w == 0) { return 2 }
+
+    // --- Buttons --------------------------------------------------------------
+    b<Int> = qt_button_create(w, "Go")
+    if (b == 0) { return 3 }
+    if (qt_kind(b) != QtWidgetKind::button) { return 4 }
+    if (qt_button_text(b) != "Go") { return 5 }
+    if (qt_button_set_text(b, "Stop") != 0) { return 6 }
+    if (qt_button_text(b) != "Stop") { return 7 }
+    if (qt_button_set_enabled(b, false) != 0) { return 8 }
+    if (qt_button_set_enabled(b, true) != 0) { return 9 }
+
+    // --- Text edits -----------------------------------------------------------
+    e<Int> = qt_edit_create(w, "name")
+    if (e == 0) { return 10 }
+    if (qt_kind(e) != QtWidgetKind::edit) { return 11 }
+    if (qt_edit_text(e) != "name") { return 12 }
+    if (qt_edit_set_text(e, "Vyb") != 0) { return 13 }
+    if (qt_edit_text(e) != "Vyb") { return 14 }
+    if (qt_edit_set_placeholder(e, "type here") != 0) { return 15 }
+
+    // --- Checkboxes ------------------------------------------------------------
+    c<Int> = qt_checkbox_create(w, "done")
+    if (c == 0) { return 16 }
+    if (qt_kind(c) != QtWidgetKind::checkbox) { return 17 }
+    if (qt_checkbox_checked(c) != false) { return 18 }
+
+    // --- Progress bars ----------------------------------------------------------
+    p<Int> = qt_progress_create(w, 100)
+    if (p == 0) { return 19 }
+    if (qt_kind(p) != QtWidgetKind::progress) { return 20 }
+    if (qt_progress_set_value(p, 75) != 0) { return 21 }
+
+    // --- Box layouts -------------------------------------------------------------
+    lay<Int> = qt_vbox(w)
+    if (lay == 0) { return 22 }
+    if (qt_layout_add(lay, b) != 0) { return 23 }
+    if (qt_layout_add(lay, e) != 0) { return 24 }
+
+    // A separate window hosts the horizontal layout (a widget may own only one).
+    w2<Int> = qt_window_create()
+    if (w2 == 0) { return 25 }
+    hlay<Int> = qt_hbox(w2)
+    if (hlay == 0) { return 26 }
+    if (qt_layout_add(hlay, c) != 0) { return 27 }
+    if (qt_layout_add(hlay, p) != 0) { return 28 }
+
+    // Kind introspection: the plain top-level window reports its own kind.
+    if (qt_kind(w) != QtWidgetKind::window) { return 29 }
+
+    // --- Polled event queue -----------------------------------------------------
+    // Drain any events the earlier construction/setup queued, then start a clean,
+    // fully deterministic sequence: check the box (toggled), change the edit text
+    // (textChanged), and verify FIFO ordering and the read/pop accessors.
+    while (qt_event_count() > 0) {
+        if (qt_event_pop() != 0) { return 30 }
+    }
+    if (qt_checkbox_set_checked(c, true) != 0) { return 31 }
+    if (qt_checkbox_checked(c) != true) { return 32 }
+    if (qt_edit_set_text(e, "changed") != 0) { return 32 }
+    if (qt_edit_text(e) != "changed") { return 33 }
+    if (qt_process_events() != 0) { return 34 }
+
+    // Oldest: checkbox toggled (handle c).
+    if (qt_event_count() != 2) { return 35 }
+    if (qt_event_handle() != c) { return 36 }
+    if (qt_event_kind() != QtEvent::toggled) { return 37 }
+    if (qt_event_pop() != 0) { return 38 }
+
+    // Next: edit textChanged (handle e).
+    if (qt_event_handle() != e) { return 39 }
+    if (qt_event_kind() != QtEvent::textChanged) { return 40 }
+    if (qt_event_pop() != 0) { return 41 }
+
+    // Queue is now empty; accessors are quiet and pop reports failure.
+    if (qt_event_count() != 0) { return 42 }
+    if (qt_event_handle() != 0) { return 43 }
+    if (qt_event_kind() != QtEvent::none) { return 44 }
+    if (qt_event_pop() != -1) { return 45 }
+
+    // Toggling the checkbox again re-enqueues its event (kind toggled, handle c).
+    if (qt_checkbox_set_checked(c, false) != 0) { return 46 }
+    if (qt_process_events() != 0) { return 47 }
+    if (qt_event_count() != 1) { return 48 }
+    if (qt_event_handle() != c) { return 49 }
+    if (qt_event_kind() != QtEvent::toggled) { return 50 }
+    if (qt_event_pop() != 0) { return 51 }
+    if (qt_event_count() != 0) { return 52 }
+
+    qt_quit()
+    println("qt-controls-ok")
+    return 0
+}

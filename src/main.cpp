@@ -230,6 +230,28 @@ extern "C" {
     int64_t __vyb_qt_label_create(int64_t parent, const char* s, int64_t len);
     int64_t __vyb_qt_label_set_text(int64_t h, const char* s, int64_t len);
     vyb_file_str __vyb_qt_label_text(int64_t h);
+    // Controls (buttons, edits, checkbox, progress), layouts, kind, events.
+    int64_t __vyb_qt_button_create(int64_t parent, const char* s, int64_t len);
+    int64_t __vyb_qt_button_set_text(int64_t h, const char* s, int64_t len);
+    vyb_file_str __vyb_qt_button_text(int64_t h);
+    int64_t __vyb_qt_button_set_enabled(int64_t h, int64_t on);
+    int64_t __vyb_qt_edit_create(int64_t parent, const char* s, int64_t len);
+    vyb_file_str __vyb_qt_edit_text(int64_t h);
+    int64_t __vyb_qt_edit_set_text(int64_t h, const char* s, int64_t len);
+    int64_t __vyb_qt_edit_set_placeholder(int64_t h, const char* s, int64_t len);
+    int64_t __vyb_qt_checkbox_create(int64_t parent, const char* s, int64_t len);
+    int64_t __vyb_qt_checkbox_checked(int64_t h);
+    int64_t __vyb_qt_checkbox_set_checked(int64_t h, int64_t on);
+    int64_t __vyb_qt_progress_create(int64_t parent, int64_t maxv);
+    int64_t __vyb_qt_progress_set_value(int64_t h, int64_t v);
+    int64_t __vyb_qt_vbox(int64_t parent);
+    int64_t __vyb_qt_hbox(int64_t parent);
+    int64_t __vyb_qt_layout_add(int64_t layout, int64_t child);
+    int64_t __vyb_qt_kind(int64_t h);
+    int64_t __vyb_qt_event_count(void);
+    int64_t __vyb_qt_event_handle(void);
+    int64_t __vyb_qt_event_kind(void);
+    int64_t __vyb_qt_event_pop(void);
 #endif
 
 #ifdef VYB_HAVE_OPENSSL
@@ -1590,6 +1612,48 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_label_set_text), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_label_text")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_label_text), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_button_create")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_button_create), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_button_set_text")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_button_set_text), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_button_text")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_button_text), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_button_set_enabled")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_button_set_enabled), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_edit_create")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_edit_create), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_edit_text")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_edit_text), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_edit_set_text")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_edit_set_text), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_edit_set_placeholder")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_edit_set_placeholder), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_checkbox_create")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_checkbox_create), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_checkbox_checked")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_checkbox_checked), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_checkbox_set_checked")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_checkbox_set_checked), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_progress_create")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_progress_create), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_progress_set_value")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_progress_set_value), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_vbox")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_vbox), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_hbox")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_hbox), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_layout_add")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_layout_add), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_kind")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_kind), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_event_count")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_event_count), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_event_handle")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_event_handle), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_event_kind")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_event_kind), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_event_pop")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_event_pop), llvm::JITSymbolFlags::Exported);
 #endif
         runtimeSymbols[mangle("__vyb_net_open")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_open), llvm::JITSymbolFlags::Exported);

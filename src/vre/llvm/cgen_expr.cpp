@@ -3249,6 +3249,27 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_qt_label_create") rtName = "__vyb_qt_label_create";
         else if (fname == "vyb_qt_label_set_text") rtName = "__vyb_qt_label_set_text";
         else if (fname == "vyb_qt_label_text") rtName = "__vyb_qt_label_text";
+        else if (fname == "vyb_qt_button_create") rtName = "__vyb_qt_button_create";
+        else if (fname == "vyb_qt_button_set_text") rtName = "__vyb_qt_button_set_text";
+        else if (fname == "vyb_qt_button_text") rtName = "__vyb_qt_button_text";
+        else if (fname == "vyb_qt_button_set_enabled") rtName = "__vyb_qt_button_set_enabled";
+        else if (fname == "vyb_qt_edit_create") rtName = "__vyb_qt_edit_create";
+        else if (fname == "vyb_qt_edit_text") rtName = "__vyb_qt_edit_text";
+        else if (fname == "vyb_qt_edit_set_text") rtName = "__vyb_qt_edit_set_text";
+        else if (fname == "vyb_qt_edit_set_placeholder") rtName = "__vyb_qt_edit_set_placeholder";
+        else if (fname == "vyb_qt_checkbox_create") rtName = "__vyb_qt_checkbox_create";
+        else if (fname == "vyb_qt_checkbox_checked") rtName = "__vyb_qt_checkbox_checked";
+        else if (fname == "vyb_qt_checkbox_set_checked") rtName = "__vyb_qt_checkbox_set_checked";
+        else if (fname == "vyb_qt_progress_create") rtName = "__vyb_qt_progress_create";
+        else if (fname == "vyb_qt_progress_set_value") rtName = "__vyb_qt_progress_set_value";
+        else if (fname == "vyb_qt_vbox") rtName = "__vyb_qt_vbox";
+        else if (fname == "vyb_qt_hbox") rtName = "__vyb_qt_hbox";
+        else if (fname == "vyb_qt_layout_add") rtName = "__vyb_qt_layout_add";
+        else if (fname == "vyb_qt_kind") rtName = "__vyb_qt_kind";
+        else if (fname == "vyb_qt_event_count") rtName = "__vyb_qt_event_count";
+        else if (fname == "vyb_qt_event_handle") rtName = "__vyb_qt_event_handle";
+        else if (fname == "vyb_qt_event_kind") rtName = "__vyb_qt_event_kind";
+        else if (fname == "vyb_qt_event_pop") rtName = "__vyb_qt_event_pop";
         if (!rtName.empty()) {
             auto getQtFn = [&](llvm::FunctionType* ft) -> llvm::Function* {
                 llvm::Function* f = module->getFunction(rtName);
@@ -3293,7 +3314,9 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             // No-argument Int helpers (lifecycle, event pump, timer poll, create).
             if (fname == "vyb_qt_init" || fname == "vyb_qt_quit" ||
                 fname == "vyb_qt_active" || fname == "vyb_qt_process_events" ||
-                fname == "vyb_qt_timer_fired" || fname == "vyb_qt_window_create") {
+                fname == "vyb_qt_timer_fired" || fname == "vyb_qt_window_create" ||
+                fname == "vyb_qt_event_count" || fname == "vyb_qt_event_handle" ||
+                fname == "vyb_qt_event_kind" || fname == "vyb_qt_event_pop") {
                 if (!checkArity(0)) return;
                 llvm::FunctionType* ft0 = llvm::FunctionType::get(int64Type, {}, false);
                 m_currentLLVMValue = builder->CreateCall(getQtFn(ft0), {}, "qt.ret");
@@ -3344,6 +3367,66 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                     int64Type, {int64Type, int8PtrType, int64Type}, false);
                 m_currentLLVMValue = builder->CreateCall(getQtFn(ft),
                     {toI64(parent), toStrPtr(s), strLenOf(s)}, "qt.label");
+                return;
+            } else if (fname == "vyb_qt_button_create" ||
+                       fname == "vyb_qt_edit_create" ||
+                       fname == "vyb_qt_checkbox_create") {
+                // (parent, text) -> new widget handle
+                if (!checkArity(2)) return;
+                llvm::Value* parent = needArg(0); llvm::Value* s = needArg(1);
+                if (!parent || !s) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(
+                    int64Type, {int64Type, int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft),
+                    {toI64(parent), toStrPtr(s), strLenOf(s)}, "qt.wcreate");
+                return;
+            } else if (fname == "vyb_qt_kind" || fname == "vyb_qt_vbox" ||
+                       fname == "vyb_qt_hbox" || fname == "vyb_qt_checkbox_checked") {
+                // 1-arg Int handle/num -> Int
+                if (!checkArity(1)) return;
+                llvm::Value* h = needArg(0); if (!h) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(h)}, "qt.h1");
+                return;
+            } else if (fname == "vyb_qt_progress_create") {
+                // (parent, max) -> Int
+                if (!checkArity(2)) return;
+                llvm::Value* parent = needArg(0); llvm::Value* maxv = needArg(1);
+                if (!parent || !maxv) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft),
+                    {toI64(parent), toI64(maxv)}, "qt.prog");
+                return;
+            } else if (fname == "vyb_qt_button_set_enabled" ||
+                       fname == "vyb_qt_checkbox_set_checked" ||
+                       fname == "vyb_qt_progress_set_value" ||
+                       fname == "vyb_qt_layout_add") {
+                // (h, value) -> Int
+                if (!checkArity(2)) return;
+                llvm::Value* h = needArg(0); llvm::Value* v = needArg(1);
+                if (!h || !v) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft),
+                    {toI64(h), toI64(v)}, "qt.setval");
+                return;
+            } else if (fname == "vyb_qt_button_set_text" ||
+                       fname == "vyb_qt_edit_set_text" ||
+                       fname == "vyb_qt_edit_set_placeholder") {
+                // (h, text) -> Int
+                if (!checkArity(2)) return;
+                llvm::Value* h = needArg(0); llvm::Value* s = needArg(1);
+                if (!h || !s) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(
+                    int64Type, {int64Type, int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft),
+                    {toI64(h), toStrPtr(s), strLenOf(s)}, "qt.settext");
+                return;
+            } else if (fname == "vyb_qt_button_text" || fname == "vyb_qt_edit_text") {
+                // (h) -> String
+                if (!checkArity(1)) return;
+                llvm::Value* h = needArg(0); if (!h) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(qtStrRet(), {int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(h)}, "qt.text1");
                 return;
             }
         }

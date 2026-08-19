@@ -154,3 +154,181 @@ share(all)
 qt_label_text(label<Int>)<String> -> {
     return vyb_qt_label_text(label)
 }
+
+# --- Buttons (QPushButton) ---------------------------------------------------
+
+# Create a push button with `text` as a child of `parent` (0 = none). Returns
+# its Int handle, or 0 on failure. A click enqueues a QtEvent::Click record.
+share(all)
+qt_button_create(parent<Int>, text<String>)<Int> -> {
+    return vyb_qt_button_create(parent, text)
+}
+
+# Replace button label. Returns 0 on success, -1 on a non-button handle.
+share(all)
+qt_button_set_text(button<Int>, text<String>)<Int> -> {
+    return vyb_qt_button_set_text(button, text)
+}
+
+# Current button label (String). Returns "" on a non-button handle.
+share(all)
+qt_button_text(button<Int>)<String> -> {
+    return vyb_qt_button_text(button)
+}
+
+# Enable (true) / disable (false) the button. Returns 0 on success.
+share(all)
+qt_button_set_enabled(button<Int>, enabled<Bool>)<Int> -> {
+    if (enabled) {
+        return vyb_qt_button_set_enabled(button, 1)
+    }
+    return vyb_qt_button_set_enabled(button, 0)
+}
+
+# --- Text edits (QLineEdit) --------------------------------------------------
+
+# Create a single-line text edit with initial `text` as a child of `parent`.
+# Returns its Int handle, or 0 on failure.
+share(all)
+qt_edit_create(parent<Int>, text<String>)<Int> -> {
+    return vyb_qt_edit_create(parent, text)
+}
+
+# Current edit text (String). Returns "" on a non-edit handle.
+share(all)
+qt_edit_text(edit<Int>)<String> -> {
+    return vyb_qt_edit_text(edit)
+}
+
+# Replace edit text. Returns 0 on success, -1 on a non-edit handle.
+share(all)
+qt_edit_set_text(edit<Int>, text<String>)<Int> -> {
+    return vyb_qt_edit_set_text(edit, text)
+}
+
+# Set placeholder (ghost) text shown when the edit is empty. Returns 0.
+share(all)
+qt_edit_set_placeholder(edit<Int>, text<String>)<Int> -> {
+    return vyb_qt_edit_set_placeholder(edit, text)
+}
+
+# --- Checkboxes (QCheckBox) --------------------------------------------------
+
+# Create a checkbox with `text` as a child of `parent`. Returns its Int handle,
+# or 0 on failure. A toggled change enqueues a QtEvent::Toggled record.
+share(all)
+qt_checkbox_create(parent<Int>, text<String>)<Int> -> {
+    return vyb_qt_checkbox_create(parent, text)
+}
+
+# true if the checkbox is checked, else false (also on a non-checkbox handle).
+share(all)
+qt_checkbox_checked(box<Int>)<Bool> -> {
+    return vyb_qt_checkbox_checked(box) == 1
+}
+
+# Check (true) / uncheck (false) the box. Returns 0 on success.
+share(all)
+qt_checkbox_set_checked(box<Int>, on<Bool>)<Int> -> {
+    if (on) {
+        return vyb_qt_checkbox_set_checked(box, 1)
+    }
+    return vyb_qt_checkbox_set_checked(box, 0)
+}
+
+# --- Progress bars (QProgressBar) --------------------------------------------
+
+# Create a progress bar with range 0..max as a child of `parent`. Returns its
+# Int handle, or 0 on failure.
+share(all)
+qt_progress_create(parent<Int>, max<Int>)<Int> -> {
+    return vyb_qt_progress_create(parent, max)
+}
+
+# Set the progress value (clamped to the range). Returns 0 on success.
+share(all)
+qt_progress_set_value(bar<Int>, value<Int>)<Int> -> {
+    return vyb_qt_progress_set_value(bar, value)
+}
+
+# --- Box layouts -------------------------------------------------------------
+
+# Create a vertical box layout installed on window `parent`; child widgets are
+# stacked top-to-bottom via qt_layout_add. Returns an Int layout handle, or 0 on
+# failure. The layout is owned by its window and needs no explicit free.
+share(all)
+qt_vbox(parent<Int>)<Int> -> {
+    return vyb_qt_vbox(parent)
+}
+
+# Create a horizontal box layout installed on window `parent`; child widgets are
+# laid out left-to-right via qt_layout_add. Returns an Int layout handle, or 0
+# on failure.
+share(all)
+qt_hbox(parent<Int>)<Int> -> {
+    return vyb_qt_hbox(parent)
+}
+
+# Add widget `child` to box-layout `layout`. Returns 0 on success, -1 on a bad
+# layout or child handle.
+share(all)
+qt_layout_add(layout<Int>, child<Int>)<Int> -> {
+    return vyb_qt_layout_add(layout, child)
+}
+
+# --- Kind introspection ------------------------------------------------------
+
+# Static kind of a widget handle (QtWidgetKind), so wrong-kind accessors can be
+# rejected before calling type-specific functions. Layout handles are not
+# widgets and report 0.
+share(all)
+qt_kind(h<Int>)<Int> -> {
+    return vyb_qt_kind(h)
+}
+
+share(all)
+enum QtWidgetKind {
+    none = 0
+    window = 1
+    label = 2
+    button = 3
+    edit = 4
+    checkbox = 5
+    progress = 6
+}
+
+# --- Polled event queue ------------------------------------------------------
+
+# Number of pending control events (clicks / textChanged / toggled) queued since
+# the last drains. Signals fire only while qt_process_events() is pumping.
+share(all)
+qt_event_count()<Int> -> {
+    return vyb_qt_event_count()
+}
+
+# Handle of the oldest queued event's widget (0 if the queue is empty).
+share(all)
+qt_event_handle()<Int> -> {
+    return vyb_qt_event_handle()
+}
+
+# Kind of the oldest queued event (QtEvent value); 0 if the queue is empty.
+share(all)
+qt_event_kind()<Int> -> {
+    return vyb_qt_event_kind()
+}
+
+# Remove the oldest queued event (after its handle/kind were read). Returns 0 on
+# success, -1 if the queue is empty.
+share(all)
+qt_event_pop()<Int> -> {
+    return vyb_qt_event_pop()
+}
+
+share(all)
+enum QtEvent {
+    none = 0
+    click = 1
+    textChanged = 2
+    toggled = 3
+}

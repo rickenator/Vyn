@@ -2142,7 +2142,18 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_qt_window_height" || name == "vyb_qt_window_show" ||
             name == "vyb_qt_window_hide" || name == "vyb_qt_window_visible" ||
             name == "vyb_qt_label_create" || name == "vyb_qt_label_set_text" ||
-            name == "vyb_qt_label_text") {
+            name == "vyb_qt_label_text" ||
+            name == "vyb_qt_button_create" || name == "vyb_qt_button_set_text" ||
+            name == "vyb_qt_button_text" || name == "vyb_qt_button_set_enabled" ||
+            name == "vyb_qt_edit_create" || name == "vyb_qt_edit_text" ||
+            name == "vyb_qt_edit_set_text" || name == "vyb_qt_edit_set_placeholder" ||
+            name == "vyb_qt_checkbox_create" || name == "vyb_qt_checkbox_checked" ||
+            name == "vyb_qt_checkbox_set_checked" ||
+            name == "vyb_qt_progress_create" || name == "vyb_qt_progress_set_value" ||
+            name == "vyb_qt_vbox" || name == "vyb_qt_hbox" ||
+            name == "vyb_qt_layout_add" || name == "vyb_qt_kind" ||
+            name == "vyb_qt_event_count" || name == "vyb_qt_event_handle" ||
+            name == "vyb_qt_event_kind" || name == "vyb_qt_event_pop") {
             isIntrinsic = true;
         }
     }
@@ -2661,10 +2672,31 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 "vyb_qt_window_visible",
                 "vyb_qt_label_create",
                 "vyb_qt_label_set_text",
+                "vyb_qt_button_create",
+                "vyb_qt_button_set_text",
+                "vyb_qt_button_set_enabled",
+                "vyb_qt_edit_create",
+                "vyb_qt_edit_set_text",
+                "vyb_qt_edit_set_placeholder",
+                "vyb_qt_checkbox_create",
+                "vyb_qt_checkbox_checked",
+                "vyb_qt_checkbox_set_checked",
+                "vyb_qt_progress_create",
+                "vyb_qt_progress_set_value",
+                "vyb_qt_vbox",
+                "vyb_qt_hbox",
+                "vyb_qt_layout_add",
+                "vyb_qt_kind",
+                "vyb_qt_event_count",
+                "vyb_qt_event_handle",
+                "vyb_qt_event_kind",
+                "vyb_qt_event_pop",
             };
             static const std::set<std::string> qtStrFuncs = {
                 "vyb_qt_window_title",
                 "vyb_qt_label_text",
+                "vyb_qt_button_text",
+                "vyb_qt_edit_text",
             };
             if (qtIntFuncs.count(name) || qtStrFuncs.count(name)) {
                 auto* resTy = new ast::TypeName(node->loc,

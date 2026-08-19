@@ -26,9 +26,17 @@
 #include <QApplication>
 #include <QWidget>
 #include <QLabel>
+#include <QPushButton>
+#include <QLineEdit>
+#include <QCheckBox>
+#include <QProgressBar>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QString>
 #include <QByteArray>
 #include <chrono>
+#include <deque>
+#include <mutex>
 
 #include <cstdint>
 #include <cstdlib>
@@ -55,6 +63,31 @@ static int64_t g_timer_ms = 0;                  // 0 = timer not armed
 // other headless QPA platforms never fire it via plain processEvents()), where
 // a deadline fires deterministically on every platform.
 static std::chrono::steady_clock::time_point g_timer_start = std::chrono::steady_clock::now();
+
+// ----------------------------------------------------------------------------
+// Polled signal queue
+// ----------------------------------------------------------------------------
+// Qt signals never call into Vyb. Instead the bridge connects each control's
+// primary signal (clicked / textChanged / toggled) to a lambda that enqueues a
+// (widget handle, event kind) record; Vyb drains the queue with
+// qt_event_count/handle/kind/pop and dispatches to its own handler map. This
+// keeps the FFI Int-shaped and deterministic under the offscreen platform.
+#define VYB_QT_EVT_CLICK     1
+#define VYB_QT_EVT_TEXTCHANGED 2
+#define VYB_QT_EVT_TOGGLED   3
+
+struct vyb_qt_event { int64_t handle; int64_t kind; };
+static std::deque<vyb_qt_event> g_events;
+static std::mutex g_events_mtx;
+
+static void vyb_qt_enqueue(int64_t handle, int64_t kind) {
+    std::lock_guard<std::mutex> lk(g_events_mtx);
+    g_events.push_back(vyb_qt_event{handle, kind});
+}
+
+// Opaque handle helpers: widgets cross as qintptr-sized QWidget; layouts as
+// QLayout (never conflated - the typed accessors dynamic_cast to validate).
+static QLayout* htolay(int64_t h) { return reinterpret_cast<QLayout*>(h); }
 
 // Decode a { ptr, len } byte buffer as UTF-8 into a QString.
 static QString qt_from_bytes(const char* ptr, int64_t len) {
@@ -110,6 +143,7 @@ extern "C" VYB_WEAK int64_t __vyb_qt_init(void) {
 // Shut the GUI down, destroying any live widgets and timers. Terminal.
 extern "C" VYB_WEAK int64_t __vyb_qt_quit(void) {
     g_timer_ms = 0;
+    { std::lock_guard<std::mutex> lk(g_events_mtx); g_events.clear(); }
     delete g_app; g_app = nullptr;
     return 0;
 }
@@ -238,4 +272,171 @@ extern "C" VYB_WEAK int64_t __vyb_qt_label_set_text(int64_t h, const char* s, in
 extern "C" VYB_WEAK vyb_qt_str __vyb_qt_label_text(int64_t h) {
     QLabel* l = dynamic_cast<QLabel*>(htowed(h)); if (!l) return { nullptr, 0 };
     return qt_to_owned(l->text());
+}
+
+// ----------------------------------------------------------------------------
+// Buttons (QPushButton)
+// ----------------------------------------------------------------------------
+
+extern "C" VYB_WEAK int64_t __vyb_qt_button_create(int64_t parent, const char* s, int64_t len) {
+    if (!g_app) return 0;
+    QWidget* pw = parent ? htowed(parent) : nullptr;
+    QPushButton* b = new QPushButton(qt_from_bytes(s, len), pw);
+    QObject::connect(b, &QPushButton::clicked, [b]() { vyb_qt_enqueue(wetoh(b), VYB_QT_EVT_CLICK); });
+    return wetoh(b);
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_button_set_text(int64_t h, const char* s, int64_t len) {
+    QPushButton* b = dynamic_cast<QPushButton*>(htowed(h)); if (!b) return -1;
+    b->setText(qt_from_bytes(s, len));
+    return 0;
+}
+
+extern "C" VYB_WEAK vyb_qt_str __vyb_qt_button_text(int64_t h) {
+    QPushButton* b = dynamic_cast<QPushButton*>(htowed(h)); if (!b) return { nullptr, 0 };
+    return qt_to_owned(b->text());
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_button_set_enabled(int64_t h, int64_t on) {
+    QPushButton* b = dynamic_cast<QPushButton*>(htowed(h)); if (!b) return -1;
+    b->setEnabled(on ? true : false);
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+// Text edits (QLineEdit)
+// ----------------------------------------------------------------------------
+
+extern "C" VYB_WEAK int64_t __vyb_qt_edit_create(int64_t parent, const char* s, int64_t len) {
+    if (!g_app) return 0;
+    QWidget* pw = parent ? htowed(parent) : nullptr;
+    QLineEdit* e = new QLineEdit(qt_from_bytes(s, len), pw);
+    QObject::connect(e, &QLineEdit::textChanged, [e]() { vyb_qt_enqueue(wetoh(e), VYB_QT_EVT_TEXTCHANGED); });
+    return wetoh(e);
+}
+
+extern "C" VYB_WEAK vyb_qt_str __vyb_qt_edit_text(int64_t h) {
+    QLineEdit* e = dynamic_cast<QLineEdit*>(htowed(h)); if (!e) return { nullptr, 0 };
+    return qt_to_owned(e->text());
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_edit_set_text(int64_t h, const char* s, int64_t len) {
+    QLineEdit* e = dynamic_cast<QLineEdit*>(htowed(h)); if (!e) return -1;
+    e->setText(qt_from_bytes(s, len));
+    return 0;
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_edit_set_placeholder(int64_t h, const char* s, int64_t len) {
+    QLineEdit* e = dynamic_cast<QLineEdit*>(htowed(h)); if (!e) return -1;
+    e->setPlaceholderText(qt_from_bytes(s, len));
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+// Checkboxes (QCheckBox)
+// ----------------------------------------------------------------------------
+
+extern "C" VYB_WEAK int64_t __vyb_qt_checkbox_create(int64_t parent, const char* s, int64_t len) {
+    if (!g_app) return 0;
+    QWidget* pw = parent ? htowed(parent) : nullptr;
+    QCheckBox* c = new QCheckBox(qt_from_bytes(s, len), pw);
+    QObject::connect(c, &QCheckBox::toggled, [c]() { vyb_qt_enqueue(wetoh(c), VYB_QT_EVT_TOGGLED); });
+    return wetoh(c);
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_checkbox_checked(int64_t h) {
+    QCheckBox* c = dynamic_cast<QCheckBox*>(htowed(h)); if (!c) return -1;
+    return c->isChecked() ? 1 : 0;
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_checkbox_set_checked(int64_t h, int64_t on) {
+    QCheckBox* c = dynamic_cast<QCheckBox*>(htowed(h)); if (!c) return -1;
+    c->setChecked(on ? true : false);
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+// Progress bars (QProgressBar)
+// ----------------------------------------------------------------------------
+
+extern "C" VYB_WEAK int64_t __vyb_qt_progress_create(int64_t parent, int64_t maxv) {
+    if (!g_app) return 0;
+    QWidget* pw = parent ? htowed(parent) : nullptr;
+    QProgressBar* p = new QProgressBar(pw);
+    p->setRange(0, (int)maxv);
+    return wetoh(p);
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_progress_set_value(int64_t h, int64_t v) {
+    QProgressBar* p = dynamic_cast<QProgressBar*>(htowed(h)); if (!p) return -1;
+    p->setValue((int)v);
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+// Box layouts
+// ----------------------------------------------------------------------------
+
+extern "C" VYB_WEAK int64_t __vyb_qt_vbox(int64_t parent) {
+    if (!g_app) return 0;
+    QWidget* pw = parent ? htowed(parent) : nullptr;
+    return reinterpret_cast<int64_t>(new QVBoxLayout(pw));
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_hbox(int64_t parent) {
+    if (!g_app) return 0;
+    QWidget* pw = parent ? htowed(parent) : nullptr;
+    return reinterpret_cast<int64_t>(new QHBoxLayout(pw));
+}
+
+// Add a widget `child` into a box-layout `layout` (the layout takes ownership
+// / parented to its window). Returns 0 on success, -1 on a bad handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_layout_add(int64_t layout, int64_t child) {
+    QLayout* l = htolay(layout); if (!l) return -1;
+    QWidget* c = htowed(child); if (!c) return -1;
+    l->addWidget(c);
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+// Kind introspection
+// ----------------------------------------------------------------------------
+
+// Static widget kind (dynamic_cast), so Vyb can validate a QtWidget wrapper
+// before calling type-specific accessors. Layout handles are not widgets and
+// report 0. enum QtWidgetKind matches mod.vyb.
+extern "C" VYB_WEAK int64_t __vyb_qt_kind(int64_t h) {
+    QWidget* w = htowed(h); if (!w) return 0;
+    if (dynamic_cast<QPushButton*>(w))     return 3; // Button
+    if (dynamic_cast<QLineEdit*>(w))       return 4; // Edit
+    if (dynamic_cast<QCheckBox*>(w))       return 5; // Checkbox
+    if (dynamic_cast<QProgressBar*>(w))    return 6; // Progress
+    if (dynamic_cast<QLabel*>(w))          return 2; // Label
+    return 1;                                        // Window (plain QWidget)
+}
+
+// ----------------------------------------------------------------------------
+// Polled event queue
+// ----------------------------------------------------------------------------
+
+extern "C" VYB_WEAK int64_t __vyb_qt_event_count(void) {
+    std::lock_guard<std::mutex> lk(g_events_mtx);
+    return (int64_t)g_events.size();
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_event_handle(void) {
+    std::lock_guard<std::mutex> lk(g_events_mtx);
+    return g_events.empty() ? 0 : g_events.front().handle;
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_event_kind(void) {
+    std::lock_guard<std::mutex> lk(g_events_mtx);
+    return g_events.empty() ? 0 : g_events.front().kind;
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_event_pop(void) {
+    std::lock_guard<std::mutex> lk(g_events_mtx);
+    if (g_events.empty()) return -1;
+    g_events.pop_front();
+    return 0;
 }

@@ -52,5 +52,49 @@ VYB_WEAK int64_t __vyb_qt_label_set_text(int64_t h, const char* s, int64_t len)
     { (void)h; (void)s; (void)len; return -1; }
 VYB_WEAK vyb_qt_str __vyb_qt_label_text(int64_t h) { (void)h; return qt_stub_str(); }
 
+// Buttons
+VYB_WEAK int64_t __vyb_qt_button_create(int64_t parent, const char* s, int64_t len)
+    { (void)parent; (void)s; (void)len; return 0; }
+VYB_WEAK int64_t __vyb_qt_button_set_text(int64_t h, const char* s, int64_t len)
+    { (void)h; (void)s; (void)len; return -1; }
+VYB_WEAK vyb_qt_str __vyb_qt_button_text(int64_t h) { (void)h; return qt_stub_str(); }
+VYB_WEAK int64_t __vyb_qt_button_set_enabled(int64_t h, int64_t on)
+    { (void)h; (void)on; return -1; }
+
+// Text edits
+VYB_WEAK int64_t __vyb_qt_edit_create(int64_t parent, const char* s, int64_t len)
+    { (void)parent; (void)s; (void)len; return 0; }
+VYB_WEAK vyb_qt_str __vyb_qt_edit_text(int64_t h) { (void)h; return qt_stub_str(); }
+VYB_WEAK int64_t __vyb_qt_edit_set_text(int64_t h, const char* s, int64_t len)
+    { (void)h; (void)s; (void)len; return -1; }
+VYB_WEAK int64_t __vyb_qt_edit_set_placeholder(int64_t h, const char* s, int64_t len)
+    { (void)h; (void)s; (void)len; return -1; }
+
+// Checkboxes
+VYB_WEAK int64_t __vyb_qt_checkbox_create(int64_t parent, const char* s, int64_t len)
+    { (void)parent; (void)s; (void)len; return 0; }
+VYB_WEAK int64_t __vyb_qt_checkbox_checked(int64_t h) { (void)h; return -1; }
+VYB_WEAK int64_t __vyb_qt_checkbox_set_checked(int64_t h, int64_t on)
+    { (void)h; (void)on; return -1; }
+
+// Progress
+VYB_WEAK int64_t __vyb_qt_progress_create(int64_t parent, int64_t maxv)
+    { (void)parent; (void)maxv; return 0; }
+VYB_WEAK int64_t __vyb_qt_progress_set_value(int64_t h, int64_t v)
+    { (void)h; (void)v; return -1; }
+
+// Layouts
+VYB_WEAK int64_t __vyb_qt_vbox(int64_t parent) { (void)parent; return 0; }
+VYB_WEAK int64_t __vyb_qt_hbox(int64_t parent) { (void)parent; return 0; }
+VYB_WEAK int64_t __vyb_qt_layout_add(int64_t layout, int64_t child)
+    { (void)layout; (void)child; return -1; }
+
+// Introspection + polled events
+VYB_WEAK int64_t __vyb_qt_kind(int64_t h) { (void)h; return 0; }
+VYB_WEAK int64_t __vyb_qt_event_count(void) { return 0; }
+VYB_WEAK int64_t __vyb_qt_event_handle(void) { return 0; }
+VYB_WEAK int64_t __vyb_qt_event_kind(void) { return 0; }
+VYB_WEAK int64_t __vyb_qt_event_pop(void) { return -1; }
+
 } // extern "C"
 #endif // !VYB_HAVE_QT5

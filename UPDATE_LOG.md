@@ -890,3 +890,44 @@ Widgets window + label (title/size/show/hide), a polled event loop
 it is deterministic under the `offscreen` QPA platform in tests (`test/qt`),
 and degrades gracefully to stub shims when Qt5 is absent. Open follow-ups:
 signal/slot and layout support, richer controls, deeper asyncs interaction.
+signal/slot and layout support, richer controls, deeper asyncs interaction.
+
+Expansion plan (approved follow-through, Phases A-D):
+
+- **A - primitive controls (fit the Int/String FFI, no new machinery):**
+  button (text/enabled), text edit (`QLineEdit`: text, placeholder), checkbox
+  (checked state), progress bar (max/value), and box layouts
+  (`qt_vbox`/`qt_hbox`/`qt_layout_add`). Each function is one row in the cgen
+  marshaling block + semantic list + `main.cpp` registration + `mod.vyb`.
+- **B - polled signals (real Qt signals, no closure crossing):** the bridge
+  connects each control's primary signal (clicked / textChanged / toggled) to a
+  lambda that enqueues `(widget handle, event kind)`; Vyb drains the queue with
+  `qt_event_count`/`qt_event_handle`/`qt_event_kind`/`qt_event_pop` and
+  dispatches to its own handler map. Deterministic and `offscreen`-testable.
+- **C - typed/validated handles:** a `qt_kind(handle)` introspection + a Vyb
+  `QtWidget { kind, h }` wrapper so wrong-kind operations are caught early
+  (the bridge already rejects via `dynamic_cast`).
+- **D - event loop / asyncs integration (the long pole):** `qt_run()` driving
+  `app.exec()` on the main thread while program logic runs on the `asyncs`
+  fiber pool, plus a processEvents() pump on idle worker spins so paints/timers/
+  signals keep flowing. Touches `cgen_async_impl.cpp`.
+- **Cross-cutting:** a table-driven generator (`tools/gen_qt.py`) that emits the
+  cgen block, semantic list, `main.cpp` registrations, and `mod.vyb` wrappers so
+  adding a widget is one table row (kills the hand-edited four-way drift).
+- **Demo:** `demos/qt_login.vyb` (edit + button + checkbox + status label, click
+  handler hitting `https` on the async pool) - runs under `offscreen` in the
+  harness and as a real window on a display.
+
+Status (this round): Phases A and B landed. Controls (button, edit, checkbox,
+progress) plus vbox/hbox layouts and `qt_kind` introspection were added across
+the bridge (`runtime/vyb_qt_bridge.cpp`), stub (`runtime/vyb_qt_stub.cpp`), cgen
+dispatch, semantic allow-list, `main.cpp` registrations, and `stdlib/qt/mod.vyb`;
+signals (`clicked`/`textChanged`/`toggled`) now enqueue FIFO records drained via
+`qt_event_count`/`handle`/`kind`/`pop`. Covered headlessly by
+`test/qt/test_qt_controls.vyb`; `QtWidgetKind`/`QtEvent` enums are exported with
+`share(all)`. Phases C (typed handles) and D (event-loop/asyncs integration)
+remain open.
+
+Honest limits: no custom painting/styling/tables/trees (compose from
+primitives); remain on Qt5 for now (note a Qt6 migration: CMake package +
+`QObject::connect` signature tweaks).
