@@ -2163,7 +2163,12 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_qt_spin_set_value" || name == "vyb_qt_slider_create" ||
             name == "vyb_qt_slider_value" || name == "vyb_qt_slider_set_value" ||
             name == "vyb_qt_dial_create" || name == "vyb_qt_dial_value" ||
-            name == "vyb_qt_dial_set_value") {
+            name == "vyb_qt_dial_set_value" || name == "vyb_qt_group_create" ||
+            name == "vyb_qt_text_edit_create" || name == "vyb_qt_text_edit_text" ||
+            name == "vyb_qt_text_edit_set_text" || name == "vyb_qt_radio_create" ||
+            name == "vyb_qt_radio_checked" || name == "vyb_qt_radio_set_checked" ||
+            name == "vyb_qt_widget_set_enabled" || name == "vyb_qt_widget_enabled" ||
+            name == "vyb_qt_grid" || name == "vyb_qt_grid_add") {
 // gen_qt[sem_allow]: end
             isIntrinsic = true;
         }
@@ -2727,6 +2732,17 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 "vyb_qt_dial_create",
                 "vyb_qt_dial_value",
                 "vyb_qt_dial_set_value",
+                "vyb_qt_group_create",
+                "vyb_qt_text_edit_create",
+                "vyb_qt_text_edit_text",
+                "vyb_qt_text_edit_set_text",
+                "vyb_qt_radio_create",
+                "vyb_qt_radio_checked",
+                "vyb_qt_radio_set_checked",
+                "vyb_qt_widget_set_enabled",
+                "vyb_qt_widget_enabled",
+                "vyb_qt_grid",
+                "vyb_qt_grid_add",
 // gen_qt[sem_int]: end
             };
             static const std::set<std::string> qtStrFuncs = {
@@ -2736,6 +2752,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 "vyb_qt_button_text",
                 "vyb_qt_edit_text",
                 "vyb_qt_combo_item_text",
+                "vyb_qt_text_edit_text",
 // gen_qt[sem_str]: end
             };
             if (qtIntFuncs.count(name) || qtStrFuncs.count(name)) {

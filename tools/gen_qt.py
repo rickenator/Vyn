@@ -215,6 +215,49 @@ QT_FUNCS = [
     dict(mod="qt_dial_set_value", vn="vyb_qt_dial_set_value", cn="__vyb_qt_dial_set_value",
          args=[("dial", "Int"), ("value", "Int")], ret="Int", shape="value", stub="-1",
          doc="Set the dial value (clamped). Returns 0."),
+
+    # Group boxes (QGroupBox): titled container.
+    dict(mod="qt_group_create", vn="vyb_qt_group_create", cn="__vyb_qt_group_create",
+         args=[("parent", "Int"), ("title", "String")], ret="Int", shape="text", stub="0",
+         doc="Create a titled group-box container under `parent`; put a layout on it. Returns its handle or 0."),
+
+    # Multi-line text editor (QPlainTextEdit).
+    dict(mod="qt_text_edit_create", vn="vyb_qt_text_edit_create", cn="__vyb_qt_text_edit_create",
+         args=[("parent", "Int")], ret="Int", shape="int1", stub="0",
+         doc="Create a multi-line plain-text editor under `parent`; edits enqueue QtEvent::TextChanged. Returns its handle."),
+    dict(mod="qt_text_edit_text", vn="vyb_qt_text_edit_text", cn="__vyb_qt_text_edit_text", args=[("ed", "Int")],
+         ret="String", shape="str1", stub="qt_stub_str()", doc="Current editor text (String); \"\" on a bad handle."),
+    dict(mod="qt_text_edit_set_text", vn="vyb_qt_text_edit_set_text", cn="__vyb_qt_text_edit_set_text",
+         args=[("ed", "Int"), ("text", "String")], ret="Int", shape="text", stub="-1",
+         doc="Replace editor text. Returns 0, or -1 on a non-editor handle."),
+
+    # Radio buttons (QRadioButton): exclusive toggled.
+    dict(mod="qt_radio_create", vn="vyb_qt_radio_create", cn="__vyb_qt_radio_create",
+         args=[("parent", "Int"), ("text", "String")], ret="Int", shape="text", stub="0",
+         doc="Create a radio button under `parent`; toggles enqueue QtEvent::Toggled. Returns its handle."),
+    dict(mod="qt_radio_checked", vn="vyb_qt_radio_checked", cn="__vyb_qt_radio_checked", args=[("radio", "Int")],
+         ret="Bool", shape="int1", stub="-1", doc="true if the radio button is checked, else false."),
+    dict(mod="qt_radio_set_checked", vn="vyb_qt_radio_set_checked", cn="__vyb_qt_radio_set_checked",
+         args=[("radio", "Int"), ("on", "Bool")], ret="Int", shape="value", stub="-1",
+         doc="Check (true) / uncheck (false) the radio (enqueues QtEvent::Toggled). Returns 0.",
+         body=("if (on) {\n        return vyb_qt_radio_set_checked(radio, 1)\n    }\n"
+               "    return vyb_qt_radio_set_checked(radio, 0)")),
+
+    # Generic widget enable / visibility.
+    dict(mod="qt_widget_set_enabled", vn="vyb_qt_widget_set_enabled", cn="__vyb_qt_widget_set_enabled",
+         args=[("h", "Int"), ("on", "Bool")], ret="Int", shape="value", stub="-1",
+         doc="Enable (true) / disable (false) any widget. Returns 0, or -1 on a non-widget handle.",
+         body=("if (on) {\n        return vyb_qt_widget_set_enabled(h, 1)\n    }\n"
+               "    return vyb_qt_widget_set_enabled(h, 0)")),
+    dict(mod="qt_widget_enabled", vn="vyb_qt_widget_enabled", cn="__vyb_qt_widget_enabled", args=[("h", "Int")],
+         ret="Bool", shape="int1", stub="0", doc="true while widget `h` is enabled, else false."),
+
+    # Grid layout (QGridLayout).
+    dict(mod="qt_grid", vn="vyb_qt_grid", cn="__vyb_qt_grid", args=[("parent", "Int")], ret="Int", shape="int1",
+         stub="0", doc="Create a grid layout on window `parent`. Returns a layout handle."),
+    dict(mod="qt_grid_add", vn="vyb_qt_grid_add", cn="__vyb_qt_grid_add",
+         args=[("layout", "Int"), ("child", "Int"), ("row", "Int"), ("col", "Int")], ret="Int", shape="4int",
+         stub="-1", doc="Add widget `child` to grid-layout `layout` at (row, col). Returns 0."),
 ]
 
 QT_EVENTS = [
@@ -225,7 +268,7 @@ QT_EVENTS = [
 QT_WIDGETS = [
     ("none", 0), ("window", 1), ("label", 2), ("button", 3), ("edit", 4),
     ("checkbox", 5), ("progress", 6), ("combo", 7), ("spin", 8), ("slider", 9),
-    ("dial", 10),
+    ("dial", 10), ("group", 11), ("textEdit", 12), ("radio", 13),
 ]
 
 
@@ -304,7 +347,7 @@ def cond_lines(names, indent="                "):
     return line
 
 
-SHAPES = ["int0", "int1", "str1", "str2", "text", "value", "3int", "cb"]
+SHAPES = ["int0", "int1", "str1", "str2", "text", "value", "3int", "4int", "cb"]
 
 BRANCH = {
     "int0": ('if (!checkArity(0)) return;\n'
@@ -338,6 +381,11 @@ BRANCH = {
              'if (!a || !b || !c) return;\n'
              'llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type, int64Type}, false);\n'
              'm_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a), toI64(b), toI64(c)}, "qt.i3");'),
+    "4int": ('if (!checkArity(4)) return;\n'
+               'llvm::Value* a=needArg(0); llvm::Value* b=needArg(1); llvm::Value* c=needArg(2); llvm::Value* d=needArg(3);\n'
+               'if (!a || !b || !c || !d) return;\n'
+               'llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type, int64Type, int64Type}, false);\n'
+               'm_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a), toI64(b), toI64(c), toI64(d)}, "qt.i4");'),
     "cb": ('if (!checkArity(1)) return;\n'
            'node->arguments[0]->accept(*this);\n'
            'llvm::Value* cl = m_currentLLVMValue; if (!cl) return;\n'

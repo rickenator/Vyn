@@ -3290,6 +3290,17 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_qt_dial_create") rtName = "__vyb_qt_dial_create";
         else if (fname == "vyb_qt_dial_value") rtName = "__vyb_qt_dial_value";
         else if (fname == "vyb_qt_dial_set_value") rtName = "__vyb_qt_dial_set_value";
+        else if (fname == "vyb_qt_group_create") rtName = "__vyb_qt_group_create";
+        else if (fname == "vyb_qt_text_edit_create") rtName = "__vyb_qt_text_edit_create";
+        else if (fname == "vyb_qt_text_edit_text") rtName = "__vyb_qt_text_edit_text";
+        else if (fname == "vyb_qt_text_edit_set_text") rtName = "__vyb_qt_text_edit_set_text";
+        else if (fname == "vyb_qt_radio_create") rtName = "__vyb_qt_radio_create";
+        else if (fname == "vyb_qt_radio_checked") rtName = "__vyb_qt_radio_checked";
+        else if (fname == "vyb_qt_radio_set_checked") rtName = "__vyb_qt_radio_set_checked";
+        else if (fname == "vyb_qt_widget_set_enabled") rtName = "__vyb_qt_widget_set_enabled";
+        else if (fname == "vyb_qt_widget_enabled") rtName = "__vyb_qt_widget_enabled";
+        else if (fname == "vyb_qt_grid") rtName = "__vyb_qt_grid";
+        else if (fname == "vyb_qt_grid_add") rtName = "__vyb_qt_grid_add";
         if (!rtName.empty()) {
             auto getQtFn = [&](llvm::FunctionType* ft) -> llvm::Function* {
                 llvm::Function* f2 = module->getFunction(rtName);
@@ -3361,7 +3372,11 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_combo_current_index" ||
                 fname == "vyb_qt_spin_value" ||
                 fname == "vyb_qt_slider_value" ||
-                fname == "vyb_qt_dial_value") {
+                fname == "vyb_qt_dial_value" ||
+                fname == "vyb_qt_text_edit_create" ||
+                fname == "vyb_qt_radio_checked" ||
+                fname == "vyb_qt_widget_enabled" ||
+                fname == "vyb_qt_grid") {
                 if (!checkArity(1)) return;
                 llvm::Value* a = needArg(0); if (!a) return;
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
@@ -3369,7 +3384,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 return;
             } else if (fname == "vyb_qt_window_title" || fname == "vyb_qt_label_text" ||
                 fname == "vyb_qt_button_text" ||
-                fname == "vyb_qt_edit_text") {
+                fname == "vyb_qt_edit_text" ||
+                fname == "vyb_qt_text_edit_text") {
                 if (!checkArity(1)) return;
                 llvm::Value* a = needArg(0); if (!a) return;
                 llvm::FunctionType* ft = llvm::FunctionType::get(qtStrRet(), {int64Type}, false);
@@ -3390,7 +3406,10 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_edit_set_text" ||
                 fname == "vyb_qt_edit_set_placeholder" ||
                 fname == "vyb_qt_checkbox_create" ||
-                fname == "vyb_qt_combo_add_item") {
+                fname == "vyb_qt_combo_add_item" ||
+                fname == "vyb_qt_group_create" ||
+                fname == "vyb_qt_text_edit_set_text" ||
+                fname == "vyb_qt_radio_create") {
                 if (!checkArity(2)) return;
                 llvm::Value* a = needArg(0); llvm::Value* s = needArg(1);
                 if (!a || !s) return;
@@ -3404,7 +3423,9 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_combo_set_current_index" ||
                 fname == "vyb_qt_spin_set_value" ||
                 fname == "vyb_qt_slider_set_value" ||
-                fname == "vyb_qt_dial_set_value") {
+                fname == "vyb_qt_dial_set_value" ||
+                fname == "vyb_qt_radio_set_checked" ||
+                fname == "vyb_qt_widget_set_enabled") {
                 if (!checkArity(2)) return;
                 llvm::Value* a = needArg(0); llvm::Value* b = needArg(1);
                 if (!a || !b) return;
@@ -3419,6 +3440,13 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 if (!a || !b || !c) return;
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type, int64Type}, false);
                 m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a), toI64(b), toI64(c)}, "qt.i3");
+                return;
+            } else if (fname == "vyb_qt_grid_add") {
+                if (!checkArity(4)) return;
+                llvm::Value* a=needArg(0); llvm::Value* b=needArg(1); llvm::Value* c=needArg(2); llvm::Value* d=needArg(3);
+                if (!a || !b || !c || !d) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type, int64Type, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a), toI64(b), toI64(c), toI64(d)}, "qt.i4");
                 return;
             } else if (fname == "vyb_qt_on_event") {
                 if (!checkArity(1)) return;

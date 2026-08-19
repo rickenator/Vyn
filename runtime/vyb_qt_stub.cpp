@@ -112,6 +112,24 @@ VYB_WEAK int64_t __vyb_qt_dial_create(int64_t parent, int64_t min, int64_t max)
 VYB_WEAK int64_t __vyb_qt_dial_value(int64_t dial) { (void)dial; return 0; }
 VYB_WEAK int64_t __vyb_qt_dial_set_value(int64_t dial, int64_t value)
     { (void)dial; (void)value; return -1; }
+VYB_WEAK int64_t __vyb_qt_group_create(int64_t parent, const char* title, int64_t len)
+    { (void)parent; (void)title; return 0; }
+VYB_WEAK int64_t __vyb_qt_text_edit_create(int64_t parent) { (void)parent; return 0; }
+VYB_WEAK vyb_qt_str __vyb_qt_text_edit_text(int64_t ed)
+    { (void)ed; return qt_stub_str(); }
+VYB_WEAK int64_t __vyb_qt_text_edit_set_text(int64_t ed, const char* text, int64_t len)
+    { (void)ed; (void)text; return -1; }
+VYB_WEAK int64_t __vyb_qt_radio_create(int64_t parent, const char* text, int64_t len)
+    { (void)parent; (void)text; return 0; }
+VYB_WEAK int64_t __vyb_qt_radio_checked(int64_t radio) { (void)radio; return -1; }
+VYB_WEAK int64_t __vyb_qt_radio_set_checked(int64_t radio, int64_t on)
+    { (void)radio; (void)on; return -1; }
+VYB_WEAK int64_t __vyb_qt_widget_set_enabled(int64_t h, int64_t on)
+    { (void)h; (void)on; return -1; }
+VYB_WEAK int64_t __vyb_qt_widget_enabled(int64_t h) { (void)h; return 0; }
+VYB_WEAK int64_t __vyb_qt_grid(int64_t parent) { (void)parent; return 0; }
+VYB_WEAK int64_t __vyb_qt_grid_add(int64_t layout, int64_t child, int64_t row, int64_t col)
+    { (void)layout; (void)child; (void)row; (void)col; return -1; }
 // gen_qt[stub]: end
 } // extern "C"
 #endif // !VYB_HAVE_QT5

@@ -1,0 +1,81 @@
+// @test: qt stdlib module - group box, text editor, radio, grid, generic enable
+// @description: Headless-deterministic coverage for the second widget tier:
+//   a titled group box, multi-line text editor (with its TextChanged event), an
+//   exclusive radio button (with Toggled event), a grid layout, and generic
+//   enable/disable on any widget. Runs on the offscreen QPA platform.
+// @category: qt, stdlib, gui
+// @expect: pass
+// @expect-output: qt-widgets2-ok
+// @env: VYB_STDLIB=stdlib
+// @env: QT_QPA_PLATFORM=offscreen
+
+import qt
+
+main()<Int> -> {
+    if (qt_init() == false) {
+        // Qt5 not linked into this build (stub shims): degrade gracefully.
+        println("qt-widgets2-ok (Qt5 unavailable)")
+        return 0
+    }
+    if (qt_active() == false) { return 1 }
+
+    w<Int> = qt_window_create()
+    if (w == 0) { return 2 }
+
+    // --- Group box ------------------------------------------------------------
+    g<Int> = qt_group_create(w, "Settings")
+    if (g == 0) { return 3 }
+    if (qt_kind(g) != QtWidgetKind::group) { return 4 }
+
+    // --- Multi-line text editor ------------------------------------------------
+    te<Int> = qt_text_edit_create(g)
+    if (te == 0) { return 5 }
+    if (qt_kind(te) != QtWidgetKind::textEdit) { return 6 }
+    if (qt_text_edit_set_text(te, "line one\nline two") != 0) { return 7 }
+    if (qt_text_edit_text(te) != "line one\nline two") { return 8 }
+
+    // set_text should enqueue a TextChanged event.
+    foundTc<Bool> = false
+    while (qt_event_count() > 0) {
+        if (qt_event_kind() == QtEvent::textChanged && qt_event_handle() == te) {
+            foundTc = true
+        }
+        if (qt_event_pop() != 0) { return 9 }
+    }
+    if (foundTc == false) { return 10 }
+
+    // --- Radio button ----------------------------------------------------------
+    r1<Int> = qt_radio_create(g, "one")
+    r2<Int> = qt_radio_create(g, "two")
+    if (r1 == 0 || r2 == 0) { return 11 }
+    if (qt_kind(r1) != QtWidgetKind::radio) { return 12 }
+    if (qt_radio_checked(r1) == true) { return 13 }   // default unchecked
+    if (qt_radio_set_checked(r1, true) != 0) { return 14 }
+    if (qt_radio_checked(r1) != true) { return 15 }
+    // Setting r2 on unchecks r1 (exclusive within the parent).
+    if (qt_radio_set_checked(r2, true) != 0) { return 16 }
+    if (qt_radio_checked(r2) != true) { return 17 }
+    if (qt_radio_checked(r1) == true) { return 18 }
+
+    // --- Grid layout -----------------------------------------------------------
+    gl<Int> = qt_grid(w)
+    if (gl == 0) { return 19 }
+    b1<Int> = qt_button_create(w, "A")
+    b2<Int> = qt_button_create(w, "B")
+    if (b1 == 0 || b2 == 0) { return 20 }
+    if (qt_grid_add(gl, b1, 0, 0) != 0) { return 21 }
+    if (qt_grid_add(gl, b2, 1, 1) != 0) { return 22 }
+
+    // --- Generic enable ---------------------------------------------------------
+    if (qt_widget_enabled(r2) != true) { return 23 }
+    if (qt_widget_set_enabled(r2, false) != 0) { return 24 }
+    if (qt_widget_enabled(r2) == true) { return 25 }
+    if (qt_widget_set_enabled(r2, true) != 0) { return 26 }
+    if (qt_widget_enabled(r2) != true) { return 27 }
+    if (qt_widget_set_enabled(w, false) != 0) { return 28 }
+    if (qt_widget_enabled(w) == true) { return 29 }
+
+    qt_quit()
+    println("qt-widgets2-ok")
+    return 0
+}

@@ -394,6 +394,78 @@ share(all)
 qt_dial_set_value(dial<Int>, value<Int>)<Int> -> {
     return vyb_qt_dial_set_value(dial, value)
 }
+
+# Create a titled group-box container under `parent`; put a layout on it. Returns its handle or 0.
+share(all)
+qt_group_create(parent<Int>, title<String>)<Int> -> {
+    return vyb_qt_group_create(parent, title)
+}
+
+# Create a multi-line plain-text editor under `parent`; edits enqueue QtEvent::TextChanged. Returns its handle.
+share(all)
+qt_text_edit_create(parent<Int>)<Int> -> {
+    return vyb_qt_text_edit_create(parent)
+}
+
+# Current editor text (String); "" on a bad handle.
+share(all)
+qt_text_edit_text(ed<Int>)<String> -> {
+    return vyb_qt_text_edit_text(ed)
+}
+
+# Replace editor text. Returns 0, or -1 on a non-editor handle.
+share(all)
+qt_text_edit_set_text(ed<Int>, text<String>)<Int> -> {
+    return vyb_qt_text_edit_set_text(ed, text)
+}
+
+# Create a radio button under `parent`; toggles enqueue QtEvent::Toggled. Returns its handle.
+share(all)
+qt_radio_create(parent<Int>, text<String>)<Int> -> {
+    return vyb_qt_radio_create(parent, text)
+}
+
+# true if the radio button is checked, else false.
+share(all)
+qt_radio_checked(radio<Int>)<Bool> -> {
+    return vyb_qt_radio_checked(radio) == 1
+}
+
+# Check (true) / uncheck (false) the radio (enqueues QtEvent::Toggled). Returns 0.
+share(all)
+qt_radio_set_checked(radio<Int>, on<Bool>)<Int> -> {
+    if (on) {
+        return vyb_qt_radio_set_checked(radio, 1)
+    }
+    return vyb_qt_radio_set_checked(radio, 0)
+}
+
+# Enable (true) / disable (false) any widget. Returns 0, or -1 on a non-widget handle.
+share(all)
+qt_widget_set_enabled(h<Int>, on<Bool>)<Int> -> {
+    if (on) {
+        return vyb_qt_widget_set_enabled(h, 1)
+    }
+    return vyb_qt_widget_set_enabled(h, 0)
+}
+
+# true while widget `h` is enabled, else false.
+share(all)
+qt_widget_enabled(h<Int>)<Bool> -> {
+    return vyb_qt_widget_enabled(h) == 1
+}
+
+# Create a grid layout on window `parent`. Returns a layout handle.
+share(all)
+qt_grid(parent<Int>)<Int> -> {
+    return vyb_qt_grid(parent)
+}
+
+# Add widget `child` to grid-layout `layout` at (row, col). Returns 0.
+share(all)
+qt_grid_add(layout<Int>, child<Int>, row<Int>, col<Int>)<Int> -> {
+    return vyb_qt_grid_add(layout, child, row, col)
+}
 # gen_qt[mod_wrappers]: end
 
 # gen_qt[mod_enums]: begin
@@ -420,5 +492,8 @@ enum QtWidgetKind {
     spin = 8
     slider = 9
     dial = 10
+    group = 11
+    textEdit = 12
+    radio = 13
 }
 # gen_qt[mod_enums]: end

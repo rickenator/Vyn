@@ -273,6 +273,17 @@ extern "C" {
     int64_t __vyb_qt_dial_create(int64_t parent, int64_t min, int64_t max);
     int64_t __vyb_qt_dial_value(int64_t dial);
     int64_t __vyb_qt_dial_set_value(int64_t dial, int64_t value);
+    int64_t __vyb_qt_group_create(int64_t parent, const char* title, int64_t len);
+    int64_t __vyb_qt_text_edit_create(int64_t parent);
+    vyb_file_str __vyb_qt_text_edit_text(int64_t ed);
+    int64_t __vyb_qt_text_edit_set_text(int64_t ed, const char* text, int64_t len);
+    int64_t __vyb_qt_radio_create(int64_t parent, const char* text, int64_t len);
+    int64_t __vyb_qt_radio_checked(int64_t radio);
+    int64_t __vyb_qt_radio_set_checked(int64_t radio, int64_t on);
+    int64_t __vyb_qt_widget_set_enabled(int64_t h, int64_t on);
+    int64_t __vyb_qt_widget_enabled(int64_t h);
+    int64_t __vyb_qt_grid(int64_t parent);
+    int64_t __vyb_qt_grid_add(int64_t layout, int64_t child, int64_t row, int64_t col);
 // gen_qt[main_decl]: end
 
 #ifdef VYB_HAVE_OPENSSL
@@ -1713,6 +1724,28 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_dial_value), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_dial_set_value")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_dial_set_value), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_group_create")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_group_create), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_text_edit_create")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_text_edit_create), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_text_edit_text")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_text_edit_text), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_text_edit_set_text")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_text_edit_set_text), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_radio_create")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_radio_create), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_radio_checked")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_radio_checked), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_radio_set_checked")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_radio_set_checked), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_widget_set_enabled")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_widget_set_enabled), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_widget_enabled")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_widget_enabled), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_grid")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_grid), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_grid_add")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_grid_add), llvm::JITSymbolFlags::Exported);
 // gen_qt[main_reg]: end
         runtimeSymbols[mangle("__vyb_net_open")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_open), llvm::JITSymbolFlags::Exported);

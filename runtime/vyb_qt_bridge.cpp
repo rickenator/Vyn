@@ -40,6 +40,10 @@
 #include <QSpinBox>
 #include <QSlider>
 #include <QDial>
+#include <QGroupBox>
+#include <QPlainTextEdit>
+#include <QRadioButton>
+#include <QGridLayout>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QTimer>
@@ -535,6 +539,9 @@ extern "C" VYB_WEAK int64_t __vyb_qt_kind(int64_t h) {
     if (dynamic_cast<QSpinBox*>(w))        return 8; // Spin
     if (dynamic_cast<QSlider*>(w))         return 9; // Slider
     if (dynamic_cast<QDial*>(w))           return 10; // Dial
+    if (dynamic_cast<QGroupBox*>(w))       return 11; // GroupBox
+    if (dynamic_cast<QPlainTextEdit*>(w))  return 12; // TextEdit
+    if (dynamic_cast<QRadioButton*>(w))    return 13; // Radio
     if (dynamic_cast<QLabel*>(w))          return 2; // Label
     return 1;                                        // Window (plain QWidget)
 }
@@ -734,4 +741,123 @@ extern "C" VYB_WEAK int64_t __vyb_qt_dial_set_value(int64_t h, int64_t v) {
     QDial* d = dynamic_cast<QDial*>(htowed(h)); if (!d) return -1;
     d->setValue((int)v);
     return 0;
+}
+
+// ----------------------------------------------------------------------------
+// Grid layout (QGridLayout)
+// ----------------------------------------------------------------------------
+
+// Create a grid layout on window `parent` (0 = none). Returns its Int handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_grid(int64_t parent) {
+    if (!g_app) return 0;
+    QWidget* pw = parent ? htowed(parent) : nullptr;
+    return reinterpret_cast<int64_t>(new QGridLayout(pw));
+}
+
+// Add widget `child` into grid-layout `layout` at (row, col). Returns 0 on
+// success, -1 on a bad handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_grid_add(int64_t layout, int64_t child, int64_t row, int64_t col) {
+    QLayout* l = htolay(layout); if (!l) return -1;
+    QWidget* c = htowed(child); if (!c) return -1;
+    QGridLayout* gl = dynamic_cast<QGridLayout*>(l); if (!gl) return -1;
+    gl->addWidget(c, (int)row, (int)col);
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+// Group boxes (QGroupBox)
+// ----------------------------------------------------------------------------
+
+// Create a titled group box as a child of `parent` (0 = none). Returns its Int
+// handle, or 0 on failure. The group is a plain container; put a layout on it
+// and add widgets to that layout.
+extern "C" VYB_WEAK int64_t __vyb_qt_group_create(int64_t parent, const char* s, int64_t len) {
+    if (!g_app) return 0;
+    QWidget* pw = parent ? htowed(parent) : nullptr;
+    QGroupBox* g = new QGroupBox(qt_from_bytes(s, len), pw);
+    return wetoh(g);
+}
+
+// Set group-box title text. Returns 0, or -1 on a non-group-box handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_group_set_title(int64_t h, const char* s, int64_t len) {
+    QGroupBox* g = dynamic_cast<QGroupBox*>(htowed(h)); if (!g) return -1;
+    g->setTitle(qt_from_bytes(s, len));
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+// Multi-line text editor (QPlainTextEdit)
+// ----------------------------------------------------------------------------
+
+// Create a multi-line plain-text editor as a child of `parent` (0 = none).
+// Returns its Int handle, or 0 on failure. A text change enqueues a
+// QtEvent::TextChanged record.
+extern "C" VYB_WEAK int64_t __vyb_qt_text_edit_create(int64_t parent) {
+    if (!g_app) return 0;
+    QWidget* pw = parent ? htowed(parent) : nullptr;
+    QPlainTextEdit* e = new QPlainTextEdit(pw);
+    QObject::connect(e, &QPlainTextEdit::textChanged,
+        [e]() { vyb_qt_enqueue(wetoh(e), VYB_QT_EVT_TEXTCHANGED); });
+    return wetoh(e);
+}
+
+// Current editor text (String); "" on a bad handle.
+extern "C" VYB_WEAK vyb_qt_str __vyb_qt_text_edit_text(int64_t h) {
+    QPlainTextEdit* e = dynamic_cast<QPlainTextEdit*>(htowed(h)); if (!e) return { nullptr, 0 };
+    return qt_to_owned(e->toPlainText());
+}
+
+// Replace editor text. Returns 0 on success, -1 on a non-editor handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_text_edit_set_text(int64_t h, const char* s, int64_t len) {
+    QPlainTextEdit* e = dynamic_cast<QPlainTextEdit*>(htowed(h)); if (!e) return -1;
+    e->setPlainText(qt_from_bytes(s, len));
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+// Radio buttons (QRadioButton)
+// ----------------------------------------------------------------------------
+
+// Create a radio button as a child of `parent` (0 = none). Returns its Int
+// handle, or 0 on failure. A check-state change enqueues a QtEvent::Toggled
+// record; radios in the same parent are exclusive by default.
+extern "C" VYB_WEAK int64_t __vyb_qt_radio_create(int64_t parent, const char* s, int64_t len) {
+    if (!g_app) return 0;
+    QWidget* pw = parent ? htowed(parent) : nullptr;
+    QRadioButton* r = new QRadioButton(qt_from_bytes(s, len), pw);
+    QObject::connect(r, &QRadioButton::toggled,
+        [r](bool) { vyb_qt_enqueue(wetoh(r), VYB_QT_EVT_TOGGLED); });
+    return wetoh(r);
+}
+
+// true if the radio button is checked, else false.
+extern "C" VYB_WEAK int64_t __vyb_qt_radio_checked(int64_t h) {
+    QRadioButton* r = dynamic_cast<QRadioButton*>(htowed(h)); if (!r) return -1;
+    return r->isChecked() ? 1 : 0;
+}
+
+// Check (true) / uncheck (false) the radio (enqueues QtEvent::Toggled).
+// Returns 0, or -1 on a non-radio handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_radio_set_checked(int64_t h, int64_t on) {
+    QRadioButton* r = dynamic_cast<QRadioButton*>(htowed(h)); if (!r) return -1;
+    r->setChecked(on ? true : false);
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+// Generic widget enable / visibility
+// ----------------------------------------------------------------------------
+
+// Enable (true) / disable (false) any widget. Returns 0, or -1 on a non-widget
+// handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_widget_set_enabled(int64_t h, int64_t on) {
+    QWidget* w = htowed(h); if (!w) return -1;
+    w->setEnabled(on ? true : false);
+    return 0;
+}
+
+// true while widget `h` is enabled, else false.
+extern "C" VYB_WEAK int64_t __vyb_qt_widget_enabled(int64_t h) {
+    QWidget* w = htowed(h); if (!w) return 0;
+    return w->isEnabled() ? 1 : 0;
 }

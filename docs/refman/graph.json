@@ -1,5 +1,5 @@
 {
-  "git_rev": "3c2c58eb96bc0438299d0ad9c73d76b256892f36",
+  "git_rev": "0df5acd56eb94c85af954e9832b388436412bbd0",
   "modules": [
     "agents",
     "asyncs",
@@ -152,7 +152,7 @@
         "files": [
           "stdlib/qt/mod.vyb"
         ],
-        "exported": 61,
+        "exported": 72,
         "fan_in": 0,
         "fan_out": 0
       },
@@ -618,6 +618,17 @@
           "qt_dial_create",
           "qt_dial_value",
           "qt_dial_set_value",
+          "qt_group_create",
+          "qt_text_edit_create",
+          "qt_text_edit_text",
+          "qt_text_edit_set_text",
+          "qt_radio_create",
+          "qt_radio_checked",
+          "qt_radio_set_checked",
+          "qt_widget_set_enabled",
+          "qt_widget_enabled",
+          "qt_grid",
+          "qt_grid_add",
           "QtEvent",
           "QtWidgetKind"
         ]
@@ -3006,6 +3017,33 @@
         "fan_in": 0
       },
       {
+        "name": "qt_grid",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_grid(parent<Int>)<Int> ->",
+        "summary": "Create a grid layout on window `parent`. Returns a layout handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_grid_add",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_grid_add(layout<Int>, child<Int>, row<Int>, col<Int>)<Int> ->",
+        "summary": "Add widget `child` to grid-layout `layout` at (row, col). Returns 0.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_group_create",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_group_create(parent<Int>, title<String>)<Int> ->",
+        "summary": "Create a titled group-box container under `parent`; put a layout on it. Returns its handle or 0.",
+        "fan_in": 0
+      },
+      {
         "name": "qt_hbox",
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
@@ -3114,6 +3152,33 @@
         "fan_in": 0
       },
       {
+        "name": "qt_radio_checked",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_radio_checked(radio<Int>)<Bool> ->",
+        "summary": "true if the radio button is checked, else false.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_radio_create",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_radio_create(parent<Int>, text<String>)<Int> ->",
+        "summary": "Create a radio button under `parent`; toggles enqueue QtEvent::Toggled. Returns its handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_radio_set_checked",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_radio_set_checked(radio<Int>, on<Bool>)<Int> ->",
+        "summary": "Check (true) / uncheck (false) the radio (enqueues QtEvent::Toggled). Returns 0.",
+        "fan_in": 0
+      },
+      {
         "name": "qt_run",
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
@@ -3195,6 +3260,33 @@
         "fan_in": 0
       },
       {
+        "name": "qt_text_edit_create",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_text_edit_create(parent<Int>)<Int> ->",
+        "summary": "Create a multi-line plain-text editor under `parent`; edits enqueue QtEvent::TextChanged. Returns its handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_text_edit_set_text",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_text_edit_set_text(ed<Int>, text<String>)<Int> ->",
+        "summary": "Replace editor text. Returns 0, or -1 on a non-editor handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_text_edit_text",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_text_edit_text(ed<Int>)<String> ->",
+        "summary": "Current editor text (String); \"\" on a bad handle.",
+        "fan_in": 0
+      },
+      {
         "name": "qt_timer_fired",
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
@@ -3219,6 +3311,24 @@
         "kind": "fn",
         "signature": "qt_wait_event(timeout<Int>)<Bool> ->",
         "summary": "Pump Qt until a control event (true) or `timeout` ms lapses (false); negative waits.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_widget_enabled",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_widget_enabled(h<Int>)<Bool> ->",
+        "summary": "true while widget `h` is enabled, else false.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_widget_set_enabled",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_widget_set_enabled(h<Int>, on<Bool>)<Int> ->",
+        "summary": "Enable (true) / disable (false) any widget. Returns 0, or -1 on a non-widget handle.",
         "fan_in": 0
       },
       {
@@ -6643,6 +6753,24 @@
     {
       "type": "runtimeRef",
       "from_module": "qt",
+      "from_symbol": "qt_grid",
+      "to_symbol": "vyb_qt_grid"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_grid_add",
+      "to_symbol": "vyb_qt_grid_add"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_group_create",
+      "to_symbol": "vyb_qt_group_create"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
       "from_symbol": "qt_hbox",
       "to_symbol": "vyb_qt_hbox"
     },
@@ -6715,6 +6843,24 @@
     {
       "type": "runtimeRef",
       "from_module": "qt",
+      "from_symbol": "qt_radio_checked",
+      "to_symbol": "vyb_qt_radio_checked"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_radio_create",
+      "to_symbol": "vyb_qt_radio_create"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_radio_set_checked",
+      "to_symbol": "vyb_qt_radio_set_checked"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
       "from_symbol": "qt_run",
       "to_symbol": "vyb_qt_run"
     },
@@ -6769,6 +6915,24 @@
     {
       "type": "runtimeRef",
       "from_module": "qt",
+      "from_symbol": "qt_text_edit_create",
+      "to_symbol": "vyb_qt_text_edit_create"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_text_edit_set_text",
+      "to_symbol": "vyb_qt_text_edit_set_text"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_text_edit_text",
+      "to_symbol": "vyb_qt_text_edit_text"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
       "from_symbol": "qt_timer_fired",
       "to_symbol": "vyb_qt_timer_fired"
     },
@@ -6783,6 +6947,18 @@
       "from_module": "qt",
       "from_symbol": "qt_wait_event",
       "to_symbol": "vyb_qt_wait_event"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_widget_enabled",
+      "to_symbol": "vyb_qt_widget_enabled"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_widget_set_enabled",
+      "to_symbol": "vyb_qt_widget_set_enabled"
     },
     {
       "type": "runtimeRef",
