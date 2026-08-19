@@ -8126,10 +8126,14 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
     bool hasEnsure = node->ensureClause != nullptr;
 
     if (!hasTrap && !hasEnsure) {
-        // Simple block without error handling - execute normally
-        for (const auto& stmt : node->block->body) {
-            stmt->accept(*this);
-        }
+        // Simple block without error handling - execute normally. Run the body
+        // as a BlockStatement so it enters its own ownership scope: select/match
+        // arm bodies share this path, and without a per-arm scope every arm's
+        // locals would land in the enclosing (e.g. loop-body) scope. That made
+        // a `continue`/`break` from one arm release its siblings' not-yet-owned
+        // values (freeing garbage / double-freeing moved strings). Scoping the
+        // block confines each arm's locals to that arm, so only it owns them.
+        node->block->accept(*this);
         return;
     }
 
@@ -8786,10 +8790,19 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
         llvm::Value* preview = nullptr;
         if (!node->cases.empty() && node->cases[0].second) {
             std::map<std::string, llvm::Value*> savedArmNamedValues = namedValues;
+            // Snapshot the scope stack: codegen'ing the arm body below registers
+            // its declarations as owning locals (and can register into the
+            // enclosing scope because arm BlockExpressions do not add a scope of
+            // their own). This preview is throwaway — its basic blocks are erased —
+            // so those registrations must not survive into the real case loop, or
+            // their stale allocas would be released on scope exit (double-freeing
+            // owned values that the real arm also produces).
+            auto savedArmScopeStack = scopeStack;
             bindVariantPattern(node->cases[0].first);
             node->cases[0].second->accept(*this);
             preview = m_currentLLVMValue;
             namedValues = std::move(savedArmNamedValues);
+            scopeStack = std::move(savedArmScopeStack);
         }
         m_currentLLVMValue = preview;
         return;
@@ -8834,9 +8847,16 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
         // Pre-bind an enum-variant first arm's payload fields so the preview can
         // type-check the body (the block is erased after; only the type matters).
         std::map<std::string, llvm::Value*> savedInferNamedValues = namedValues;
+        // Snapshot the scope stack too: the previewed arm registers its owning
+        // locals (e.g. a `substring` String binding) into the enclosing scope,
+        // and those registrations must not survive into the real case loop. If
+        // left behind, scope exit would release the preview's stale alloca(s) in
+        // addition to the real arm's alloca, freeing the same buffer twice.
+        auto savedInferScopeStack = scopeStack;
         bindVariantPattern(node->cases[0].first);
         node->cases[0].second->accept(*this);
         namedValues = std::move(savedInferNamedValues);
+        scopeStack = std::move(savedInferScopeStack);
         if (m_currentLLVMValue) {
             resultType = m_currentLLVMValue->getType();
         }
@@ -8916,6 +8936,8 @@ void LLVMCodegen::visit(ast::SelectExpression* node) {
                 return builder->CreateICmpEQ(matchValue, pv, "select.cmp");
             if (pv->getType()->isFloatingPointTy() && matchValue->getType()->isFloatingPointTy())
                 return builder->CreateFCmpOEQ(matchValue, pv, "select.fcmp");
+            if (isVybStringStructType(pv->getType()) && isVybStringStructType(matchValue->getType()))
+                return generateStringComparison(matchValue, pv, vyb::TokenType::EQEQ);
             if (pv->getType()->isPointerTy() && matchValue->getType()->isPointerTy()) {
                 return builder->CreateICmpEQ(
                     builder->CreatePtrToInt(matchValue, llvm::Type::getInt64Ty(*context)),

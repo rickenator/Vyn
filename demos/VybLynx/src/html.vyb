@@ -31,22 +31,27 @@ find_ci(s<String>, needle<String>)<Int> -> {
 # True when the byte is horizontal whitespace (space/tab/CR/LF).
 share(all)
 is_ws(c<Int>)<Bool> -> {
-    return (c == 32 || c == 9 || c == 10 || c == 13)
+    return select(c) -> {
+        {32, 9, 10, 13} -> true,
+        ?               -> false
+    }
 }
 
 # Decode one HTML entity to its replacement text. Unknown entities decode to
 # "" so they simply disappear from the rendered text.
 share(all)
 entity_text(ent<String>)<String> -> {
-    if (ent == "&amp;" || ent == "&#38;" || ent == "&#x26;") { return "&" }
-    if (ent == "&lt;"  || ent == "&#60;" || ent == "&#x3c;") { return "<" }
-    if (ent == "&gt;"  || ent == "&#62;" || ent == "&#x3e;") { return ">" }
-    if (ent == "&quot;" || ent == "&#34;" || ent == "&#x22;") { return "\"" }
-    if (ent == "&#39;" || ent == "&apos;" || ent == "&#x27;") { return "'" }
-    if (ent == "&nbsp;" || ent == "&#160;" || ent == "&#xa0;") { return " " }
-    if (ent == "&copy;"  || ent == "&#169;") { return "(c)" }
-    if (ent == "&hellip;" || ent == "&#8230;") { return "..." }
-    return ""
+    return select(ent) -> {
+        {"&amp;", "&#38;", "&#x26;"}   -> "&",
+        {"&lt;",  "&#60;", "&#x3c;"}   -> "<",
+        {"&gt;",  "&#62;", "&#x3e;"}   -> ">",
+        {"&quot;", "&#34;", "&#x22;"}  -> "\"",
+        {"&#39;", "&apos;", "&#x27;"}  -> "'",
+        {"&nbsp;", "&#160;", "&#xa0;"} -> " ",
+        {"&copy;", "&#169;"}           -> "(c)",
+        {"&hellip;", "&#8230;"}        -> "...",
+        ?                              -> ""
+    }
 }
 
 # Decode the entity at the start of `s`, returning its text and byte length.
@@ -159,15 +164,13 @@ tag_name(tag<String>)<String> -> {
 # Block-level tags give the page its rhythm: each starts a fresh paragraph.
 share(all)
 is_block_tag(name<String>)<Bool> -> {
-    return (name == "p" || name == "div" || name == "br" || name == "hr" ||
-            name == "h1" || name == "h2" || name == "h3" || name == "h4" ||
-            name == "h5" || name == "h6" || name == "li" || name == "ul" ||
-            name == "ol" || name == "table" || name == "tr" || name == "td" ||
-            name == "th" || name == "pre" || name == "blockquote" ||
-            name == "section" || name == "article" || name == "header" ||
-            name == "footer" || name == "form" || name == "fieldset" ||
-            name == "dt" || name == "dd" || name == "address" ||
-            name == "nav" || name == "main")
+    return select(name) -> {
+        {"p", "div", "br", "hr", "h1", "h2", "h3", "h4", "h5", "h6",
+         "li", "ul", "ol", "table", "tr", "td", "th", "pre",
+         "blockquote", "section", "article", "header", "footer",
+         "form", "fieldset", "dt", "dd", "address", "nav", "main"} -> true,
+        ? -> false
+    }
 }
 
 # The value of a `href` attribute inside an `<a ...>` tag string.
@@ -181,7 +184,7 @@ href_value(tag<String>)<String> -> {
     after = after.substring(eq + 1, after.len()).trim()
     if (after.len() == 0) { return "" }
     q<Int> = after.char_at(0)
-    if (q == 34 || q == 39) {
+    if (select(q) -> { {34, 39} -> true, ? -> false }) {
         close<Int> = after.substring(1).index_of(after.substring(0, 1))
         if (close < 0) { return "" }
         return after.substring(1, 1 + close)
@@ -243,55 +246,58 @@ render_lines(html<String>, links<their<Vec<Link>>>, width<Int>)<Vec<String>> -> 
             tag<String> = html.substring(i, tagEnd + 1)
             nm<String> = tag_name(tag)
 
-            if (nm == "#comment") {
-                cj<Int> = html.substring(i, n).index_of("-->")
-                if (cj < 0) { break }
-                i = i + cj + 3
-                continue
-            }
-            if (nm == "script" || nm == "style") {
-                cj<Int> = find_ci(html.substring(i, n), "</" + nm)
-                if (cj < 0) { break }
-                i = i + cj
-                continue
-            }
-            if (nm == "a") {
-                href<String> = href_value(tag)
-                ai<Int> = find_ci(html.substring(tagEnd + 1, n), "</a")
-                content<String> = ""
-                advance<Int> = tagEnd + 1
-                if (ai >= 0) {
-                    content = html.substring(tagEnd + 1, tagEnd + 1 + ai)
-                    tail<String> = html.substring(tagEnd + 1 + ai, n)
-                    gg<Int> = tail.index_of(">")
-                    if (gg >= 0) { advance = tagEnd + 1 + ai + gg + 1 } else { advance = n }
-                } else {
-                    content = html.substring(tagEnd + 1, n)
-                    advance = n
-                }
-                label<String> = flatten(content)
-                if (href.len() > 0) {
-                    links.push(Link { raw_href = href, text = label })
-                    para = para + "[" + links.len().to_string() + "]"
-                    if (label.len() > 0) {
+            select(nm) -> {
+                "#comment" -> {
+                    cj<Int> = html.substring(i, n).index_of("-->")
+                    if (cj < 0) { break }
+                    i = i + cj + 3
+                    continue
+                },
+                {"script", "style"} -> {
+                    cj<Int> = find_ci(html.substring(i, n), "</" + nm)
+                    if (cj < 0) { break }
+                    i = i + cj
+                    continue
+                },
+                "a" -> {
+                    href<String> = href_value(tag)
+                    ai<Int> = find_ci(html.substring(tagEnd + 1, n), "</a")
+                    content<String> = ""
+                    advance<Int> = tagEnd + 1
+                    if (ai >= 0) {
+                        content = html.substring(tagEnd + 1, tagEnd + 1 + ai)
+                        tail<String> = html.substring(tagEnd + 1 + ai, n)
+                        gg<Int> = tail.index_of(">")
+                        if (gg >= 0) { advance = tagEnd + 1 + ai + gg + 1 } else { advance = n }
+                    } else {
+                        content = html.substring(tagEnd + 1, n)
+                        advance = n
+                    }
+                    label<String> = flatten(content)
+                    if (href.len() > 0) {
+                        links.push(Link { raw_href = href, text = label })
+                        para = para + "[" + links.len().to_string() + "]"
+                        if (label.len() > 0) {
+                            para = para + " " + label
+                        }
+                    } else if (label.len() > 0) {
                         para = para + " " + label
                     }
-                } else if (label.len() > 0) {
-                    para = para + " " + label
+                    i = advance
+                    continue
+                },
+                ? -> {
+                    # Default tag: a block tag starts a fresh paragraph.
+                    if (is_block_tag(nm)) {
+                        if (para.trim().len() > 0) {
+                            paras.push(collapse_ws(para))
+                            para = ""
+                        }
+                    }
+                    i = tagEnd + 1
+                    continue
                 }
-                i = advance
-                continue
             }
-            if (is_block_tag(nm)) {
-                if (para.trim().len() > 0) {
-                    paras.push(collapse_ws(para))
-                    para = ""
-                }
-                i = tagEnd + 1
-                continue
-            }
-            i = tagEnd + 1
-            continue
         }
 
         if (c == 38) {

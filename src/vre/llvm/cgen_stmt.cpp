@@ -1674,6 +1674,9 @@ void LLVMCodegen::codegenMatch(vyb::ast::MatchStatement* node, llvm::AllocaInst*
                 } else if (patternValue->getType()->isFloatingPointTy() && matchValue->getType()->isFloatingPointTy()) {
                     // Float comparison
                     isMatch = builder->CreateFCmpOEQ(matchValue, patternValue, "match.fcmp");
+                } else if (isVybStringStructType(patternValue->getType()) && isVybStringStructType(matchValue->getType())) {
+                    // String value comparison
+                    isMatch = generateStringComparison(matchValue, patternValue, vyb::TokenType::EQEQ);
                 } else {
                     // For more complex types, we'd need custom comparison logic
                     // For now, just do a pointer comparison if both are pointers
