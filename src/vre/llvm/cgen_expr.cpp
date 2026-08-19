@@ -749,7 +749,9 @@ void LLVMCodegen::visit(vyb::ast::BinaryExpression *node) {
 
                 // Handle String struct + non-string concatenation (e.g. "Hello" + 1000)
                 if (leftIsStringStruct || rightIsStringStruct) {
-                    m_currentLLVMValue = generateMixedStringConcatenation(L, R, leftTypeNode, rightTypeNode, node->loc);
+                    m_currentLLVMValue = generateMixedStringConcatenation(L, R, leftTypeNode, rightTypeNode, node->loc,
+                                  exprProducesOwnedStringTemp(node->left.get()),
+                                  exprProducesOwnedStringTemp(node->right.get()));
                     if (!m_currentLLVMValue) {
                         logError(node->loc, "Failed to generate mixed string concatenation");
                         return;
@@ -767,7 +769,9 @@ void LLVMCodegen::visit(vyb::ast::BinaryExpression *node) {
                         VYB_CDBG << "DEBUG PLUS: Detected string concatenation (leftIsString="
                                   << leftIsString << ", rightIsString=" << rightIsString << ")" << std::endl;
                     }
-                    m_currentLLVMValue = generateMixedStringConcatenation(L, R, leftTypeNode, rightTypeNode, node->loc);
+                    m_currentLLVMValue = generateMixedStringConcatenation(L, R, leftTypeNode, rightTypeNode, node->loc,
+                                  exprProducesOwnedStringTemp(node->left.get()),
+                                  exprProducesOwnedStringTemp(node->right.get()));
                     if (!m_currentLLVMValue) {
                         logError(node->loc, "Failed to generate mixed string concatenation");
                         return;
@@ -799,7 +803,9 @@ void LLVMCodegen::visit(vyb::ast::BinaryExpression *node) {
 
                 // If at least one operand is a string, treat as string concatenation with auto-conversion
                 if (leftIsString || rightIsString) {
-                    m_currentLLVMValue = generateMixedStringConcatenation(L, R, leftTypeNode, rightTypeNode, node->loc);
+                    m_currentLLVMValue = generateMixedStringConcatenation(L, R, leftTypeNode, rightTypeNode, node->loc,
+                                  exprProducesOwnedStringTemp(node->left.get()),
+                                  exprProducesOwnedStringTemp(node->right.get()));
                     if (!m_currentLLVMValue) {
                         logError(node->loc, "Failed to generate mixed string concatenation");
                         return;
@@ -4716,6 +4722,16 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                     methodName == "trim" || methodName == "strip" || methodName == "replace" ||
                     methodName == "format") {
                     handleStringMethodOnValue(node, strPtr, methodName);
+                    // A computed String receiver (e.g. `header.substring(0,c).trim()`)
+                    // owns a fresh heap buffer with no named binding; drop it here or
+                    // it leaks for the life of the process.
+                    if (exprProducesOwnedStringTemp(memberExpr->object.get())) {
+                        llvm::Value* rcvData = strVal;
+                        if (strVal->getType()->isStructTy()) {
+                            rcvData = builder->CreateExtractValue(strVal, 0, "str.rcv.data");
+                        }
+                        builder->CreateCall(getOrCreateVybStringFreeFunction(), {rcvData});
+                    }
                     return;
                 }
 
@@ -4775,6 +4791,13 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                                 m_currentLLVMValue = nullptr;
                             } else {
                                 m_currentLLVMValue = builder->CreateCall(implFunc, argValues, "aspect.method.result");
+                            }
+                            if (exprProducesOwnedStringTemp(memberExpr->object.get())) {
+                                llvm::Value* rcvData = strVal;
+                                if (strVal->getType()->isStructTy()) {
+                                    rcvData = builder->CreateExtractValue(strVal, 0, "str.aspect.rcv.data");
+                                }
+                                builder->CreateCall(getOrCreateVybStringFreeFunction(), {rcvData});
                             }
                             return;
                         }
@@ -5308,6 +5331,10 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
     // be released once the callee returns (see freshOwningCallArgKind).
     struct TempRelease { int kind; llvm::Value* cb; const vyb::ast::TypeNode* pointeeAst; llvm::Type* pointeeLlvm; };
     std::vector<TempRelease> pendingTemporaryReleases;
+    // Freshly-built heap String (substring/concat/format) passed by value with no
+    // named binding: the callee retains/releases its own copy, so the caller must
+    // drop the temp's own reference after the call (see exprProducesOwnedStringTemp).
+    std::vector<llvm::Value*> pendingStringTempFrees;
     auto emitTemporaryReleases = [&]() {
         for (auto& pr : pendingTemporaryReleases) {
             if (pr.kind == 1) releaseOurControlBlock(pr.cb, "temparg.our", pr.pointeeAst, pr.pointeeLlvm);
@@ -5335,6 +5362,9 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 builder->SetInsertPoint(contBB);
             }
         }
+        for (llvm::Value* sd : pendingStringTempFrees) {
+            builder->CreateCall(getOrCreateVybStringFreeFunction(), {sd});
+        }
     };
     for (size_t i = 0; i < node->arguments.size(); ++i) {
         node->arguments[i]->accept(*this);
@@ -5343,6 +5373,17 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             logError(node->arguments[i]->loc, "Argument codegen failed for call to " + calleeName);
             m_currentLLVMValue = nullptr;
             return;
+        }
+
+        // A freshly-built String temp handed by value is released right after the
+        // call; the callee retains/releases its own copy, leaving the temp's own
+        // reference for us to drop.
+        if (exprProducesOwnedStringTemp(node->arguments[i].get())) {
+            llvm::Value* sd = argValue;
+            if (argValue->getType() && argValue->getType()->isStructTy()) {
+                sd = builder->CreateExtractValue(argValue, 0, "strtemparg.data");
+            }
+            pendingStringTempFrees.push_back(sd);
         }
 
         if (i < fixedParamCount) {

@@ -191,17 +191,23 @@ VYB_WEAK void __vyb_string_release(void* p) {
 // (the current release semantic).
 VYB_WEAK void __vyb_string_free(void* p) { __vyb_string_release(p); }
 
+// A Vec<String> element in generated code is the full `{ ptr, i64 }` String
+// struct (16 bytes); the bulk helpers below stride by it to reach each element's
+// data pointer. (Declared locally: the named runtime file-str type lives later.)
+typedef struct { char* ptr; int64_t len; } vyb_str_elem;
+
 // The generated code retains each String it places into a Vec<String> (push /
 // set) and, when the whole Vec is dropped (clear / scope exit / deep-copy
 // teardown), releases every element with these bulk helpers. A Vyb String
-// stored as a Vec element is its element-0 data pointer (a single 8-byte slot),
-// so a Vec<String> element buffer is a `char**` array. Drop one reference on
+// stored as a Vec element is the full `{ ptr, len }` struct, so a Vec<String>
+// element buffer is a `{ ptr, len }*` array and these helpers stride by that
+// struct (16 bytes) to reach each element's data pointer. Drop one reference on
 // each; string literals (.rodata, not registered) make retain/release a safe
 // no-op.
 VYB_WEAK void __vyb_string_release_each(void* arr, int64_t n) {
     if (!arr || n <= 0) return;
-    char** e = (char**)arr;
-    for (int64_t i = 0; i < n; ++i) __vyb_string_release(e[i]);
+    vyb_str_elem* e = (vyb_str_elem*)arr;
+    for (int64_t i = 0; i < n; ++i) __vyb_string_release(e[i].ptr);
 }
 
 // Take one reference on each of the first `n` String elements in `arr` (used when
@@ -209,8 +215,8 @@ VYB_WEAK void __vyb_string_release_each(void* arr, int64_t n) {
 // its own references).
 VYB_WEAK void __vyb_string_retain_each(void* arr, int64_t n) {
     if (!arr || n <= 0) return;
-    char** e = (char**)arr;
-    for (int64_t i = 0; i < n; ++i) __vyb_string_retain(e[i]);
+    vyb_str_elem* e = (vyb_str_elem*)arr;
+    for (int64_t i = 0; i < n; ++i) __vyb_string_retain(e[i].ptr);
 }
 
 // ============================================================================

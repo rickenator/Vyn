@@ -353,7 +353,8 @@ private:
     llvm::Value* generateToStringCall(llvm::Value* value, llvm::Type* valueType, vyb::ast::TypeNode* astType, SourceLocation loc);
     llvm::Value* generateTaggedEnumToString(llvm::Value* value, const TaggedEnumInfo& info, const std::string& typeName, SourceLocation loc);
     llvm::Value* generateMixedStringConcatenation(llvm::Value* leftValue, llvm::Value* rightValue,
-                                                vyb::ast::TypeNode* leftTypeNode, vyb::ast::TypeNode* rightTypeNode, SourceLocation loc);
+                                                vyb::ast::TypeNode* leftTypeNode, vyb::ast::TypeNode* rightTypeNode,
+                                                SourceLocation loc, bool freeLeftOwnedTemp = false, bool freeRightOwnedTemp = false);
     std::string resolveTypeAliasToBaseName(vyb::ast::TypeNode* typeNode);
 
     // IO operations

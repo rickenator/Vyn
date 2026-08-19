@@ -522,7 +522,8 @@ llvm::Value* LLVMCodegen::generateTaggedEnumToString(llvm::Value* value, const T
 
 // Enhanced string concatenation that handles mixed types by converting non-strings to strings
 llvm::Value* LLVMCodegen::generateMixedStringConcatenation(llvm::Value* leftValue, llvm::Value* rightValue,
-                                                         vyb::ast::TypeNode* leftTypeNode, vyb::ast::TypeNode* rightTypeNode, SourceLocation loc) {
+                                                         vyb::ast::TypeNode* leftTypeNode, vyb::ast::TypeNode* rightTypeNode,
+                                                         SourceLocation loc, bool freeLeftOwnedTemp, bool freeRightOwnedTemp) {
     if (!leftValue || !rightValue) {
         logError(loc, "Invalid operands for mixed string concatenation");
         return nullptr;
@@ -582,6 +583,22 @@ llvm::Value* LLVMCodegen::generateMixedStringConcatenation(llvm::Value* leftValu
     }
     if (!rightIsString && rightString && rightString->getType()->isPointerTy()) {
         builder->CreateCall(getOrCreateVybStringFreeFunction(), {rightString});
+    }
+
+    // A String operand that was itself a freshly-allocated owned temp (e.g.
+    // `i.to_string()`, `x.substring(...)`) has been fully copied into the concat
+    // result; the caller owns that temporary's reference and must drop it here or
+    // it leaks (the mixed-concat fast path otherwise only reclaims the to_string
+    // conversions of non-String operands).
+    if (freeLeftOwnedTemp && leftString) {
+        llvm::Value* ld = leftString;
+        if (leftString->getType()->isStructTy()) ld = builder->CreateExtractValue(leftString, 0, "mixed.lhs.owned.data");
+        builder->CreateCall(getOrCreateVybStringFreeFunction(), {ld});
+    }
+    if (freeRightOwnedTemp && rightString) {
+        llvm::Value* rd = rightString;
+        if (rightString->getType()->isStructTy()) rd = builder->CreateExtractValue(rightString, 0, "mixed.rhs.owned.data");
+        builder->CreateCall(getOrCreateVybStringFreeFunction(), {rd});
     }
 
     return result;
