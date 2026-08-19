@@ -451,33 +451,33 @@ iterable — including custom `bind Iterator` types — so `v.iter()`, a
 
 ```vyb
 # select returns a value
-status = select (code) {
-    200 -> "ok"
-    404 -> "not found"
+status<String> = select(code) -> {
+    200 -> "ok",
+    404 -> "not found",
     ? -> "unknown"
 }
 ```
 
 ```vyb
 # larger arm bodies use pass (returns from the block, not the fn)
-result = select (n) {
-    1 -> 10
+result<Int> = select(n) -> {
+    1 -> 10,
     ? -> { v<Int> = n * 100; pass v }  # pass carries the arm value
 }
 ```
 
 - **Naked expressions** (`1 -> 10`) auto-return without `pass`.
 - **Complex blocks** (`{ … }`) need an explicit `pass value`.
-- **Type inference** comes from the first arm; wildcard `?` (or `_`) gives the
+- **Type inference** comes from the first arm; the `?` wildcard gives the
   default.
 
 **Comparison patterns** (range matching) work on `Int`/`Float`:
 
 ```vyb
-tax = select (income) {
-    < 10000 -> 0.0
-    <= 50000 -> 0.2
-    > 50000 -> 0.4
+tax<Float> = select(income) -> {
+    < 10000 -> 0.0,
+    <= 50000 -> 0.2,
+    > 50000 -> 0.4,
     ? -> 0.0
 }
 ```
@@ -490,6 +490,26 @@ match (x) { ? -> "any", 5 -> "five" }   # ERROR: '?' must be last
 match (x) { > 10 -> "a", > 10 -> "b" }  # ERROR: duplicate
 match (x) { > 5 -> "a", >= 3 -> "b" }   # ERROR: overlapping ranges
 ```
+
+**Set patterns (`{ … }`)** group several discrete values into a single arm so
+callers don't repeat a result per value. The arm matches when the target equals
+*any* element, and first-match-wins arm ordering is preserved:
+
+```vyb
+parity<String> = select(n) -> {
+    {1, 3, 5, 7, 9} -> "odd",
+    {2, 4, 6, 8}    -> "even",
+    ?               -> "out of bounds"
+}
+```
+
+Set elements are **literals** (`Int`/`Float`/`String`/`Bool`/`null`) or **bare
+enum-variant names** (`North`, `Shape::Square`). Comparison patterns,
+payload-binding variants (`Circle(r)`), arbitrary expressions, and empty `{}`
+are rejected at compile time. Every element must share the select target's
+type, and the `?` wildcard must remain the last arm. A value listed in more
+than one arm is claimed by the earliest arm (no error). Enum-variant elements
+count toward `select` exhaustiveness checks on tagged-union enums.
 
 ### 3.8 Tuples and variadic tuples
 
@@ -1228,9 +1248,21 @@ b = async_spawn(|| -> { async_sleep_ms(5);  return 32 })
 async_run_all()<Int>              # drive the pool to completion
 async_await(b)<Int>               # await one handle, block the caller
 async_poll(t)<Int>                # non-blocking probe
+async_detach(t)<Int>              # reclaim one finished task early
 async_sleep_ms(ms)<Int>           # cooperatively suspend (not thread sleep)
 async_yield()<Int>                # round-robin to other fibers
 ```
+
+**Per-task reclamation.** Tasks stay valid across main-thread awaits, so you can
+spawn several and await them in any order. `async_detach(t)` reclaims a single
+*completed* task early — freeing its fiber stack and captured environment — so a
+long-lived program can recycle fibers instead of accumulating one per `spawn`.
+Call it only after the task is done (polled or awaited); the handle must not be
+used afterwards. A still-running task is marked and reclaimed by its worker as
+soon as it completes (a slow fetch self-reaps). Returns `0` on success, `-1` if
+already detached, `-3` if a waiter is still attached. `async_run_all()` runs
+whatever is left and then reclaims every task; a leftover-task `atexit` hook
+stops the worker pool and reclaims anything forgotten.
 
 Non-`Int` futures (`Float`, `Bool`, `String`) are supported
 (`Future<T>` async functions, [§3.23](#323-asynchronous-programming)).

@@ -354,6 +354,19 @@ These features were completed in the current release cycle and are fully tested:
       ? -> "F"
   }
   ```
+- **Set patterns in `select` arms (`{ … }`)** — group several discrete values
+  into one arm so you don't repeat a result per value; the arm matches when the
+  target equals *any* element. Sets hold literals and bare enum-variant names
+  only; empty `{}` and mixed types are rejected.
+  ```vyb
+  parity(x<Int>)<String> -> {
+      return select(x) -> {
+          {1, 3, 5, 7, 9} -> "odd",
+          {2, 4, 6, 8}    -> "even",
+          ?               -> "out of bounds"
+      }
+  }
+  ```
 - **`typeof` / `typename` intrinsics** — Runtime type introspection
   ```vyb
   x<Int> = 42
@@ -406,7 +419,7 @@ These features were completed in the current release cycle and are fully tested:
 - **Structs**: `struct Point { x<Int>, y<Int> }` with field access (`p.x`, `p.y`)
 - **Control Flow**: `if/else`, `while/for` loops, `match` statements, `break`/`continue` (including labeled: `outer: for ... break outer`)
 - **`defer` statement**: `defer expr` — LIFO scope-exit execution for cleanup
-- **Select Expressions**: `select(expr) -> { pattern -> result }` — pattern matching that returns a value; `pass` keyword for multi-statement arms
+- **Select Expressions**: `select(expr) -> { pattern -> result }` — pattern matching that returns a value; `pass` keyword for multi-statement arms; brace-delimited set arms (`{1, 3, 5} -> "odd"`) match any element
 - **Arithmetic**: Full binary operators (`+`, `-`, `*`, `/`, `==`, `!=`, `<`, `>`, etc.)
 - **Bitwise Operators**: `|`, `&`, `^`, `~`, `<<`, `>>` on `Int` with `&=`, `|=`, `^=`, `<<=`, `>>=` compound-assigns
 - **Pattern Matching**: `match (expr) { pattern -> result }` with comparison patterns (`>= 90`, `< 0`) and wildcard `?`
@@ -566,7 +579,9 @@ pthread runtime (no raw C ABI in user code):
   `async_sleep_ms` (a timer, not a thread sleep), `async_yield` (round-robin),
   or `async_await` (wait on another task) — so concurrent timers complete in
   ~max rather than ~sum wall time, and CPU-bound tasks run across cores, with no
-  state-machine transform.
+  state-machine transform. `async_detach(t)` reclaims a single finished task
+  early so long-lived programs recycle fibers instead of one per spawn (a
+  still-running task self-reaps when it completes).
 
 ```vyb
 import asyncs
@@ -574,6 +589,7 @@ h1 = async_spawn(|| -> { async_sleep_ms(20); return 10 })
 h2 = async_spawn(|| -> { async_sleep_ms(20); return 32 })
 v1 = async_await(h1)   // 10, ~20ms total for both
 v2 = async_await(h2)   // 32
+async_detach(h1)       // reclaim the finished task early
 async_run_all()        // flush + reclaim
 ```
 
@@ -1593,6 +1609,44 @@ invalid_patterns(x<Int>)<String> -> {
 - **`select`**: Expression that evaluates to a value - use naked expressions or `pass` keyword
 - **`match`**: Statement for side effects - pattern arms can `return` from enclosing function
 - Both support identical comparison pattern syntax and unreachable pattern detection
+
+### Set Patterns (`{…}`) in Select Arms
+
+An arm's pattern may be a brace-delimited **set** of several discrete values,
+so callers don't repeat a result per value. The arm matches when the target
+equals *any* element; first-match-wins ordering is preserved.
+
+```vyb
+classify(x<Int>)<String> -> {
+    return select(x) -> {
+        {1, 3, 5, 7, 9} -> "odd",
+        {2, 4, 6, 8}    -> "even",
+        ?               -> "out of bounds"
+    }
+}
+
+enum Color { Red, Green, Blue }
+name(c<Color>)<String> -> {
+    return select(c) -> {
+        {Red, Blue}  -> "primary",
+        {Green}      -> "green",
+        ?            -> "unknown"
+    }
+}
+```
+
+Set elements may be **literals** (`Int`/`Float`/`String`/`Bool`/`null`) or
+**bare enum-variant names** (`North`, `Shape::Square`). These are enforced at
+compile time:
+
+- Comparison patterns, payload-binding variants (`Circle(r)`), and arbitrary
+  expressions are not allowed inside a set.
+- An empty set `{}` is rejected, as is a wildcard that is not the last arm.
+- Every element must share the select target's type (`Int` + `String` in one
+  set is an error).
+- A value listed in more than one arm is claimed by the earliest arm (no error).
+- Enum-variant elements count toward `select` exhaustiveness checks on
+  tagged-union enums.
 
 ### Variadic Tuples
 
@@ -2871,6 +2925,23 @@ Vyb is actively developed with regular commits tracking progress:
 See `doc/` directory for detailed design documents and RFCs.
 
 ## Recent Progress
+
+**Latest cycle (v0.7.x)**: stdlib concurrency + a network/UI demo
+- ✅ **Set patterns in `select` arms (`{ … }`)** — group several values into one
+  arm; the arm matches when the target equals *any* element. Sets hold literals
+  and bare enum-variant names; empty `{}` and mixed types are rejected, and the
+  `?` wildcard must remain the last arm.
+- ✅ **Per-task async reclamation (`async_detach`)** — reclaim a single finished
+  fiber's stack and captured environment early, so long-lived programs recycle
+  fibers instead of accumulating one per `async_spawn`; a still-running task
+  self-reaps on completion.
+- ✅ **`http`/`https` client hardening** — chunked response-body decoding and
+  dependable host connection (IPv4 address resolution), plus TLS context race
+  fixes, so a web-capable client app can load real pages.
+- ✅ **VybLynx TUI demo (`demos/VybLynx`)** — a curses box window with keyboard
+  navigation, in-window URL editor, offline/error panes, and agent downloads;
+  pages are fetched off the UI thread through the stdlib `asyncs` executor so
+  the interface stays responsive.
 
 **v0.4.2 (freedom-1.0 series)**: Generic function monomorphization and FREEDOM blocks
 - ✅ **Generic Functions**: Complete LLVM monomorphization system for generic functions with bounded type parameters
