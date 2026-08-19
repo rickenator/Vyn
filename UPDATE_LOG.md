@@ -881,4 +881,12 @@ for now; open questions before any work:
 - how the Qt event loop interacts with the stdlib `asyncs` executor and the
   existing curses-based VybLynx TUI.
 
-Not started.
+Initial pass landed: `stdlib/qt/mod.vyb` over a C++ bridge
+(`runtime/vyb_qt_bridge.cpp`, `__vyb_qt_*` extern "C" shims registered in
+`main.cpp` like the curses shims), exposing a deterministic subset - Qt5
+Widgets window + label (title/size/show/hide), a polled event loop
+(`qt_process_events`), and a steady-clock repeat timer (`qt_set_timer` /
+`qt_timer_fired`). No signal/slot callbacks yet; the module is poll-driven so
+it is deterministic under the `offscreen` QPA platform in tests (`test/qt`),
+and degrades gracefully to stub shims when Qt5 is absent. Open follow-ups:
+signal/slot and layout support, richer controls, deeper asyncs interaction.

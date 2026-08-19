@@ -1549,6 +1549,37 @@ blocking by default; for a nonblocking UI loop call `curses_nodelay(1)` or
 `curses_timeout(ms)` so `getch` polls instead of stalling. Colours and key codes
 are exposed as the stable `enum CursColor` and `enum CursKey` surfaces.
 
+### 4.22 `qt` — Qt5 Widgets native GUI
+
+Module page: [`qt.md`](qt.md). A small, deterministic subset of Qt5 Widgets for
+native-window programs, driven from the C++ bridge
+(`runtime/vyb_qt_bridge.cpp`); Vyb sees only `Int` handles (qintptr-sized),
+`Int` dimensions, `Bool`/`Int` status flags, and `String` text.
+
+```vyb
+qt_init()<Bool>               qt_quit()<Int>                qt_active()<Bool>
+qt_process_events()<Int>      qt_set_timer(ms<Int>)<Int>    qt_timer_fired()<Bool>
+qt_window_create()<Int>       qt_window_close(w<Int>)<Int>
+qt_window_set_title(w<Int>, title<String>)<Int>             qt_window_title(w<Int>)<String>
+qt_window_resize(w<Int>, width<Int>, height<Int>)<Int>
+qt_window_width(w<Int>)<Int>  qt_window_height(w<Int>)<Int>
+qt_window_show(w<Int>)<Int>   qt_window_hide(w<Int>)<Int>   qt_window_visible(w<Int>)<Bool>
+qt_label_create(parent<Int>, text<String>)<Int>             qt_label_set_text(l<Int>, text<String>)<Int>
+qt_label_text(l<Int>)<String>
+```
+
+Call `qt_init()` once. `QApplication` must live on the main thread (a Vyb
+program's `main`), and construction needs a Qt platform — xcb under a display,
+`offscreen` for headless/CI (`QT_QPA_PLATFORM=offscreen`), etc; with neither a
+QPA platform nor a `$DISPLAY` the bridge falls back to `offscreen`. There is no
+signal-callback surface yet: the event loop is *polled* with `qt_process_events`
+and the repeat timer is a steady-clock deadline (`qt_set_timer(ms)` +
+`qt_timer_fired()`, which clears on read), so GUI tests stay deterministic under
+`offscreen`. Handles are opaque; closing a window deletes it and its children.
+When Qt5 is absent the module's stub shims resolve but report the GUI as
+unavailable (`qt_init()==false`), so programs and the test-suite degrade
+gracefully without an unresolved-symbol JIT failure.
+
 ---
 ---
 
@@ -1720,6 +1751,7 @@ regenerates byte-identical output.
 | Files | [`io`](io.md) | [types](types.md) |
 | Terminal & stdin | [`term`](term.md) | — |
 | Terminal & GUI | [`curses`](curses.md) | — |
+| Native GUI | [`qt`](qt.md) | — |
 | Clocks | [`time`](time.md) | — |
 | Vec/Map/Set/BTree | [`collections`](collections.md) | [functions](functions.md) |
 | Channels | [`channels`](channels.md) | [functions](functions.md) |
@@ -1739,6 +1771,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

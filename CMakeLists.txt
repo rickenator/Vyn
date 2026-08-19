@@ -149,12 +149,33 @@ set(VRE_HEADERS
     include/vyb/vre/llvm/codegen.hpp
 )
 
+# Qt5 Widgets: powers the stdlib `qt` module (native GUI bindings). Qt5 is
+# strictly C++, so unlike the C-only stdlib shims the Qt bridge lives in its own
+# translation unit (`runtime/vyb_qt_bridge.cpp`) exporting `__vyb_qt_*` extern
+# "C" symbols. Optional: if Qt5 is absent the build still succeeds and the module
+# resolves to the stub shims in `runtime/vyb_qt_stub.cpp`, which report the GUI
+# as unavailable (`qt_init()==false`) instead of failing at JIT link-time.
+option(VYB_USE_QT5 "Build with Qt5 Widgets support (stdlib qt module)" ON)
+if(VYB_USE_QT5)
+    find_package(Qt5 COMPONENTS Widgets QUIET)
+    if(Qt5Widgets_FOUND)
+        message(STATUS "Qt5: ${Qt5Widgets_VERSION} (qt module enabled)")
+        set(VYB_QT_BRIDGE runtime/vyb_qt_bridge.cpp)
+    else()
+        message(WARNING "Qt5 Widgets not found; stdlib qt module disabled")
+    endif()
+endif()
+
 # Runtime sources
 set(RUNTIME_SOURCES
     src/runtime/error_handling.cpp
     runtime/vyb_runtime.c
     runtime/vyb_type_metadata.c
+    runtime/vyb_qt_stub.cpp
 )
+if(VYB_QT_BRIDGE)
+    list(APPEND RUNTIME_SOURCES ${VYB_QT_BRIDGE})
+endif()
 
 # Runtime headers
 set(RUNTIME_HEADERS
@@ -206,6 +227,17 @@ if(NCURSESW_LIBRARY)
     message(STATUS "ncursesw found: ${NCURSESW_LIBRARY}")
 else()
     message(STATUS "ncursesw not found; stdlib `curses` module will be unavailable")
+endif()
+
+# Qt5: link the bridge's dependencies into the binary so the JIT's process-symbol
+# generator can resolve `__vyb_qt_*` symbols (and the QWidget/QLabel symbols) for
+# the stdlib `qt` module. Mirrors the ncursesw linkage above. Note we must NOT
+# use `-Wl,--export-dynamic` here: exporting every program symbol lets Mesa's
+# bundled LLVM (dlopen'd for GLX) interpose on this binary's LLVM 18 and crash in
+# its static initializers.
+if(VYB_QT_BRIDGE AND Qt5Widgets_FOUND)
+    target_link_libraries(vyb PRIVATE Qt5::Widgets)
+    target_compile_definitions(vyb PRIVATE VYB_HAVE_QT5)
 endif()
 
 if(VYB_HAVE_LIBCLANG)

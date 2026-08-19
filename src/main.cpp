@@ -206,6 +206,32 @@ extern "C" {
     int64_t __vyb_curses_hide_cursor(void);
 #endif
 
+#ifdef VYB_HAVE_QT5
+    // Qt5 native GUI runtime helpers (qt stdlib module) over the C++ bridge in
+    // runtime/vyb_qt_bridge.cpp. Windows/labels are opaque Int handles
+    // (qintptr-sized); the title/label-text getters return an owned, registry-
+    // registered { ptr, len } buffer that a Vyb String adopts.
+    int64_t __vyb_qt_init(void);
+    int64_t __vyb_qt_quit(void);
+    int64_t __vyb_qt_active(void);
+    int64_t __vyb_qt_process_events(void);
+    int64_t __vyb_qt_set_timer(int64_t ms);
+    int64_t __vyb_qt_timer_fired(void);
+    int64_t __vyb_qt_window_create(void);
+    int64_t __vyb_qt_window_close(int64_t h);
+    int64_t __vyb_qt_window_set_title(int64_t h, const char* s, int64_t len);
+    vyb_file_str __vyb_qt_window_title(int64_t h);
+    int64_t __vyb_qt_window_resize(int64_t h, int64_t w, int64_t ht);
+    int64_t __vyb_qt_window_width(int64_t h);
+    int64_t __vyb_qt_window_height(int64_t h);
+    int64_t __vyb_qt_window_show(int64_t h);
+    int64_t __vyb_qt_window_hide(int64_t h);
+    int64_t __vyb_qt_window_visible(int64_t h);
+    int64_t __vyb_qt_label_create(int64_t parent, const char* s, int64_t len);
+    int64_t __vyb_qt_label_set_text(int64_t h, const char* s, int64_t len);
+    vyb_file_str __vyb_qt_label_text(int64_t h);
+#endif
+
 #ifdef VYB_HAVE_OPENSSL
     // TLS runtime helpers (tls stdlib module) over OpenSSL. SSL/SSL_CTX are
     // opaque pointers carried across as Int; certs are in-line PEM strings.
@@ -1524,6 +1550,46 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_show_cursor), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_curses_hide_cursor")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_hide_cursor), llvm::JITSymbolFlags::Exported);
+#endif
+#ifdef VYB_HAVE_QT5
+        runtimeSymbols[mangle("__vyb_qt_init")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_init), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_quit")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_quit), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_active")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_active), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_process_events")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_process_events), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_set_timer")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_set_timer), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_timer_fired")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_timer_fired), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_window_create")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_window_create), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_window_close")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_window_close), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_window_set_title")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_window_set_title), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_window_title")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_window_title), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_window_resize")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_window_resize), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_window_width")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_window_width), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_window_height")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_window_height), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_window_show")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_window_show), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_window_hide")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_window_hide), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_window_visible")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_window_visible), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_label_create")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_label_create), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_label_set_text")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_label_set_text), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_label_text")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_label_text), llvm::JITSymbolFlags::Exported);
 #endif
         runtimeSymbols[mangle("__vyb_net_open")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_open), llvm::JITSymbolFlags::Exported);

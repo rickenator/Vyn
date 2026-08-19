@@ -2132,7 +2132,17 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_regex_capture_match" || name == "vyb_regex_capture" ||
             name == "vyb_regex_replace" || name == "vyb_regex_replace_all" ||
             name == "vyb_strchan_len" || name == "vyb_strchan_close" ||
-            name == "vyb_strchan_free") {
+            name == "vyb_strchan_free" ||
+            name == "vyb_qt_init" || name == "vyb_qt_quit" ||
+            name == "vyb_qt_active" || name == "vyb_qt_process_events" ||
+            name == "vyb_qt_set_timer" || name == "vyb_qt_timer_fired" ||
+            name == "vyb_qt_window_create" || name == "vyb_qt_window_close" ||
+            name == "vyb_qt_window_set_title" || name == "vyb_qt_window_title" ||
+            name == "vyb_qt_window_resize" || name == "vyb_qt_window_width" ||
+            name == "vyb_qt_window_height" || name == "vyb_qt_window_show" ||
+            name == "vyb_qt_window_hide" || name == "vyb_qt_window_visible" ||
+            name == "vyb_qt_label_create" || name == "vyb_qt_label_set_text" ||
+            name == "vyb_qt_label_text") {
             isIntrinsic = true;
         }
     }
@@ -2625,6 +2635,41 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             if (cursesIntFuncs.count(name)) {
                 auto* resTy = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "Int"));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+
+            // Qt5 native GUI intrinsics (qt stdlib module): window/label handles,
+            // dimensions, status flags, and the timer poll return Int; the title/
+            // label-text getters return String. Arity/diagnostic detail is left to
+            // codegen.
+            static const std::set<std::string> qtIntFuncs = {
+                "vyb_qt_init",
+                "vyb_qt_quit",
+                "vyb_qt_active",
+                "vyb_qt_process_events",
+                "vyb_qt_set_timer",
+                "vyb_qt_timer_fired",
+                "vyb_qt_window_create",
+                "vyb_qt_window_close",
+                "vyb_qt_window_resize",
+                "vyb_qt_window_width",
+                "vyb_qt_window_height",
+                "vyb_qt_window_show",
+                "vyb_qt_window_hide",
+                "vyb_qt_window_visible",
+                "vyb_qt_label_create",
+                "vyb_qt_label_set_text",
+            };
+            static const std::set<std::string> qtStrFuncs = {
+                "vyb_qt_window_title",
+                "vyb_qt_label_text",
+            };
+            if (qtIntFuncs.count(name) || qtStrFuncs.count(name)) {
+                auto* resTy = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc,
+                        qtIntFuncs.count(name) ? "Int" : "String"));
                 expressionTypes[node] = retainType(resTy);
                 node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
                 return;

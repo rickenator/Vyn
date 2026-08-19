@@ -1,5 +1,5 @@
 {
-  "git_rev": "174c5767f7ade3b741000a988fa4c4e45f409672",
+  "git_rev": "9920c81e415693ff2533522423ba411db0ec3e02",
   "modules": [
     "agents",
     "asyncs",
@@ -14,6 +14,7 @@
     "network",
     "prelude",
     "process",
+    "qt",
     "rand",
     "regex",
     "tasks",
@@ -143,6 +144,15 @@
           "stdlib/process/mod.vyb"
         ],
         "exported": 3,
+        "fan_in": 0,
+        "fan_out": 0
+      },
+      {
+        "name": "qt",
+        "files": [
+          "stdlib/qt/mod.vyb"
+        ],
+        "exported": 19,
         "fan_in": 0,
         "fan_out": 0
       },
@@ -543,6 +553,31 @@
           "exec_run",
           "exec_output",
           "exec_status"
+        ]
+      },
+      {
+        "path": "stdlib/qt/mod.vyb",
+        "module": "qt",
+        "symbols": [
+          "qt_init",
+          "qt_quit",
+          "qt_active",
+          "qt_process_events",
+          "qt_set_timer",
+          "qt_timer_fired",
+          "qt_window_create",
+          "qt_window_close",
+          "qt_window_set_title",
+          "qt_window_title",
+          "qt_window_resize",
+          "qt_window_width",
+          "qt_window_height",
+          "qt_window_show",
+          "qt_window_hide",
+          "qt_window_visible",
+          "qt_label_create",
+          "qt_label_set_text",
+          "qt_label_text"
         ]
       },
       {
@@ -2683,6 +2718,177 @@
         "kind": "fn",
         "signature": "exec_status()<Int> ->",
         "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_active",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_active()<Bool> ->",
+        "summary": "true while the GUI is initialized (qt_init succeeded, qt_quit not yet run).",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_init",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_init()<Bool> ->",
+        "summary": "Initialize the QApplication (once). Returns true if the GUI is available.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_label_create",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_label_create(parent<Int>, text<String>)<Int> ->",
+        "summary": "Create a label with `text` as a child of window handle `parent` (0 = no",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_label_set_text",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_label_set_text(label<Int>, text<String>)<Int> ->",
+        "summary": "Replace label text. Returns 0 on success, -1 on a non-label handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_label_text",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_label_text(label<Int>)<String> ->",
+        "summary": "Current label text (String). Returns \"\" on a non-label handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_process_events",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_process_events()<Int> ->",
+        "summary": "Pump the event loop once (paints queued frames, delivers timer/paint/input",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_quit",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_quit()<Int> ->",
+        "summary": "Shut the GUI down, destroying all live windows, labels, and the timer.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_set_timer",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_set_timer(ms<Int>)<Int> ->",
+        "summary": "Arm a repeating timer every `ms` milliseconds. Qt treats 0 as \"as fast as",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_timer_fired",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_timer_fired()<Bool> ->",
+        "summary": "true once the armed timer has fired at least one interval since the last",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_window_close",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_window_close(w<Int>)<Int> ->",
+        "summary": "Close (destroy) window handle `w`; child labels go with it. Passing 0 is a",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_window_create",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_window_create()<Int> ->",
+        "summary": "Create a top-level window. Returns its Int handle, or 0 on failure (e.g. the",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_window_height",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_window_height(w<Int>)<Int> ->",
+        "summary": "Current content height in pixels, or -1 on a bad handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_window_hide",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_window_hide(w<Int>)<Int> ->",
+        "summary": "Hide (unmap) the window. Returns 0 on success, -1 on a bad handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_window_resize",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_window_resize(w<Int>, width<Int>, height<Int>)<Int> ->",
+        "summary": "Resize to (width, height) pixels. Returns 0 on success, -1 on a bad handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_window_set_title",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_window_set_title(w<Int>, title<String>)<Int> ->",
+        "summary": "Set titlebar text. Returns 0 on success, -1 on a bad handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_window_show",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_window_show(w<Int>)<Int> ->",
+        "summary": "Show (map) the window so it renders in the compositor. Returns 0 on success.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_window_title",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_window_title(w<Int>)<String> ->",
+        "summary": "Current titlebar text (String). Returns \"\" on a bad handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_window_visible",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_window_visible(w<Int>)<Bool> ->",
+        "summary": "true while window `w` is visible (shown and not minimized/occluded), else",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_window_width",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_window_width(w<Int>)<Int> ->",
+        "summary": "Current content width in pixels, or -1 on a bad handle.",
         "fan_in": 0
       },
       {
@@ -5863,6 +6069,120 @@
       "from_module": "process",
       "from_symbol": "exec_status",
       "to_symbol": "vyb_exec_status"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_active",
+      "to_symbol": "vyb_qt_active"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_init",
+      "to_symbol": "vyb_qt_init"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_label_create",
+      "to_symbol": "vyb_qt_label_create"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_label_set_text",
+      "to_symbol": "vyb_qt_label_set_text"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_label_text",
+      "to_symbol": "vyb_qt_label_text"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_process_events",
+      "to_symbol": "vyb_qt_process_events"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_quit",
+      "to_symbol": "vyb_qt_quit"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_set_timer",
+      "to_symbol": "vyb_qt_set_timer"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_timer_fired",
+      "to_symbol": "vyb_qt_timer_fired"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_window_close",
+      "to_symbol": "vyb_qt_window_close"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_window_create",
+      "to_symbol": "vyb_qt_window_create"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_window_height",
+      "to_symbol": "vyb_qt_window_height"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_window_hide",
+      "to_symbol": "vyb_qt_window_hide"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_window_resize",
+      "to_symbol": "vyb_qt_window_resize"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_window_set_title",
+      "to_symbol": "vyb_qt_window_set_title"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_window_show",
+      "to_symbol": "vyb_qt_window_show"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_window_title",
+      "to_symbol": "vyb_qt_window_title"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_window_visible",
+      "to_symbol": "vyb_qt_window_visible"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_window_width",
+      "to_symbol": "vyb_qt_window_width"
     },
     {
       "type": "runtimeRef",

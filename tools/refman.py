@@ -41,13 +41,13 @@ DEFAULT_OUT = ROOT / "docs" / "refman"
 GUIDE_API_BEGIN = "<!-- refman:api-index begin -->"
 GUIDE_API_END = "<!-- refman:api-index end -->"
 GUIDE_MODULE_ORDER = [
-    "core", "error", "io", "term", "curses", "time", "collections", "channels", "threads",
+    "core", "error", "io", "term", "curses", "qt", "time", "collections", "channels", "threads",
     "tasks", "asyncs", "agents", "network", "tls", "http", "https", "prelude",
     "utf8", "env", "rand", "process", "regex",
 ]
 GUIDE_API_AREA = {
     "core": "Contracts & math", "error": "Domain errors", "io": "Files",
-    "term": "Terminal & stdin", "curses": "Terminal & GUI",
+    "term": "Terminal & stdin", "curses": "Terminal & GUI", "qt": "Native GUI",
     "time": "Clocks", "collections": "Vec/Map/Set/BTree", "channels": "Channels",
     "threads": "Threads & atomics", "tasks": "Fire-and-forget",
     "asyncs": "Async executor", "agents": "Message-passing units",
@@ -62,7 +62,7 @@ GUIDE_API_CROSS = {
     "threads": "[functions](functions.md)", "network": "[shared types](interfaces.md)",
     "tls": "[shared types](interfaces.md)", "http": "[shared types](interfaces.md)",
     "https": "[shared types](interfaces.md)",
-    "curses": "\u2014",
+    "curses": "\u2014", "qt": "\u2014",
 }
 
 # --------------------------------------------------------------------------

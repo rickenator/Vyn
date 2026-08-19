@@ -1,0 +1,156 @@
+# qt - Qt5 Widgets native GUI, wrapped as an opaque-Int surface.
+#
+# A small, deterministic subset of Qt5 Widgets for native-window programs. The
+# C++ QApplication/QWidget/QLabel object model stays in the runtime
+# (`__vyb_qt_*` shims in `runtime/vyb_qt_bridge.cpp`); Vyb sees only Int
+# handles (qintptr-sized), Int dimensions, Bool/Int status flags, and String
+# text. String arguments cross as UTF-8 byte buffers; the title/label-text
+# getters return owned Strings.
+#
+# Lifecycle: call qt_init() once. QApplication must live on the main thread,
+# which is where a Vyb program's main runs. Construction needs a Qt platform -
+# under X11/xcb with a display, offscreen, etc. On a headless box with neither
+# a QPA platform nor a $DISPLAY the bridge falls back to the `offscreen`
+# platform so qt_init() stays deterministic; GUI code is still expected to run
+# where a GUI is available.
+#
+# There is no callback signal surface yet: the event loop is *polled*. Call
+# qt_process_events() to pump paint/timer/input events, and arm a polled timer
+# with qt_set_timer(ms) then check qt_timer_fired() (it clears on read). This
+# keeps the module deterministic and testable under xvfb/offscreen, and fits
+# the Int/String FFI the other stdlib modules use.
+#
+# Everything returns 0 on success and -1 on error (handle lookups fail on a 0/
+# stale or non-matching handle; operation with no QApplication returns -1),
+# except the documented deviations: qt_init/qt_active/qt_window_visible/
+# qt_timer_fired return 1/0 booleans, qt_window_create/qt_label_create return
+# a fresh Int handle (0 on failure), and qt_window_width/height return the
+# current size (or -1 on a bad handle).
+
+# Initialize the QApplication (once). Returns true if the GUI is available.
+# Defaults a headless process to the offscreen QPA platform (no $DISPLAY).
+share(all)
+qt_init()<Bool> -> {
+    return vyb_qt_init() == 1
+}
+
+# Shut the GUI down, destroying all live windows, labels, and the timer.
+# Terminal: do not touch Qt handles afterwards. Returns 0.
+share(all)
+qt_quit()<Int> -> {
+    return vyb_qt_quit()
+}
+
+# true while the GUI is initialized (qt_init succeeded, qt_quit not yet run).
+share(all)
+qt_active()<Bool> -> {
+    return vyb_qt_active() == 1
+}
+
+# Pump the event loop once (paints queued frames, delivers timer/paint/input
+# events). Returns 0 on success, -1 if the GUI is not initialized.
+share(all)
+qt_process_events()<Int> -> {
+    return vyb_qt_process_events()
+}
+
+# Arm a repeating timer every `ms` milliseconds. Qt treats 0 as "as fast as
+# possible". Poll qt_timer_fired() to learn when an interval has elapsed.
+# Returns 0 on success, -1 if the GUI is not initialized.
+share(all)
+qt_set_timer(ms<Int>)<Int> -> {
+    return vyb_qt_set_timer(ms)
+}
+
+# true once the armed timer has fired at least one interval since the last
+# check; the read clears the flag. false while intervals are still pending.
+share(all)
+qt_timer_fired()<Bool> -> {
+    return vyb_qt_timer_fired() == 1
+}
+
+# --- Windows (QWidget) ------------------------------------------------------
+
+# Create a top-level window. Returns its Int handle, or 0 on failure (e.g. the
+# GUI is not initialized). Pass the handle to the qt_window_* setters/getters.
+share(all)
+qt_window_create()<Int> -> {
+    return vyb_qt_window_create()
+}
+
+# Close (destroy) window handle `w`; child labels go with it. Passing 0 is a
+# no-op. Returns 0.
+share(all)
+qt_window_close(w<Int>)<Int> -> {
+    return vyb_qt_window_close(w)
+}
+
+# Set titlebar text. Returns 0 on success, -1 on a bad handle.
+share(all)
+qt_window_set_title(w<Int>, title<String>)<Int> -> {
+    return vyb_qt_window_set_title(w, title)
+}
+
+# Current titlebar text (String). Returns "" on a bad handle.
+share(all)
+qt_window_title(w<Int>)<String> -> {
+    return vyb_qt_window_title(w)
+}
+
+# Resize to (width, height) pixels. Returns 0 on success, -1 on a bad handle.
+share(all)
+qt_window_resize(w<Int>, width<Int>, height<Int>)<Int> -> {
+    return vyb_qt_window_resize(w, width, height)
+}
+
+# Current content width in pixels, or -1 on a bad handle.
+share(all)
+qt_window_width(w<Int>)<Int> -> {
+    return vyb_qt_window_width(w)
+}
+
+# Current content height in pixels, or -1 on a bad handle.
+share(all)
+qt_window_height(w<Int>)<Int> -> {
+    return vyb_qt_window_height(w)
+}
+
+# Show (map) the window so it renders in the compositor. Returns 0 on success.
+share(all)
+qt_window_show(w<Int>)<Int> -> {
+    return vyb_qt_window_show(w)
+}
+
+# Hide (unmap) the window. Returns 0 on success, -1 on a bad handle.
+share(all)
+qt_window_hide(w<Int>)<Int> -> {
+    return vyb_qt_window_hide(w)
+}
+
+# true while window `w` is visible (shown and not minimized/occluded), else
+# false (also on a 0/bad handle).
+share(all)
+qt_window_visible(w<Int>)<Bool> -> {
+    return vyb_qt_window_visible(w) == 1
+}
+
+# --- Labels (QLabel) --------------------------------------------------------
+
+# Create a label with `text` as a child of window handle `parent` (0 = no
+# parent / top-level). Returns its Int handle, or 0 on failure.
+share(all)
+qt_label_create(parent<Int>, text<String>)<Int> -> {
+    return vyb_qt_label_create(parent, text)
+}
+
+# Replace label text. Returns 0 on success, -1 on a non-label handle.
+share(all)
+qt_label_set_text(label<Int>, text<String>)<Int> -> {
+    return vyb_qt_label_set_text(label, text)
+}
+
+# Current label text (String). Returns "" on a non-label handle.
+share(all)
+qt_label_text(label<Int>)<String> -> {
+    return vyb_qt_label_text(label)
+}

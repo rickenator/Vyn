@@ -3219,6 +3219,136 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         }
     }
 
+    // Handle Qt5 native GUI intrinsics (qt stdlib module). Thin facades over the
+    // `__vyb_qt_*` extern "C" shims in `runtime/vyb_qt_bridge.cpp` (a C++ Qt5
+    // Widgets bridge). Vyb windows/labels are opaque Int handles (qintptr-sized);
+    // String args cross as { ptr, len } structs whose data pointer (and length)
+    // are extracted at the boundary, and String-returning getters hand back an
+    // owned, registry-registered buffer the Vyb String adopts (same convention
+    // as env_exec/regex). Skewed from the network block so the FFI stays
+    // Int/String-shaped and deterministic under a headless QPA platform.
+    if (identCallee) {
+        const std::string& fname = identCallee->name;
+        std::string rtName;
+        if (fname == "vyb_qt_init") rtName = "__vyb_qt_init";
+        else if (fname == "vyb_qt_quit") rtName = "__vyb_qt_quit";
+        else if (fname == "vyb_qt_active") rtName = "__vyb_qt_active";
+        else if (fname == "vyb_qt_process_events") rtName = "__vyb_qt_process_events";
+        else if (fname == "vyb_qt_set_timer") rtName = "__vyb_qt_set_timer";
+        else if (fname == "vyb_qt_timer_fired") rtName = "__vyb_qt_timer_fired";
+        else if (fname == "vyb_qt_window_create") rtName = "__vyb_qt_window_create";
+        else if (fname == "vyb_qt_window_close") rtName = "__vyb_qt_window_close";
+        else if (fname == "vyb_qt_window_set_title") rtName = "__vyb_qt_window_set_title";
+        else if (fname == "vyb_qt_window_title") rtName = "__vyb_qt_window_title";
+        else if (fname == "vyb_qt_window_resize") rtName = "__vyb_qt_window_resize";
+        else if (fname == "vyb_qt_window_width") rtName = "__vyb_qt_window_width";
+        else if (fname == "vyb_qt_window_height") rtName = "__vyb_qt_window_height";
+        else if (fname == "vyb_qt_window_show") rtName = "__vyb_qt_window_show";
+        else if (fname == "vyb_qt_window_hide") rtName = "__vyb_qt_window_hide";
+        else if (fname == "vyb_qt_window_visible") rtName = "__vyb_qt_window_visible";
+        else if (fname == "vyb_qt_label_create") rtName = "__vyb_qt_label_create";
+        else if (fname == "vyb_qt_label_set_text") rtName = "__vyb_qt_label_set_text";
+        else if (fname == "vyb_qt_label_text") rtName = "__vyb_qt_label_text";
+        if (!rtName.empty()) {
+            auto getQtFn = [&](llvm::FunctionType* ft) -> llvm::Function* {
+                llvm::Function* f = module->getFunction(rtName);
+                if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, rtName, module.get());
+                return f;
+            };
+            auto toI64 = [&](llvm::Value* v) -> llvm::Value* {
+                if (!v) return v;
+                if (v->getType()->isIntegerTy(64)) return v;
+                if (v->getType()->isIntegerTy())
+                    return builder->CreateSExt(v, int64Type, "qt.toi64");
+                return v;
+            };
+            auto toStrPtr = [&](llvm::Value* v) -> llvm::Value* {
+                if (v && v->getType()->isStructTy())
+                    return builder->CreateExtractValue(v, 0, "qt.strptr");
+                return v;
+            };
+            auto strLenOf = [&](llvm::Value* v) -> llvm::Value* {
+                if (v && v->getType()->isStructTy())
+                    return builder->CreateExtractValue(v, 1, "qt.strlen");
+                return llvm::ConstantInt::get(int64Type, 0);
+            };
+            auto qtStrRet = [&]() -> llvm::StructType* {
+                std::vector<llvm::Type*> f = {int8PtrType, int64Type};
+                return llvm::StructType::get(*context, f, false);
+            };
+            auto needArg = [&](size_t idx) -> llvm::Value* {
+                if (idx >= node->arguments.size()) { m_currentLLVMValue = nullptr; return nullptr; }
+                node->arguments[idx]->accept(*this);
+                return m_currentLLVMValue;
+            };
+            auto checkArity = [&](size_t n) -> bool {
+                if (node->arguments.size() != n) {
+                    logError(node->loc, rtName + " expects " + std::to_string(n) + " argument(s)");
+                    m_currentLLVMValue = nullptr;
+                    return false;
+                }
+                return true;
+            };
+
+            // No-argument Int helpers (lifecycle, event pump, timer poll, create).
+            if (fname == "vyb_qt_init" || fname == "vyb_qt_quit" ||
+                fname == "vyb_qt_active" || fname == "vyb_qt_process_events" ||
+                fname == "vyb_qt_timer_fired" || fname == "vyb_qt_window_create") {
+                if (!checkArity(0)) return;
+                llvm::FunctionType* ft0 = llvm::FunctionType::get(int64Type, {}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft0), {}, "qt.ret");
+                return;
+            } else if (fname == "vyb_qt_set_timer") {
+                if (!checkArity(1)) return;
+                llvm::Value* ms = needArg(0); if (!ms) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(ms)}, "qt.timer");
+                return;
+            } else if (fname == "vyb_qt_window_close" || fname == "vyb_qt_window_width" ||
+                       fname == "vyb_qt_window_height" || fname == "vyb_qt_window_show" ||
+                       fname == "vyb_qt_window_hide" || fname == "vyb_qt_window_visible") {
+                if (!checkArity(1)) return;
+                llvm::Value* h = needArg(0); if (!h) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(h)}, "qt.win");
+                return;
+            } else if (fname == "vyb_qt_window_title" || fname == "vyb_qt_label_text") {
+                if (!checkArity(1)) return;
+                llvm::Value* h = needArg(0); if (!h) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(qtStrRet(), {int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(h)}, "qt.str1");
+                return;
+            } else if (fname == "vyb_qt_window_resize") {
+                if (!checkArity(3)) return;
+                llvm::Value* h = needArg(0); llvm::Value* w = needArg(1); llvm::Value* ht = needArg(2);
+                if (!h || !w || !ht) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft),
+                    {toI64(h), toI64(w), toI64(ht)}, "qt.resize");
+                return;
+            } else if (fname == "vyb_qt_window_set_title" ||
+                       fname == "vyb_qt_label_set_text") {
+                if (!checkArity(2)) return;
+                llvm::Value* h = needArg(0); llvm::Value* s = needArg(1);
+                if (!h || !s) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(
+                    int64Type, {int64Type, int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft),
+                    {toI64(h), toStrPtr(s), strLenOf(s)}, "qt.setstr");
+                return;
+            } else if (fname == "vyb_qt_label_create") {
+                if (!checkArity(2)) return;
+                llvm::Value* parent = needArg(0); llvm::Value* s = needArg(1);
+                if (!parent || !s) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(
+                    int64Type, {int64Type, int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft),
+                    {toI64(parent), toStrPtr(s), strLenOf(s)}, "qt.label");
+                return;
+            }
+        }
+    }
+
     // Handle Network I/O intrinsics (network stdlib module). Mirrors the File I/O
     // mapping: each Vyb-level call (`vyb_net_*`) resolves to an exported runtime
     // symbol (`__vyb_net_*`) in `runtime/vyb_runtime.c`. IP addresses and payloads
