@@ -1515,6 +1515,43 @@ regex_replace(pattern<String>, s<String>, replacement<String>)<String>
 regex_replace_all(pattern<String>, s<String>, replacement<String>)<String>
 ```
 
+### 4.21 `curses` — ncurses terminal UI
+
+Module page: [`curses.md`](curses.md). A whole-terminal TUI surface over
+ncursesw (used by the VybLynx browser). The ncurses ABI stays in the runtime
+shims; Vyb sees only `Int` keycodes, `Int` attributes, `Int` dimensions, and
+`String` text.
+
+```vyb
+curses_init()<Int>            curses_close()<Int>            curses_ok()<Int>
+curses_rows()<Int>            curses_cols()<Int>
+curses_refresh()<Int>         curses_clear()<Int>
+curses_move(row<Int>, col<Int>)<Int>                        curses_addstr(s<String>)<Int>
+curses_move_addstr(row<Int>, col<Int>, s<String>)<Int>
+curses_getch()<Int>           curses_nodelay(flag<Bool>)<Int>
+curses_timeout(ms<Int>)<Int>  curses_keypad(flag<Bool>)<Int>
+curses_has_color()<Int>       curses_start_color()<Int>
+curses_init_pair(pair<Int>, fg<Int>, bg<Int>)<Int>          curses_color_pair(n<Int>)<Int>
+curses_attr_on(attrs<Int>)<Int>   curses_attr_off(attrs<Int>)<Int>
+curses_attr_normal()<Int>     curses_attr_bold()<Int>       curses_attr_underline()<Int>
+curses_attr_reverse()<Int>    curses_attr_blink()<Int>
+curses_show_cursor()<Int>     curses_hide_cursor()<Int>
+```
+
+Lifecycle: `curses_init()` once, draw, then `curses_close()`. The screen is a
+single global owned by the active program — exactly one subsystem mutates it
+(ncurses refresh is not thread-safe). Everything returns `0` on success and `-1`
+on error, except the documented deviations: `curses_getch` returns the pressed
+key/`KEY_*` code (or `-1` on a timeout/no-delay read with no input), `curses_ok`/
+`curses_has_color` return `1`/`0`, `rows`/`cols` return the terminal size, and
+`curses_color_pair(n)` yields the attribute for `curses_attr_on/off`. Input is
+blocking by default; for a nonblocking UI loop call `curses_nodelay(1)` or
+`curses_timeout(ms)` so `getch` polls instead of stalling. Colours and key codes
+are exposed as the stable `enum CursColor` and `enum CursKey` surfaces.
+
+---
+---
+
 ---
 ---
 
@@ -1682,6 +1719,7 @@ regenerates byte-identical output.
 | Contracts & math | [`core`](core.md) | [aspects & binds](aspects.md) |
 | Files | [`io`](io.md) | [types](types.md) |
 | Terminal & stdin | [`term`](term.md) | — |
+| Terminal & GUI | [`curses`](curses.md) | — |
 | Clocks | [`time`](time.md) | — |
 | Vec/Map/Set/BTree | [`collections`](collections.md) | [functions](functions.md) |
 | Channels | [`channels`](channels.md) | [functions](functions.md) |
@@ -1701,6 +1739,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

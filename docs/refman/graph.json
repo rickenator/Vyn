@@ -1,11 +1,12 @@
 {
-  "git_rev": "c392ef391ddfaada788767390826a6e0a62d66d8",
+  "git_rev": "174c5767f7ade3b741000a988fa4c4e45f409672",
   "modules": [
     "agents",
     "asyncs",
     "channels",
     "collections",
     "core",
+    "curses",
     "env",
     "http",
     "https",
@@ -38,7 +39,7 @@
         "files": [
           "stdlib/asyncs/mod.vyb"
         ],
-        "exported": 10,
+        "exported": 11,
         "fan_in": 0,
         "fan_out": 0
       },
@@ -74,6 +75,15 @@
         "fan_out": 0
       },
       {
+        "name": "curses",
+        "files": [
+          "stdlib/curses/mod.vyb"
+        ],
+        "exported": 29,
+        "fan_in": 0,
+        "fan_out": 0
+      },
+      {
         "name": "env",
         "files": [
           "stdlib/env/mod.vyb"
@@ -87,7 +97,7 @@
         "files": [
           "stdlib/http/mod.vyb"
         ],
-        "exported": 24,
+        "exported": 26,
         "fan_in": 1,
         "fan_out": 2
       },
@@ -96,7 +106,7 @@
         "files": [
           "stdlib/https/mod.vyb"
         ],
-        "exported": 10,
+        "exported": 11,
         "fan_in": 0,
         "fan_out": 4
       },
@@ -237,6 +247,7 @@
           "async_run_all",
           "async_await",
           "async_poll",
+          "async_detach",
           "async_yield",
           "async_sleep_ms",
           "async_accept",
@@ -366,6 +377,41 @@
         ]
       },
       {
+        "path": "stdlib/curses/mod.vyb",
+        "module": "curses",
+        "symbols": [
+          "curses_init",
+          "curses_close",
+          "curses_ok",
+          "curses_rows",
+          "curses_cols",
+          "curses_refresh",
+          "curses_clear",
+          "curses_move",
+          "curses_addstr",
+          "curses_move_addstr",
+          "curses_has_color",
+          "curses_start_color",
+          "curses_color_pair",
+          "curses_attr_on",
+          "curses_attr_off",
+          "curses_getch",
+          "curses_nodelay",
+          "curses_timeout",
+          "curses_keypad",
+          "curses_show_cursor",
+          "curses_hide_cursor",
+          "CursColor",
+          "curses_init_pair",
+          "curses_attr_normal",
+          "curses_attr_bold",
+          "curses_attr_underline",
+          "curses_attr_reverse",
+          "curses_attr_blink",
+          "CursKey"
+        ]
+      },
+      {
         "path": "stdlib/env/mod.vyb",
         "module": "env",
         "symbols": [
@@ -400,6 +446,8 @@
           "http_read_line",
           "http_read_exact",
           "http_read_all",
+          "http_parse_hex",
+          "http_read_chunked",
           "http_get_full",
           "http_header"
         ]
@@ -411,6 +459,7 @@
           "tls_read_line",
           "tls_read_exact",
           "tls_read_all",
+          "tls_read_chunked",
           "Vec<String>",
           "https_get_full",
           "https_get_full_verified",
@@ -762,6 +811,15 @@
         "kind": "fn",
         "signature": "async_connect(fd<Int>, ip<String>, port<Int>)<Int> ->",
         "summary": "Non-blocking connect, suspending until established or refused. Returns 0 on",
+        "fan_in": 0
+      },
+      {
+        "name": "async_detach",
+        "module": "asyncs",
+        "file": "stdlib/asyncs/mod.vyb",
+        "kind": "fn",
+        "signature": "async_detach(t<Int>)<Int> ->",
+        "summary": "Reclaim a completed task, freeing its fiber stack and captured environment so",
         "fan_in": 0
       },
       {
@@ -1530,6 +1588,267 @@
         "fan_in": 0
       },
       {
+        "name": "CursColor",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "enum",
+        "signature": "enum CursColor {",
+        "summary": "--- Color support ---------------------------------------------------------",
+        "fan_in": 0
+      },
+      {
+        "name": "CursKey",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "enum",
+        "signature": "enum CursKey {",
+        "summary": "--- Key codes (ncurses KEY_* values; getch returns these for arrow/f keys) --",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_addstr",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_addstr(s<String>)<Int> ->",
+        "summary": "Write `s` at the cursor. Returns 0 on success, -1 if not active.",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_attr_blink",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_attr_blink()<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_attr_bold",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_attr_bold()<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_attr_normal",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_attr_normal()<Int> ->",
+        "summary": "--- Attribute constants (ncurses A_* values, resolved by the runtime) ------",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_attr_off",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_attr_off(attrs<Int>)<Int> ->",
+        "summary": "Turn off an attribute value previously enabled with curses_attr_on.",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_attr_on",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_attr_on(attrs<Int>)<Int> ->",
+        "summary": "Turn on an attribute value (e.g. A_BOLD | curses_color_pair(n)). Call",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_attr_reverse",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_attr_reverse()<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_attr_underline",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_attr_underline()<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_clear",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_clear()<Int> ->",
+        "summary": "Clear the screen window. Returns 0 on success, -1 if not active.",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_close",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_close()<Int> ->",
+        "summary": "Shut the screen down and restore the terminal. Safe to call when not active.",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_color_pair",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_color_pair(n<Int>)<Int> ->",
+        "summary": "Color-pair n expressed as an attribute value to pass to curses_attr_on.",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_cols",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_cols()<Int> ->",
+        "summary": "Current terminal column count, or -1 if the screen is not active.",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_getch",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_getch()<Int> ->",
+        "summary": "Read one keypress (blocking). Returns the key code (a character code or a",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_has_color",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_has_color()<Int> ->",
+        "summary": "1 if the terminal supports color, else 0. Safe to call before init.",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_hide_cursor",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_hide_cursor()<Int> ->",
+        "summary": "Hide the terminal cursor (typical for full-screen UIs). Returns 0 on success.",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_init",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_init()<Int> ->",
+        "summary": "Initialize the terminal. Returns 0 on success, -1 if stdin is not a TTY or",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_init_pair",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_init_pair(pair<Int>, fg<Int>, bg<Int>)<Int> ->",
+        "summary": "Define color-pair `pair` as foreground `fg` on background `bg` (both CursColor).",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_keypad",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_keypad(flag<Bool>)<Int> ->",
+        "summary": "Enable (1) / disable (0) the keypad so arrow/function keys arrive as KEY_* codes.",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_move",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_move(row<Int>, col<Int>)<Int> ->",
+        "summary": "Move the cursor to (row, col) (0-based) before the next addstr.",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_move_addstr",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_move_addstr(row<Int>, col<Int>, s<String>)<Int> ->",
+        "summary": "Move to (row, col) then write `s`. Returns 0 on success, -1 on any error.",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_nodelay",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_nodelay(flag<Bool>)<Int> ->",
+        "summary": "1: getch returns immediately (-1) when nothing is pending; 0: block for input.",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_ok",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_ok()<Int> ->",
+        "summary": "1 while the screen is initialized (curses_init succeeded, curses_close not",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_refresh",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_refresh()<Int> ->",
+        "summary": "Flush pending screen changes to the terminal. Call after drawing a frame.",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_rows",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_rows()<Int> ->",
+        "summary": "Current terminal row count (Int), or -1 if the screen is not active.",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_show_cursor",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_show_cursor()<Int> ->",
+        "summary": "Show the terminal cursor. Returns 0 on success, -1 if not active.",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_start_color",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_start_color()<Int> ->",
+        "summary": "Enable color support (must call after curses_init, before using color pairs).",
+        "fan_in": 0
+      },
+      {
+        "name": "curses_timeout",
+        "module": "curses",
+        "file": "stdlib/curses/mod.vyb",
+        "kind": "fn",
+        "signature": "curses_timeout(ms<Int>)<Int> ->",
+        "summary": "Set getch polling: -1 blocks, 0 no-wait, >0 wait up to ms. Returns 0.",
+        "fan_in": 0
+      },
+      {
         "name": "env_get",
         "module": "env",
         "file": "stdlib/env/mod.vyb",
@@ -1656,6 +1975,15 @@
         "fan_in": 0
       },
       {
+        "name": "http_parse_hex",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_parse_hex(s<String>)<Int> ->",
+        "summary": "Parse a hexadecimal integer at the start of `s`, stopping at a `;` extension",
+        "fan_in": 1
+      },
+      {
         "name": "http_parse_int",
         "module": "http",
         "file": "stdlib/http/mod.vyb",
@@ -1671,6 +1999,15 @@
         "kind": "fn",
         "signature": "http_read_all(fd<Int>, max<Int>)<String> ->",
         "summary": "Read until the peer closes (used when a response has no Content-Length).",
+        "fan_in": 0
+      },
+      {
+        "name": "http_read_chunked",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_read_chunked(fd<Int>)<String> ->",
+        "summary": "Read the body of a `Transfer-Encoding: chunked` response from `fd`, draining",
         "fan_in": 0
       },
       {
@@ -1842,6 +2179,15 @@
         "kind": "fn",
         "signature": "tls_read_all(s<TlsStream>, max<Int>)<String> ->",
         "summary": "Read until the peer closes (used when a response has no Content-Length).",
+        "fan_in": 0
+      },
+      {
+        "name": "tls_read_chunked",
+        "module": "https",
+        "file": "stdlib/https/mod.vyb",
+        "kind": "fn",
+        "signature": "tls_read_chunked(s<TlsStream>)<String> ->",
+        "summary": "Read a `Transfer-Encoding: chunked` body over TLS, stripping the hex framing",
         "fan_in": 0
       },
       {
@@ -2211,7 +2557,7 @@
         "kind": "fn",
         "signature": "socket_resolve(host<String>)<String> ->",
         "summary": "Resolve `host` (a hostname or IP literal) to a dotted-quad IPv4 address",
-        "fan_in": 1
+        "fan_in": 2
       },
       {
         "name": "socket_send",
@@ -3104,6 +3450,13 @@
       "from_module": "http",
       "from_symbol": "http_get_full",
       "to_module": "http",
+      "to_symbol": "http_read_chunked"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_get_full",
+      "to_module": "http",
       "to_symbol": "http_read_exact"
     },
     {
@@ -3140,6 +3493,13 @@
       "from_symbol": "http_get_full",
       "to_module": "network",
       "to_symbol": "socket_open"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_get_full",
+      "to_module": "network",
+      "to_symbol": "socket_resolve"
     },
     {
       "type": "call",
@@ -3210,6 +3570,27 @@
       "from_symbol": "http_read_all",
       "to_module": "network",
       "to_symbol": "socket_recv"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_read_chunked",
+      "to_module": "http",
+      "to_symbol": "http_parse_hex"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_read_chunked",
+      "to_module": "http",
+      "to_symbol": "http_read_exact"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_read_chunked",
+      "to_module": "http",
+      "to_symbol": "http_read_line"
     },
     {
       "type": "call",
@@ -3616,6 +3997,27 @@
       "from_symbol": "tls_read_all",
       "to_module": "tls",
       "to_symbol": "tls_read"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "tls_read_chunked",
+      "to_module": "http",
+      "to_symbol": "http_parse_hex"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "tls_read_chunked",
+      "to_module": "https",
+      "to_symbol": "tls_read_exact"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "tls_read_chunked",
+      "to_module": "https",
+      "to_symbol": "tls_read_line"
     },
     {
       "type": "call",
@@ -4295,6 +4697,15 @@
       "from_module": "http",
       "from_symbol": "",
       "to_module": "network",
+      "to_symbol": "socket_resolve",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "http",
+      "from_symbol": "",
+      "to_module": "network",
       "to_symbol": "socket_send",
       "reexport": false,
       "resolved": true
@@ -4341,6 +4752,15 @@
       "from_symbol": "",
       "to_module": "http",
       "to_symbol": "http_index_of",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "http",
+      "to_symbol": "http_parse_hex",
       "reexport": false,
       "resolved": true
     },
@@ -4829,6 +5249,12 @@
     {
       "type": "runtimeRef",
       "from_module": "asyncs",
+      "from_symbol": "async_detach",
+      "to_symbol": "vyb_async_detach"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "asyncs",
       "from_symbol": "async_poll",
       "to_symbol": "vyb_async_poll"
     },
@@ -4981,6 +5407,168 @@
       "from_module": "channels",
       "from_symbol": "strchan_try",
       "to_symbol": "vyb_strchan_try"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_addstr",
+      "to_symbol": "vyb_curses_addstr"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_attr_blink",
+      "to_symbol": "vyb_curses_attr_blink"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_attr_bold",
+      "to_symbol": "vyb_curses_attr_bold"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_attr_normal",
+      "to_symbol": "vyb_curses_attr_normal"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_attr_off",
+      "to_symbol": "vyb_curses_attr_off"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_attr_on",
+      "to_symbol": "vyb_curses_attr_on"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_attr_reverse",
+      "to_symbol": "vyb_curses_attr_reverse"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_attr_underline",
+      "to_symbol": "vyb_curses_attr_underline"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_clear",
+      "to_symbol": "vyb_curses_clear"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_close",
+      "to_symbol": "vyb_curses_close"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_color_pair",
+      "to_symbol": "vyb_curses_color_pair"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_cols",
+      "to_symbol": "vyb_curses_cols"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_getch",
+      "to_symbol": "vyb_curses_getch"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_has_color",
+      "to_symbol": "vyb_curses_has_color"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_hide_cursor",
+      "to_symbol": "vyb_curses_hide_cursor"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_init",
+      "to_symbol": "vyb_curses_init"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_init_pair",
+      "to_symbol": "vyb_curses_init_pair"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_keypad",
+      "to_symbol": "vyb_curses_keypad"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_move",
+      "to_symbol": "vyb_curses_move"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_move_addstr",
+      "to_symbol": "vyb_curses_move_addstr"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_nodelay",
+      "to_symbol": "vyb_curses_nodelay"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_ok",
+      "to_symbol": "vyb_curses_ok"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_refresh",
+      "to_symbol": "vyb_curses_refresh"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_rows",
+      "to_symbol": "vyb_curses_rows"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_show_cursor",
+      "to_symbol": "vyb_curses_show_cursor"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_start_color",
+      "to_symbol": "vyb_curses_start_color"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "curses",
+      "from_symbol": "curses_timeout",
+      "to_symbol": "vyb_curses_timeout"
     },
     {
       "type": "runtimeRef",
@@ -5710,6 +6298,13 @@
       "type": "usesType",
       "from_module": "https",
       "from_symbol": "tls_read_all",
+      "to_module": "tls",
+      "to_symbol": "TlsStream"
+    },
+    {
+      "type": "usesType",
+      "from_module": "https",
+      "from_symbol": "tls_read_chunked",
       "to_module": "tls",
       "to_symbol": "TlsStream"
     },
