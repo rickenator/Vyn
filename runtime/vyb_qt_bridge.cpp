@@ -56,6 +56,7 @@
 #include <QTextCursor>
 #include <QTextCharFormat>
 #include <QMainWindow>
+#include <QDialog>
 #include <QMenuBar>
 #include <QMenu>
 #include <QAction>
@@ -69,6 +70,7 @@
 #endif
 #include <chrono>
 #include <deque>
+#include <unordered_map>
 #include <mutex>
 #include <thread>
 
@@ -92,6 +94,11 @@ extern "C" void __vyb_string_register(void* p);
 
 static QApplication* g_app = nullptr;           // outer QApplication, created once
 static int64_t g_timer_ms = 0;                  // 0 = timer not armed
+// Paths chosen by finished async file/dir dialogs, keyed by dialog handle.
+// The poll event queue carries only Int payloads, so a Qt String path is kept
+// here (mutex-guarded) and handed to Vyb via qt_dlg_selected on demand.
+static std::unordered_map<int64_t, QString> g_dlg_paths;
+static std::mutex g_dlg_paths_mtx;
 // A polled timer is a steady-clock deadline rather than a Qt QTimer: QTimer
 // expiry needs the platform event dispatcher to run (offscreen Xvfb-only and
 // other headless QPA platforms never fire it via plain processEvents()), where
@@ -112,14 +119,23 @@ static std::chrono::steady_clock::time_point g_timer_start = std::chrono::steady
 #define VYB_QT_EVT_INDEXCHANGED 4
 #define VYB_QT_EVT_VALUECHANGED 5
 #define VYB_QT_EVT_CURRENTCHANGED 9
+#define VYB_QT_EVT_DIALOG    10
 
-struct vyb_qt_event { int64_t handle; int64_t kind; };
+// A queued record carries an optional int64 `result` payload (default 0) so a
+// finished dialog can hand its answer (1 = Yes/Accepted, else 0) to the
+// qt_on_event handler / qt_event_* poll without a second message.
+struct vyb_qt_event { int64_t handle; int64_t kind; int64_t result; };
 static std::deque<vyb_qt_event> g_events;
 static std::mutex g_events_mtx;
 
 static void vyb_qt_enqueue(int64_t handle, int64_t kind) {
     std::lock_guard<std::mutex> lk(g_events_mtx);
-    g_events.push_back(vyb_qt_event{handle, kind});
+    g_events.push_back(vyb_qt_event{handle, kind, 0});
+}
+
+static void vyb_qt_enqueue(int64_t handle, int64_t kind, int64_t result) {
+    std::lock_guard<std::mutex> lk(g_events_mtx);
+    g_events.push_back(vyb_qt_event{handle, kind, result});
 }
 
 // Exposed so the optional QWebEngineView bridge (a separate translation unit,
@@ -155,6 +171,8 @@ static void* g_handler_env = nullptr;   // closure env (retained while registere
 static void* g_handler_fn = nullptr;    // fn(env, handle, kind) -> Void
 static bool  g_loop_active = false;     // qt_run() is inside QApplication::exec()
 static bool  g_quit_requested = false;  // teardown pending until exec() returns
+static bool  g_dispatching = false;     // a native dispatch drain is running
+static int64_t g_cur_result = 0;        // result payload of the event currently dispatched
 
 static void vyb_qt_release_handler() {
     if (g_handler_env) { __vyb_closure_release(g_handler_env); g_handler_env = nullptr; }
@@ -167,17 +185,22 @@ static void vyb_qt_dispatch_queued() {
     if (!g_handler_fn) return;
     typedef void (*handler_t)(void*, int64_t, int64_t);
     handler_t cb = (handler_t)g_handler_fn;
+    g_dispatching = true;
     for (;;) {
-        int64_t handle = 0, kind = 0;
+        int64_t handle = 0, kind = 0, result = 0;
         {
             std::lock_guard<std::mutex> lk(g_events_mtx);
             if (g_events.empty()) break;
             handle = g_events.front().handle;
             kind = g_events.front().kind;
+            result = g_events.front().result;
             g_events.pop_front();
         }
+        g_cur_result = result;
         cb(g_handler_env, handle, kind);
     }
+    g_dispatching = false;
+    g_cur_result = 0;
 }
 
 // Register the `fn(handle, kind) -> Void` closure (a `{ env, fn }` pair) that
@@ -257,6 +280,7 @@ static void vyb_qt_full_teardown() {
     g_timer_ms = 0;
     vyb_qt_release_handler();
     { std::lock_guard<std::mutex> lk(g_events_mtx); g_events.clear(); }
+    { std::lock_guard<std::mutex> lk(g_dlg_paths_mtx); g_dlg_paths.clear(); }
     delete g_app; g_app = nullptr;
 }
 
@@ -609,6 +633,15 @@ extern "C" VYB_WEAK int64_t __vyb_qt_event_handle(void) {
 extern "C" VYB_WEAK int64_t __vyb_qt_event_kind(void) {
     std::lock_guard<std::mutex> lk(g_events_mtx);
     return g_events.empty() ? 0 : g_events.front().kind;
+}
+
+// Result payload (0 default) of the oldest queued event, or of the event a
+// qt_run dispatch is currently handing to the handler. For a finished dialog
+// this is 1 (Yes/Accepted) or 0 (No/Rejected).
+extern "C" VYB_WEAK int64_t __vyb_qt_event_result(void) {
+    if (g_dispatching) return g_cur_result;
+    std::lock_guard<std::mutex> lk(g_events_mtx);
+    return g_events.empty() ? 0 : g_events.front().result;
 }
 
 extern "C" VYB_WEAK int64_t __vyb_qt_event_pop(void) {
@@ -1181,6 +1214,145 @@ extern "C" VYB_WEAK vyb_qt_str __vyb_qt_file_save(int64_t parent, const char* ti
 
 extern "C" VYB_WEAK vyb_qt_str __vyb_qt_dir_select(int64_t parent, const char* title, int64_t tlen) {
     return vyb_qt_file_dialog(parent, title, tlen, nullptr, 0, 2);
+}
+
+// ----------------------------------------------------------------------------
+// Async (non-blocking) dialogs
+// ----------------------------------------------------------------------------
+// Unlike the blocking qt_msg_*/qt_file_* tier, these pair with the event loop:
+// create + show the dialog and return its Int handle immediately; when the
+// user finishes it, Qt emits finished() and the bridge enqueues a
+// QtEvent::dialog record whose result payload (qt_event_result: 1 for
+// Yes/Accepted, else 0) is delivered to the qt_on_event handler or the
+// qt_event_* poll. File/dir pickers also record the chosen path (a Qt String is
+// not ABI-safe across the poll queue), read back via qt_dlg_selected(handle).
+// Dialogs are parented to their window and self-delete on close, so a handle is
+// only valid while the dialog is open (matching opaque-handle semantics).
+
+static void vyb_qt_auto_answer(QWidget* w, bool accept) {
+    if (!vyb_qt_dialog_auto() || !w) return;
+    if (QMessageBox* mb = dynamic_cast<QMessageBox*>(w)) {
+        QTimer::singleShot(0, mb, [mb]() {
+            QPushButton* def = mb->defaultButton();
+            if (def) def->click();
+            else mb->QDialog::accept();
+        });
+        return;
+    }
+    QDialog* d = dynamic_cast<QDialog*>(w);
+    if (!d) return;
+    QTimer::singleShot(0, d, [d, accept]() {
+        if (accept) d->QDialog::accept();
+        else d->reject();
+    });
+}
+
+// Shared async message-box driver: builds + shows a box returning its handle.
+// `question` maps the finished StandardButton to 1 (Yes) / 0.
+static int64_t vyb_qt_dlg_message(int64_t parent, const char* title, int64_t tlen,
+                                  const char* text, int64_t nlen, QMessageBox::Icon icon,
+                                  bool question) {
+    if (!g_app) return 0;
+    QMessageBox* box = new QMessageBox(icon, qt_from_bytes(title, tlen), qt_from_bytes(text, nlen),
+                                       QMessageBox::NoButton, parent ? htowed(parent) : nullptr);
+    box->setStandardButtons(question ? (QMessageBox::Yes | QMessageBox::No) : QMessageBox::Ok);
+    box->setDefaultButton(question ? QMessageBox::Yes : QMessageBox::Ok);
+    box->setAttribute(Qt::WA_DeleteOnClose);
+    int64_t handle = wetoh(box);
+    QObject::connect(box, &QMessageBox::finished, [handle, question](int result) {
+        int64_t r = 0;
+        if (question) r = (result == (int)QMessageBox::Yes) ? 1 : 0;
+        vyb_qt_enqueue(handle, VYB_QT_EVT_DIALOG, r);
+    });
+    box->show();
+    vyb_qt_auto_answer(box, true);   // tests: auto-pick the default button
+    return handle;
+}
+
+// Shared async file/dir dialog driver. `mode` 0=open, 1=save, 2=directory.
+static int64_t vyb_qt_dlg_file(int64_t parent, const char* title, int64_t tlen,
+                               const char* filter, int64_t flen, int mode) {
+    if (!g_app) return 0;
+    QFileDialog* dlg = new QFileDialog(parent ? htowed(parent) : nullptr,
+                                       qt_from_bytes(title, tlen), QString(), qt_from_bytes(filter, flen));
+    if (mode == 0) {
+        dlg->setAcceptMode(QFileDialog::AcceptOpen);
+        dlg->setFileMode(QFileDialog::ExistingFile);
+    } else if (mode == 1) {
+        dlg->setAcceptMode(QFileDialog::AcceptSave);
+    } else {
+        dlg->setFileMode(QFileDialog::Directory);
+        dlg->setOption(QFileDialog::ShowDirsOnly, true);
+    }
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    int64_t handle = wetoh(dlg);
+    QObject::connect(dlg, &QFileDialog::finished, [handle, dlg](int result) {
+        int64_t r = (result == QDialog::Accepted) ? 1 : 0;
+        if (r) {
+            QString path = dlg->selectedFiles().isEmpty() ? QString() : dlg->selectedFiles().first();
+            std::lock_guard<std::mutex> lk(g_dlg_paths_mtx);
+            g_dlg_paths[handle] = path;
+        }
+        vyb_qt_enqueue(handle, VYB_QT_EVT_DIALOG, r);
+    });
+    dlg->show();
+    vyb_qt_auto_answer(dlg, true);   // tests: auto-accept
+    return handle;
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_dlg_info(int64_t parent, const char* title, int64_t tlen,
+                                              const char* text, int64_t nlen) {
+    return vyb_qt_dlg_message(parent, title, tlen, text, nlen, QMessageBox::Information, false);
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_dlg_warn(int64_t parent, const char* title, int64_t tlen,
+                                              const char* text, int64_t nlen) {
+    return vyb_qt_dlg_message(parent, title, tlen, text, nlen, QMessageBox::Warning, false);
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_dlg_error(int64_t parent, const char* title, int64_t tlen,
+                                               const char* text, int64_t nlen) {
+    return vyb_qt_dlg_message(parent, title, tlen, text, nlen, QMessageBox::Critical, false);
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_dlg_about(int64_t parent, const char* title, int64_t tlen,
+                                               const char* text, int64_t nlen) {
+    return vyb_qt_dlg_message(parent, title, tlen, text, nlen, QMessageBox::Information, false);
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_dlg_question(int64_t parent, const char* title, int64_t tlen,
+                                                  const char* text, int64_t nlen) {
+    return vyb_qt_dlg_message(parent, title, tlen, text, nlen, QMessageBox::Question, true);
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_dlg_open(int64_t parent, const char* title, int64_t tlen,
+                                              const char* filter, int64_t flen) {
+    return vyb_qt_dlg_file(parent, title, tlen, filter, flen, 0);
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_dlg_save(int64_t parent, const char* title, int64_t tlen,
+                                              const char* filter, int64_t flen) {
+    return vyb_qt_dlg_file(parent, title, tlen, filter, flen, 1);
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_dlg_dir(int64_t parent, const char* title, int64_t tlen) {
+    return vyb_qt_dlg_file(parent, title, tlen, nullptr, 0, 2);
+}
+
+// Finish dialog `h` as rejected (enqueues QtEvent::dialog with result 0).
+// Returns 0, or -1 on a bad / non-QDialog handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_dlg_close(int64_t h) {
+    QDialog* d = dynamic_cast<QDialog*>(htowed(h)); if (!d) return -1;
+    d->reject();
+    return 0;
+}
+
+// Path chosen by a finished file/dir dialog `h` (String); "" if none.
+extern "C" VYB_WEAK vyb_qt_str __vyb_qt_dlg_selected(int64_t h) {
+    std::lock_guard<std::mutex> lk(g_dlg_paths_mtx);
+    auto it = g_dlg_paths.find(h);
+    if (it == g_dlg_paths.end()) return { nullptr, 0 };
+    return qt_to_owned(it->second);
 }
 
 // ----------------------------------------------------------------------------

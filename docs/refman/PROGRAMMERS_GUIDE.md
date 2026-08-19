@@ -1611,6 +1611,12 @@ qt_msg_info/warn/error/about(parent<Int>, title<String>, text<String>)<Int>
 qt_msg_question(parent<Int>, title<String>, text<String>)<Int>
 qt_file_open/save(parent<Int>, title<String>, filter<String>)<String>
 qt_dir_select(parent<Int>, title<String>)<String>
+qt_dlg_info/warn/error/about(parent<Int>, title<String>, text<String>)<Int>
+qt_dlg_question(parent<Int>, title<String>, text<String>)<Int>
+qt_dlg_open/save(parent<Int>, title<String>, filter<String>)<Int>
+qt_dlg_dir(parent<Int>, title<String>)<Int>
+qt_dlg_close(h<Int>)<Int>     qt_dlg_selected(h<Int>)<String>
+qt_event_result()<Int>
 qt_rich_create(parent<Int>)<Int>   qt_rich_set_html/set_plain/append(e<Int>, text<String>)<Int>
 qt_rich_html/plain(e<Int>)<String> qt_rich_clear(e<Int>)<Int>
 qt_rich_set_text_color(e<Int>, r<Int>, g<Int>, b<Int>)<Int>
@@ -1663,7 +1669,14 @@ any widget: `qt_widget_set_font_size(pt)`, `qt_widget_set_font_bold(on)`, and
 `qt_widget_set_text_color(r,g,b)`. Modal dialogs have an opt-in
 `VYB_QT_DIALOG_AUTO=1` env seam that auto-answers them once shown (Ok/Yes/accept),
 so GUI tests stay deterministic under `offscreen`; with it unset the box blocks
-until the user responds.
+until the user responds. A non-blocking *async* tier (`qt_dlg_*`) pairs with the
+event loop instead: create + show the dialog and return its `Int` handle at
+once, and when the user finishes it a `QtEvent::dialog` record is enqueued whose
+result (`qt_event_result()`: 1 for Yes/Accepted, else 0) a `qt_on_event` handler
+or the `qt_event_*` poll reads. File/dir pickers also record the chosen path,
+readable any time via `qt_dlg_selected(handle)`; `qt_dlg_close(handle)` finishes a
+dialog as rejected. This is the friendly path for a `qt_run`-driven app — dialogs
+no longer block the handler with a nested `exec()`.
 
 Call `qt_init()` once. `QApplication` must live on the main thread (a Vyb
 program's `main`), and construction needs a Qt platform — xcb under a display,
@@ -1884,6 +1897,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

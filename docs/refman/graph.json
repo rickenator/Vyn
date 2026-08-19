@@ -1,5 +1,5 @@
 {
-  "git_rev": "b21a224d8b8f6c467ec25cc7b982d47548c3505a",
+  "git_rev": "33582f7f2628c8ab92ae2beac1d1ff5a9c194fe5",
   "modules": [
     "agents",
     "asyncs",
@@ -152,7 +152,7 @@
         "files": [
           "stdlib/qt/mod.vyb"
         ],
-        "exported": 121,
+        "exported": 132,
         "fan_in": 0,
         "fan_out": 0
       },
@@ -667,6 +667,17 @@
           "qt_file_open",
           "qt_file_save",
           "qt_dir_select",
+          "qt_dlg_info",
+          "qt_dlg_warn",
+          "qt_dlg_error",
+          "qt_dlg_about",
+          "qt_dlg_question",
+          "qt_dlg_open",
+          "qt_dlg_save",
+          "qt_dlg_dir",
+          "qt_dlg_close",
+          "qt_dlg_selected",
+          "qt_event_result",
           "qt_rich_create",
           "qt_rich_set_html",
           "qt_rich_html",
@@ -3021,6 +3032,96 @@
         "fan_in": 0
       },
       {
+        "name": "qt_dlg_about",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_dlg_about(parent<Int>, title<String>, text<String>)<Int> ->",
+        "summary": "Open a non-blocking about box; returns its handle, or 0 on failure.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_dlg_close",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_dlg_close(h<Int>)<Int> ->",
+        "summary": "Finish dialog `h` as rejected (enqueues QtEvent::dialog with result 0). Returns 0.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_dlg_dir",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_dlg_dir(parent<Int>, title<String>)<Int> ->",
+        "summary": "Open a non-blocking directory picker; finishes with result 1 (Accepted) + qt_dlg_selected.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_dlg_error",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_dlg_error(parent<Int>, title<String>, text<String>)<Int> ->",
+        "summary": "Open a non-blocking error box; returns its handle, or 0 on failure.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_dlg_info",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_dlg_info(parent<Int>, title<String>, text<String>)<Int> ->",
+        "summary": "Open a non-blocking information box; returns its handle, or 0 on failure.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_dlg_open",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_dlg_open(parent<Int>, title<String>, filter<String>)<Int> ->",
+        "summary": "Open a non-blocking file-open picker; finishes with result 1 (Accepted) + qt_dlg_selected.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_dlg_question",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_dlg_question(parent<Int>, title<String>, text<String>)<Int> ->",
+        "summary": "Open a non-blocking Yes/No box; finishes with result 1 for Yes, 0 otherwise.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_dlg_save",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_dlg_save(parent<Int>, title<String>, filter<String>)<Int> ->",
+        "summary": "Open a non-blocking file-save picker; finishes with result 1 (Accepted) + qt_dlg_selected.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_dlg_selected",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_dlg_selected(h<Int>)<String> ->",
+        "summary": "Path chosen by file/dir dialog `h` (String); \"\" on a non-picker handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_dlg_warn",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_dlg_warn(parent<Int>, title<String>, text<String>)<Int> ->",
+        "summary": "Open a non-blocking warning box; returns its handle, or 0 on failure.",
+        "fan_in": 0
+      },
+      {
         "name": "qt_edit_create",
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
@@ -3090,6 +3191,15 @@
         "kind": "fn",
         "signature": "qt_event_pop()<Int> ->",
         "summary": "Remove the oldest queued event. Returns 0, or -1 if empty.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_event_result",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_event_result()<Int> ->",
+        "summary": "Result payload of the oldest queued dialog event, or of the event being dispatched by qt_run (1 = Yes/Accepted, else 0).",
         "fan_in": 0
       },
       {
@@ -7213,6 +7323,66 @@
     {
       "type": "runtimeRef",
       "from_module": "qt",
+      "from_symbol": "qt_dlg_about",
+      "to_symbol": "vyb_qt_dlg_about"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_dlg_close",
+      "to_symbol": "vyb_qt_dlg_close"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_dlg_dir",
+      "to_symbol": "vyb_qt_dlg_dir"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_dlg_error",
+      "to_symbol": "vyb_qt_dlg_error"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_dlg_info",
+      "to_symbol": "vyb_qt_dlg_info"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_dlg_open",
+      "to_symbol": "vyb_qt_dlg_open"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_dlg_question",
+      "to_symbol": "vyb_qt_dlg_question"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_dlg_save",
+      "to_symbol": "vyb_qt_dlg_save"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_dlg_selected",
+      "to_symbol": "vyb_qt_dlg_selected"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_dlg_warn",
+      "to_symbol": "vyb_qt_dlg_warn"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
       "from_symbol": "qt_edit_create",
       "to_symbol": "vyb_qt_edit_create"
     },
@@ -7257,6 +7427,12 @@
       "from_module": "qt",
       "from_symbol": "qt_event_pop",
       "to_symbol": "vyb_qt_event_pop"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_event_result",
+      "to_symbol": "vyb_qt_event_result"
     },
     {
       "type": "runtimeRef",

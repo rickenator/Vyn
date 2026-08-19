@@ -2188,12 +2188,17 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_qt_msg_error" || name == "vyb_qt_msg_about" ||
             name == "vyb_qt_msg_question" || name == "vyb_qt_file_open" ||
             name == "vyb_qt_file_save" || name == "vyb_qt_dir_select" ||
-            name == "vyb_qt_rich_create" || name == "vyb_qt_rich_set_html" ||
-            name == "vyb_qt_rich_html" || name == "vyb_qt_rich_set_plain" ||
-            name == "vyb_qt_rich_plain" || name == "vyb_qt_rich_append" ||
-            name == "vyb_qt_rich_clear" || name == "vyb_qt_rich_set_text_color" ||
-            name == "vyb_qt_widget_set_font_size" || name == "vyb_qt_widget_set_font_bold" ||
-            name == "vyb_qt_widget_set_text_color") {
+            name == "vyb_qt_dlg_info" || name == "vyb_qt_dlg_warn" ||
+            name == "vyb_qt_dlg_error" || name == "vyb_qt_dlg_about" ||
+            name == "vyb_qt_dlg_question" || name == "vyb_qt_dlg_open" ||
+            name == "vyb_qt_dlg_save" || name == "vyb_qt_dlg_dir" ||
+            name == "vyb_qt_dlg_close" || name == "vyb_qt_dlg_selected" ||
+            name == "vyb_qt_event_result" || name == "vyb_qt_rich_create" ||
+            name == "vyb_qt_rich_set_html" || name == "vyb_qt_rich_html" ||
+            name == "vyb_qt_rich_set_plain" || name == "vyb_qt_rich_plain" ||
+            name == "vyb_qt_rich_append" || name == "vyb_qt_rich_clear" ||
+            name == "vyb_qt_rich_set_text_color" || name == "vyb_qt_widget_set_font_size" ||
+            name == "vyb_qt_widget_set_font_bold" || name == "vyb_qt_widget_set_text_color") {
 // gen_qt[sem_allow]: end
             isIntrinsic = true;
         }
@@ -2806,6 +2811,17 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 "vyb_qt_file_open",
                 "vyb_qt_file_save",
                 "vyb_qt_dir_select",
+                "vyb_qt_dlg_info",
+                "vyb_qt_dlg_warn",
+                "vyb_qt_dlg_error",
+                "vyb_qt_dlg_about",
+                "vyb_qt_dlg_question",
+                "vyb_qt_dlg_open",
+                "vyb_qt_dlg_save",
+                "vyb_qt_dlg_dir",
+                "vyb_qt_dlg_close",
+                "vyb_qt_dlg_selected",
+                "vyb_qt_event_result",
                 "vyb_qt_rich_create",
                 "vyb_qt_rich_set_html",
                 "vyb_qt_rich_html",
@@ -2834,6 +2850,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 "vyb_qt_file_open",
                 "vyb_qt_file_save",
                 "vyb_qt_dir_select",
+                "vyb_qt_dlg_selected",
                 "vyb_qt_rich_html",
                 "vyb_qt_rich_plain",
 // gen_qt[sem_str]: end

@@ -706,6 +706,72 @@ qt_dir_select(parent<Int>, title<String>)<String> -> {
     return vyb_qt_dir_select(parent, title)
 }
 
+# Open a non-blocking information box; returns its handle, or 0 on failure.
+share(all)
+qt_dlg_info(parent<Int>, title<String>, text<String>)<Int> -> {
+    return vyb_qt_dlg_info(parent, title, text)
+}
+
+# Open a non-blocking warning box; returns its handle, or 0 on failure.
+share(all)
+qt_dlg_warn(parent<Int>, title<String>, text<String>)<Int> -> {
+    return vyb_qt_dlg_warn(parent, title, text)
+}
+
+# Open a non-blocking error box; returns its handle, or 0 on failure.
+share(all)
+qt_dlg_error(parent<Int>, title<String>, text<String>)<Int> -> {
+    return vyb_qt_dlg_error(parent, title, text)
+}
+
+# Open a non-blocking about box; returns its handle, or 0 on failure.
+share(all)
+qt_dlg_about(parent<Int>, title<String>, text<String>)<Int> -> {
+    return vyb_qt_dlg_about(parent, title, text)
+}
+
+# Open a non-blocking Yes/No box; finishes with result 1 for Yes, 0 otherwise.
+share(all)
+qt_dlg_question(parent<Int>, title<String>, text<String>)<Int> -> {
+    return vyb_qt_dlg_question(parent, title, text)
+}
+
+# Open a non-blocking file-open picker; finishes with result 1 (Accepted) + qt_dlg_selected.
+share(all)
+qt_dlg_open(parent<Int>, title<String>, filter<String>)<Int> -> {
+    return vyb_qt_dlg_open(parent, title, filter)
+}
+
+# Open a non-blocking file-save picker; finishes with result 1 (Accepted) + qt_dlg_selected.
+share(all)
+qt_dlg_save(parent<Int>, title<String>, filter<String>)<Int> -> {
+    return vyb_qt_dlg_save(parent, title, filter)
+}
+
+# Open a non-blocking directory picker; finishes with result 1 (Accepted) + qt_dlg_selected.
+share(all)
+qt_dlg_dir(parent<Int>, title<String>)<Int> -> {
+    return vyb_qt_dlg_dir(parent, title)
+}
+
+# Finish dialog `h` as rejected (enqueues QtEvent::dialog with result 0). Returns 0.
+share(all)
+qt_dlg_close(h<Int>)<Int> -> {
+    return vyb_qt_dlg_close(h)
+}
+
+# Path chosen by file/dir dialog `h` (String); "" on a non-picker handle.
+share(all)
+qt_dlg_selected(h<Int>)<String> -> {
+    return vyb_qt_dlg_selected(h)
+}
+
+# Result payload of the oldest queued dialog event, or of the event being dispatched by qt_run (1 = Yes/Accepted, else 0).
+share(all)
+qt_event_result()<Int> -> {
+    return vyb_qt_event_result()
+}
+
 # Create a rich-text editor (QTextEdit) under `parent`; edits enqueue QtEvent::TextChanged.
 share(all)
 qt_rich_create(parent<Int>)<Int> -> {
@@ -786,6 +852,7 @@ enum QtEvent {
     titleChanged = 7
     loadProgress = 8
     currentChanged = 9
+    dialog = 10
 }
 
 share(all)

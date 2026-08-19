@@ -184,6 +184,26 @@ VYB_WEAK vyb_qt_str __vyb_qt_file_save(int64_t parent, const char* title, int64_
     { (void)parent; (void)title; (void)filter; return qt_stub_str(); }
 VYB_WEAK vyb_qt_str __vyb_qt_dir_select(int64_t parent, const char* title, int64_t len)
     { (void)parent; (void)title; return qt_stub_str(); }
+VYB_WEAK int64_t __vyb_qt_dlg_info(int64_t parent, const char* title, int64_t len, const char* text, int64_t len2)
+    { (void)parent; (void)title; (void)text; return 0; }
+VYB_WEAK int64_t __vyb_qt_dlg_warn(int64_t parent, const char* title, int64_t len, const char* text, int64_t len2)
+    { (void)parent; (void)title; (void)text; return 0; }
+VYB_WEAK int64_t __vyb_qt_dlg_error(int64_t parent, const char* title, int64_t len, const char* text, int64_t len2)
+    { (void)parent; (void)title; (void)text; return 0; }
+VYB_WEAK int64_t __vyb_qt_dlg_about(int64_t parent, const char* title, int64_t len, const char* text, int64_t len2)
+    { (void)parent; (void)title; (void)text; return 0; }
+VYB_WEAK int64_t __vyb_qt_dlg_question(int64_t parent, const char* title, int64_t len, const char* text, int64_t len2)
+    { (void)parent; (void)title; (void)text; return 0; }
+VYB_WEAK int64_t __vyb_qt_dlg_open(int64_t parent, const char* title, int64_t len, const char* filter, int64_t len2)
+    { (void)parent; (void)title; (void)filter; return 0; }
+VYB_WEAK int64_t __vyb_qt_dlg_save(int64_t parent, const char* title, int64_t len, const char* filter, int64_t len2)
+    { (void)parent; (void)title; (void)filter; return 0; }
+VYB_WEAK int64_t __vyb_qt_dlg_dir(int64_t parent, const char* title, int64_t len)
+    { (void)parent; (void)title; return 0; }
+VYB_WEAK int64_t __vyb_qt_dlg_close(int64_t h) { (void)h; return -1; }
+VYB_WEAK vyb_qt_str __vyb_qt_dlg_selected(int64_t h)
+    { (void)h; return qt_stub_str(); }
+VYB_WEAK int64_t __vyb_qt_event_result() { return 0; }
 VYB_WEAK int64_t __vyb_qt_rich_create(int64_t parent) { (void)parent; return 0; }
 VYB_WEAK int64_t __vyb_qt_rich_set_html(int64_t ed, const char* html, int64_t len)
     { (void)ed; (void)html; return -1; }

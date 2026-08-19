@@ -3339,6 +3339,17 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_qt_file_open") rtName = "__vyb_qt_file_open";
         else if (fname == "vyb_qt_file_save") rtName = "__vyb_qt_file_save";
         else if (fname == "vyb_qt_dir_select") rtName = "__vyb_qt_dir_select";
+        else if (fname == "vyb_qt_dlg_info") rtName = "__vyb_qt_dlg_info";
+        else if (fname == "vyb_qt_dlg_warn") rtName = "__vyb_qt_dlg_warn";
+        else if (fname == "vyb_qt_dlg_error") rtName = "__vyb_qt_dlg_error";
+        else if (fname == "vyb_qt_dlg_about") rtName = "__vyb_qt_dlg_about";
+        else if (fname == "vyb_qt_dlg_question") rtName = "__vyb_qt_dlg_question";
+        else if (fname == "vyb_qt_dlg_open") rtName = "__vyb_qt_dlg_open";
+        else if (fname == "vyb_qt_dlg_save") rtName = "__vyb_qt_dlg_save";
+        else if (fname == "vyb_qt_dlg_dir") rtName = "__vyb_qt_dlg_dir";
+        else if (fname == "vyb_qt_dlg_close") rtName = "__vyb_qt_dlg_close";
+        else if (fname == "vyb_qt_dlg_selected") rtName = "__vyb_qt_dlg_selected";
+        else if (fname == "vyb_qt_event_result") rtName = "__vyb_qt_event_result";
         else if (fname == "vyb_qt_rich_create") rtName = "__vyb_qt_rich_create";
         else if (fname == "vyb_qt_rich_set_html") rtName = "__vyb_qt_rich_set_html";
         else if (fname == "vyb_qt_rich_html") rtName = "__vyb_qt_rich_html";
@@ -3401,7 +3412,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_event_pop" ||
                 fname == "vyb_qt_run" ||
                 fname == "vyb_qt_run_stop" ||
-                fname == "vyb_qt_main_window_create") {
+                fname == "vyb_qt_main_window_create" ||
+                fname == "vyb_qt_event_result") {
                 if (!checkArity(0)) return;
                 llvm::FunctionType* ft0 = llvm::FunctionType::get(int64Type, {}, false);
                 m_currentLLVMValue = builder->CreateCall(getQtFn(ft0), {}, "qt.ret");
@@ -3441,6 +3453,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_list_current" ||
                 fname == "vyb_qt_menubar" ||
                 fname == "vyb_qt_action_count" ||
+                fname == "vyb_qt_dlg_close" ||
                 fname == "vyb_qt_rich_create" ||
                 fname == "vyb_qt_rich_clear") {
                 if (!checkArity(1)) return;
@@ -3455,6 +3468,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_edit_text" ||
                 fname == "vyb_qt_text_edit_text" ||
                 fname == "vyb_qt_statusbar_text" ||
+                fname == "vyb_qt_dlg_selected" ||
                 fname == "vyb_qt_rich_html" ||
                 fname == "vyb_qt_rich_plain") {
                 if (!checkArity(1)) return;
@@ -3495,6 +3509,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_action_add" ||
                 fname == "vyb_qt_statusbar_message" ||
                 fname == "vyb_qt_toolbar_create" ||
+                fname == "vyb_qt_dlg_dir" ||
                 fname == "vyb_qt_rich_set_html" ||
                 fname == "vyb_qt_rich_set_plain" ||
                 fname == "vyb_qt_rich_append") {
@@ -3507,7 +3522,14 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             } else if (fname == "vyb_qt_msg_info" || fname == "vyb_qt_msg_warn" ||
                 fname == "vyb_qt_msg_error" ||
                 fname == "vyb_qt_msg_about" ||
-                fname == "vyb_qt_msg_question") {
+                fname == "vyb_qt_msg_question" ||
+                fname == "vyb_qt_dlg_info" ||
+                fname == "vyb_qt_dlg_warn" ||
+                fname == "vyb_qt_dlg_error" ||
+                fname == "vyb_qt_dlg_about" ||
+                fname == "vyb_qt_dlg_question" ||
+                fname == "vyb_qt_dlg_open" ||
+                fname == "vyb_qt_dlg_save") {
                 if (!checkArity(3)) return;
                 llvm::Value* a = needArg(0); llvm::Value* s = needArg(1); llvm::Value* t = needArg(2);
                 if (!a || !s || !t) return;

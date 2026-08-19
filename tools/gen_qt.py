@@ -357,6 +357,46 @@ QT_FUNCS = [
          args=[("parent", "Int"), ("title", "String")], ret="String", shape="strtext", stub="qt_stub_str()",
          doc="Modal directory picker; returns the chosen path (String) or \"\" on cancel."),
 
+    # Async (non-blocking) dialogs. These pair with the event loop: create +
+    # show the dialog, return its Int handle immediately, and when the user
+    # finishes it an event (QtEvent::dialog) is enqueued whose result payload
+    # (qt_event_result: 1 for Yes/Accepted, else 0) a qt_on_event handler or the
+    # qt_event_* poll reads. File/dir pickers also record the chosen path,
+    # readable any time via qt_dlg_selected(handle).
+    dict(mod="qt_dlg_info", vn="vyb_qt_dlg_info", cn="__vyb_qt_dlg_info",
+         args=[("parent", "Int"), ("title", "String"), ("text", "String")], ret="Int", shape="text2",
+         stub="0", doc="Open a non-blocking information box; returns its handle, or 0 on failure."),
+    dict(mod="qt_dlg_warn", vn="vyb_qt_dlg_warn", cn="__vyb_qt_dlg_warn",
+         args=[("parent", "Int"), ("title", "String"), ("text", "String")], ret="Int", shape="text2",
+         stub="0", doc="Open a non-blocking warning box; returns its handle, or 0 on failure."),
+    dict(mod="qt_dlg_error", vn="vyb_qt_dlg_error", cn="__vyb_qt_dlg_error",
+         args=[("parent", "Int"), ("title", "String"), ("text", "String")], ret="Int", shape="text2",
+         stub="0", doc="Open a non-blocking error box; returns its handle, or 0 on failure."),
+    dict(mod="qt_dlg_about", vn="vyb_qt_dlg_about", cn="__vyb_qt_dlg_about",
+         args=[("parent", "Int"), ("title", "String"), ("text", "String")], ret="Int", shape="text2",
+         stub="0", doc="Open a non-blocking about box; returns its handle, or 0 on failure."),
+    dict(mod="qt_dlg_question", vn="vyb_qt_dlg_question", cn="__vyb_qt_dlg_question",
+         args=[("parent", "Int"), ("title", "String"), ("text", "String")], ret="Int", shape="text2",
+         stub="0", doc="Open a non-blocking Yes/No box; finishes with result 1 for Yes, 0 otherwise."),
+    dict(mod="qt_dlg_open", vn="vyb_qt_dlg_open", cn="__vyb_qt_dlg_open",
+         args=[("parent", "Int"), ("title", "String"), ("filter", "String")], ret="Int", shape="text2",
+         stub="0", doc="Open a non-blocking file-open picker; finishes with result 1 (Accepted) + qt_dlg_selected."),
+    dict(mod="qt_dlg_save", vn="vyb_qt_dlg_save", cn="__vyb_qt_dlg_save",
+         args=[("parent", "Int"), ("title", "String"), ("filter", "String")], ret="Int", shape="text2",
+         stub="0", doc="Open a non-blocking file-save picker; finishes with result 1 (Accepted) + qt_dlg_selected."),
+    dict(mod="qt_dlg_dir", vn="vyb_qt_dlg_dir", cn="__vyb_qt_dlg_dir",
+         args=[("parent", "Int"), ("title", "String")], ret="Int", shape="text",
+         stub="0", doc="Open a non-blocking directory picker; finishes with result 1 (Accepted) + qt_dlg_selected."),
+    dict(mod="qt_dlg_close", vn="vyb_qt_dlg_close", cn="__vyb_qt_dlg_close", args=[("h", "Int")],
+         ret="Int", shape="int1", stub="-1",
+         doc="Finish dialog `h` as rejected (enqueues QtEvent::dialog with result 0). Returns 0."),
+    dict(mod="qt_dlg_selected", vn="vyb_qt_dlg_selected", cn="__vyb_qt_dlg_selected", args=[("h", "Int")],
+         ret="String", shape="str1", stub="qt_stub_str()",
+         doc="Path chosen by file/dir dialog `h` (String); \"\" on a non-picker handle."),
+    dict(mod="qt_event_result", vn="vyb_qt_event_result", cn="__vyb_qt_event_result", args=[], ret="Int",
+         shape="int0", stub="0",
+         doc="Result payload of the oldest queued dialog event, or of the event being dispatched by qt_run (1 = Yes/Accepted, else 0)."),
+
     # Rich-text editor (QTextEdit) + font/color helpers.
     dict(mod="qt_rich_create", vn="vyb_qt_rich_create", cn="__vyb_qt_rich_create", args=[("parent", "Int")],
          ret="Int", shape="int1", stub="0",
@@ -422,6 +462,7 @@ QT_EVENTS = [
     ("indexChanged", 4), ("valueChanged", 5),
     ("loadFinished", 6), ("titleChanged", 7), ("loadProgress", 8),
     ("currentChanged", 9),
+    ("dialog", 10),
 ]
 
 QT_WIDGETS = [

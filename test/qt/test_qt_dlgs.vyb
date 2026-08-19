@@ -1,0 +1,70 @@
+// @test: qt stdlib module - non-blocking async dialogs (auto-accepted)
+// @description: The async dialog tier (qt_dlg_*) returns an Int handle and
+//   defers its result to the event loop instead of blocking exec(). Under the
+//   opt-in VYB_QT_DIALOG_AUTO=1 seam each dialog auto-answers after the loop is
+//   pumped, so this test verifies the finished -> QtEvent::dialog -> result
+//   (qt_event_result) handoff deterministically offscreen: info resolves 0, a
+//   question auto-picks Yes -> 1, and a file-open picker accepts -> 1.
+// @category: qt, stdlib, gui
+// @expect: pass
+// @expect-output: qt-dlgs-ok
+// @env: VYB_STDLIB=stdlib; QT_QPA_PLATFORM=offscreen; VYB_QT_DIALOG_AUTO=1
+
+import qt
+
+// Pump the loop until at least one control event is queued (the auto-answer is
+// a 0ms QTimer, so it may not fire on the very first processEvents call).
+pump_until_event()<Int> -> {
+    n<Int> = 0
+    while (n < 300) {
+        if (qt_event_count() > 0) { return 1 }
+        qt_process_events()
+        n = n + 1
+    }
+    return 0
+}
+
+// Drain queued events, returning the first QtEvent::dialog payload for `h` (or
+// -1 if none).
+drain_dialog(h<Int>)<Int> -> {
+    result<Int> = -1
+    while (qt_event_count() > 0) {
+        if (qt_event_kind() == QtEvent::dialog && qt_event_handle() == h) {
+            result = qt_event_result()
+        }
+        qt_event_pop()
+    }
+    return result
+}
+
+main()<Int> -> {
+    if (qt_init() == false) {
+        println("qt-dlgs-ok (Qt5 unavailable)")
+        return 0
+    }
+    w<Int> = qt_window_create()
+    if (w == 0) { return 1 }
+
+    // Info box: non-blocking handle, Ok -> result 0.
+    d1<Int> = qt_dlg_info(w, "Info", "hello")
+    if (d1 == 0) { return 2 }
+    if (pump_until_event() != 1) { return 3 }
+    if (drain_dialog(d1) != 0) { return 4 }
+
+    // Question box: default (Yes) auto-picked -> result 1.
+    d2<Int> = qt_dlg_question(w, "Ask", "proceed?")
+    if (d2 == 0) { return 5 }
+    if (pump_until_event() != 1) { return 6 }
+    if (drain_dialog(d2) != 1) { return 7 }
+
+    // File-open picker: accepted -> result 1 (path need not be materialized).
+    d3<Int> = qt_dlg_open(w, "Open", "All files (*)")
+    if (d3 == 0) { return 8 }
+    if (pump_until_event() != 1) { return 9 }
+    if (drain_dialog(d3) != 1) { return 10 }
+    if (qt_dlg_selected(d3) == "sentinel-unreachable") { return 11 }
+
+    qt_window_close(w)
+    println("qt-dlgs-ok")
+    return 0
+}

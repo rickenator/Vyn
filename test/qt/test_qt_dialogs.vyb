@@ -7,9 +7,7 @@
 // @category: qt, stdlib, gui
 // @expect: pass
 // @expect-output: qt-dialogs-ok
-// @env: VYB_STDLIB=stdlib
-// @env: QT_QPA_PLATFORM=offscreen
-// @env: VYB_QT_DIALOG_AUTO=1
+// @env: VYB_STDLIB=stdlib; QT_QPA_PLATFORM=offscreen; VYB_QT_DIALOG_AUTO=1
 
 import qt
 

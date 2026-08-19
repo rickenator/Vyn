@@ -322,6 +322,17 @@ extern "C" {
     vyb_file_str __vyb_qt_file_open(int64_t parent, const char* title, int64_t len, const char* filter, int64_t len2);
     vyb_file_str __vyb_qt_file_save(int64_t parent, const char* title, int64_t len, const char* filter, int64_t len2);
     vyb_file_str __vyb_qt_dir_select(int64_t parent, const char* title, int64_t len);
+    int64_t __vyb_qt_dlg_info(int64_t parent, const char* title, int64_t len, const char* text, int64_t len2);
+    int64_t __vyb_qt_dlg_warn(int64_t parent, const char* title, int64_t len, const char* text, int64_t len2);
+    int64_t __vyb_qt_dlg_error(int64_t parent, const char* title, int64_t len, const char* text, int64_t len2);
+    int64_t __vyb_qt_dlg_about(int64_t parent, const char* title, int64_t len, const char* text, int64_t len2);
+    int64_t __vyb_qt_dlg_question(int64_t parent, const char* title, int64_t len, const char* text, int64_t len2);
+    int64_t __vyb_qt_dlg_open(int64_t parent, const char* title, int64_t len, const char* filter, int64_t len2);
+    int64_t __vyb_qt_dlg_save(int64_t parent, const char* title, int64_t len, const char* filter, int64_t len2);
+    int64_t __vyb_qt_dlg_dir(int64_t parent, const char* title, int64_t len);
+    int64_t __vyb_qt_dlg_close(int64_t h);
+    vyb_file_str __vyb_qt_dlg_selected(int64_t h);
+    int64_t __vyb_qt_event_result();
     int64_t __vyb_qt_rich_create(int64_t parent);
     int64_t __vyb_qt_rich_set_html(int64_t ed, const char* html, int64_t len);
     vyb_file_str __vyb_qt_rich_html(int64_t ed);
@@ -1871,6 +1882,28 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_file_save), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_dir_select")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_dir_select), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_dlg_info")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_dlg_info), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_dlg_warn")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_dlg_warn), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_dlg_error")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_dlg_error), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_dlg_about")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_dlg_about), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_dlg_question")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_dlg_question), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_dlg_open")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_dlg_open), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_dlg_save")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_dlg_save), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_dlg_dir")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_dlg_dir), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_dlg_close")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_dlg_close), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_dlg_selected")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_dlg_selected), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_event_result")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_event_result), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_rich_create")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_rich_create), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_rich_set_html")] = llvm::orc::ExecutorSymbolDef(
