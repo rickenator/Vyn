@@ -1,0 +1,37 @@
+# Minimal reproducer for the async http/https fetch-worker String UAF.
+# (Confirmed under an AddressSanitizer JIT build.)
+#
+# The full VybLynx app only crashes intermittently because the bug sits in the
+# shared stdlib http client: loop http_get_full against a local threaded server
+# and the freed status-line buffer is re-read on every iteration.
+#
+# Run under ASAN (compiler built with -fsanitize=address):
+#   VYB_STDLIB=stdlib ASAN_OPTIONS=detect_leaks=0:abort_on_error=1:halt_on_error=1 \
+#       ./build-asan/vyb -- repro/http_loop_uaf.vyb
+#
+# Reproduces ~always at 40k iterations. Observed (ASAN):
+#   heap-use-after-free: READ of size 6 at offset 9 of a 16-byte region
+#   freed by __vyb_string_release -> __vyb_string_free
+#   Vyb stack: http_get_full (stdlib/http/mod.vyb) -> main
+# The 16-byte buffer is the status line "HTTP/1.1 200 OK" (15 + NUL) returned by
+# http_read_line; http_status_code re-reads it as substring(9,15) for the code.
+# So a String returned from a function is freed while the caller still holds it
+# (a retain/release imbalance on the function-return String), which is the same
+# ownership defect the full app surfaces during async page loads.
+import http
+
+main()<Int> -> {
+    srv<Int> = http_serve(0, 4)
+    if (srv < 0) { return 1 }
+    port<Int> = http_local_port(srv)
+    if (port <= 0) { return 2 }
+    round<Int> = 0
+    while (round < 40000) {
+        resp<HttpResponse> = http_get_full("127.0.0.1", port, "/greet")
+        if (resp.status != 200) { return 3 }
+        round = round + 1
+    }
+    http_close(srv)
+    println("ok")
+    return 0
+}
