@@ -206,11 +206,13 @@ extern "C" {
     int64_t __vyb_curses_hide_cursor(void);
 #endif
 
-#ifdef VYB_HAVE_QT5
     // Qt5 native GUI runtime helpers (qt stdlib module) over the C++ bridge in
-    // runtime/vyb_qt_bridge.cpp. Windows/labels are opaque Int handles
-    // (qintptr-sized); the title/label-text getters return an owned, registry-
-    // registered { ptr, len } buffer that a Vyb String adopts.
+    // runtime/vyb_qt_bridge.cpp, or the fallback stub shims in
+    // runtime/vyb_qt_stub.cpp when Qt5 is absent (both export the same
+    // __vyb_qt_* extern "C" symbols, so the JIT registrations are
+    // unconditional). Handles are opaque Int (qintptr-sized); the title/label/
+    // button/edit-text getters return an owned, registry-registered
+    // { ptr, len } buffer that a Vyb String adopts.
     int64_t __vyb_qt_init(void);
     int64_t __vyb_qt_quit(void);
     int64_t __vyb_qt_active(void);
@@ -252,7 +254,6 @@ extern "C" {
     int64_t __vyb_qt_event_handle(void);
     int64_t __vyb_qt_event_kind(void);
     int64_t __vyb_qt_event_pop(void);
-#endif
 
 #ifdef VYB_HAVE_OPENSSL
     // TLS runtime helpers (tls stdlib module) over OpenSSL. SSL/SSL_CTX are
@@ -1573,7 +1574,6 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
         runtimeSymbols[mangle("__vyb_curses_hide_cursor")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_hide_cursor), llvm::JITSymbolFlags::Exported);
 #endif
-#ifdef VYB_HAVE_QT5
         runtimeSymbols[mangle("__vyb_qt_init")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_init), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_quit")] = llvm::orc::ExecutorSymbolDef(
@@ -1654,7 +1654,6 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_event_kind), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_event_pop")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_event_pop), llvm::JITSymbolFlags::Exported);
-#endif
         runtimeSymbols[mangle("__vyb_net_open")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_open), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_net_close")] = llvm::orc::ExecutorSymbolDef(
