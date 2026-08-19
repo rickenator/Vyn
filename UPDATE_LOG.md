@@ -934,10 +934,19 @@ and `QtEvent::IndexChanged`/`ValueChanged`; and the UI scheduling barrier
 until a control event or timeout, so GUI code stays on the main thread (Qt
 affinity) while the `asyncs` fiber pool runs background work concurrently. A
 worker fiber can set a widget, enqueueing a record that wakes a blocked
-`qt_wait_event` (covered by `test/qt/test_qt_more.vyb`). TODO for the full
-package: event-loop `app.exec()`-driven `qt_run`, cross-thread background-to-UI
-posting, typed `QtWidget` handles (Phase C), and the table-driven `tools/gen_qt.py`
-generator to end the hand-edited four-way drift.
+`qt_wait_event` (covered by `test/qt/test_qt_more.vyb`).
+
+Status (gen generator): the table-driven `tools/gen_qt.py` generator landed and
+now owns the qt module's mechanical layers (stub fallback, cgen dispatch, semantic
+allow-list + Int/String sets, main.cpp JIT decls/regs, and the mod.vyb wrappers +
+QtEvent/QtWidgetKind enums), regenerating them in place from one table and
+drift-checking with `--check`. Proven end-to-end: adding the QDial widget was one
+table row + a hand-written bridge section, then `python3 tools/gen_qt.py`
+propagated it across every layer automatically.
+
+TODO for the full package: event-loop `app.exec()`-driven `qt_run`, cross-thread
+background-to-UI posting, typed `QtWidget` handles (Phase C), and more widgets
+(now cheap via the generator).
 
 Honest limits: no custom painting/styling/tables/trees (compose from
 primitives); remain on Qt5 for now (note a Qt6 migration: CMake package +

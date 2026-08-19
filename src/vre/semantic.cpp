@@ -2133,6 +2133,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_regex_replace" || name == "vyb_regex_replace_all" ||
             name == "vyb_strchan_len" || name == "vyb_strchan_close" ||
             name == "vyb_strchan_free" ||
+        // gen_qt[sem_allow]: begin
             name == "vyb_qt_init" || name == "vyb_qt_quit" ||
             name == "vyb_qt_active" || name == "vyb_qt_process_events" ||
             name == "vyb_qt_set_timer" || name == "vyb_qt_timer_fired" ||
@@ -2142,26 +2143,26 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_qt_window_height" || name == "vyb_qt_window_show" ||
             name == "vyb_qt_window_hide" || name == "vyb_qt_window_visible" ||
             name == "vyb_qt_label_create" || name == "vyb_qt_label_set_text" ||
-            name == "vyb_qt_label_text" ||
-            name == "vyb_qt_button_create" || name == "vyb_qt_button_set_text" ||
-            name == "vyb_qt_button_text" || name == "vyb_qt_button_set_enabled" ||
-            name == "vyb_qt_edit_create" || name == "vyb_qt_edit_text" ||
-            name == "vyb_qt_edit_set_text" || name == "vyb_qt_edit_set_placeholder" ||
-            name == "vyb_qt_checkbox_create" || name == "vyb_qt_checkbox_checked" ||
-            name == "vyb_qt_checkbox_set_checked" ||
+            name == "vyb_qt_label_text" || name == "vyb_qt_button_create" ||
+            name == "vyb_qt_button_set_text" || name == "vyb_qt_button_text" ||
+            name == "vyb_qt_button_set_enabled" || name == "vyb_qt_edit_create" ||
+            name == "vyb_qt_edit_text" || name == "vyb_qt_edit_set_text" ||
+            name == "vyb_qt_edit_set_placeholder" || name == "vyb_qt_checkbox_create" ||
+            name == "vyb_qt_checkbox_checked" || name == "vyb_qt_checkbox_set_checked" ||
             name == "vyb_qt_progress_create" || name == "vyb_qt_progress_set_value" ||
             name == "vyb_qt_vbox" || name == "vyb_qt_hbox" ||
             name == "vyb_qt_layout_add" || name == "vyb_qt_kind" ||
             name == "vyb_qt_event_count" || name == "vyb_qt_event_handle" ||
             name == "vyb_qt_event_kind" || name == "vyb_qt_event_pop" ||
-            name == "vyb_qt_wait_event" ||
-            name == "vyb_qt_combo_create" || name == "vyb_qt_combo_add_item" ||
-            name == "vyb_qt_combo_count" || name == "vyb_qt_combo_current_index" ||
-            name == "vyb_qt_combo_set_current_index" || name == "vyb_qt_combo_item_text" ||
-            name == "vyb_qt_spin_create" || name == "vyb_qt_spin_value" ||
-            name == "vyb_qt_spin_set_value" ||
+            name == "vyb_qt_wait_event" || name == "vyb_qt_combo_create" ||
+            name == "vyb_qt_combo_add_item" || name == "vyb_qt_combo_count" ||
+            name == "vyb_qt_combo_current_index" || name == "vyb_qt_combo_set_current_index" ||
+            name == "vyb_qt_combo_item_text" || name == "vyb_qt_spin_create" ||
+            name == "vyb_qt_spin_value" || name == "vyb_qt_spin_set_value" ||
             name == "vyb_qt_slider_create" || name == "vyb_qt_slider_value" ||
-            name == "vyb_qt_slider_set_value") {
+            name == "vyb_qt_slider_set_value" || name == "vyb_qt_dial_create" ||
+            name == "vyb_qt_dial_value" || name == "vyb_qt_dial_set_value") {
+// gen_qt[sem_allow]: end
             isIntrinsic = true;
         }
     }
@@ -2664,6 +2665,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             // label-text getters return String. Arity/diagnostic detail is left to
             // codegen.
             static const std::set<std::string> qtIntFuncs = {
+        // gen_qt[sem_int]: begin
                 "vyb_qt_init",
                 "vyb_qt_quit",
                 "vyb_qt_active",
@@ -2672,6 +2674,8 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 "vyb_qt_timer_fired",
                 "vyb_qt_window_create",
                 "vyb_qt_window_close",
+                "vyb_qt_window_set_title",
+                "vyb_qt_window_title",
                 "vyb_qt_window_resize",
                 "vyb_qt_window_width",
                 "vyb_qt_window_height",
@@ -2680,10 +2684,13 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 "vyb_qt_window_visible",
                 "vyb_qt_label_create",
                 "vyb_qt_label_set_text",
+                "vyb_qt_label_text",
                 "vyb_qt_button_create",
                 "vyb_qt_button_set_text",
+                "vyb_qt_button_text",
                 "vyb_qt_button_set_enabled",
                 "vyb_qt_edit_create",
+                "vyb_qt_edit_text",
                 "vyb_qt_edit_set_text",
                 "vyb_qt_edit_set_placeholder",
                 "vyb_qt_checkbox_create",
@@ -2705,19 +2712,26 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 "vyb_qt_combo_count",
                 "vyb_qt_combo_current_index",
                 "vyb_qt_combo_set_current_index",
+                "vyb_qt_combo_item_text",
                 "vyb_qt_spin_create",
                 "vyb_qt_spin_value",
                 "vyb_qt_spin_set_value",
                 "vyb_qt_slider_create",
                 "vyb_qt_slider_value",
                 "vyb_qt_slider_set_value",
+                "vyb_qt_dial_create",
+                "vyb_qt_dial_value",
+                "vyb_qt_dial_set_value",
+// gen_qt[sem_int]: end
             };
             static const std::set<std::string> qtStrFuncs = {
+        // gen_qt[sem_str]: begin
                 "vyb_qt_window_title",
                 "vyb_qt_label_text",
                 "vyb_qt_button_text",
                 "vyb_qt_edit_text",
                 "vyb_qt_combo_item_text",
+// gen_qt[sem_str]: end
             };
             if (qtIntFuncs.count(name) || qtStrFuncs.count(name)) {
                 auto* resTy = new ast::TypeName(node->loc,

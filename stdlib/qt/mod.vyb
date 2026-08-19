@@ -27,156 +27,140 @@
 # a fresh Int handle (0 on failure), and qt_window_width/height return the
 # current size (or -1 on a bad handle).
 
-# Initialize the QApplication (once). Returns true if the GUI is available.
-# Defaults a headless process to the offscreen QPA platform (no $DISPLAY).
+# gen_qt[mod_wrappers]: begin
+# Initialize the QApplication (once); true if the GUI is available.
 share(all)
 qt_init()<Bool> -> {
     return vyb_qt_init() == 1
 }
 
-# Shut the GUI down, destroying all live windows, labels, and the timer.
-# Terminal: do not touch Qt handles afterwards. Returns 0.
+# Shut the GUI down (terminal - do not use Qt handles afterwards). Returns 0.
 share(all)
 qt_quit()<Int> -> {
     return vyb_qt_quit()
 }
 
-# true while the GUI is initialized (qt_init succeeded, qt_quit not yet run).
+# true while the GUI is initialized.
 share(all)
 qt_active()<Bool> -> {
     return vyb_qt_active() == 1
 }
 
-# Pump the event loop once (paints queued frames, delivers timer/paint/input
-# events). Returns 0 on success, -1 if the GUI is not initialized.
+# Pump the Qt event loop once. Returns 0, or -1 if the GUI is not running.
 share(all)
 qt_process_events()<Int> -> {
     return vyb_qt_process_events()
 }
 
-# Arm a repeating timer every `ms` milliseconds. Qt treats 0 as "as fast as
-# possible". Poll qt_timer_fired() to learn when an interval has elapsed.
-# Returns 0 on success, -1 if the GUI is not initialized.
+# Arm a repeating timer every `ms` ms; poll qt_timer_fired(). Returns 0.
 share(all)
 qt_set_timer(ms<Int>)<Int> -> {
     return vyb_qt_set_timer(ms)
 }
 
-# true once the armed timer has fired at least one interval since the last
-# check; the read clears the flag. false while intervals are still pending.
+# true once the armed timer has fired since the last check (read clears).
 share(all)
 qt_timer_fired()<Bool> -> {
     return vyb_qt_timer_fired() == 1
 }
 
-# --- Windows (QWidget) ------------------------------------------------------
-
-# Create a top-level window. Returns its Int handle, or 0 on failure (e.g. the
-# GUI is not initialized). Pass the handle to the qt_window_* setters/getters.
+# Create a top-level window; returns its Int handle or 0 on failure.
 share(all)
 qt_window_create()<Int> -> {
     return vyb_qt_window_create()
 }
 
-# Close (destroy) window handle `w`; child labels go with it. Passing 0 is a
-# no-op. Returns 0.
+# Destroy window `w` (children go with it). Returns 0.
 share(all)
 qt_window_close(w<Int>)<Int> -> {
     return vyb_qt_window_close(w)
 }
 
-# Set titlebar text. Returns 0 on success, -1 on a bad handle.
+# Set titlebar text. Returns 0, or -1 on a bad handle.
 share(all)
 qt_window_set_title(w<Int>, title<String>)<Int> -> {
     return vyb_qt_window_set_title(w, title)
 }
 
-# Current titlebar text (String). Returns "" on a bad handle.
+# Current titlebar text (String); "" on a bad handle.
 share(all)
 qt_window_title(w<Int>)<String> -> {
     return vyb_qt_window_title(w)
 }
 
-# Resize to (width, height) pixels. Returns 0 on success, -1 on a bad handle.
+# Resize to (width, height) pixels. Returns 0.
 share(all)
 qt_window_resize(w<Int>, width<Int>, height<Int>)<Int> -> {
     return vyb_qt_window_resize(w, width, height)
 }
 
-# Current content width in pixels, or -1 on a bad handle.
+# Content width in pixels, or -1 on a bad handle.
 share(all)
 qt_window_width(w<Int>)<Int> -> {
     return vyb_qt_window_width(w)
 }
 
-# Current content height in pixels, or -1 on a bad handle.
+# Content height in pixels, or -1 on a bad handle.
 share(all)
 qt_window_height(w<Int>)<Int> -> {
     return vyb_qt_window_height(w)
 }
 
-# Show (map) the window so it renders in the compositor. Returns 0 on success.
+# Show (map) the window. Returns 0.
 share(all)
 qt_window_show(w<Int>)<Int> -> {
     return vyb_qt_window_show(w)
 }
 
-# Hide (unmap) the window. Returns 0 on success, -1 on a bad handle.
+# Hide (unmap) the window. Returns 0.
 share(all)
 qt_window_hide(w<Int>)<Int> -> {
     return vyb_qt_window_hide(w)
 }
 
-# true while window `w` is visible (shown and not minimized/occluded), else
-# false (also on a 0/bad handle).
+# true while window `w` is visible, else false.
 share(all)
 qt_window_visible(w<Int>)<Bool> -> {
     return vyb_qt_window_visible(w) == 1
 }
 
-# --- Labels (QLabel) --------------------------------------------------------
-
-# Create a label with `text` as a child of window handle `parent` (0 = no
-# parent / top-level). Returns its Int handle, or 0 on failure.
+# Create a label with `text` under `parent` (0 = none); returns its handle or 0.
 share(all)
 qt_label_create(parent<Int>, text<String>)<Int> -> {
     return vyb_qt_label_create(parent, text)
 }
 
-# Replace label text. Returns 0 on success, -1 on a non-label handle.
+# Replace label text. Returns 0, or -1 on a non-label handle.
 share(all)
 qt_label_set_text(label<Int>, text<String>)<Int> -> {
     return vyb_qt_label_set_text(label, text)
 }
 
-# Current label text (String). Returns "" on a non-label handle.
+# Current label text (String); "" on a non-label handle.
 share(all)
 qt_label_text(label<Int>)<String> -> {
     return vyb_qt_label_text(label)
 }
 
-# --- Buttons (QPushButton) ---------------------------------------------------
-
-# Create a push button with `text` as a child of `parent` (0 = none). Returns
-# its Int handle, or 0 on failure. A click enqueues a QtEvent::Click record.
+# Create a push button under `parent`; a click enqueues QtEvent::Click. Returns its handle.
 share(all)
 qt_button_create(parent<Int>, text<String>)<Int> -> {
     return vyb_qt_button_create(parent, text)
 }
 
-# Replace button label. Returns 0 on success, -1 on a non-button handle.
+# Replace button label. Returns 0, or -1 on a non-button handle.
 share(all)
 qt_button_set_text(button<Int>, text<String>)<Int> -> {
     return vyb_qt_button_set_text(button, text)
 }
 
-# Current button label (String). Returns "" on a non-button handle.
+# Current button label (String); "" on a non-button handle.
 share(all)
 qt_button_text(button<Int>)<String> -> {
     return vyb_qt_button_text(button)
 }
 
-# Enable (true) / disable (false) the button. Returns 0 on success.
+# Enable (true) / disable (false) the button. Returns 0.
 share(all)
 qt_button_set_enabled(button<Int>, enabled<Bool>)<Int> -> {
     if (enabled) {
@@ -185,49 +169,43 @@ qt_button_set_enabled(button<Int>, enabled<Bool>)<Int> -> {
     return vyb_qt_button_set_enabled(button, 0)
 }
 
-# --- Text edits (QLineEdit) --------------------------------------------------
-
-# Create a single-line text edit with initial `text` as a child of `parent`.
-# Returns its Int handle, or 0 on failure.
+# Create a single-line text edit under `parent`; text changes enqueue QtEvent::TextChanged.
 share(all)
 qt_edit_create(parent<Int>, text<String>)<Int> -> {
     return vyb_qt_edit_create(parent, text)
 }
 
-# Current edit text (String). Returns "" on a non-edit handle.
+# Current edit text (String); "" on a non-edit handle.
 share(all)
 qt_edit_text(edit<Int>)<String> -> {
     return vyb_qt_edit_text(edit)
 }
 
-# Replace edit text. Returns 0 on success, -1 on a non-edit handle.
+# Replace edit text. Returns 0, or -1 on a non-edit handle.
 share(all)
 qt_edit_set_text(edit<Int>, text<String>)<Int> -> {
     return vyb_qt_edit_set_text(edit, text)
 }
 
-# Set placeholder (ghost) text shown when the edit is empty. Returns 0.
+# Set placeholder (ghost) text. Returns 0.
 share(all)
 qt_edit_set_placeholder(edit<Int>, text<String>)<Int> -> {
     return vyb_qt_edit_set_placeholder(edit, text)
 }
 
-# --- Checkboxes (QCheckBox) --------------------------------------------------
-
-# Create a checkbox with `text` as a child of `parent`. Returns its Int handle,
-# or 0 on failure. A toggled change enqueues a QtEvent::Toggled record.
+# Create a checkbox under `parent`; toggles enqueue QtEvent::Toggled. Returns its handle.
 share(all)
 qt_checkbox_create(parent<Int>, text<String>)<Int> -> {
     return vyb_qt_checkbox_create(parent, text)
 }
 
-# true if the checkbox is checked, else false (also on a non-checkbox handle).
+# true if the checkbox is checked, else false.
 share(all)
 qt_checkbox_checked(box<Int>)<Bool> -> {
     return vyb_qt_checkbox_checked(box) == 1
 }
 
-# Check (true) / uncheck (false) the box. Returns 0 on success.
+# Check (true) / uncheck (false) the box (enqueues QtEvent::Toggled). Returns 0.
 share(all)
 qt_checkbox_set_checked(box<Int>, on<Bool>)<Int> -> {
     if (on) {
@@ -236,66 +214,109 @@ qt_checkbox_set_checked(box<Int>, on<Bool>)<Int> -> {
     return vyb_qt_checkbox_set_checked(box, 0)
 }
 
-# --- Progress bars (QProgressBar) --------------------------------------------
-
-# Create a progress bar with range 0..max as a child of `parent`. Returns its
-# Int handle, or 0 on failure.
+# Create a progress bar with range 0..max under `parent`. Returns its handle or 0.
 share(all)
 qt_progress_create(parent<Int>, max<Int>)<Int> -> {
     return vyb_qt_progress_create(parent, max)
 }
 
-# Set the progress value (clamped to the range). Returns 0 on success.
+# Set the progress value (clamped). Returns 0.
 share(all)
 qt_progress_set_value(bar<Int>, value<Int>)<Int> -> {
     return vyb_qt_progress_set_value(bar, value)
 }
 
-# --- Combo boxes (QComboBox) --------------------------------------------------
+# Create a vertical box layout on window `parent`. Returns a layout handle.
+share(all)
+qt_vbox(parent<Int>)<Int> -> {
+    return vyb_qt_vbox(parent)
+}
 
-# Create a read-only combo box as a child of `parent` (0 = none). Returns its Int
-# handle, or 0 on failure. A current-index change enqueues a QtEvent::IndexChanged
-# record.
+# Create a horizontal box layout on window `parent`. Returns a layout handle.
+share(all)
+qt_hbox(parent<Int>)<Int> -> {
+    return vyb_qt_hbox(parent)
+}
+
+# Add widget `child` to box-layout `layout`. Returns 0.
+share(all)
+qt_layout_add(layout<Int>, child<Int>)<Int> -> {
+    return vyb_qt_layout_add(layout, child)
+}
+
+# Static widget kind (QtWidgetKind) of handle `h`, or 0 if not a widget.
+share(all)
+qt_kind(h<Int>)<Int> -> {
+    return vyb_qt_kind(h)
+}
+
+# Number of pending control events queued since the last drains.
+share(all)
+qt_event_count()<Int> -> {
+    return vyb_qt_event_count()
+}
+
+# Handle of the oldest queued event's widget (0 if empty).
+share(all)
+qt_event_handle()<Int> -> {
+    return vyb_qt_event_handle()
+}
+
+# Kind of the oldest queued event (QtEvent); 0 if empty.
+share(all)
+qt_event_kind()<Int> -> {
+    return vyb_qt_event_kind()
+}
+
+# Remove the oldest queued event. Returns 0, or -1 if empty.
+share(all)
+qt_event_pop()<Int> -> {
+    return vyb_qt_event_pop()
+}
+
+# Pump Qt until a control event (true) or `timeout` ms lapses (false); negative waits.
+share(all)
+qt_wait_event(timeout<Int>)<Bool> -> {
+    return vyb_qt_wait_event(timeout) == 1
+}
+
+# Create a combo box under `parent`; index changes enqueue QtEvent::IndexChanged.
 share(all)
 qt_combo_create(parent<Int>)<Int> -> {
     return vyb_qt_combo_create(parent)
 }
 
-# Append `text` as the last combo item. Returns 0 on success, -1 on a bad combo.
+# Append `text` as the last combo item. Returns 0.
 share(all)
 qt_combo_add_item(combo<Int>, text<String>)<Int> -> {
     return vyb_qt_combo_add_item(combo, text)
 }
 
-# Number of combo items, or -1 on a bad handle.
+# Combo item count, or -1 on a bad handle.
 share(all)
 qt_combo_count(combo<Int>)<Int> -> {
     return vyb_qt_combo_count(combo)
 }
 
-# Index of the currently selected combo item (0-based), or -1 on a bad handle.
+# Currently selected combo index (0-based), or -1 on a bad handle.
 share(all)
 qt_combo_current_index(combo<Int>)<Int> -> {
     return vyb_qt_combo_current_index(combo)
 }
 
-# Select combo item `idx` (0-based). Returns 0 on success, -1 on a bad handle.
+# Select combo item `idx`. Returns 0.
 share(all)
 qt_combo_set_current_index(combo<Int>, idx<Int>)<Int> -> {
     return vyb_qt_combo_set_current_index(combo, idx)
 }
 
-# Text of combo item `idx` (String). Returns "" on a bad handle/index.
+# Text of combo item `idx` (String); "" on a bad handle/index.
 share(all)
 qt_combo_item_text(combo<Int>, idx<Int>)<String> -> {
     return vyb_qt_combo_item_text(combo, idx)
 }
 
-# --- Spin boxes (QSpinBox) -----------------------------------------------------
-
-# Create an integer spin box with range [min, max] as a child of `parent`.
-# Returns its Int handle, or 0 on failure. A value change enqueues a
-# QtEvent::ValueChanged record.
+# Create an integer spin box with range [min, max]; value changes enqueue QtEvent::ValueChanged.
 share(all)
 qt_spin_create(parent<Int>, min<Int>, max<Int>)<Int> -> {
     return vyb_qt_spin_create(parent, min, max)
@@ -307,17 +328,13 @@ qt_spin_value(spin<Int>)<Int> -> {
     return vyb_qt_spin_value(spin)
 }
 
-# Set the spin box value (clamped to its range). Returns 0 on success.
+# Set the spin box value (clamped). Returns 0.
 share(all)
 qt_spin_set_value(spin<Int>, value<Int>)<Int> -> {
     return vyb_qt_spin_set_value(spin, value)
 }
 
-# --- Sliders (QSlider) ----------------------------------------------------------
-
-# Create a horizontal slider with range [min, max] as a child of `parent`.
-# Returns its Int handle, or 0 on failure. A value change enqueues a
-# QtEvent::ValueChanged record.
+# Create a horizontal slider with range [min, max]; value changes enqueue QtEvent::ValueChanged.
 share(all)
 qt_slider_create(parent<Int>, min<Int>, max<Int>)<Int> -> {
     return vyb_qt_slider_create(parent, min, max)
@@ -329,45 +346,40 @@ qt_slider_value(slider<Int>)<Int> -> {
     return vyb_qt_slider_value(slider)
 }
 
-# Set the slider value (clamped to its range). Returns 0 on success.
+# Set the slider value (clamped). Returns 0.
 share(all)
 qt_slider_set_value(slider<Int>, value<Int>)<Int> -> {
     return vyb_qt_slider_set_value(slider, value)
 }
 
-# --- Box layouts -------------------------------------------------------------
-
-# Create a vertical box layout installed on window `parent`; child widgets are
-# stacked top-to-bottom via qt_layout_add. Returns an Int layout handle, or 0 on
-# failure. The layout is owned by its window and needs no explicit free.
+# Create a dial with range [min, max]; value changes enqueue QtEvent::ValueChanged.
 share(all)
-qt_vbox(parent<Int>)<Int> -> {
-    return vyb_qt_vbox(parent)
+qt_dial_create(parent<Int>, min<Int>, max<Int>)<Int> -> {
+    return vyb_qt_dial_create(parent, min, max)
 }
 
-# Create a horizontal box layout installed on window `parent`; child widgets are
-# laid out left-to-right via qt_layout_add. Returns an Int layout handle, or 0
-# on failure.
+# Current dial value, or 0 on a bad handle.
 share(all)
-qt_hbox(parent<Int>)<Int> -> {
-    return vyb_qt_hbox(parent)
+qt_dial_value(dial<Int>)<Int> -> {
+    return vyb_qt_dial_value(dial)
 }
 
-# Add widget `child` to box-layout `layout`. Returns 0 on success, -1 on a bad
-# layout or child handle.
+# Set the dial value (clamped). Returns 0.
 share(all)
-qt_layout_add(layout<Int>, child<Int>)<Int> -> {
-    return vyb_qt_layout_add(layout, child)
+qt_dial_set_value(dial<Int>, value<Int>)<Int> -> {
+    return vyb_qt_dial_set_value(dial, value)
 }
+# gen_qt[mod_wrappers]: end
 
-# --- Kind introspection ------------------------------------------------------
-
-# Static kind of a widget handle (QtWidgetKind), so wrong-kind accessors can be
-# rejected before calling type-specific functions. Layout handles are not
-# widgets and report 0.
+# gen_qt[mod_enums]: begin
 share(all)
-qt_kind(h<Int>)<Int> -> {
-    return vyb_qt_kind(h)
+enum QtEvent {
+    none = 0
+    click = 1
+    textChanged = 2
+    toggled = 3
+    indexChanged = 4
+    valueChanged = 5
 }
 
 share(all)
@@ -382,55 +394,6 @@ enum QtWidgetKind {
     combo = 7
     spin = 8
     slider = 9
+    dial = 10
 }
-
-# --- Polled event queue ------------------------------------------------------
-
-# UI scheduling barrier: pump the Qt event loop until at least one control event
-# is queued (true), or `timeout` ms elapse (false). A negative timeout waits until
-# an event arrives; 0 does a single pump and returns immediately. This is how a
-# main-thread UI loop blocks *without* busy-spinning while the asyncs pool runs
-# background work concurrently. After it returns true, drain the queue with
-# qt_event_handle / qt_event_kind / qt_event_pop. Returns false if the GUI is not
-# initialized.
-share(all)
-qt_wait_event(timeout<Int>)<Bool> -> {
-    return vyb_qt_wait_event(timeout) == 1
-}
-
-# Number of pending control events (clicks / textChanged / toggled / index /
-# value changes) queued since the last drains. Signals fire only while the Qt
-# event loop is pumping (qt_process_events / qt_wait_event).
-share(all)
-qt_event_count()<Int> -> {
-    return vyb_qt_event_count()
-}
-
-# Handle of the oldest queued event's widget (0 if the queue is empty).
-share(all)
-qt_event_handle()<Int> -> {
-    return vyb_qt_event_handle()
-}
-
-# Kind of the oldest queued event (QtEvent value); 0 if the queue is empty.
-share(all)
-qt_event_kind()<Int> -> {
-    return vyb_qt_event_kind()
-}
-
-# Remove the oldest queued event (after its handle/kind were read). Returns 0 on
-# success, -1 if the queue is empty.
-share(all)
-qt_event_pop()<Int> -> {
-    return vyb_qt_event_pop()
-}
-
-share(all)
-enum QtEvent {
-    none = 0
-    click = 1
-    textChanged = 2
-    toggled = 3
-    indexChanged = 4
-    valueChanged = 5
-}
+# gen_qt[mod_enums]: end

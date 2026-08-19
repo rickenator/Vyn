@@ -1,5 +1,5 @@
 {
-  "git_rev": "7a9fcb54ba878e70495107ece5c71ec1cd14442e",
+  "git_rev": "f008f06a1f8b1620ce10b154da6335e03e620b93",
   "modules": [
     "agents",
     "asyncs",
@@ -152,7 +152,7 @@
         "files": [
           "stdlib/qt/mod.vyb"
         ],
-        "exported": 55,
+        "exported": 58,
         "fan_in": 0,
         "fan_out": 0
       },
@@ -591,6 +591,15 @@
           "qt_checkbox_set_checked",
           "qt_progress_create",
           "qt_progress_set_value",
+          "qt_vbox",
+          "qt_hbox",
+          "qt_layout_add",
+          "qt_kind",
+          "qt_event_count",
+          "qt_event_handle",
+          "qt_event_kind",
+          "qt_event_pop",
+          "qt_wait_event",
           "qt_combo_create",
           "qt_combo_add_item",
           "qt_combo_count",
@@ -603,17 +612,11 @@
           "qt_slider_create",
           "qt_slider_value",
           "qt_slider_set_value",
-          "qt_vbox",
-          "qt_hbox",
-          "qt_layout_add",
-          "qt_kind",
-          "QtWidgetKind",
-          "qt_wait_event",
-          "qt_event_count",
-          "qt_event_handle",
-          "qt_event_kind",
-          "qt_event_pop",
-          "QtEvent"
+          "qt_dial_create",
+          "qt_dial_value",
+          "qt_dial_set_value",
+          "QtEvent",
+          "QtWidgetKind"
         ]
       },
       {
@@ -2762,7 +2765,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "enum",
         "signature": "enum QtEvent {",
-        "summary": "",
+        "summary": "gen_qt[mod_enums]: begin",
         "fan_in": 0
       },
       {
@@ -2780,7 +2783,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_active()<Bool> ->",
-        "summary": "true while the GUI is initialized (qt_init succeeded, qt_quit not yet run).",
+        "summary": "true while the GUI is initialized.",
         "fan_in": 0
       },
       {
@@ -2789,7 +2792,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_button_create(parent<Int>, text<String>)<Int> ->",
-        "summary": "Create a push button with `text` as a child of `parent` (0 = none). Returns",
+        "summary": "Create a push button under `parent`; a click enqueues QtEvent::Click. Returns its handle.",
         "fan_in": 0
       },
       {
@@ -2798,7 +2801,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_button_set_enabled(button<Int>, enabled<Bool>)<Int> ->",
-        "summary": "Enable (true) / disable (false) the button. Returns 0 on success.",
+        "summary": "Enable (true) / disable (false) the button. Returns 0.",
         "fan_in": 0
       },
       {
@@ -2807,7 +2810,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_button_set_text(button<Int>, text<String>)<Int> ->",
-        "summary": "Replace button label. Returns 0 on success, -1 on a non-button handle.",
+        "summary": "Replace button label. Returns 0, or -1 on a non-button handle.",
         "fan_in": 0
       },
       {
@@ -2816,7 +2819,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_button_text(button<Int>)<String> ->",
-        "summary": "Current button label (String). Returns \"\" on a non-button handle.",
+        "summary": "Current button label (String); \"\" on a non-button handle.",
         "fan_in": 0
       },
       {
@@ -2825,7 +2828,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_checkbox_checked(box<Int>)<Bool> ->",
-        "summary": "true if the checkbox is checked, else false (also on a non-checkbox handle).",
+        "summary": "true if the checkbox is checked, else false.",
         "fan_in": 0
       },
       {
@@ -2834,7 +2837,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_checkbox_create(parent<Int>, text<String>)<Int> ->",
-        "summary": "Create a checkbox with `text` as a child of `parent`. Returns its Int handle,",
+        "summary": "Create a checkbox under `parent`; toggles enqueue QtEvent::Toggled. Returns its handle.",
         "fan_in": 0
       },
       {
@@ -2843,7 +2846,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_checkbox_set_checked(box<Int>, on<Bool>)<Int> ->",
-        "summary": "Check (true) / uncheck (false) the box. Returns 0 on success.",
+        "summary": "Check (true) / uncheck (false) the box (enqueues QtEvent::Toggled). Returns 0.",
         "fan_in": 0
       },
       {
@@ -2852,7 +2855,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_combo_add_item(combo<Int>, text<String>)<Int> ->",
-        "summary": "Append `text` as the last combo item. Returns 0 on success, -1 on a bad combo.",
+        "summary": "Append `text` as the last combo item. Returns 0.",
         "fan_in": 0
       },
       {
@@ -2861,7 +2864,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_combo_count(combo<Int>)<Int> ->",
-        "summary": "Number of combo items, or -1 on a bad handle.",
+        "summary": "Combo item count, or -1 on a bad handle.",
         "fan_in": 0
       },
       {
@@ -2870,7 +2873,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_combo_create(parent<Int>)<Int> ->",
-        "summary": "Create a read-only combo box as a child of `parent` (0 = none). Returns its Int",
+        "summary": "Create a combo box under `parent`; index changes enqueue QtEvent::IndexChanged.",
         "fan_in": 0
       },
       {
@@ -2879,7 +2882,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_combo_current_index(combo<Int>)<Int> ->",
-        "summary": "Index of the currently selected combo item (0-based), or -1 on a bad handle.",
+        "summary": "Currently selected combo index (0-based), or -1 on a bad handle.",
         "fan_in": 0
       },
       {
@@ -2888,7 +2891,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_combo_item_text(combo<Int>, idx<Int>)<String> ->",
-        "summary": "Text of combo item `idx` (String). Returns \"\" on a bad handle/index.",
+        "summary": "Text of combo item `idx` (String); \"\" on a bad handle/index.",
         "fan_in": 0
       },
       {
@@ -2897,7 +2900,34 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_combo_set_current_index(combo<Int>, idx<Int>)<Int> ->",
-        "summary": "Select combo item `idx` (0-based). Returns 0 on success, -1 on a bad handle.",
+        "summary": "Select combo item `idx`. Returns 0.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_dial_create",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_dial_create(parent<Int>, min<Int>, max<Int>)<Int> ->",
+        "summary": "Create a dial with range [min, max]; value changes enqueue QtEvent::ValueChanged.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_dial_set_value",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_dial_set_value(dial<Int>, value<Int>)<Int> ->",
+        "summary": "Set the dial value (clamped). Returns 0.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_dial_value",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_dial_value(dial<Int>)<Int> ->",
+        "summary": "Current dial value, or 0 on a bad handle.",
         "fan_in": 0
       },
       {
@@ -2906,7 +2936,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_edit_create(parent<Int>, text<String>)<Int> ->",
-        "summary": "Create a single-line text edit with initial `text` as a child of `parent`.",
+        "summary": "Create a single-line text edit under `parent`; text changes enqueue QtEvent::TextChanged.",
         "fan_in": 0
       },
       {
@@ -2915,7 +2945,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_edit_set_placeholder(edit<Int>, text<String>)<Int> ->",
-        "summary": "Set placeholder (ghost) text shown when the edit is empty. Returns 0.",
+        "summary": "Set placeholder (ghost) text. Returns 0.",
         "fan_in": 0
       },
       {
@@ -2924,7 +2954,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_edit_set_text(edit<Int>, text<String>)<Int> ->",
-        "summary": "Replace edit text. Returns 0 on success, -1 on a non-edit handle.",
+        "summary": "Replace edit text. Returns 0, or -1 on a non-edit handle.",
         "fan_in": 0
       },
       {
@@ -2933,7 +2963,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_edit_text(edit<Int>)<String> ->",
-        "summary": "Current edit text (String). Returns \"\" on a non-edit handle.",
+        "summary": "Current edit text (String); \"\" on a non-edit handle.",
         "fan_in": 0
       },
       {
@@ -2942,7 +2972,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_event_count()<Int> ->",
-        "summary": "Number of pending control events (clicks / textChanged / toggled / index /",
+        "summary": "Number of pending control events queued since the last drains.",
         "fan_in": 0
       },
       {
@@ -2951,7 +2981,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_event_handle()<Int> ->",
-        "summary": "Handle of the oldest queued event's widget (0 if the queue is empty).",
+        "summary": "Handle of the oldest queued event's widget (0 if empty).",
         "fan_in": 0
       },
       {
@@ -2960,7 +2990,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_event_kind()<Int> ->",
-        "summary": "Kind of the oldest queued event (QtEvent value); 0 if the queue is empty.",
+        "summary": "Kind of the oldest queued event (QtEvent); 0 if empty.",
         "fan_in": 0
       },
       {
@@ -2969,7 +2999,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_event_pop()<Int> ->",
-        "summary": "Remove the oldest queued event (after its handle/kind were read). Returns 0 on",
+        "summary": "Remove the oldest queued event. Returns 0, or -1 if empty.",
         "fan_in": 0
       },
       {
@@ -2978,7 +3008,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_hbox(parent<Int>)<Int> ->",
-        "summary": "Create a horizontal box layout installed on window `parent`; child widgets are",
+        "summary": "Create a horizontal box layout on window `parent`. Returns a layout handle.",
         "fan_in": 0
       },
       {
@@ -2987,7 +3017,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_init()<Bool> ->",
-        "summary": "Initialize the QApplication (once). Returns true if the GUI is available.",
+        "summary": "gen_qt[mod_wrappers]: begin",
         "fan_in": 0
       },
       {
@@ -2996,7 +3026,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_kind(h<Int>)<Int> ->",
-        "summary": "Static kind of a widget handle (QtWidgetKind), so wrong-kind accessors can be",
+        "summary": "Static widget kind (QtWidgetKind) of handle `h`, or 0 if not a widget.",
         "fan_in": 0
       },
       {
@@ -3005,7 +3035,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_label_create(parent<Int>, text<String>)<Int> ->",
-        "summary": "Create a label with `text` as a child of window handle `parent` (0 = no",
+        "summary": "Create a label with `text` under `parent` (0 = none); returns its handle or 0.",
         "fan_in": 0
       },
       {
@@ -3014,7 +3044,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_label_set_text(label<Int>, text<String>)<Int> ->",
-        "summary": "Replace label text. Returns 0 on success, -1 on a non-label handle.",
+        "summary": "Replace label text. Returns 0, or -1 on a non-label handle.",
         "fan_in": 0
       },
       {
@@ -3023,7 +3053,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_label_text(label<Int>)<String> ->",
-        "summary": "Current label text (String). Returns \"\" on a non-label handle.",
+        "summary": "Current label text (String); \"\" on a non-label handle.",
         "fan_in": 0
       },
       {
@@ -3032,7 +3062,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_layout_add(layout<Int>, child<Int>)<Int> ->",
-        "summary": "Add widget `child` to box-layout `layout`. Returns 0 on success, -1 on a bad",
+        "summary": "Add widget `child` to box-layout `layout`. Returns 0.",
         "fan_in": 0
       },
       {
@@ -3041,7 +3071,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_process_events()<Int> ->",
-        "summary": "Pump the event loop once (paints queued frames, delivers timer/paint/input",
+        "summary": "Pump the Qt event loop once. Returns 0, or -1 if the GUI is not running.",
         "fan_in": 0
       },
       {
@@ -3050,7 +3080,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_progress_create(parent<Int>, max<Int>)<Int> ->",
-        "summary": "Create a progress bar with range 0..max as a child of `parent`. Returns its",
+        "summary": "Create a progress bar with range 0..max under `parent`. Returns its handle or 0.",
         "fan_in": 0
       },
       {
@@ -3059,7 +3089,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_progress_set_value(bar<Int>, value<Int>)<Int> ->",
-        "summary": "Set the progress value (clamped to the range). Returns 0 on success.",
+        "summary": "Set the progress value (clamped). Returns 0.",
         "fan_in": 0
       },
       {
@@ -3068,7 +3098,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_quit()<Int> ->",
-        "summary": "Shut the GUI down, destroying all live windows, labels, and the timer.",
+        "summary": "Shut the GUI down (terminal - do not use Qt handles afterwards). Returns 0.",
         "fan_in": 0
       },
       {
@@ -3077,7 +3107,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_set_timer(ms<Int>)<Int> ->",
-        "summary": "Arm a repeating timer every `ms` milliseconds. Qt treats 0 as \"as fast as",
+        "summary": "Arm a repeating timer every `ms` ms; poll qt_timer_fired(). Returns 0.",
         "fan_in": 0
       },
       {
@@ -3086,7 +3116,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_slider_create(parent<Int>, min<Int>, max<Int>)<Int> ->",
-        "summary": "Create a horizontal slider with range [min, max] as a child of `parent`.",
+        "summary": "Create a horizontal slider with range [min, max]; value changes enqueue QtEvent::ValueChanged.",
         "fan_in": 0
       },
       {
@@ -3095,7 +3125,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_slider_set_value(slider<Int>, value<Int>)<Int> ->",
-        "summary": "Set the slider value (clamped to its range). Returns 0 on success.",
+        "summary": "Set the slider value (clamped). Returns 0.",
         "fan_in": 0
       },
       {
@@ -3113,7 +3143,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_spin_create(parent<Int>, min<Int>, max<Int>)<Int> ->",
-        "summary": "Create an integer spin box with range [min, max] as a child of `parent`.",
+        "summary": "Create an integer spin box with range [min, max]; value changes enqueue QtEvent::ValueChanged.",
         "fan_in": 0
       },
       {
@@ -3122,7 +3152,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_spin_set_value(spin<Int>, value<Int>)<Int> ->",
-        "summary": "Set the spin box value (clamped to its range). Returns 0 on success.",
+        "summary": "Set the spin box value (clamped). Returns 0.",
         "fan_in": 0
       },
       {
@@ -3140,7 +3170,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_timer_fired()<Bool> ->",
-        "summary": "true once the armed timer has fired at least one interval since the last",
+        "summary": "true once the armed timer has fired since the last check (read clears).",
         "fan_in": 0
       },
       {
@@ -3149,7 +3179,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_vbox(parent<Int>)<Int> ->",
-        "summary": "Create a vertical box layout installed on window `parent`; child widgets are",
+        "summary": "Create a vertical box layout on window `parent`. Returns a layout handle.",
         "fan_in": 0
       },
       {
@@ -3158,7 +3188,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_wait_event(timeout<Int>)<Bool> ->",
-        "summary": "UI scheduling barrier: pump the Qt event loop until at least one control event",
+        "summary": "Pump Qt until a control event (true) or `timeout` ms lapses (false); negative waits.",
         "fan_in": 0
       },
       {
@@ -3167,7 +3197,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_window_close(w<Int>)<Int> ->",
-        "summary": "Close (destroy) window handle `w`; child labels go with it. Passing 0 is a",
+        "summary": "Destroy window `w` (children go with it). Returns 0.",
         "fan_in": 0
       },
       {
@@ -3176,7 +3206,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_window_create()<Int> ->",
-        "summary": "Create a top-level window. Returns its Int handle, or 0 on failure (e.g. the",
+        "summary": "Create a top-level window; returns its Int handle or 0 on failure.",
         "fan_in": 0
       },
       {
@@ -3185,7 +3215,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_window_height(w<Int>)<Int> ->",
-        "summary": "Current content height in pixels, or -1 on a bad handle.",
+        "summary": "Content height in pixels, or -1 on a bad handle.",
         "fan_in": 0
       },
       {
@@ -3194,7 +3224,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_window_hide(w<Int>)<Int> ->",
-        "summary": "Hide (unmap) the window. Returns 0 on success, -1 on a bad handle.",
+        "summary": "Hide (unmap) the window. Returns 0.",
         "fan_in": 0
       },
       {
@@ -3203,7 +3233,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_window_resize(w<Int>, width<Int>, height<Int>)<Int> ->",
-        "summary": "Resize to (width, height) pixels. Returns 0 on success, -1 on a bad handle.",
+        "summary": "Resize to (width, height) pixels. Returns 0.",
         "fan_in": 0
       },
       {
@@ -3212,7 +3242,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_window_set_title(w<Int>, title<String>)<Int> ->",
-        "summary": "Set titlebar text. Returns 0 on success, -1 on a bad handle.",
+        "summary": "Set titlebar text. Returns 0, or -1 on a bad handle.",
         "fan_in": 0
       },
       {
@@ -3221,7 +3251,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_window_show(w<Int>)<Int> ->",
-        "summary": "Show (map) the window so it renders in the compositor. Returns 0 on success.",
+        "summary": "Show (map) the window. Returns 0.",
         "fan_in": 0
       },
       {
@@ -3230,7 +3260,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_window_title(w<Int>)<String> ->",
-        "summary": "Current titlebar text (String). Returns \"\" on a bad handle.",
+        "summary": "Current titlebar text (String); \"\" on a bad handle.",
         "fan_in": 0
       },
       {
@@ -3239,7 +3269,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_window_visible(w<Int>)<Bool> ->",
-        "summary": "true while window `w` is visible (shown and not minimized/occluded), else",
+        "summary": "true while window `w` is visible, else false.",
         "fan_in": 0
       },
       {
@@ -3248,7 +3278,7 @@
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
         "signature": "qt_window_width(w<Int>)<Int> ->",
-        "summary": "Current content width in pixels, or -1 on a bad handle.",
+        "summary": "Content width in pixels, or -1 on a bad handle.",
         "fan_in": 0
       },
       {
@@ -6513,6 +6543,24 @@
       "from_module": "qt",
       "from_symbol": "qt_combo_set_current_index",
       "to_symbol": "vyb_qt_combo_set_current_index"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_dial_create",
+      "to_symbol": "vyb_qt_dial_create"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_dial_set_value",
+      "to_symbol": "vyb_qt_dial_set_value"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_dial_value",
+      "to_symbol": "vyb_qt_dial_value"
     },
     {
       "type": "runtimeRef",

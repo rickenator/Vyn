@@ -3228,6 +3228,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
     // as env_exec/regex). Skewed from the network block so the FFI stays
     // Int/String-shaped and deterministic under a headless QPA platform.
     if (identCallee) {
+        // gen_qt[cgen]: begin
         const std::string& fname = identCallee->name;
         std::string rtName;
         if (fname == "vyb_qt_init") rtName = "__vyb_qt_init";
@@ -3283,11 +3284,14 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_qt_slider_create") rtName = "__vyb_qt_slider_create";
         else if (fname == "vyb_qt_slider_value") rtName = "__vyb_qt_slider_value";
         else if (fname == "vyb_qt_slider_set_value") rtName = "__vyb_qt_slider_set_value";
+        else if (fname == "vyb_qt_dial_create") rtName = "__vyb_qt_dial_create";
+        else if (fname == "vyb_qt_dial_value") rtName = "__vyb_qt_dial_value";
+        else if (fname == "vyb_qt_dial_set_value") rtName = "__vyb_qt_dial_set_value";
         if (!rtName.empty()) {
             auto getQtFn = [&](llvm::FunctionType* ft) -> llvm::Function* {
-                llvm::Function* f = module->getFunction(rtName);
-                if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, rtName, module.get());
-                return f;
+                llvm::Function* f2 = module->getFunction(rtName);
+                if (!f2) f2 = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, rtName, module.get());
+                return f2;
             };
             auto toI64 = [&](llvm::Value* v) -> llvm::Value* {
                 if (!v) return v;
@@ -3324,150 +3328,96 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 return true;
             };
 
-            // No-argument Int helpers (lifecycle, event pump, timer poll, create).
-            if (fname == "vyb_qt_init" || fname == "vyb_qt_quit" ||
-                fname == "vyb_qt_active" || fname == "vyb_qt_process_events" ||
-                fname == "vyb_qt_timer_fired" || fname == "vyb_qt_window_create" ||
-                fname == "vyb_qt_event_count" || fname == "vyb_qt_event_handle" ||
-                fname == "vyb_qt_event_kind" || fname == "vyb_qt_event_pop") {
+            if (fname == "vyb_qt_init" || fname == "vyb_qt_quit" || fname == "vyb_qt_active" ||
+                fname == "vyb_qt_process_events" ||
+                fname == "vyb_qt_timer_fired" ||
+                fname == "vyb_qt_window_create" ||
+                fname == "vyb_qt_event_count" ||
+                fname == "vyb_qt_event_handle" ||
+                fname == "vyb_qt_event_kind" ||
+                fname == "vyb_qt_event_pop") {
                 if (!checkArity(0)) return;
                 llvm::FunctionType* ft0 = llvm::FunctionType::get(int64Type, {}, false);
                 m_currentLLVMValue = builder->CreateCall(getQtFn(ft0), {}, "qt.ret");
                 return;
-            } else if (fname == "vyb_qt_set_timer") {
+            } else if (fname == "vyb_qt_set_timer" || fname == "vyb_qt_window_close" ||
+                fname == "vyb_qt_window_width" ||
+                fname == "vyb_qt_window_height" ||
+                fname == "vyb_qt_window_show" ||
+                fname == "vyb_qt_window_hide" ||
+                fname == "vyb_qt_window_visible" ||
+                fname == "vyb_qt_checkbox_checked" ||
+                fname == "vyb_qt_vbox" ||
+                fname == "vyb_qt_hbox" ||
+                fname == "vyb_qt_kind" ||
+                fname == "vyb_qt_wait_event" ||
+                fname == "vyb_qt_combo_create" ||
+                fname == "vyb_qt_combo_count" ||
+                fname == "vyb_qt_combo_current_index" ||
+                fname == "vyb_qt_spin_value" ||
+                fname == "vyb_qt_slider_value" ||
+                fname == "vyb_qt_dial_value") {
                 if (!checkArity(1)) return;
-                llvm::Value* ms = needArg(0); if (!ms) return;
+                llvm::Value* a = needArg(0); if (!a) return;
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
-                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(ms)}, "qt.timer");
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a)}, "qt.i1");
                 return;
-            } else if (fname == "vyb_qt_window_close" || fname == "vyb_qt_window_width" ||
-                       fname == "vyb_qt_window_height" || fname == "vyb_qt_window_show" ||
-                       fname == "vyb_qt_window_hide" || fname == "vyb_qt_window_visible") {
+            } else if (fname == "vyb_qt_window_title" || fname == "vyb_qt_label_text" ||
+                fname == "vyb_qt_button_text" ||
+                fname == "vyb_qt_edit_text") {
                 if (!checkArity(1)) return;
-                llvm::Value* h = needArg(0); if (!h) return;
-                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
-                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(h)}, "qt.win");
-                return;
-            } else if (fname == "vyb_qt_window_title" || fname == "vyb_qt_label_text") {
-                if (!checkArity(1)) return;
-                llvm::Value* h = needArg(0); if (!h) return;
+                llvm::Value* a = needArg(0); if (!a) return;
                 llvm::FunctionType* ft = llvm::FunctionType::get(qtStrRet(), {int64Type}, false);
-                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(h)}, "qt.str1");
-                return;
-            } else if (fname == "vyb_qt_window_resize") {
-                if (!checkArity(3)) return;
-                llvm::Value* h = needArg(0); llvm::Value* w = needArg(1); llvm::Value* ht = needArg(2);
-                if (!h || !w || !ht) return;
-                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type, int64Type}, false);
-                m_currentLLVMValue = builder->CreateCall(getQtFn(ft),
-                    {toI64(h), toI64(w), toI64(ht)}, "qt.resize");
-                return;
-            } else if (fname == "vyb_qt_window_set_title" ||
-                       fname == "vyb_qt_label_set_text") {
-                if (!checkArity(2)) return;
-                llvm::Value* h = needArg(0); llvm::Value* s = needArg(1);
-                if (!h || !s) return;
-                llvm::FunctionType* ft = llvm::FunctionType::get(
-                    int64Type, {int64Type, int8PtrType, int64Type}, false);
-                m_currentLLVMValue = builder->CreateCall(getQtFn(ft),
-                    {toI64(h), toStrPtr(s), strLenOf(s)}, "qt.setstr");
-                return;
-            } else if (fname == "vyb_qt_label_create") {
-                if (!checkArity(2)) return;
-                llvm::Value* parent = needArg(0); llvm::Value* s = needArg(1);
-                if (!parent || !s) return;
-                llvm::FunctionType* ft = llvm::FunctionType::get(
-                    int64Type, {int64Type, int8PtrType, int64Type}, false);
-                m_currentLLVMValue = builder->CreateCall(getQtFn(ft),
-                    {toI64(parent), toStrPtr(s), strLenOf(s)}, "qt.label");
-                return;
-            } else if (fname == "vyb_qt_button_create" ||
-                       fname == "vyb_qt_edit_create" ||
-                       fname == "vyb_qt_checkbox_create") {
-                // (parent, text) -> new widget handle
-                if (!checkArity(2)) return;
-                llvm::Value* parent = needArg(0); llvm::Value* s = needArg(1);
-                if (!parent || !s) return;
-                llvm::FunctionType* ft = llvm::FunctionType::get(
-                    int64Type, {int64Type, int8PtrType, int64Type}, false);
-                m_currentLLVMValue = builder->CreateCall(getQtFn(ft),
-                    {toI64(parent), toStrPtr(s), strLenOf(s)}, "qt.wcreate");
-                return;
-            } else if (fname == "vyb_qt_kind" || fname == "vyb_qt_vbox" ||
-                       fname == "vyb_qt_hbox" || fname == "vyb_qt_checkbox_checked" ||
-                       fname == "vyb_qt_combo_create" || fname == "vyb_qt_combo_count" ||
-                       fname == "vyb_qt_combo_current_index" || fname == "vyb_qt_spin_value" ||
-                       fname == "vyb_qt_slider_value" || fname == "vyb_qt_wait_event") {
-                // 1-arg Int handle/num -> Int
-                if (!checkArity(1)) return;
-                llvm::Value* h = needArg(0); if (!h) return;
-                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
-                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(h)}, "qt.h1");
-                return;
-            } else if (fname == "vyb_qt_progress_create") {
-                // (parent, max) -> Int
-                if (!checkArity(2)) return;
-                llvm::Value* parent = needArg(0); llvm::Value* maxv = needArg(1);
-                if (!parent || !maxv) return;
-                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type}, false);
-                m_currentLLVMValue = builder->CreateCall(getQtFn(ft),
-                    {toI64(parent), toI64(maxv)}, "qt.prog");
-                return;
-            } else if (fname == "vyb_qt_spin_create" || fname == "vyb_qt_slider_create") {
-                // (parent, min, max) -> Int
-                if (!checkArity(3)) return;
-                llvm::Value* parent = needArg(0); llvm::Value* mn = needArg(1); llvm::Value* mx = needArg(2);
-                if (!parent || !mn || !mx) return;
-                llvm::FunctionType* ft = llvm::FunctionType::get(
-                    int64Type, {int64Type, int64Type, int64Type}, false);
-                m_currentLLVMValue = builder->CreateCall(getQtFn(ft),
-                    {toI64(parent), toI64(mn), toI64(mx)}, "qt.spinsld");
-                return;
-            } else if (fname == "vyb_qt_button_set_enabled" ||
-                       fname == "vyb_qt_checkbox_set_checked" ||
-                       fname == "vyb_qt_progress_set_value" ||
-                       fname == "vyb_qt_layout_add" ||
-                       fname == "vyb_qt_combo_set_current_index" ||
-                       fname == "vyb_qt_spin_set_value" ||
-                       fname == "vyb_qt_slider_set_value") {
-                // (h, value) -> Int
-                if (!checkArity(2)) return;
-                llvm::Value* h = needArg(0); llvm::Value* v = needArg(1);
-                if (!h || !v) return;
-                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type}, false);
-                m_currentLLVMValue = builder->CreateCall(getQtFn(ft),
-                    {toI64(h), toI64(v)}, "qt.setval");
-                return;
-            } else if (fname == "vyb_qt_button_set_text" ||
-                       fname == "vyb_qt_edit_set_text" ||
-                       fname == "vyb_qt_edit_set_placeholder" ||
-                       fname == "vyb_qt_combo_add_item") {
-                // (h, text) -> Int
-                if (!checkArity(2)) return;
-                llvm::Value* h = needArg(0); llvm::Value* s = needArg(1);
-                if (!h || !s) return;
-                llvm::FunctionType* ft = llvm::FunctionType::get(
-                    int64Type, {int64Type, int8PtrType, int64Type}, false);
-                m_currentLLVMValue = builder->CreateCall(getQtFn(ft),
-                    {toI64(h), toStrPtr(s), strLenOf(s)}, "qt.settext");
-                return;
-            } else if (fname == "vyb_qt_button_text" || fname == "vyb_qt_edit_text") {
-                // (h) -> String
-                if (!checkArity(1)) return;
-                llvm::Value* h = needArg(0); if (!h) return;
-                llvm::FunctionType* ft = llvm::FunctionType::get(qtStrRet(), {int64Type}, false);
-                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(h)}, "qt.text1");
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a)}, "qt.s1");
                 return;
             } else if (fname == "vyb_qt_combo_item_text") {
-                // (h, idx) -> String
                 if (!checkArity(2)) return;
-                llvm::Value* h = needArg(0); llvm::Value* idx = needArg(1);
-                if (!h || !idx) return;
+                llvm::Value* a = needArg(0); llvm::Value* b = needArg(1);
+                if (!a || !b) return;
                 llvm::FunctionType* ft = llvm::FunctionType::get(qtStrRet(), {int64Type, int64Type}, false);
-                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(h), toI64(idx)}, "qt.combotext");
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a), toI64(b)}, "qt.s2");
+                return;
+            } else if (fname == "vyb_qt_window_set_title" || fname == "vyb_qt_label_create" ||
+                fname == "vyb_qt_label_set_text" ||
+                fname == "vyb_qt_button_create" ||
+                fname == "vyb_qt_button_set_text" ||
+                fname == "vyb_qt_edit_create" ||
+                fname == "vyb_qt_edit_set_text" ||
+                fname == "vyb_qt_edit_set_placeholder" ||
+                fname == "vyb_qt_checkbox_create" ||
+                fname == "vyb_qt_combo_add_item") {
+                if (!checkArity(2)) return;
+                llvm::Value* a = needArg(0); llvm::Value* s = needArg(1);
+                if (!a || !s) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a), toStrPtr(s), strLenOf(s)}, "qt.text");
+                return;
+            } else if (fname == "vyb_qt_button_set_enabled" || fname == "vyb_qt_checkbox_set_checked" ||
+                fname == "vyb_qt_progress_create" ||
+                fname == "vyb_qt_progress_set_value" ||
+                fname == "vyb_qt_layout_add" ||
+                fname == "vyb_qt_combo_set_current_index" ||
+                fname == "vyb_qt_spin_set_value" ||
+                fname == "vyb_qt_slider_set_value" ||
+                fname == "vyb_qt_dial_set_value") {
+                if (!checkArity(2)) return;
+                llvm::Value* a = needArg(0); llvm::Value* b = needArg(1);
+                if (!a || !b) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a), toI64(b)}, "qt.v2");
+                return;
+            } else if (fname == "vyb_qt_window_resize" || fname == "vyb_qt_spin_create" ||
+                fname == "vyb_qt_slider_create" ||
+                fname == "vyb_qt_dial_create") {
+                if (!checkArity(3)) return;
+                llvm::Value* a = needArg(0); llvm::Value* b = needArg(1); llvm::Value* c = needArg(2);
+                if (!a || !b || !c) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a), toI64(b), toI64(c)}, "qt.i3");
                 return;
             }
         }
+// gen_qt[cgen]: end
     }
 
     // Handle Network I/O intrinsics (network stdlib module). Mirrors the File I/O

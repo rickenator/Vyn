@@ -213,60 +213,64 @@ extern "C" {
     // unconditional). Handles are opaque Int (qintptr-sized); the title/label/
     // button/edit-text getters return an owned, registry-registered
     // { ptr, len } buffer that a Vyb String adopts.
-    int64_t __vyb_qt_init(void);
-    int64_t __vyb_qt_quit(void);
-    int64_t __vyb_qt_active(void);
-    int64_t __vyb_qt_process_events(void);
+        // gen_qt[main_decl]: begin
+    int64_t __vyb_qt_init();
+    int64_t __vyb_qt_quit();
+    int64_t __vyb_qt_active();
+    int64_t __vyb_qt_process_events();
     int64_t __vyb_qt_set_timer(int64_t ms);
-    int64_t __vyb_qt_timer_fired(void);
-    int64_t __vyb_qt_window_create(void);
-    int64_t __vyb_qt_window_close(int64_t h);
-    int64_t __vyb_qt_window_set_title(int64_t h, const char* s, int64_t len);
-    vyb_file_str __vyb_qt_window_title(int64_t h);
-    int64_t __vyb_qt_window_resize(int64_t h, int64_t w, int64_t ht);
-    int64_t __vyb_qt_window_width(int64_t h);
-    int64_t __vyb_qt_window_height(int64_t h);
-    int64_t __vyb_qt_window_show(int64_t h);
-    int64_t __vyb_qt_window_hide(int64_t h);
-    int64_t __vyb_qt_window_visible(int64_t h);
-    int64_t __vyb_qt_label_create(int64_t parent, const char* s, int64_t len);
-    int64_t __vyb_qt_label_set_text(int64_t h, const char* s, int64_t len);
-    vyb_file_str __vyb_qt_label_text(int64_t h);
-    // Controls (buttons, edits, checkbox, progress), layouts, kind, events.
-    int64_t __vyb_qt_button_create(int64_t parent, const char* s, int64_t len);
-    int64_t __vyb_qt_button_set_text(int64_t h, const char* s, int64_t len);
-    vyb_file_str __vyb_qt_button_text(int64_t h);
-    int64_t __vyb_qt_button_set_enabled(int64_t h, int64_t on);
-    int64_t __vyb_qt_edit_create(int64_t parent, const char* s, int64_t len);
-    vyb_file_str __vyb_qt_edit_text(int64_t h);
-    int64_t __vyb_qt_edit_set_text(int64_t h, const char* s, int64_t len);
-    int64_t __vyb_qt_edit_set_placeholder(int64_t h, const char* s, int64_t len);
-    int64_t __vyb_qt_checkbox_create(int64_t parent, const char* s, int64_t len);
-    int64_t __vyb_qt_checkbox_checked(int64_t h);
-    int64_t __vyb_qt_checkbox_set_checked(int64_t h, int64_t on);
-    int64_t __vyb_qt_progress_create(int64_t parent, int64_t maxv);
-    int64_t __vyb_qt_progress_set_value(int64_t h, int64_t v);
+    int64_t __vyb_qt_timer_fired();
+    int64_t __vyb_qt_window_create();
+    int64_t __vyb_qt_window_close(int64_t w);
+    int64_t __vyb_qt_window_set_title(int64_t w, const char* title, int64_t len);
+    vyb_file_str __vyb_qt_window_title(int64_t w);
+    int64_t __vyb_qt_window_resize(int64_t w, int64_t width, int64_t height);
+    int64_t __vyb_qt_window_width(int64_t w);
+    int64_t __vyb_qt_window_height(int64_t w);
+    int64_t __vyb_qt_window_show(int64_t w);
+    int64_t __vyb_qt_window_hide(int64_t w);
+    int64_t __vyb_qt_window_visible(int64_t w);
+    int64_t __vyb_qt_label_create(int64_t parent, const char* text, int64_t len);
+    int64_t __vyb_qt_label_set_text(int64_t label, const char* text, int64_t len);
+    vyb_file_str __vyb_qt_label_text(int64_t label);
+    int64_t __vyb_qt_button_create(int64_t parent, const char* text, int64_t len);
+    int64_t __vyb_qt_button_set_text(int64_t button, const char* text, int64_t len);
+    vyb_file_str __vyb_qt_button_text(int64_t button);
+    int64_t __vyb_qt_button_set_enabled(int64_t button, int64_t enabled);
+    int64_t __vyb_qt_edit_create(int64_t parent, const char* text, int64_t len);
+    vyb_file_str __vyb_qt_edit_text(int64_t edit);
+    int64_t __vyb_qt_edit_set_text(int64_t edit, const char* text, int64_t len);
+    int64_t __vyb_qt_edit_set_placeholder(int64_t edit, const char* text, int64_t len);
+    int64_t __vyb_qt_checkbox_create(int64_t parent, const char* text, int64_t len);
+    int64_t __vyb_qt_checkbox_checked(int64_t box);
+    int64_t __vyb_qt_checkbox_set_checked(int64_t box, int64_t on);
+    int64_t __vyb_qt_progress_create(int64_t parent, int64_t max);
+    int64_t __vyb_qt_progress_set_value(int64_t bar, int64_t value);
     int64_t __vyb_qt_vbox(int64_t parent);
     int64_t __vyb_qt_hbox(int64_t parent);
     int64_t __vyb_qt_layout_add(int64_t layout, int64_t child);
     int64_t __vyb_qt_kind(int64_t h);
-    int64_t __vyb_qt_event_count(void);
-    int64_t __vyb_qt_event_handle(void);
-    int64_t __vyb_qt_event_kind(void);
-    int64_t __vyb_qt_event_pop(void);
-    int64_t __vyb_qt_wait_event(int64_t timeout_ms);
+    int64_t __vyb_qt_event_count();
+    int64_t __vyb_qt_event_handle();
+    int64_t __vyb_qt_event_kind();
+    int64_t __vyb_qt_event_pop();
+    int64_t __vyb_qt_wait_event(int64_t timeout);
     int64_t __vyb_qt_combo_create(int64_t parent);
-    int64_t __vyb_qt_combo_add_item(int64_t h, const char* s, int64_t len);
-    int64_t __vyb_qt_combo_count(int64_t h);
-    int64_t __vyb_qt_combo_current_index(int64_t h);
-    int64_t __vyb_qt_combo_set_current_index(int64_t h, int64_t idx);
-    vyb_file_str __vyb_qt_combo_item_text(int64_t h, int64_t idx);
-    int64_t __vyb_qt_spin_create(int64_t parent, int64_t minv, int64_t maxv);
-    int64_t __vyb_qt_spin_value(int64_t h);
-    int64_t __vyb_qt_spin_set_value(int64_t h, int64_t v);
-    int64_t __vyb_qt_slider_create(int64_t parent, int64_t minv, int64_t maxv);
-    int64_t __vyb_qt_slider_value(int64_t h);
-    int64_t __vyb_qt_slider_set_value(int64_t h, int64_t v);
+    int64_t __vyb_qt_combo_add_item(int64_t combo, const char* text, int64_t len);
+    int64_t __vyb_qt_combo_count(int64_t combo);
+    int64_t __vyb_qt_combo_current_index(int64_t combo);
+    int64_t __vyb_qt_combo_set_current_index(int64_t combo, int64_t idx);
+    vyb_file_str __vyb_qt_combo_item_text(int64_t combo, int64_t idx);
+    int64_t __vyb_qt_spin_create(int64_t parent, int64_t min, int64_t max);
+    int64_t __vyb_qt_spin_value(int64_t spin);
+    int64_t __vyb_qt_spin_set_value(int64_t spin, int64_t value);
+    int64_t __vyb_qt_slider_create(int64_t parent, int64_t min, int64_t max);
+    int64_t __vyb_qt_slider_value(int64_t slider);
+    int64_t __vyb_qt_slider_set_value(int64_t slider, int64_t value);
+    int64_t __vyb_qt_dial_create(int64_t parent, int64_t min, int64_t max);
+    int64_t __vyb_qt_dial_value(int64_t dial);
+    int64_t __vyb_qt_dial_set_value(int64_t dial, int64_t value);
+// gen_qt[main_decl]: end
 
 #ifdef VYB_HAVE_OPENSSL
     // TLS runtime helpers (tls stdlib module) over OpenSSL. SSL/SSL_CTX are
@@ -1587,6 +1591,7 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
         runtimeSymbols[mangle("__vyb_curses_hide_cursor")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_curses_hide_cursor), llvm::JITSymbolFlags::Exported);
 #endif
+        // gen_qt[main_reg]: begin
         runtimeSymbols[mangle("__vyb_qt_init")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_init), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_quit")] = llvm::orc::ExecutorSymbolDef(
@@ -1693,6 +1698,13 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_slider_value), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_slider_set_value")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_slider_set_value), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_dial_create")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_dial_create), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_dial_value")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_dial_value), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_dial_set_value")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_dial_set_value), llvm::JITSymbolFlags::Exported);
+// gen_qt[main_reg]: end
         runtimeSymbols[mangle("__vyb_net_open")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_open), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_net_close")] = llvm::orc::ExecutorSymbolDef(

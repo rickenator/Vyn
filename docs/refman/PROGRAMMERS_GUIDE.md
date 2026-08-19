@@ -1583,8 +1583,16 @@ qt_spin_create(parent<Int>, min<Int>, max<Int>)<Int>    qt_spin_value(s<Int>)<In
 qt_spin_set_value(s<Int>, value<Int>)<Int>
 qt_slider_create(parent<Int>, min<Int>, max<Int>)<Int>  qt_slider_value(s<Int>)<Int>
 qt_slider_set_value(s<Int>, value<Int>)<Int>
+qt_dial_create(parent<Int>, min<Int>, max<Int>)<Int>      qt_dial_value(d<Int>)<Int>
+qt_dial_set_value(d<Int>, value<Int>)<Int>
 qt_wait_event(timeout<Int>)<Bool>
 ```
+
+The public API + stub, codegen dispatch, semantic lists, JIT registrations, and
+wrappers/enums are generated from `tools/gen_qt.py` (one table row per function);
+add a widget by adding a row and writing the bridge implementation, then run
+`python3 tools/gen_qt.py` (or `--check` to verify no drift). QtWidgetKind now tops
+out at `dial` (10); combo/spin/slider/dial enqueue `QtEvent::ValueChanged`.
 
 Call `qt_init()` once. `QApplication` must live on the main thread (a Vyb
 program's `main`), and construction needs a Qt platform — xcb under a display,
@@ -1800,6 +1808,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

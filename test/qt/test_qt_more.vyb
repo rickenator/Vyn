@@ -113,6 +113,14 @@ main()<Int> -> {
     t3<Int> = time_mono_millis()
     if ((t3 - t2) > 150) { return 52 }            // ~60ms if concurrent, not 180ms
 
+    // --- Dial (QDial) ------------------------------------------------------------
+    dial<Int> = qt_dial_create(w, 0, 100)
+    if (dial == 0) { return 53 }
+    if (qt_kind(dial) != QtWidgetKind::dial) { return 54 }
+    if (qt_dial_value(dial) != 0) { return 55 }
+    if (qt_dial_set_value(dial, 30) != 0) { return 56 }
+    if (qt_dial_value(dial) != 30) { return 57 }
+
     qt_quit()
     println("qt-more-ok")
     return 0

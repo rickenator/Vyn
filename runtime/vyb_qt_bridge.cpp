@@ -33,6 +33,7 @@
 #include <QComboBox>
 #include <QSpinBox>
 #include <QSlider>
+#include <QDial>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QString>
@@ -420,6 +421,7 @@ extern "C" VYB_WEAK int64_t __vyb_qt_kind(int64_t h) {
     if (dynamic_cast<QComboBox*>(w))       return 7; // Combo
     if (dynamic_cast<QSpinBox*>(w))        return 8; // Spin
     if (dynamic_cast<QSlider*>(w))         return 9; // Slider
+    if (dynamic_cast<QDial*>(w))           return 10; // Dial
     if (dynamic_cast<QLabel*>(w))          return 2; // Label
     return 1;                                        // Window (plain QWidget)
 }
@@ -588,5 +590,35 @@ extern "C" VYB_WEAK int64_t __vyb_qt_slider_value(int64_t h) {
 extern "C" VYB_WEAK int64_t __vyb_qt_slider_set_value(int64_t h, int64_t v) {
     QSlider* sl = dynamic_cast<QSlider*>(htowed(h)); if (!sl) return -1;
     sl->setValue((int)v);
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+// Dials (QDial)
+// ----------------------------------------------------------------------------
+
+// Create a dial with range [min, max] as a child of `parent`. Returns its Int
+// handle, or 0 on failure. A value change enqueues a QtEvent::ValueChanged
+// record.
+extern "C" VYB_WEAK int64_t __vyb_qt_dial_create(int64_t parent, int64_t minv, int64_t maxv) {
+    if (!g_app) return 0;
+    QWidget* pw = parent ? htowed(parent) : nullptr;
+    QDial* d = new QDial(pw);
+    d->setRange((int)minv, (int)maxv);
+    QObject::connect(d, &QDial::valueChanged,
+        [d](int) { vyb_qt_enqueue(wetoh(d), VYB_QT_EVT_VALUECHANGED); });
+    return wetoh(d);
+}
+
+// Current dial value, or 0 on a bad handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_dial_value(int64_t h) {
+    QDial* d = dynamic_cast<QDial*>(htowed(h)); if (!d) return 0;
+    return (int64_t)d->value();
+}
+
+// Set the dial value (clamped to its range). Returns 0 on success.
+extern "C" VYB_WEAK int64_t __vyb_qt_dial_set_value(int64_t h, int64_t v) {
+    QDial* d = dynamic_cast<QDial*>(htowed(h)); if (!d) return -1;
+    d->setValue((int)v);
     return 0;
 }
