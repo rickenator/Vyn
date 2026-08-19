@@ -73,8 +73,10 @@ const char* __vyb_get_typename(uint64_t type_id) {
 static std::atomic<VybUntrappedErrorHandler> g_custom_handler{nullptr};
 
 // Vyb-level call stack for source-level stack traces (Phase 6.4)
-static std::mutex g_call_stack_mutex;
-static std::vector<VybStackFrame> g_call_stack;
+// Thread-local: the JITed fibers each run on their own OS thread and push/pop as
+// they call functions, so a per-thread stack keeps frames un-interleaved and
+// lets a crash handler (or error path) read exactly the running fiber's frames.
+static thread_local std::vector<VybStackFrame> g_call_stack;
 static constexpr size_t MAX_CALL_STACK_DEPTH = 256;
 
 // ===== Helper Functions =====
@@ -184,7 +186,6 @@ void __vyb_runtime_free_stack_trace(VybStackTrace* trace) {
 // ===== Vyb-Level Call Stack Management (Phase 6.4) =====
 
 void __vyb_runtime_push_call_frame(const char* function_name, const char* file_path, uint32_t line, uint32_t column) {
-    std::lock_guard<std::mutex> lock(g_call_stack_mutex);
 
     // Prevent stack overflow
     if (g_call_stack.size() >= MAX_CALL_STACK_DEPTH) {
@@ -203,7 +204,6 @@ void __vyb_runtime_push_call_frame(const char* function_name, const char* file_p
 }
 
 void __vyb_runtime_pop_call_frame() {
-    std::lock_guard<std::mutex> lock(g_call_stack_mutex);
 
     if (!g_call_stack.empty()) {
         g_call_stack.pop_back();
@@ -213,7 +213,6 @@ void __vyb_runtime_pop_call_frame() {
 }
 
 VybStackTrace* __vyb_runtime_get_current_stack_trace() {
-    std::lock_guard<std::mutex> lock(g_call_stack_mutex);
 
     VybStackTrace* trace = new VybStackTrace;
     trace->capacity = g_call_stack.size();
@@ -228,6 +227,42 @@ VybStackTrace* __vyb_runtime_get_current_stack_trace() {
 
     return trace;
 }
+
+// When running under AddressSanitizer, dump the Vyb-level call stack at death.
+// The JIT emits __vyb_runtime_push_call_frame at every function entry, so this
+// names the generated-code frame where a UAF / double-free fired (the raw ASAN
+// stack only shows "<unknown module>" for JITted code).
+#if defined(__SANITIZE_ADDRESS__)
+#define VYB_HAS_ASAN 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define VYB_HAS_ASAN 1
+#endif
+#endif
+#ifdef VYB_HAS_ASAN
+extern "C" void __sanitizer_set_death_callback(void (*callback)(void));
+static void __vyb_asan_death_callback() {
+    fprintf(stderr, "\n===== Vyb call stack at death (most recent first) =====\n");
+    size_t shown = 0;
+    for (size_t k = 0; k < g_call_stack.size(); ++k) {
+        size_t idx = g_call_stack.size() - 1 - k;
+        const VybStackFrame& f = g_call_stack[idx];
+        fprintf(stderr, "  at %s (%s:%u:%u)\n",
+                f.function_name,
+                f.location.file_path ? f.location.file_path : "<unknown>",
+                f.location.line, f.location.column);
+        if (++shown >= 48) break;
+    }
+    fprintf(stderr, "===== end Vyb call stack =====\n");
+}
+namespace {
+struct VybAsanDeathRegister {
+    VybAsanDeathRegister() { __sanitizer_set_death_callback(&__vyb_asan_death_callback); }
+};
+static VybAsanDeathRegister g_vyb_asan_death_register;
+}
+#undef VYB_HAS_ASAN
+#endif
 
 // ===== Error Management =====
 
