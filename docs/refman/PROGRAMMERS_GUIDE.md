@@ -1576,6 +1576,14 @@ qt_checkbox_create(parent<Int>, text<String>)<Int>          qt_checkbox_checked(
 qt_checkbox_set_checked(c<Int>, on<Bool>)<Int>
 qt_progress_create(parent<Int>, max<Int>)<Int>              qt_progress_set_value(p<Int>, value<Int>)<Int>
 qt_vbox(parent<Int>)<Int>     qt_hbox(parent<Int>)<Int>     qt_layout_add(layout<Int>, child<Int>)<Int>
+qt_combo_create(parent<Int>)<Int>                       qt_combo_add_item(c<Int>, text<String>)<Int>
+qt_combo_count(c<Int>)<Int>   qt_combo_current_index(c<Int>)<Int>
+qt_combo_set_current_index(c<Int>, idx<Int>)<Int>       qt_combo_item_text(c<Int>, idx<Int>)<String>
+qt_spin_create(parent<Int>, min<Int>, max<Int>)<Int>    qt_spin_value(s<Int>)<Int>
+qt_spin_set_value(s<Int>, value<Int>)<Int>
+qt_slider_create(parent<Int>, min<Int>, max<Int>)<Int>  qt_slider_value(s<Int>)<Int>
+qt_slider_set_value(s<Int>, value<Int>)<Int>
+qt_wait_event(timeout<Int>)<Bool>
 ```
 
 Call `qt_init()` once. `QApplication` must live on the main thread (a Vyb
@@ -1589,9 +1597,14 @@ FIFO event queue (`qt_button_create`/`qt_checkbox_create`/`qt_edit_set_text`
 enqueue `QtEvent::Click|Toggled|TextChanged` records, drained via
 `qt_event_count`/`qt_event_handle`/`qt_event_kind`/`qt_event_pop`), so GUI tests
 stay deterministic under `offscreen`. `qt_kind(h)` reports a widget's static
-`QtWidgetKind` (window/label/button/edit/checkbox/progress) so typed wrappers can
-validate handles. Handles are opaque; closing a window deletes it and its
-children.
+`QtWidgetKind` (window/label/button/edit/checkbox/progress/combo/spin/slider) so
+typed wrappers can validate handles. `qt_wait_event(timeout)` pumps the Qt loop
+until a control event or timeout arrives, so a main-thread UI loop blocks without
+busy-spinning while the `asyncs` fiber pool runs background work concurrently (a
+worker fiber can set a widget, enqueueing a record that wakes a blocked
+`qt_wait_event`). Combo (`qt_combo_*`), spin (`qt_spin_*`), and slider
+(`qt_slider_*`) enqueue `QtEvent::IndexChanged`/`ValueChanged` records. Handles
+are opaque; closing a window deletes it and its children.
 When Qt5 is absent the module's stub shims resolve but report the GUI as
 unavailable (`qt_init()==false`), so programs and the test-suite degrade
 gracefully without an unresolved-symbol JIT failure.
@@ -1787,6 +1800,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

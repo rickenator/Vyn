@@ -1,0 +1,119 @@
+// @test: qt stdlib module - widgets, wait_event scheduling, and asyncs interop
+// @description: Headless-deterministic coverage for the Qt extension surface:
+//   combo boxes, spin boxes, sliders (with their queued events and kind
+//   introspection), qt_wait_event as a non-busy blocking UI barrier, and
+//   concurrent execution with the asyncs fiber pool. When Qt5 is unavailable the
+//   stub shims degrade gracefully and the test still passes.
+// @category: qt, stdlib, gui, asyncs
+// @expect: pass
+// @expect-output: qt-more-ok
+// @env: VYB_STDLIB=stdlib
+// @env: QT_QPA_PLATFORM=offscreen
+
+import qt
+import asyncs
+import time::{sleep_ms, time_mono_millis}
+
+main()<Int> -> {
+    if (qt_init() == false) {
+        // Qt5 not linked into this build (stub shims): degrade gracefully.
+        println("qt-more-ok (Qt5 unavailable)")
+        return 0
+    }
+    if (qt_active() == false) { return 1 }
+
+    w<Int> = qt_window_create()
+    if (w == 0) { return 2 }
+
+    // --- Combo box ------------------------------------------------------------
+    combo<Int> = qt_combo_create(w)
+    if (combo == 0) { return 3 }
+    if (qt_kind(combo) != QtWidgetKind::combo) { return 4 }
+    if (qt_combo_add_item(combo, "alpha") != 0) { return 5 }
+    if (qt_combo_add_item(combo, "beta") != 0) { return 6 }
+    if (qt_combo_add_item(combo, "gamma") != 0) { return 7 }
+    if (qt_combo_count(combo) != 3) { return 8 }
+    if (qt_combo_item_text(combo, 0) != "alpha") { return 9 }
+    if (qt_combo_item_text(combo, 2) != "gamma") { return 10 }
+    if (qt_combo_current_index(combo) != 0) { return 11 }
+
+    // --- Spin box -------------------------------------------------------------
+    spin<Int> = qt_spin_create(w, 0, 10)
+    if (spin == 0) { return 12 }
+    if (qt_kind(spin) != QtWidgetKind::spin) { return 13 }
+    if (qt_spin_value(spin) != 0) { return 14 }
+    if (qt_spin_set_value(spin, 7) != 0) { return 15 }
+    if (qt_spin_value(spin) != 7) { return 16 }
+
+    // --- Slider ---------------------------------------------------------------
+    slider<Int> = qt_slider_create(w, 0, 100)
+    if (slider == 0) { return 17 }
+    if (qt_kind(slider) != QtWidgetKind::slider) { return 18 }
+    if (qt_slider_value(slider) != 0) { return 19 }
+    if (qt_slider_set_value(slider, 55) != 0) { return 20 }
+    if (qt_slider_value(slider) != 55) { return 21 }
+
+    // --- Wait_event: pure timeout path ------------------------------------------
+    // Drain construction-site events first so the wait is measured cleanly.
+    while (qt_event_count() > 0) { if (qt_event_pop() != 0) { return 22 } }
+    t0<Int> = time_mono_millis()
+    waited<Bool> = qt_wait_event(30)
+    t1<Int> = time_mono_millis()
+    if (waited) { return 23 }                     // no event -> must time out false
+    if ((t1 - t0) < 20) { return 24 }             // must actually block ~30ms
+
+    // Wait_event returns true immediately when an event is already queued.
+    if (qt_combo_set_current_index(combo, 1) != 0) { return 25 }
+    if (qt_combo_current_index(combo) != 1) { return 26 }
+    if (qt_wait_event(40) != true) { return 27 }  // combo indexChanged enqueued
+    if (qt_event_kind() != QtEvent::indexChanged) { return 28 }
+    if (qt_event_handle() != combo) { return 29 }
+    if (qt_event_pop() != 0) { return 30 }
+
+    // Fresh value changes enqueue ValueChanged records (spin then slider),
+    // distinguishable by handle.
+    if (qt_spin_set_value(spin, 9) != 0) { return 31 }
+    if (qt_slider_set_value(slider, 77) != 0) { return 32 }
+    if (qt_wait_event(40) != true) { return 33 }
+    if (qt_event_kind() != QtEvent::valueChanged) { return 34 }
+    if (qt_event_handle() != spin) { return 35 }
+    if (qt_event_pop() != 0) { return 36 }
+    if (qt_wait_event(40) != true) { return 37 }
+    if (qt_event_kind() != QtEvent::valueChanged) { return 38 }
+    if (qt_event_handle() != slider) { return 39 }
+    if (qt_event_pop() != 0) { return 40 }
+
+    // --- Cross-thread wake: a worker fiber flips a checkbox while the main UI
+    // thread blocks in qt_wait_event. The worker's QCheckBox::setChecked emits
+    // toggled (enqueueing a record), which wakes the waiting main loop.
+    cb<Int> = qt_checkbox_create(w, "wake")
+    if (cb == 0) { return 41 }
+    worker<Int> = async_spawn(|| -> {
+        async_sleep_ms(30)
+        if (qt_checkbox_set_checked(cb, true) != 0) { return 1 }
+        return 0
+    })
+    if (worker == 0) { return 42 }
+    got<Bool> = qt_wait_event(-1)
+    if (got != true) { return 43 }
+    if (qt_event_kind() != QtEvent::toggled) { return 44 }
+    if (qt_event_handle() != cb) { return 45 }
+    if (qt_event_pop() != 0) { return 46 }
+    if (async_await(worker) != 0) { return 47 }
+    if (qt_checkbox_checked(cb) != true) { return 48 }
+
+    // --- Asyncs scheduling: concurrent fibers finish in ~elapsed, not the sum.
+    a<Int> = async_spawn(|| -> { async_sleep_ms(60); return 10 })
+    b<Int> = async_spawn(|| -> { async_sleep_ms(60); return 20 })
+    c<Int> = async_spawn(|| -> { async_sleep_ms(60); return 30 })
+    t2<Int> = time_mono_millis()
+    if (async_await(a) != 10) { return 49 }
+    if (async_await(b) != 20) { return 50 }
+    if (async_await(c) != 30) { return 51 }
+    t3<Int> = time_mono_millis()
+    if ((t3 - t2) > 150) { return 52 }            // ~60ms if concurrent, not 180ms
+
+    qt_quit()
+    println("qt-more-ok")
+    return 0
+}

@@ -918,15 +918,26 @@ Expansion plan (approved follow-through, Phases A-D):
   handler hitting `https` on the async pool) - runs under `offscreen` in the
   harness and as a real window on a display.
 
-Status (this round): Phases A and B landed. Controls (button, edit, checkbox,
-progress) plus vbox/hbox layouts and `qt_kind` introspection were added across
-the bridge (`runtime/vyb_qt_bridge.cpp`), stub (`runtime/vyb_qt_stub.cpp`), cgen
-dispatch, semantic allow-list, `main.cpp` registrations, and `stdlib/qt/mod.vyb`;
-signals (`clicked`/`textChanged`/`toggled`) now enqueue FIFO records drained via
+Status (Phases A+B landed): controls (button, edit, checkbox, progress) plus
+vbox/hbox layouts and `qt_kind` introspection were added across the bridge
+(`runtime/vyb_qt_bridge.cpp`), stub (`runtime/vyb_qt_stub.cpp`), cgen dispatch,
+semantic allow-list, `main.cpp` registrations, and `stdlib/qt/mod.vyb`; signals
+(`clicked`/`textChanged`/`toggled`) enqueue FIFO records drained via
 `qt_event_count`/`handle`/`kind`/`pop`. Covered headlessly by
-`test/qt/test_qt_controls.vyb`; `QtWidgetKind`/`QtEvent` enums are exported with
-`share(all)`. Phases C (typed handles) and D (event-loop/asyncs integration)
-remain open.
+`test/qt/test_qt_controls.vyb`; `QtWidgetKind`/`QtEvent` enums exported with
+`share(all)`.
+
+Status (asyncs + widgets tranche, no demo): added combo (`QComboBox`), spin
+(`QSpinBox`), and slider (`QSlider`) with `qt_combo_*`/`qt_spin_*`/`qt_slider_*`
+and `QtEvent::IndexChanged`/`ValueChanged`; and the UI scheduling barrier
+`qt_wait_event(timeout)` - a main-thread pump that blocks without busy-spinning
+until a control event or timeout, so GUI code stays on the main thread (Qt
+affinity) while the `asyncs` fiber pool runs background work concurrently. A
+worker fiber can set a widget, enqueueing a record that wakes a blocked
+`qt_wait_event` (covered by `test/qt/test_qt_more.vyb`). TODO for the full
+package: event-loop `app.exec()`-driven `qt_run`, cross-thread background-to-UI
+posting, typed `QtWidget` handles (Phase C), and the table-driven `tools/gen_qt.py`
+generator to end the hand-edited four-way drift.
 
 Honest limits: no custom painting/styling/tables/trees (compose from
 primitives); remain on Qt5 for now (note a Qt6 migration: CMake package +

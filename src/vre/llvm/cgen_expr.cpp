@@ -3270,6 +3270,19 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_qt_event_handle") rtName = "__vyb_qt_event_handle";
         else if (fname == "vyb_qt_event_kind") rtName = "__vyb_qt_event_kind";
         else if (fname == "vyb_qt_event_pop") rtName = "__vyb_qt_event_pop";
+        else if (fname == "vyb_qt_wait_event") rtName = "__vyb_qt_wait_event";
+        else if (fname == "vyb_qt_combo_create") rtName = "__vyb_qt_combo_create";
+        else if (fname == "vyb_qt_combo_add_item") rtName = "__vyb_qt_combo_add_item";
+        else if (fname == "vyb_qt_combo_count") rtName = "__vyb_qt_combo_count";
+        else if (fname == "vyb_qt_combo_current_index") rtName = "__vyb_qt_combo_current_index";
+        else if (fname == "vyb_qt_combo_set_current_index") rtName = "__vyb_qt_combo_set_current_index";
+        else if (fname == "vyb_qt_combo_item_text") rtName = "__vyb_qt_combo_item_text";
+        else if (fname == "vyb_qt_spin_create") rtName = "__vyb_qt_spin_create";
+        else if (fname == "vyb_qt_spin_value") rtName = "__vyb_qt_spin_value";
+        else if (fname == "vyb_qt_spin_set_value") rtName = "__vyb_qt_spin_set_value";
+        else if (fname == "vyb_qt_slider_create") rtName = "__vyb_qt_slider_create";
+        else if (fname == "vyb_qt_slider_value") rtName = "__vyb_qt_slider_value";
+        else if (fname == "vyb_qt_slider_set_value") rtName = "__vyb_qt_slider_set_value";
         if (!rtName.empty()) {
             auto getQtFn = [&](llvm::FunctionType* ft) -> llvm::Function* {
                 llvm::Function* f = module->getFunction(rtName);
@@ -3381,7 +3394,10 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                     {toI64(parent), toStrPtr(s), strLenOf(s)}, "qt.wcreate");
                 return;
             } else if (fname == "vyb_qt_kind" || fname == "vyb_qt_vbox" ||
-                       fname == "vyb_qt_hbox" || fname == "vyb_qt_checkbox_checked") {
+                       fname == "vyb_qt_hbox" || fname == "vyb_qt_checkbox_checked" ||
+                       fname == "vyb_qt_combo_create" || fname == "vyb_qt_combo_count" ||
+                       fname == "vyb_qt_combo_current_index" || fname == "vyb_qt_spin_value" ||
+                       fname == "vyb_qt_slider_value" || fname == "vyb_qt_wait_event") {
                 // 1-arg Int handle/num -> Int
                 if (!checkArity(1)) return;
                 llvm::Value* h = needArg(0); if (!h) return;
@@ -3397,10 +3413,23 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 m_currentLLVMValue = builder->CreateCall(getQtFn(ft),
                     {toI64(parent), toI64(maxv)}, "qt.prog");
                 return;
+            } else if (fname == "vyb_qt_spin_create" || fname == "vyb_qt_slider_create") {
+                // (parent, min, max) -> Int
+                if (!checkArity(3)) return;
+                llvm::Value* parent = needArg(0); llvm::Value* mn = needArg(1); llvm::Value* mx = needArg(2);
+                if (!parent || !mn || !mx) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(
+                    int64Type, {int64Type, int64Type, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft),
+                    {toI64(parent), toI64(mn), toI64(mx)}, "qt.spinsld");
+                return;
             } else if (fname == "vyb_qt_button_set_enabled" ||
                        fname == "vyb_qt_checkbox_set_checked" ||
                        fname == "vyb_qt_progress_set_value" ||
-                       fname == "vyb_qt_layout_add") {
+                       fname == "vyb_qt_layout_add" ||
+                       fname == "vyb_qt_combo_set_current_index" ||
+                       fname == "vyb_qt_spin_set_value" ||
+                       fname == "vyb_qt_slider_set_value") {
                 // (h, value) -> Int
                 if (!checkArity(2)) return;
                 llvm::Value* h = needArg(0); llvm::Value* v = needArg(1);
@@ -3411,7 +3440,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 return;
             } else if (fname == "vyb_qt_button_set_text" ||
                        fname == "vyb_qt_edit_set_text" ||
-                       fname == "vyb_qt_edit_set_placeholder") {
+                       fname == "vyb_qt_edit_set_placeholder" ||
+                       fname == "vyb_qt_combo_add_item") {
                 // (h, text) -> Int
                 if (!checkArity(2)) return;
                 llvm::Value* h = needArg(0); llvm::Value* s = needArg(1);
@@ -3427,6 +3457,14 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 llvm::Value* h = needArg(0); if (!h) return;
                 llvm::FunctionType* ft = llvm::FunctionType::get(qtStrRet(), {int64Type}, false);
                 m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(h)}, "qt.text1");
+                return;
+            } else if (fname == "vyb_qt_combo_item_text") {
+                // (h, idx) -> String
+                if (!checkArity(2)) return;
+                llvm::Value* h = needArg(0); llvm::Value* idx = needArg(1);
+                if (!h || !idx) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(qtStrRet(), {int64Type, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(h), toI64(idx)}, "qt.combotext");
                 return;
             }
         }

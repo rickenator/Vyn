@@ -96,5 +96,31 @@ VYB_WEAK int64_t __vyb_qt_event_handle(void) { return 0; }
 VYB_WEAK int64_t __vyb_qt_event_kind(void) { return 0; }
 VYB_WEAK int64_t __vyb_qt_event_pop(void) { return -1; }
 
+// Scheduling / wait
+VYB_WEAK int64_t __vyb_qt_wait_event(int64_t timeout_ms) { (void)timeout_ms; return -1; }
+
+// Combo boxes
+VYB_WEAK int64_t __vyb_qt_combo_create(int64_t parent) { (void)parent; return 0; }
+VYB_WEAK int64_t __vyb_qt_combo_add_item(int64_t h, const char* s, int64_t len)
+    { (void)h; (void)s; (void)len; return -1; }
+VYB_WEAK int64_t __vyb_qt_combo_count(int64_t h) { (void)h; return -1; }
+VYB_WEAK int64_t __vyb_qt_combo_current_index(int64_t h) { (void)h; return -1; }
+VYB_WEAK int64_t __vyb_qt_combo_set_current_index(int64_t h, int64_t idx)
+    { (void)h; (void)idx; return -1; }
+VYB_WEAK vyb_qt_str __vyb_qt_combo_item_text(int64_t h, int64_t idx)
+    { (void)h; (void)idx; return qt_stub_str(); }
+
+// Spin boxes
+VYB_WEAK int64_t __vyb_qt_spin_create(int64_t parent, int64_t minv, int64_t maxv)
+    { (void)parent; (void)minv; (void)maxv; return 0; }
+VYB_WEAK int64_t __vyb_qt_spin_value(int64_t h) { (void)h; return 0; }
+VYB_WEAK int64_t __vyb_qt_spin_set_value(int64_t h, int64_t v) { (void)h; (void)v; return -1; }
+
+// Sliders
+VYB_WEAK int64_t __vyb_qt_slider_create(int64_t parent, int64_t minv, int64_t maxv)
+    { (void)parent; (void)minv; (void)maxv; return 0; }
+VYB_WEAK int64_t __vyb_qt_slider_value(int64_t h) { (void)h; return 0; }
+VYB_WEAK int64_t __vyb_qt_slider_set_value(int64_t h, int64_t v) { (void)h; (void)v; return -1; }
+
 } // extern "C"
 #endif // !VYB_HAVE_QT5

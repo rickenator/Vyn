@@ -30,6 +30,9 @@
 #include <QLineEdit>
 #include <QCheckBox>
 #include <QProgressBar>
+#include <QComboBox>
+#include <QSpinBox>
+#include <QSlider>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QString>
@@ -37,6 +40,7 @@
 #include <chrono>
 #include <deque>
 #include <mutex>
+#include <thread>
 
 #include <cstdint>
 #include <cstdlib>
@@ -75,6 +79,8 @@ static std::chrono::steady_clock::time_point g_timer_start = std::chrono::steady
 #define VYB_QT_EVT_CLICK     1
 #define VYB_QT_EVT_TEXTCHANGED 2
 #define VYB_QT_EVT_TOGGLED   3
+#define VYB_QT_EVT_INDEXCHANGED 4
+#define VYB_QT_EVT_VALUECHANGED 5
 
 struct vyb_qt_event { int64_t handle; int64_t kind; };
 static std::deque<vyb_qt_event> g_events;
@@ -411,6 +417,9 @@ extern "C" VYB_WEAK int64_t __vyb_qt_kind(int64_t h) {
     if (dynamic_cast<QLineEdit*>(w))       return 4; // Edit
     if (dynamic_cast<QCheckBox*>(w))       return 5; // Checkbox
     if (dynamic_cast<QProgressBar*>(w))    return 6; // Progress
+    if (dynamic_cast<QComboBox*>(w))       return 7; // Combo
+    if (dynamic_cast<QSpinBox*>(w))        return 8; // Spin
+    if (dynamic_cast<QSlider*>(w))         return 9; // Slider
     if (dynamic_cast<QLabel*>(w))          return 2; // Label
     return 1;                                        // Window (plain QWidget)
 }
@@ -438,5 +447,146 @@ extern "C" VYB_WEAK int64_t __vyb_qt_event_pop(void) {
     std::lock_guard<std::mutex> lk(g_events_mtx);
     if (g_events.empty()) return -1;
     g_events.pop_front();
+    return 0;
+}
+
+// Block the calling (main) thread, pumping the Qt event loop, until a control
+// event is queued (returns 1) or `timeout_ms` elapses (returns 0). A negative
+// timeout waits until an event arrives. The event loop is *driven* here (a real
+// QCoreApplication::processEvents pump), so real input/paint/timer signals are
+// delivered while we wait and their queued records become visible. This is the
+// UI scheduling primitive: GUI code stays on the main thread (Qt thread
+// affinity), while the asyncs pool runs background/timer/IO fibers concurrently
+// and their mutator calls enqueue records here that this function observes.
+// Returns 1 if events are available (caller then drains with __vyb_qt_event_*),
+// 0 on timeout, -1 if the GUI is not running.
+extern "C" VYB_WEAK int64_t __vyb_qt_wait_event(int64_t timeout_ms) {
+    if (!g_app) return -1;
+    auto mono_ms = []() -> int64_t {
+        return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+    };
+    int64_t deadline = -1;
+    if (timeout_ms > 0) deadline = mono_ms() + timeout_ms;
+    for (;;) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 25);
+        {
+            std::lock_guard<std::mutex> lk(g_events_mtx);
+            if (!g_events.empty()) return 1;
+        }
+        if (timeout_ms == 0) return 0;                 // single pump, no wait
+        if (deadline >= 0 && mono_ms() >= deadline) return 0;
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));  // cooperatively wait
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Combo boxes (QComboBox)
+// ----------------------------------------------------------------------------
+
+// Create a read-only combo box as a child of `parent` (0 = none). Returns its
+// Int handle, or 0 on failure. A current-index change enqueues a
+// QtEvent::IndexChanged record.
+extern "C" VYB_WEAK int64_t __vyb_qt_combo_create(int64_t parent) {
+    if (!g_app) return 0;
+    QWidget* pw = parent ? htowed(parent) : nullptr;
+    QComboBox* c = new QComboBox(pw);
+    QObject::connect(c, qOverload<int>(&QComboBox::currentIndexChanged),
+        [c](int) { vyb_qt_enqueue(wetoh(c), VYB_QT_EVT_INDEXCHANGED); });
+    return wetoh(c);
+}
+
+// Append `text` as the last combo item. Returns 0 on success, -1 on a bad combo
+// handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_combo_add_item(int64_t h, const char* s, int64_t len) {
+    QComboBox* c = dynamic_cast<QComboBox*>(htowed(h)); if (!c) return -1;
+    c->addItem(qt_from_bytes(s, len));
+    return 0;
+}
+
+// Number of combo items, or -1 on a bad handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_combo_count(int64_t h) {
+    QComboBox* c = dynamic_cast<QComboBox*>(htowed(h)); if (!c) return -1;
+    return (int64_t)c->count();
+}
+
+// Index of the currently selected combo item (0-based), or -1 on a bad handle
+// (or when nothing is selected).
+extern "C" VYB_WEAK int64_t __vyb_qt_combo_current_index(int64_t h) {
+    QComboBox* c = dynamic_cast<QComboBox*>(htowed(h)); if (!c) return -1;
+    return (int64_t)c->currentIndex();
+}
+
+// Select combo item `idx` (0-based). Returns 0 on success, -1 on a bad handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_combo_set_current_index(int64_t h, int64_t idx) {
+    QComboBox* c = dynamic_cast<QComboBox*>(htowed(h)); if (!c) return -1;
+    c->setCurrentIndex((int)idx);
+    return 0;
+}
+
+// Text of combo item `idx` (String). Returns "" on a bad handle/index.
+extern "C" VYB_WEAK vyb_qt_str __vyb_qt_combo_item_text(int64_t h, int64_t idx) {
+    QComboBox* c = dynamic_cast<QComboBox*>(htowed(h)); if (!c) return { nullptr, 0 };
+    if (idx < 0 || idx >= c->count()) return { nullptr, 0 };
+    return qt_to_owned(c->itemText((int)idx));
+}
+
+// ----------------------------------------------------------------------------
+// Spin boxes (QSpinBox)
+// ----------------------------------------------------------------------------
+
+// Create an integer spin box with range [min, max] as a child of `parent`.
+// Returns its Int handle, or 0 on failure. A value change enqueues a
+// QtEvent::ValueChanged record.
+extern "C" VYB_WEAK int64_t __vyb_qt_spin_create(int64_t parent, int64_t minv, int64_t maxv) {
+    if (!g_app) return 0;
+    QWidget* pw = parent ? htowed(parent) : nullptr;
+    QSpinBox* s = new QSpinBox(pw);
+    s->setRange((int)minv, (int)maxv);
+    QObject::connect(s, qOverload<int>(&QSpinBox::valueChanged),
+        [s](int) { vyb_qt_enqueue(wetoh(s), VYB_QT_EVT_VALUECHANGED); });
+    return wetoh(s);
+}
+
+// Current spin box value, or 0 on a bad handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_spin_value(int64_t h) {
+    QSpinBox* s = dynamic_cast<QSpinBox*>(htowed(h)); if (!s) return 0;
+    return (int64_t)s->value();
+}
+
+// Set the spin box value (clamped to its range). Returns 0 on success.
+extern "C" VYB_WEAK int64_t __vyb_qt_spin_set_value(int64_t h, int64_t v) {
+    QSpinBox* s = dynamic_cast<QSpinBox*>(htowed(h)); if (!s) return -1;
+    s->setValue((int)v);
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+// Sliders (QSlider)
+// ----------------------------------------------------------------------------
+
+// Create a horizontal slider with range [min, max] as a child of `parent`.
+// Returns its Int handle, or 0 on failure. A value change enqueues a
+// QtEvent::ValueChanged record.
+extern "C" VYB_WEAK int64_t __vyb_qt_slider_create(int64_t parent, int64_t minv, int64_t maxv) {
+    if (!g_app) return 0;
+    QWidget* pw = parent ? htowed(parent) : nullptr;
+    QSlider* sl = new QSlider(Qt::Horizontal, pw);
+    sl->setRange((int)minv, (int)maxv);
+    QObject::connect(sl, &QSlider::valueChanged,
+        [sl](int) { vyb_qt_enqueue(wetoh(sl), VYB_QT_EVT_VALUECHANGED); });
+    return wetoh(sl);
+}
+
+// Current slider value, or 0 on a bad handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_slider_value(int64_t h) {
+    QSlider* sl = dynamic_cast<QSlider*>(htowed(h)); if (!sl) return 0;
+    return (int64_t)sl->value();
+}
+
+// Set the slider value (clamped to its range). Returns 0 on success.
+extern "C" VYB_WEAK int64_t __vyb_qt_slider_set_value(int64_t h, int64_t v) {
+    QSlider* sl = dynamic_cast<QSlider*>(htowed(h)); if (!sl) return -1;
+    sl->setValue((int)v);
     return 0;
 }

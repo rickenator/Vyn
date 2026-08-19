@@ -254,6 +254,19 @@ extern "C" {
     int64_t __vyb_qt_event_handle(void);
     int64_t __vyb_qt_event_kind(void);
     int64_t __vyb_qt_event_pop(void);
+    int64_t __vyb_qt_wait_event(int64_t timeout_ms);
+    int64_t __vyb_qt_combo_create(int64_t parent);
+    int64_t __vyb_qt_combo_add_item(int64_t h, const char* s, int64_t len);
+    int64_t __vyb_qt_combo_count(int64_t h);
+    int64_t __vyb_qt_combo_current_index(int64_t h);
+    int64_t __vyb_qt_combo_set_current_index(int64_t h, int64_t idx);
+    vyb_file_str __vyb_qt_combo_item_text(int64_t h, int64_t idx);
+    int64_t __vyb_qt_spin_create(int64_t parent, int64_t minv, int64_t maxv);
+    int64_t __vyb_qt_spin_value(int64_t h);
+    int64_t __vyb_qt_spin_set_value(int64_t h, int64_t v);
+    int64_t __vyb_qt_slider_create(int64_t parent, int64_t minv, int64_t maxv);
+    int64_t __vyb_qt_slider_value(int64_t h);
+    int64_t __vyb_qt_slider_set_value(int64_t h, int64_t v);
 
 #ifdef VYB_HAVE_OPENSSL
     // TLS runtime helpers (tls stdlib module) over OpenSSL. SSL/SSL_CTX are
@@ -1654,6 +1667,32 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_event_kind), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_event_pop")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_event_pop), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_wait_event")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_wait_event), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_combo_create")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_combo_create), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_combo_add_item")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_combo_add_item), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_combo_count")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_combo_count), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_combo_current_index")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_combo_current_index), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_combo_set_current_index")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_combo_set_current_index), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_combo_item_text")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_combo_item_text), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_spin_create")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_spin_create), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_spin_value")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_spin_value), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_spin_set_value")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_spin_set_value), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_slider_create")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_slider_create), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_slider_value")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_slider_value), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_slider_set_value")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_slider_set_value), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_net_open")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_open), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_net_close")] = llvm::orc::ExecutorSymbolDef(
