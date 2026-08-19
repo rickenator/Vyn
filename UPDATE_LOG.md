@@ -798,3 +798,73 @@ tests/examples/demos repair pass was behavior-checked with:
 - `python3 test/run_tests.py --test-dir test/ffi --vyb build/vyb --execute-jit`
 - `build/vyb` over every `examples/*.vyb`
 - `build/vyb` over every `demos/*.vyb`
+
+## Open RFEs (compiler architecture)
+
+Two behavioural footguns are logged for a future, non-urgent fix. Both are
+pre-existing; neither affects current green tests or the demos, but each is a
+latent wrong behaviour waiting on the right shaped input.
+
+### RFE-A: ownership/transfer metadata in the type system, not codegen guessing
+
+`exprProducesOwnedStringTemp` (`src/vre/llvm/cgen_expr.cpp`, ~9462) decides at
+codegen time whether an expression yields a freshly-allocated owned String temp
+that may be reclaimed with `__vyb_string_free` after consumption. It infers this
+from syntax alone:
+
+- `a + b` with a String operand,
+- `.to_string()` / `.toString()` on a non-String receiver,
+- any call whose declared result type is `String`,
+- `await` of a String future,
+- minus an ad-hoc `Vec`-receiver exclusion bolted on after a use-after-free.
+
+This heuristic is deliberately conservative (unknown provenance is treated as a
+borrow, so it is not freed), but it is fundamentally fragile:
+
+- A user function that *returns a borrow* of a String is misclassified as owned,
+  so the temp is freed while still referenced (`__vyb_string_free` on the buffer)
+  → premature free / use-after-free.
+- An owned String producer the heuristic does not recognise leaks.
+
+Worse, `exprIsStringTransfer` (`src/vre/llvm/cgen_expr.cpp`, ~9537) is a thin
+copy of the same heuristic, and it drives ownership-transfer decisions across
+`Vec` push (`src/vre/llvm/cgen_vec.cpp`), variable init (`src/vre/llvm/cgen_decl.cpp`),
+struct-field init (`src/vre/llvm/cgen_expr.cpp`), String return
+(`src/vre/llvm/cgen_stmt.cpp`), and member access (`src/vre/llvm/cgen_expr.cpp`).
+One wrong guess fans out into premature frees or leaks in several places.
+
+Direction for a fix (someday): carry ownership/transfer metadata on the type in
+the semantic layer — mark a String-returning function/`await`/concat call result
+as owned-vs-borrowed — and have codegen read that flag instead of re-deriving it
+from the AST shape. Not now.
+
+### RFE-B: bind method bodies in an imported module must resolve against the
+defining module's scope
+
+A method implemented via `bind Aspect -> Type` in an *imported* module cannot
+see that module's sibling `share(all)` free functions unless the consuming
+module also imports those names. The design intent (`src/vre/semantic.cpp`,
+`topLevelDeclarationName` comment near the bind case, ~line 139) is that a bind
+body resolves against the module that defines it — so a carried bind's
+supporting structs/aspects/helpers stay visible wherever the bind runs — but
+that does not currently hold for imported modules.
+
+Repro: `demos/VybLynx/src/url.vyb` implements `bind UrlOps -> Url`; its
+`resolve(self, reference)` method calls sibling `ref_scheme` and
+`is_absolute_scheme`. Importing `url` as `import url::{Url, UrlOps, parse_url}`
+and calling `u.resolve(...)` fails semantic analysis with
+
+```
+Undefined identifier: ref_scheme
+Undefined identifier: is_absolute_scheme
+```
+
+unless the importer also lists `ref_scheme`/`is_absolute_scheme` (which
+`demos/VybLynx/src/main.vyb` happens to do, so the demo works). A free function
+in the same module calling a sibling (the old `resolve_url` → `url_authority`)
+resolves fine, so the gap is specific to bind-method bodies of imported modules.
+Any future `url` consumer would otherwise need to over-import the helpers.
+
+Direction: root the bind-method body's scope at the defining module's resolvable
+scope (matching free-function bodies) rather than the importer's `currentScope`.
+Not now.
