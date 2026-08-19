@@ -1,5 +1,5 @@
 {
-  "git_rev": "721f460f520c3f476dc1e5617d5bab42bcd3ee34",
+  "git_rev": "b6fd4967f937f730b33a66c8a1d5c2e8072c9f54",
   "modules": [
     "agents",
     "asyncs",
@@ -152,7 +152,7 @@
         "files": [
           "stdlib/qt/mod.vyb"
         ],
-        "exported": 81,
+        "exported": 94,
         "fan_in": 0,
         "fan_out": 0
       },
@@ -638,6 +638,19 @@
           "qt_widget_enabled",
           "qt_grid",
           "qt_grid_add",
+          "qt_widget_set_visible",
+          "qt_widget_visible",
+          "qt_tabs_create",
+          "qt_tabs_add",
+          "qt_tabs_count",
+          "qt_tabs_current",
+          "qt_tabs_set_current",
+          "qt_list_create",
+          "qt_list_add",
+          "qt_list_count",
+          "qt_list_current",
+          "qt_list_set_current",
+          "qt_list_item_text",
           "QtEvent",
           "QtWidgetKind"
         ]
@@ -3116,6 +3129,60 @@
         "fan_in": 0
       },
       {
+        "name": "qt_list_add",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_list_add(list<Int>, text<String>)<Int> ->",
+        "summary": "Append `text` as the last list item. Returns 0.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_list_count",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_list_count(list<Int>)<Int> ->",
+        "summary": "List item count, or -1 on a bad handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_list_create",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_list_create(parent<Int>)<Int> ->",
+        "summary": "Create an item list under `parent`; selection changes enqueue QtEvent::CurrentChanged. Returns its handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_list_current",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_list_current(list<Int>)<Int> ->",
+        "summary": "Current (0-based) list index, or -1 when none / bad handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_list_item_text",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_list_item_text(list<Int>, idx<Int>)<String> ->",
+        "summary": "Text of list item `idx` (String); \"\" on a bad handle/index.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_list_set_current",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_list_set_current(list<Int>, idx<Int>)<Int> ->",
+        "summary": "Select list item `idx`. Returns 0.",
+        "fan_in": 0
+      },
+      {
         "name": "qt_on_event",
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
@@ -3278,6 +3345,51 @@
         "fan_in": 0
       },
       {
+        "name": "qt_tabs_add",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_tabs_add(tabs<Int>, text<String>)<Int> ->",
+        "summary": "Append a tab titled `text`; returns the page's widget handle (put a layout on it).",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_tabs_count",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_tabs_count(tabs<Int>)<Int> ->",
+        "summary": "Tab count, or -1 on a bad handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_tabs_create",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_tabs_create(parent<Int>)<Int> ->",
+        "summary": "Create a tab container under `parent`; returns its handle or 0.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_tabs_current",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_tabs_current(tabs<Int>)<Int> ->",
+        "summary": "Current (0-based) tab index, or -1 on a bad handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_tabs_set_current",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_tabs_set_current(tabs<Int>, idx<Int>)<Int> ->",
+        "summary": "Select tab `idx` (enqueues QtEvent::CurrentChanged). Returns 0.",
+        "fan_in": 0
+      },
+      {
         "name": "qt_text_edit_create",
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
@@ -3419,6 +3531,24 @@
         "kind": "fn",
         "signature": "qt_widget_set_enabled(h<Int>, on<Bool>)<Int> ->",
         "summary": "Enable (true) / disable (false) any widget. Returns 0, or -1 on a non-widget handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_widget_set_visible",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_widget_set_visible(h<Int>, on<Bool>)<Int> ->",
+        "summary": "Show (true) / hide (false) any widget. Returns 0, or -1 on a non-widget handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_widget_visible",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_widget_visible(h<Int>)<Bool> ->",
+        "summary": "true while widget `h` is visible, else false.",
         "fan_in": 0
       },
       {
@@ -6903,6 +7033,42 @@
     {
       "type": "runtimeRef",
       "from_module": "qt",
+      "from_symbol": "qt_list_add",
+      "to_symbol": "vyb_qt_list_add"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_list_count",
+      "to_symbol": "vyb_qt_list_count"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_list_create",
+      "to_symbol": "vyb_qt_list_create"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_list_current",
+      "to_symbol": "vyb_qt_list_current"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_list_item_text",
+      "to_symbol": "vyb_qt_list_item_text"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_list_set_current",
+      "to_symbol": "vyb_qt_list_set_current"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
       "from_symbol": "qt_on_event",
       "to_symbol": "vyb_qt_on_event"
     },
@@ -7011,6 +7177,36 @@
     {
       "type": "runtimeRef",
       "from_module": "qt",
+      "from_symbol": "qt_tabs_add",
+      "to_symbol": "vyb_qt_tabs_add"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_tabs_count",
+      "to_symbol": "vyb_qt_tabs_count"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_tabs_create",
+      "to_symbol": "vyb_qt_tabs_create"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_tabs_current",
+      "to_symbol": "vyb_qt_tabs_current"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_tabs_set_current",
+      "to_symbol": "vyb_qt_tabs_set_current"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
       "from_symbol": "qt_text_edit_create",
       "to_symbol": "vyb_qt_text_edit_create"
     },
@@ -7103,6 +7299,18 @@
       "from_module": "qt",
       "from_symbol": "qt_widget_set_enabled",
       "to_symbol": "vyb_qt_widget_set_enabled"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_widget_set_visible",
+      "to_symbol": "vyb_qt_widget_set_visible"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_widget_visible",
+      "to_symbol": "vyb_qt_widget_visible"
     },
     {
       "type": "runtimeRef",

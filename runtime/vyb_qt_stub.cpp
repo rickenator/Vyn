@@ -136,6 +136,25 @@ VYB_WEAK int64_t __vyb_qt_widget_enabled(int64_t h) { (void)h; return 0; }
 VYB_WEAK int64_t __vyb_qt_grid(int64_t parent) { (void)parent; return 0; }
 VYB_WEAK int64_t __vyb_qt_grid_add(int64_t layout, int64_t child, int64_t row, int64_t col)
     { (void)layout; (void)child; (void)row; (void)col; return -1; }
+VYB_WEAK int64_t __vyb_qt_widget_set_visible(int64_t h, int64_t on)
+    { (void)h; (void)on; return -1; }
+VYB_WEAK int64_t __vyb_qt_widget_visible(int64_t h) { (void)h; return 0; }
+VYB_WEAK int64_t __vyb_qt_tabs_create(int64_t parent) { (void)parent; return 0; }
+VYB_WEAK int64_t __vyb_qt_tabs_add(int64_t tabs, const char* text, int64_t len)
+    { (void)tabs; (void)text; return 0; }
+VYB_WEAK int64_t __vyb_qt_tabs_count(int64_t tabs) { (void)tabs; return -1; }
+VYB_WEAK int64_t __vyb_qt_tabs_current(int64_t tabs) { (void)tabs; return -1; }
+VYB_WEAK int64_t __vyb_qt_tabs_set_current(int64_t tabs, int64_t idx)
+    { (void)tabs; (void)idx; return -1; }
+VYB_WEAK int64_t __vyb_qt_list_create(int64_t parent) { (void)parent; return 0; }
+VYB_WEAK int64_t __vyb_qt_list_add(int64_t list, const char* text, int64_t len)
+    { (void)list; (void)text; return -1; }
+VYB_WEAK int64_t __vyb_qt_list_count(int64_t list) { (void)list; return -1; }
+VYB_WEAK int64_t __vyb_qt_list_current(int64_t list) { (void)list; return -1; }
+VYB_WEAK int64_t __vyb_qt_list_set_current(int64_t list, int64_t idx)
+    { (void)list; (void)idx; return -1; }
+VYB_WEAK vyb_qt_str __vyb_qt_list_item_text(int64_t list, int64_t idx)
+    { (void)list; (void)idx; return qt_stub_str(); }
 // gen_qt[stub]: end
 } // extern "C"
 #endif // !VYB_HAVE_QT5

@@ -261,6 +261,46 @@ QT_FUNCS = [
     dict(mod="qt_grid_add", vn="vyb_qt_grid_add", cn="__vyb_qt_grid_add",
          args=[("layout", "Int"), ("child", "Int"), ("row", "Int"), ("col", "Int")], ret="Int", shape="4int",
          stub="-1", doc="Add widget `child` to grid-layout `layout` at (row, col). Returns 0."),
+
+    # Generic widget visibility.
+    dict(mod="qt_widget_set_visible", vn="vyb_qt_widget_set_visible", cn="__vyb_qt_widget_set_visible",
+         args=[("h", "Int"), ("on", "Bool")], ret="Int", shape="value", stub="-1",
+         doc="Show (true) / hide (false) any widget. Returns 0, or -1 on a non-widget handle.",
+         body=("if (on) {\n        return vyb_qt_widget_set_visible(h, 1)\n    }\n"
+               "    return vyb_qt_widget_set_visible(h, 0)")),
+    dict(mod="qt_widget_visible", vn="vyb_qt_widget_visible", cn="__vyb_qt_widget_visible", args=[("h", "Int")],
+         ret="Bool", shape="int1", stub="0", doc="true while widget `h` is visible, else false."),
+
+    # Tab widget (QTabWidget): page container.
+    dict(mod="qt_tabs_create", vn="vyb_qt_tabs_create", cn="__vyb_qt_tabs_create", args=[("parent", "Int")],
+         ret="Int", shape="int1", stub="0", doc="Create a tab container under `parent`; returns its handle or 0."),
+    dict(mod="qt_tabs_add", vn="vyb_qt_tabs_add", cn="__vyb_qt_tabs_add",
+         args=[("tabs", "Int"), ("text", "String")], ret="Int", shape="text", stub="0",
+         doc="Append a tab titled `text`; returns the page's widget handle (put a layout on it)."),
+    dict(mod="qt_tabs_count", vn="vyb_qt_tabs_count", cn="__vyb_qt_tabs_count", args=[("tabs", "Int")],
+         ret="Int", shape="int1", stub="-1", doc="Tab count, or -1 on a bad handle."),
+    dict(mod="qt_tabs_current", vn="vyb_qt_tabs_current", cn="__vyb_qt_tabs_current", args=[("tabs", "Int")],
+         ret="Int", shape="int1", stub="-1", doc="Current (0-based) tab index, or -1 on a bad handle."),
+    dict(mod="qt_tabs_set_current", vn="vyb_qt_tabs_set_current", cn="__vyb_qt_tabs_set_current",
+         args=[("tabs", "Int"), ("idx", "Int")], ret="Int", shape="value", stub="-1",
+         doc="Select tab `idx` (enqueues QtEvent::CurrentChanged). Returns 0."),
+
+    # List widget (QListWidget).
+    dict(mod="qt_list_create", vn="vyb_qt_list_create", cn="__vyb_qt_list_create", args=[("parent", "Int")],
+         ret="Int", shape="int1", stub="0", doc="Create an item list under `parent`; selection changes enqueue QtEvent::CurrentChanged. Returns its handle."),
+    dict(mod="qt_list_add", vn="vyb_qt_list_add", cn="__vyb_qt_list_add",
+         args=[("list", "Int"), ("text", "String")], ret="Int", shape="text", stub="-1",
+         doc="Append `text` as the last list item. Returns 0."),
+    dict(mod="qt_list_count", vn="vyb_qt_list_count", cn="__vyb_qt_list_count", args=[("list", "Int")],
+         ret="Int", shape="int1", stub="-1", doc="List item count, or -1 on a bad handle."),
+    dict(mod="qt_list_current", vn="vyb_qt_list_current", cn="__vyb_qt_list_current", args=[("list", "Int")],
+         ret="Int", shape="int1", stub="-1", doc="Current (0-based) list index, or -1 when none / bad handle."),
+    dict(mod="qt_list_set_current", vn="vyb_qt_list_set_current", cn="__vyb_qt_list_set_current",
+         args=[("list", "Int"), ("idx", "Int")], ret="Int", shape="value", stub="-1",
+         doc="Select list item `idx`. Returns 0."),
+    dict(mod="qt_list_item_text", vn="vyb_qt_list_item_text", cn="__vyb_qt_list_item_text",
+         args=[("list", "Int"), ("idx", "Int")], ret="String", shape="str2", stub="qt_stub_str()",
+         doc="Text of list item `idx` (String); \"\" on a bad handle/index."),
 ]
 
 QT_WEB_FUNCS = [
@@ -292,12 +332,14 @@ QT_EVENTS = [
     ("none", 0), ("click", 1), ("textChanged", 2), ("toggled", 3),
     ("indexChanged", 4), ("valueChanged", 5),
     ("loadFinished", 6), ("titleChanged", 7), ("loadProgress", 8),
+    ("currentChanged", 9),
 ]
 
 QT_WIDGETS = [
     ("none", 0), ("window", 1), ("label", 2), ("button", 3), ("edit", 4),
     ("checkbox", 5), ("progress", 6), ("combo", 7), ("spin", 8), ("slider", 9),
     ("dial", 10), ("group", 11), ("textEdit", 12), ("radio", 13), ("web", 14),
+    ("tabs", 15), ("list", 16),
 ]
 
 

@@ -1,0 +1,74 @@
+// @test: qt stdlib module - tab widget, list widget, generic visibility
+// @description: Headless-deterministic coverage for the third widget tier:
+//   a QTabWidget container (add/count/current with CurrentChanged), a QListWidget
+//   (add/count/current/item_text with CurrentChanged), and generic show/hide on
+//   any widget. Widgets are created before the window is shown so isVisible()
+//   reflects a live (mapped) hierarchy under the offscreen QPA platform.
+// @category: qt, stdlib, gui
+// @expect: pass
+// @expect-output: qt-widgets3-ok
+// @env: VYB_STDLIB=stdlib
+// @env: QT_QPA_PLATFORM=offscreen
+
+import qt
+
+main()<Int> -> {
+    if (qt_init() == false) {
+        println("qt-widgets3-ok (Qt5 unavailable)")
+        return 0
+    }
+    if (qt_active() == false) { return 1 }
+
+    w<Int> = qt_window_create()
+    if (w == 0) { return 2 }
+
+    // --- Tab widget -------------------------------------------------------------
+    tabs<Int> = qt_tabs_create(w)
+    if (tabs == 0) { return 3 }
+    if (qt_kind(tabs) != QtWidgetKind::tabs) { return 4 }
+    p1<Int> = qt_tabs_add(tabs, "one")
+    p2<Int> = qt_tabs_add(tabs, "two")
+    if (p1 == 0 || p2 == 0) { return 5 }
+    if (qt_tabs_count(tabs) != 2) { return 6 }
+    if (qt_tabs_current(tabs) != 0) { return 7 }
+    if (qt_tabs_set_current(tabs, 1) != 0) { return 8 }
+    if (qt_tabs_current(tabs) != 1) { return 9 }
+
+    // --- List widget ------------------------------------------------------------
+    lst<Int> = qt_list_create(w)
+    if (lst == 0) { return 10 }
+    if (qt_kind(lst) != QtWidgetKind::list) { return 11 }
+    if (qt_list_add(lst, "alpha") != 0) { return 12 }
+    if (qt_list_add(lst, "beta") != 0) { return 13 }
+    if (qt_list_add(lst, "gamma") != 0) { return 14 }
+    if (qt_list_count(lst) != 3) { return 15 }
+    if (qt_list_item_text(lst, 0) != "alpha") { return 16 }
+    if (qt_list_item_text(lst, 2) != "gamma") { return 17 }
+    if (qt_list_set_current(lst, 1) != 0) { return 18 }
+    if (qt_list_current(lst) != 1) { return 19 }
+
+    // qt_list_set_current should have enqueued a CurrentChanged record.
+    sawCurr<Bool> = false
+    while (qt_event_count() > 0) {
+        if (qt_event_kind() == QtEvent::currentChanged) { sawCurr = true }
+        if (qt_event_pop() != 0) { return 20 }
+    }
+    if (sawCurr == false) { return 21 }
+
+    // --- Generic visibility ------------------------------------------------------
+    // Show after building the tree (isVisible is live once the window maps;
+    // the qt_process_events pump lets offscreen deliver the show).
+    if (qt_window_show(w) != 0) { return 22 }
+    qt_process_events()
+    if (qt_widget_visible(lst) != true) { return 23 }   // inside shown window
+    if (qt_widget_set_visible(lst, false) != 0) { return 24 }
+    qt_process_events()
+    if (qt_widget_visible(lst) == true) { return 25 }
+    if (qt_widget_set_visible(lst, true) != 0) { return 26 }
+    qt_process_events()
+    if (qt_widget_visible(lst) != true) { return 27 }
+
+    qt_quit()
+    println("qt-widgets3-ok")
+    return 0
+}

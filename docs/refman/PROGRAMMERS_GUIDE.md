@@ -1596,6 +1596,12 @@ qt_web_create(parent<Int>)<Int>       qt_web_load(w<Int>, url<String>)<Int>
 qt_web_url(w<Int>)<String>            qt_web_title(w<Int>)<String>
 qt_web_loading(w<Int>)<Bool>          qt_web_back/forward/reload(w<Int>)<Int>
 qt_post_event(h<Int>, kind<Int>)<Int>
+qt_widget_set_visible(h<Int>, on<Bool>)<Int>              qt_widget_visible(h<Int>)<Bool>
+qt_tabs_create(parent<Int>)<Int>    qt_tabs_add(t<Int>, text<String>)<Int>
+qt_tabs_count/current(t<Int>)<Int>  qt_tabs_set_current(t<Int>, idx<Int>)<Int>
+qt_list_create(parent<Int>)<Int>    qt_list_add(l<Int>, text<String>)<Int>
+qt_list_count/current(l<Int>)<Int>  qt_list_set_current(l<Int>, idx<Int>)<Int>
+qt_list_item_text(l<Int>, idx<Int>)<String>
 qt_wait_event(timeout<Int>)<Bool>
 qt_run()<Int>                  qt_run_stop()<Int>            qt_active()<Bool>
 qt_on_event(handler<fn(Int, Int) -> Void>)<Int>
@@ -1605,12 +1611,15 @@ The public API + stub, codegen dispatch, semantic lists, JIT registrations, and
 wrappers/enums are generated from `tools/gen_qt.py` (one table row per function);
 add a widget by adding a row and writing the bridge implementation, then run
 `python3 tools/gen_qt.py` (or `--check` to verify no drift). QtWidgetKind now tops
-out at `web` (14) — web/group/textEdit/radio join window/label/button/edit/
-checkbox/progress/combo/spin/slider/dial. A multi-line `text_edit` enqueues
+out at `list` (16) — list/tabs/web/group/textEdit/radio join window/label/button/
+edit/checkbox/progress/combo/spin/slider/dial. A multi-line `text_edit` enqueues
 `QtEvent::TextChanged`; radio and checkbox enqueue `QtEvent::Toggled`;
-combo/spin/slider/dial enqueue `QtEvent::IndexChanged`/`ValueChanged`. `qt_grid`
-is `QGridLayout` (`qt_grid_add` takes a row/col); `qt_group_create` is a titled
-`QGroupBox` container; `qt_widget_set_enabled`/`qt_widget_enabled` work on any
+combo/spin/slider/dial enqueue `QtEvent::IndexChanged`/`ValueChanged`; a tab or
+list selection change enqueues `QtEvent::CurrentChanged`. `qt_grid` is
+`QGridLayout` (`qt_grid_add` takes a row/col); `qt_group_create` is a titled
+`QGroupBox` container; `qt_tabs_*` is a `QTabWidget` (`qt_tabs_add` returns a page
+handle you lay out on) and `qt_list_*` a `QListWidget`; `qt_widget_set_enabled`/
+`qt_widget_enabled` and `qt_widget_set_visible`/`qt_widget_visible` work on any
 widget. The `qt_web_*` surface is an optional `QWebEngineView` that only works
 when QtWebEngine is linked (CMake finds `Qt5WebEngineWidgets`); otherwise it
 degrades to stubs (`qt_web_create()==0`). Loading is async — `loadFinished`/
@@ -1839,6 +1848,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

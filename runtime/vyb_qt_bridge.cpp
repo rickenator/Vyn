@@ -46,6 +46,8 @@
 #include <QGridLayout>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QTabWidget>
+#include <QListWidget>
 #include <QTimer>
 #include <QString>
 #include <QByteArray>
@@ -96,6 +98,7 @@ static std::chrono::steady_clock::time_point g_timer_start = std::chrono::steady
 #define VYB_QT_EVT_TOGGLED   3
 #define VYB_QT_EVT_INDEXCHANGED 4
 #define VYB_QT_EVT_VALUECHANGED 5
+#define VYB_QT_EVT_CURRENTCHANGED 9
 
 struct vyb_qt_event { int64_t handle; int64_t kind; };
 static std::deque<vyb_qt_event> g_events;
@@ -561,6 +564,8 @@ extern "C" VYB_WEAK int64_t __vyb_qt_kind(int64_t h) {
     if (dynamic_cast<QSlider*>(w))         return 9; // Slider
     if (dynamic_cast<QDial*>(w))           return 10; // Dial
     if (dynamic_cast<QGroupBox*>(w))       return 11; // GroupBox
+    if (dynamic_cast<QTabWidget*>(w))      return 15; // Tabs
+    if (dynamic_cast<QListWidget*>(w))     return 16; // List
     if (dynamic_cast<QPlainTextEdit*>(w))  return 12; // TextEdit
     if (dynamic_cast<QRadioButton*>(w))    return 13; // Radio
 #if defined(VYB_HAVE_QT_WEBENGINE)
@@ -884,4 +889,115 @@ extern "C" VYB_WEAK int64_t __vyb_qt_widget_set_enabled(int64_t h, int64_t on) {
 extern "C" VYB_WEAK int64_t __vyb_qt_widget_enabled(int64_t h) {
     QWidget* w = htowed(h); if (!w) return 0;
     return w->isEnabled() ? 1 : 0;
+}
+
+// ----------------------------------------------------------------------------
+// Generic widget visibility (QWidget)
+// ----------------------------------------------------------------------------
+
+// Show (true) / hide (false) any widget. Returns 0, or -1 on a non-widget handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_widget_set_visible(int64_t h, int64_t on) {
+    QWidget* w = htowed(h); if (!w) return -1;
+    w->setVisible(on ? true : false);
+    return 0;
+}
+
+// true while widget `h` is visible, else false.
+extern "C" VYB_WEAK int64_t __vyb_qt_widget_visible(int64_t h) {
+    QWidget* w = htowed(h); if (!w) return 0;
+    return w->isVisible() ? 1 : 0;
+}
+
+// ----------------------------------------------------------------------------
+// Tab widget (QTabWidget)
+// ----------------------------------------------------------------------------
+
+// Create a tab container as a child of `parent` (0 = none). Returns its Int
+// handle, or 0 on failure. A tab change enqueues a QtEvent::CurrentChanged
+// record.
+extern "C" VYB_WEAK int64_t __vyb_qt_tabs_create(int64_t parent) {
+    if (!g_app) return 0;
+    QWidget* pw = parent ? htowed(parent) : nullptr;
+    QTabWidget* t = new QTabWidget(pw);
+    QObject::connect(t, &QTabWidget::currentChanged,
+        [t](int) { vyb_qt_enqueue(wetoh(t), VYB_QT_EVT_CURRENTCHANGED); });
+    return wetoh(t);
+}
+
+// Append a tab titled `text`; returns the page widget's handle (0 if no tab
+// widget / no GUI). Put a layout on the returned page and add widgets to it.
+extern "C" VYB_WEAK int64_t __vyb_qt_tabs_add(int64_t tabs, const char* s, int64_t len) {
+    QTabWidget* t = dynamic_cast<QTabWidget*>(htowed(tabs)); if (!t) return 0;
+    QWidget* page = new QWidget(t);
+    t->addTab(page, qt_from_bytes(s, len));
+    return wetoh(page);
+}
+
+// Tab count, or -1 on a bad handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_tabs_count(int64_t h) {
+    QTabWidget* t = dynamic_cast<QTabWidget*>(htowed(h)); if (!t) return -1;
+    return (int64_t)t->count();
+}
+
+// Current (0-based) tab index, or -1 on a bad handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_tabs_current(int64_t h) {
+    QTabWidget* t = dynamic_cast<QTabWidget*>(htowed(h)); if (!t) return -1;
+    return (int64_t)t->currentIndex();
+}
+
+// Select tab `idx` (enqueues QtEvent::CurrentChanged). Returns 0.
+extern "C" VYB_WEAK int64_t __vyb_qt_tabs_set_current(int64_t h, int64_t idx) {
+    QTabWidget* t = dynamic_cast<QTabWidget*>(htowed(h)); if (!t) return -1;
+    t->setCurrentIndex((int)idx);
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+// List widget (QListWidget)
+// ----------------------------------------------------------------------------
+
+// Create an item list as a child of `parent` (0 = none). Returns its Int handle,
+// or 0 on failure. A selection change enqueues a QtEvent::CurrentChanged record.
+extern "C" VYB_WEAK int64_t __vyb_qt_list_create(int64_t parent) {
+    if (!g_app) return 0;
+    QWidget* pw = parent ? htowed(parent) : nullptr;
+    QListWidget* l = new QListWidget(pw);
+    QObject::connect(l, &QListWidget::currentRowChanged,
+        [l](int) { vyb_qt_enqueue(wetoh(l), VYB_QT_EVT_CURRENTCHANGED); });
+    return wetoh(l);
+}
+
+// Append `text` as the last list item. Returns 0, or -1 on a bad handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_list_add(int64_t h, const char* s, int64_t len) {
+    QListWidget* l = dynamic_cast<QListWidget*>(htowed(h)); if (!l) return -1;
+    l->addItem(qt_from_bytes(s, len));
+    return 0;
+}
+
+// List item count, or -1 on a bad handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_list_count(int64_t h) {
+    QListWidget* l = dynamic_cast<QListWidget*>(htowed(h)); if (!l) return -1;
+    return (int64_t)l->count();
+}
+
+// Current (0-based) list index, or -1 when none selected / bad handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_list_current(int64_t h) {
+    QListWidget* l = dynamic_cast<QListWidget*>(htowed(h)); if (!l) return -1;
+    return (int64_t)l->currentRow();
+}
+
+// Select list item `idx`. Returns 0, or -1 on a bad handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_list_set_current(int64_t h, int64_t idx) {
+    QListWidget* l = dynamic_cast<QListWidget*>(htowed(h)); if (!l) return -1;
+    l->setCurrentRow((int)idx);
+    return 0;
+}
+
+// Text of list item `idx` (String); "" on a bad handle/index.
+extern "C" VYB_WEAK vyb_qt_str __vyb_qt_list_item_text(int64_t h, int64_t idx) {
+    QListWidget* l = dynamic_cast<QListWidget*>(htowed(h)); if (!l) return { nullptr, 0 };
+    if (idx < 0 || idx >= l->count()) return { nullptr, 0 };
+    QListWidgetItem* item = l->item((int)idx);
+    if (!item) return { nullptr, 0 };
+    return qt_to_owned(item->text());
 }

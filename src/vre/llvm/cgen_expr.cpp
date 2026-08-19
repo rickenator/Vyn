@@ -3310,6 +3310,19 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_qt_widget_enabled") rtName = "__vyb_qt_widget_enabled";
         else if (fname == "vyb_qt_grid") rtName = "__vyb_qt_grid";
         else if (fname == "vyb_qt_grid_add") rtName = "__vyb_qt_grid_add";
+        else if (fname == "vyb_qt_widget_set_visible") rtName = "__vyb_qt_widget_set_visible";
+        else if (fname == "vyb_qt_widget_visible") rtName = "__vyb_qt_widget_visible";
+        else if (fname == "vyb_qt_tabs_create") rtName = "__vyb_qt_tabs_create";
+        else if (fname == "vyb_qt_tabs_add") rtName = "__vyb_qt_tabs_add";
+        else if (fname == "vyb_qt_tabs_count") rtName = "__vyb_qt_tabs_count";
+        else if (fname == "vyb_qt_tabs_current") rtName = "__vyb_qt_tabs_current";
+        else if (fname == "vyb_qt_tabs_set_current") rtName = "__vyb_qt_tabs_set_current";
+        else if (fname == "vyb_qt_list_create") rtName = "__vyb_qt_list_create";
+        else if (fname == "vyb_qt_list_add") rtName = "__vyb_qt_list_add";
+        else if (fname == "vyb_qt_list_count") rtName = "__vyb_qt_list_count";
+        else if (fname == "vyb_qt_list_current") rtName = "__vyb_qt_list_current";
+        else if (fname == "vyb_qt_list_set_current") rtName = "__vyb_qt_list_set_current";
+        else if (fname == "vyb_qt_list_item_text") rtName = "__vyb_qt_list_item_text";
         if (!rtName.empty()) {
             auto getQtFn = [&](llvm::FunctionType* ft) -> llvm::Function* {
                 llvm::Function* f2 = module->getFunction(rtName);
@@ -3390,7 +3403,14 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_text_edit_create" ||
                 fname == "vyb_qt_radio_checked" ||
                 fname == "vyb_qt_widget_enabled" ||
-                fname == "vyb_qt_grid") {
+                fname == "vyb_qt_grid" ||
+                fname == "vyb_qt_widget_visible" ||
+                fname == "vyb_qt_tabs_create" ||
+                fname == "vyb_qt_tabs_count" ||
+                fname == "vyb_qt_tabs_current" ||
+                fname == "vyb_qt_list_create" ||
+                fname == "vyb_qt_list_count" ||
+                fname == "vyb_qt_list_current") {
                 if (!checkArity(1)) return;
                 llvm::Value* a = needArg(0); if (!a) return;
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
@@ -3407,7 +3427,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 llvm::FunctionType* ft = llvm::FunctionType::get(qtStrRet(), {int64Type}, false);
                 m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a)}, "qt.s1");
                 return;
-            } else if (fname == "vyb_qt_combo_item_text") {
+            } else if (fname == "vyb_qt_combo_item_text" || fname == "vyb_qt_list_item_text") {
                 if (!checkArity(2)) return;
                 llvm::Value* a = needArg(0); llvm::Value* b = needArg(1);
                 if (!a || !b) return;
@@ -3426,7 +3446,9 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_combo_add_item" ||
                 fname == "vyb_qt_group_create" ||
                 fname == "vyb_qt_text_edit_set_text" ||
-                fname == "vyb_qt_radio_create") {
+                fname == "vyb_qt_radio_create" ||
+                fname == "vyb_qt_tabs_add" ||
+                fname == "vyb_qt_list_add") {
                 if (!checkArity(2)) return;
                 llvm::Value* a = needArg(0); llvm::Value* s = needArg(1);
                 if (!a || !s) return;
@@ -3443,7 +3465,10 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_slider_set_value" ||
                 fname == "vyb_qt_dial_set_value" ||
                 fname == "vyb_qt_radio_set_checked" ||
-                fname == "vyb_qt_widget_set_enabled") {
+                fname == "vyb_qt_widget_set_enabled" ||
+                fname == "vyb_qt_widget_set_visible" ||
+                fname == "vyb_qt_tabs_set_current" ||
+                fname == "vyb_qt_list_set_current") {
                 if (!checkArity(2)) return;
                 llvm::Value* a = needArg(0); llvm::Value* b = needArg(1);
                 if (!a || !b) return;

@@ -293,6 +293,19 @@ extern "C" {
     int64_t __vyb_qt_widget_enabled(int64_t h);
     int64_t __vyb_qt_grid(int64_t parent);
     int64_t __vyb_qt_grid_add(int64_t layout, int64_t child, int64_t row, int64_t col);
+    int64_t __vyb_qt_widget_set_visible(int64_t h, int64_t on);
+    int64_t __vyb_qt_widget_visible(int64_t h);
+    int64_t __vyb_qt_tabs_create(int64_t parent);
+    int64_t __vyb_qt_tabs_add(int64_t tabs, const char* text, int64_t len);
+    int64_t __vyb_qt_tabs_count(int64_t tabs);
+    int64_t __vyb_qt_tabs_current(int64_t tabs);
+    int64_t __vyb_qt_tabs_set_current(int64_t tabs, int64_t idx);
+    int64_t __vyb_qt_list_create(int64_t parent);
+    int64_t __vyb_qt_list_add(int64_t list, const char* text, int64_t len);
+    int64_t __vyb_qt_list_count(int64_t list);
+    int64_t __vyb_qt_list_current(int64_t list);
+    int64_t __vyb_qt_list_set_current(int64_t list, int64_t idx);
+    vyb_file_str __vyb_qt_list_item_text(int64_t list, int64_t idx);
 // gen_qt[main_decl]: end
 
 #ifdef VYB_HAVE_OPENSSL
@@ -1773,6 +1786,32 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_grid), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_grid_add")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_grid_add), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_widget_set_visible")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_widget_set_visible), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_widget_visible")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_widget_visible), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_tabs_create")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_tabs_create), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_tabs_add")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_tabs_add), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_tabs_count")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_tabs_count), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_tabs_current")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_tabs_current), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_tabs_set_current")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_tabs_set_current), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_list_create")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_list_create), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_list_add")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_list_add), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_list_count")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_list_count), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_list_current")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_list_current), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_list_set_current")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_list_set_current), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_list_item_text")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_list_item_text), llvm::JITSymbolFlags::Exported);
 // gen_qt[main_reg]: end
         runtimeSymbols[mangle("__vyb_net_open")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_open), llvm::JITSymbolFlags::Exported);

@@ -528,6 +528,87 @@ share(all)
 qt_grid_add(layout<Int>, child<Int>, row<Int>, col<Int>)<Int> -> {
     return vyb_qt_grid_add(layout, child, row, col)
 }
+
+# Show (true) / hide (false) any widget. Returns 0, or -1 on a non-widget handle.
+share(all)
+qt_widget_set_visible(h<Int>, on<Bool>)<Int> -> {
+    if (on) {
+        return vyb_qt_widget_set_visible(h, 1)
+    }
+    return vyb_qt_widget_set_visible(h, 0)
+}
+
+# true while widget `h` is visible, else false.
+share(all)
+qt_widget_visible(h<Int>)<Bool> -> {
+    return vyb_qt_widget_visible(h) == 1
+}
+
+# Create a tab container under `parent`; returns its handle or 0.
+share(all)
+qt_tabs_create(parent<Int>)<Int> -> {
+    return vyb_qt_tabs_create(parent)
+}
+
+# Append a tab titled `text`; returns the page's widget handle (put a layout on it).
+share(all)
+qt_tabs_add(tabs<Int>, text<String>)<Int> -> {
+    return vyb_qt_tabs_add(tabs, text)
+}
+
+# Tab count, or -1 on a bad handle.
+share(all)
+qt_tabs_count(tabs<Int>)<Int> -> {
+    return vyb_qt_tabs_count(tabs)
+}
+
+# Current (0-based) tab index, or -1 on a bad handle.
+share(all)
+qt_tabs_current(tabs<Int>)<Int> -> {
+    return vyb_qt_tabs_current(tabs)
+}
+
+# Select tab `idx` (enqueues QtEvent::CurrentChanged). Returns 0.
+share(all)
+qt_tabs_set_current(tabs<Int>, idx<Int>)<Int> -> {
+    return vyb_qt_tabs_set_current(tabs, idx)
+}
+
+# Create an item list under `parent`; selection changes enqueue QtEvent::CurrentChanged. Returns its handle.
+share(all)
+qt_list_create(parent<Int>)<Int> -> {
+    return vyb_qt_list_create(parent)
+}
+
+# Append `text` as the last list item. Returns 0.
+share(all)
+qt_list_add(list<Int>, text<String>)<Int> -> {
+    return vyb_qt_list_add(list, text)
+}
+
+# List item count, or -1 on a bad handle.
+share(all)
+qt_list_count(list<Int>)<Int> -> {
+    return vyb_qt_list_count(list)
+}
+
+# Current (0-based) list index, or -1 when none / bad handle.
+share(all)
+qt_list_current(list<Int>)<Int> -> {
+    return vyb_qt_list_current(list)
+}
+
+# Select list item `idx`. Returns 0.
+share(all)
+qt_list_set_current(list<Int>, idx<Int>)<Int> -> {
+    return vyb_qt_list_set_current(list, idx)
+}
+
+# Text of list item `idx` (String); "" on a bad handle/index.
+share(all)
+qt_list_item_text(list<Int>, idx<Int>)<String> -> {
+    return vyb_qt_list_item_text(list, idx)
+}
 # gen_qt[mod_wrappers]: end
 
 # gen_qt[mod_enums]: begin
@@ -542,6 +623,7 @@ enum QtEvent {
     loadFinished = 6
     titleChanged = 7
     loadProgress = 8
+    currentChanged = 9
 }
 
 share(all)
@@ -561,5 +643,7 @@ enum QtWidgetKind {
     textEdit = 12
     radio = 13
     web = 14
+    tabs = 15
+    list = 16
 }
 # gen_qt[mod_enums]: end

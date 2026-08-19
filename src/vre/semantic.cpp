@@ -2173,7 +2173,13 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_qt_radio_create" || name == "vyb_qt_radio_checked" ||
             name == "vyb_qt_radio_set_checked" || name == "vyb_qt_widget_set_enabled" ||
             name == "vyb_qt_widget_enabled" || name == "vyb_qt_grid" ||
-            name == "vyb_qt_grid_add") {
+            name == "vyb_qt_grid_add" || name == "vyb_qt_widget_set_visible" ||
+            name == "vyb_qt_widget_visible" || name == "vyb_qt_tabs_create" ||
+            name == "vyb_qt_tabs_add" || name == "vyb_qt_tabs_count" ||
+            name == "vyb_qt_tabs_current" || name == "vyb_qt_tabs_set_current" ||
+            name == "vyb_qt_list_create" || name == "vyb_qt_list_add" ||
+            name == "vyb_qt_list_count" || name == "vyb_qt_list_current" ||
+            name == "vyb_qt_list_set_current" || name == "vyb_qt_list_item_text") {
 // gen_qt[sem_allow]: end
             isIntrinsic = true;
         }
@@ -2757,6 +2763,19 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 "vyb_qt_widget_enabled",
                 "vyb_qt_grid",
                 "vyb_qt_grid_add",
+                "vyb_qt_widget_set_visible",
+                "vyb_qt_widget_visible",
+                "vyb_qt_tabs_create",
+                "vyb_qt_tabs_add",
+                "vyb_qt_tabs_count",
+                "vyb_qt_tabs_current",
+                "vyb_qt_tabs_set_current",
+                "vyb_qt_list_create",
+                "vyb_qt_list_add",
+                "vyb_qt_list_count",
+                "vyb_qt_list_current",
+                "vyb_qt_list_set_current",
+                "vyb_qt_list_item_text",
 // gen_qt[sem_int]: end
             };
             static const std::set<std::string> qtStrFuncs = {
@@ -2769,6 +2788,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 "vyb_qt_edit_text",
                 "vyb_qt_combo_item_text",
                 "vyb_qt_text_edit_text",
+                "vyb_qt_list_item_text",
 // gen_qt[sem_str]: end
             };
             if (qtIntFuncs.count(name) || qtStrFuncs.count(name)) {
