@@ -1595,6 +1595,7 @@ qt_grid(parent<Int>)<Int>             qt_grid_add(g<Int>, child<Int>, row<Int>, 
 qt_web_create(parent<Int>)<Int>       qt_web_load(w<Int>, url<String>)<Int>
 qt_web_url(w<Int>)<String>            qt_web_title(w<Int>)<String>
 qt_web_loading(w<Int>)<Bool>          qt_web_back/forward/reload(w<Int>)<Int>
+qt_post_event(h<Int>, kind<Int>)<Int>
 qt_wait_event(timeout<Int>)<Bool>
 qt_run()<Int>                  qt_run_stop()<Int>            qt_active()<Bool>
 qt_on_event(handler<fn(Int, Int) -> Void>)<Int>
@@ -1614,7 +1615,10 @@ widget. The `qt_web_*` surface is an optional `QWebEngineView` that only works
 when QtWebEngine is linked (CMake finds `Qt5WebEngineWidgets`); otherwise it
 degrades to stubs (`qt_web_create()==0`). Loading is async — `loadFinished`/
 `titleChanged`/`loadProgress` are `QtEvent`s that flow through `qt_on_event` and
-the `qt_event_*` poll.
+the `qt_event_*` poll. `qt_post_event(h, kind)` enqueues a synthetic event from
+any thread (the queue is mutex-guarded) — a background `asyncs` fiber uses it to
+signal the UI loop without touching a QWidget off the main thread, and the
+`qt_run` handler or `qt_event_*` poll resolves it on the main thread.
 
 Call `qt_init()` once. `QApplication` must live on the main thread (a Vyb
 program's `main`), and construction needs a Qt platform — xcb under a display,
@@ -1835,6 +1839,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

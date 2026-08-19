@@ -1,5 +1,5 @@
 {
-  "git_rev": "e439fd3c6a582abcc1897c7d030e67b927475fd6",
+  "git_rev": "721f460f520c3f476dc1e5617d5bab42bcd3ee34",
   "modules": [
     "agents",
     "asyncs",
@@ -152,7 +152,7 @@
         "files": [
           "stdlib/qt/mod.vyb"
         ],
-        "exported": 80,
+        "exported": 81,
         "fan_in": 0,
         "fan_out": 0
       },
@@ -611,6 +611,7 @@
           "qt_run",
           "qt_run_stop",
           "qt_on_event",
+          "qt_post_event",
           "qt_combo_create",
           "qt_combo_add_item",
           "qt_combo_count",
@@ -3121,6 +3122,15 @@
         "kind": "fn",
         "signature": "qt_on_event(handler<fn(Int, Int) -> Void>)<Int> ->",
         "summary": "Register fn(handle, kind) called for each control event queued while qt_run() runs. Returns 0.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_post_event",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_post_event(h<Int>, kind<Int>)<Int> ->",
+        "summary": "Enqueue a synthetic control event for handle `h` (thread-safe: a background async can signal the UI loop without touching widgets off-thread). Returns 0.",
         "fan_in": 0
       },
       {
@@ -6895,6 +6905,12 @@
       "from_module": "qt",
       "from_symbol": "qt_on_event",
       "to_symbol": "vyb_qt_on_event"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_post_event",
+      "to_symbol": "vyb_qt_post_event"
     },
     {
       "type": "runtimeRef",

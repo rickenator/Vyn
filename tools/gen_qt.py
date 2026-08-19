@@ -167,6 +167,9 @@ QT_FUNCS = [
          doc="Register fn(handle, kind) called for each control event queued while qt_run() runs. Returns 0.",
          wrap_sig="handler<fn(Int, Int) -> Void>",
          wrap_body="return vyb_qt_on_event(handler)"),
+    dict(mod="qt_post_event", vn="vyb_qt_post_event", cn="__vyb_qt_post_event",
+         args=[("h", "Int"), ("kind", "Int")], ret="Int", shape="value", stub="0",
+         doc="Enqueue a synthetic control event for handle `h` (thread-safe: a background async can signal the UI loop without touching widgets off-thread). Returns 0."),
 
     # Combo boxes (QComboBox)
     dict(mod="qt_combo_create", vn="vyb_qt_combo_create", cn="__vyb_qt_combo_create", args=[("parent", "Int")], ret="Int",

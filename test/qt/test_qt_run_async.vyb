@@ -1,0 +1,57 @@
+// @test: qt stdlib module - asyncs post events into the qt_run event loop
+// @description: A background async fiber posts a synthetic QtEvent::Click across
+//   the worker-thread boundary via qt_post_event (thread-safe, no QWidget access
+//   off-thread); qt_run() dispatches it to the qt_on_event handler on the main
+//   thread, which resolves it (updates a label) and stops the loop. Verifies the
+//   asyncs -> event-loop handoff. Runs on the offscreen QPA platform.
+// @category: qt, stdlib, gui, asyncs
+// @expect: pass
+// @expect-output: qt-run-async-ok
+// @env: VYB_STDLIB=stdlib
+// @env: QT_QPA_PLATFORM=offscreen
+
+import qt
+import asyncs::{async_spawn, async_await, async_sleep_ms}
+import time::{sleep_ms}
+
+main()<Int> -> {
+    if (qt_init() == false) {
+        println("qt-run-async-ok (Qt5 unavailable)")
+        return 0
+    }
+    if (qt_active() == false) { return 1 }
+
+    w<Int> = qt_window_create()
+    if (w == 0) { return 2 }
+    b<Int> = qt_button_create(w, "go")
+    if (b == 0) { return 3 }
+    status<Int> = qt_label_create(w, "idle")
+    if (status == 0) { return 4 }
+
+    // The handler runs only on the main thread inside qt_run().
+    if (qt_on_event(|h<Int>, k<Int>| -> {
+        if (k == QtEvent::click && h == b) {
+            qt_label_set_text(status, "clicked")
+            qt_run_stop()
+        }
+    }) != 0) { return 5 }
+
+    // A background fiber posts the event across the thread boundary (safe: the
+    // queue is mutex-guarded, no widget is touched off-thread).
+    worker<Int> = async_spawn(|| -> {
+        async_sleep_ms(30)
+        if (qt_post_event(b, QtEvent::click) != 0) { return 1 }
+        return 0
+    })
+    if (worker == 0) { return 6 }
+
+    rc<Int> = qt_run()
+    if (rc != 0) { return 7 }
+    if (qt_label_text(status) != "clicked") { return 8 }   // handler ran
+    if (qt_active() == false) { return 9 }                 // graceful stop
+
+    if (async_await(worker) != 0) { return 10 }            // worker finished clean
+    qt_quit()
+    println("qt-run-async-ok")
+    return 0
+}

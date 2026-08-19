@@ -266,6 +266,7 @@ extern "C" {
     int64_t __vyb_qt_run();
     int64_t __vyb_qt_run_stop();
     int64_t __vyb_qt_on_event(void* env, void* fn);
+    int64_t __vyb_qt_post_event(int64_t h, int64_t kind);
     int64_t __vyb_qt_combo_create(int64_t parent);
     int64_t __vyb_qt_combo_add_item(int64_t combo, const char* text, int64_t len);
     int64_t __vyb_qt_combo_count(int64_t combo);
@@ -1718,6 +1719,8 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_run_stop), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_on_event")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_on_event), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_post_event")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_post_event), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_combo_create")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_combo_create), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_combo_add_item")] = llvm::orc::ExecutorSymbolDef(

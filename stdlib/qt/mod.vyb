@@ -361,6 +361,12 @@ qt_on_event(handler<fn(Int, Int) -> Void>)<Int> -> {
     return vyb_qt_on_event(handler)
 }
 
+# Enqueue a synthetic control event for handle `h` (thread-safe: a background async can signal the UI loop without touching widgets off-thread). Returns 0.
+share(all)
+qt_post_event(h<Int>, kind<Int>)<Int> -> {
+    return vyb_qt_post_event(h, kind)
+}
+
 # Create a combo box under `parent`; index changes enqueue QtEvent::IndexChanged.
 share(all)
 qt_combo_create(parent<Int>)<Int> -> {

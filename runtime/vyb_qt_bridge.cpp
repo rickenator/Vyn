@@ -114,6 +114,16 @@ extern "C" VYB_WEAK int64_t __vyb_qt_event_enqueue_widget(int64_t handle, int64_
     return 0;
 }
 
+// Enqueue a synthetic control event for handle `h` from any thread (the queue
+// is mutex-guarded). This is the safe way for a background async/worker fiber
+// to signal the UI loop without touching QWidget off the main thread: the
+// worker posts (handle, kind) and the qt_run handler / qt_event_* poll resolves
+// it on the main thread. Returns 0.
+extern "C" VYB_WEAK int64_t __vyb_qt_post_event(int64_t h, int64_t kind) {
+    vyb_qt_enqueue(h, kind);
+    return 0;
+}
+
 // ----------------------------------------------------------------------------
 // Callback dispatch (qt_run native event loop)
 // ----------------------------------------------------------------------------

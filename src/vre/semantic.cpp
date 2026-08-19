@@ -2160,19 +2160,20 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_qt_event_kind" || name == "vyb_qt_event_pop" ||
             name == "vyb_qt_wait_event" || name == "vyb_qt_run" ||
             name == "vyb_qt_run_stop" || name == "vyb_qt_on_event" ||
-            name == "vyb_qt_combo_create" || name == "vyb_qt_combo_add_item" ||
-            name == "vyb_qt_combo_count" || name == "vyb_qt_combo_current_index" ||
-            name == "vyb_qt_combo_set_current_index" || name == "vyb_qt_combo_item_text" ||
-            name == "vyb_qt_spin_create" || name == "vyb_qt_spin_value" ||
-            name == "vyb_qt_spin_set_value" || name == "vyb_qt_slider_create" ||
-            name == "vyb_qt_slider_value" || name == "vyb_qt_slider_set_value" ||
-            name == "vyb_qt_dial_create" || name == "vyb_qt_dial_value" ||
-            name == "vyb_qt_dial_set_value" || name == "vyb_qt_group_create" ||
-            name == "vyb_qt_text_edit_create" || name == "vyb_qt_text_edit_text" ||
-            name == "vyb_qt_text_edit_set_text" || name == "vyb_qt_radio_create" ||
-            name == "vyb_qt_radio_checked" || name == "vyb_qt_radio_set_checked" ||
-            name == "vyb_qt_widget_set_enabled" || name == "vyb_qt_widget_enabled" ||
-            name == "vyb_qt_grid" || name == "vyb_qt_grid_add") {
+            name == "vyb_qt_post_event" || name == "vyb_qt_combo_create" ||
+            name == "vyb_qt_combo_add_item" || name == "vyb_qt_combo_count" ||
+            name == "vyb_qt_combo_current_index" || name == "vyb_qt_combo_set_current_index" ||
+            name == "vyb_qt_combo_item_text" || name == "vyb_qt_spin_create" ||
+            name == "vyb_qt_spin_value" || name == "vyb_qt_spin_set_value" ||
+            name == "vyb_qt_slider_create" || name == "vyb_qt_slider_value" ||
+            name == "vyb_qt_slider_set_value" || name == "vyb_qt_dial_create" ||
+            name == "vyb_qt_dial_value" || name == "vyb_qt_dial_set_value" ||
+            name == "vyb_qt_group_create" || name == "vyb_qt_text_edit_create" ||
+            name == "vyb_qt_text_edit_text" || name == "vyb_qt_text_edit_set_text" ||
+            name == "vyb_qt_radio_create" || name == "vyb_qt_radio_checked" ||
+            name == "vyb_qt_radio_set_checked" || name == "vyb_qt_widget_set_enabled" ||
+            name == "vyb_qt_widget_enabled" || name == "vyb_qt_grid" ||
+            name == "vyb_qt_grid_add") {
 // gen_qt[sem_allow]: end
             isIntrinsic = true;
         }
@@ -2729,6 +2730,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 "vyb_qt_run",
                 "vyb_qt_run_stop",
                 "vyb_qt_on_event",
+                "vyb_qt_post_event",
                 "vyb_qt_combo_create",
                 "vyb_qt_combo_add_item",
                 "vyb_qt_combo_count",

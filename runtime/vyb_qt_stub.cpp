@@ -92,6 +92,8 @@ VYB_WEAK int64_t __vyb_qt_run() { return -1; }
 VYB_WEAK int64_t __vyb_qt_run_stop() { return -1; }
 VYB_WEAK int64_t __vyb_qt_on_event(void* env, void* fn)
     { (void)env; (void)fn; return 0; }
+VYB_WEAK int64_t __vyb_qt_post_event(int64_t h, int64_t kind)
+    { (void)h; (void)kind; return 0; }
 VYB_WEAK int64_t __vyb_qt_combo_create(int64_t parent) { (void)parent; return 0; }
 VYB_WEAK int64_t __vyb_qt_combo_add_item(int64_t combo, const char* text, int64_t len)
     { (void)combo; (void)text; return -1; }

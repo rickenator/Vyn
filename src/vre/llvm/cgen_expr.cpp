@@ -3283,6 +3283,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_qt_run") rtName = "__vyb_qt_run";
         else if (fname == "vyb_qt_run_stop") rtName = "__vyb_qt_run_stop";
         else if (fname == "vyb_qt_on_event") rtName = "__vyb_qt_on_event";
+        else if (fname == "vyb_qt_post_event") rtName = "__vyb_qt_post_event";
         else if (fname == "vyb_qt_combo_create") rtName = "__vyb_qt_combo_create";
         else if (fname == "vyb_qt_combo_add_item") rtName = "__vyb_qt_combo_add_item";
         else if (fname == "vyb_qt_combo_count") rtName = "__vyb_qt_combo_count";
@@ -3436,6 +3437,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_progress_create" ||
                 fname == "vyb_qt_progress_set_value" ||
                 fname == "vyb_qt_layout_add" ||
+                fname == "vyb_qt_post_event" ||
                 fname == "vyb_qt_combo_set_current_index" ||
                 fname == "vyb_qt_spin_set_value" ||
                 fname == "vyb_qt_slider_set_value" ||
