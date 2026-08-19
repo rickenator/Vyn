@@ -1,5 +1,5 @@
 {
-  "git_rev": "f008f06a1f8b1620ce10b154da6335e03e620b93",
+  "git_rev": "3c2c58eb96bc0438299d0ad9c73d76b256892f36",
   "modules": [
     "agents",
     "asyncs",
@@ -152,7 +152,7 @@
         "files": [
           "stdlib/qt/mod.vyb"
         ],
-        "exported": 58,
+        "exported": 61,
         "fan_in": 0,
         "fan_out": 0
       },
@@ -600,6 +600,9 @@
           "qt_event_kind",
           "qt_event_pop",
           "qt_wait_event",
+          "qt_run",
+          "qt_run_stop",
+          "qt_on_event",
           "qt_combo_create",
           "qt_combo_add_item",
           "qt_combo_count",
@@ -3066,6 +3069,15 @@
         "fan_in": 0
       },
       {
+        "name": "qt_on_event",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_on_event(handler<fn(Int, Int) -> Void>)<Int> ->",
+        "summary": "Register fn(handle, kind) called for each control event queued while qt_run() runs. Returns 0.",
+        "fan_in": 0
+      },
+      {
         "name": "qt_process_events",
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
@@ -3099,6 +3111,24 @@
         "kind": "fn",
         "signature": "qt_quit()<Int> ->",
         "summary": "Shut the GUI down (terminal - do not use Qt handles afterwards). Returns 0.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_run",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_run()<Int> ->",
+        "summary": "Run the Qt native event loop, dispatching queued control events to the qt_on_event handler, until qt_run_stop()/qt_quit(). Returns exit code.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_run_stop",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_run_stop()<Int> ->",
+        "summary": "Stop a running qt_run() loop (graceful; GUI stays up). Returns 0, or -1 if not running.",
         "fan_in": 0
       },
       {
@@ -6655,6 +6685,12 @@
     {
       "type": "runtimeRef",
       "from_module": "qt",
+      "from_symbol": "qt_on_event",
+      "to_symbol": "vyb_qt_on_event"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
       "from_symbol": "qt_process_events",
       "to_symbol": "vyb_qt_process_events"
     },
@@ -6675,6 +6711,18 @@
       "from_module": "qt",
       "from_symbol": "qt_quit",
       "to_symbol": "vyb_qt_quit"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_run",
+      "to_symbol": "vyb_qt_run"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_run_stop",
+      "to_symbol": "vyb_qt_run_stop"
     },
     {
       "type": "runtimeRef",

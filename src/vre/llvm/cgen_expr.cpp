@@ -3272,6 +3272,9 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_qt_event_kind") rtName = "__vyb_qt_event_kind";
         else if (fname == "vyb_qt_event_pop") rtName = "__vyb_qt_event_pop";
         else if (fname == "vyb_qt_wait_event") rtName = "__vyb_qt_wait_event";
+        else if (fname == "vyb_qt_run") rtName = "__vyb_qt_run";
+        else if (fname == "vyb_qt_run_stop") rtName = "__vyb_qt_run_stop";
+        else if (fname == "vyb_qt_on_event") rtName = "__vyb_qt_on_event";
         else if (fname == "vyb_qt_combo_create") rtName = "__vyb_qt_combo_create";
         else if (fname == "vyb_qt_combo_add_item") rtName = "__vyb_qt_combo_add_item";
         else if (fname == "vyb_qt_combo_count") rtName = "__vyb_qt_combo_count";
@@ -3335,7 +3338,9 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_event_count" ||
                 fname == "vyb_qt_event_handle" ||
                 fname == "vyb_qt_event_kind" ||
-                fname == "vyb_qt_event_pop") {
+                fname == "vyb_qt_event_pop" ||
+                fname == "vyb_qt_run" ||
+                fname == "vyb_qt_run_stop") {
                 if (!checkArity(0)) return;
                 llvm::FunctionType* ft0 = llvm::FunctionType::get(int64Type, {}, false);
                 m_currentLLVMValue = builder->CreateCall(getQtFn(ft0), {}, "qt.ret");
@@ -3414,6 +3419,26 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 if (!a || !b || !c) return;
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type, int64Type}, false);
                 m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a), toI64(b), toI64(c)}, "qt.i3");
+                return;
+            } else if (fname == "vyb_qt_on_event") {
+                if (!checkArity(1)) return;
+                node->arguments[0]->accept(*this);
+                llvm::Value* cl = m_currentLLVMValue; if (!cl) return;
+                llvm::StructType* closureTy = getClosureStructType();
+                llvm::Value* envPtr = nullptr; llvm::Value* fnPtr = nullptr;
+                if (cl->getType()->isStructTy()) {
+                    envPtr = builder->CreateExtractValue(cl, 0, "qt.env");
+                    fnPtr = builder->CreateExtractValue(cl, 1, "qt.fn");
+                } else if (cl->getType()->isPointerTy()) {
+                    llvm::Value* closureVal = builder->CreateLoad(closureTy, cl, "qt.closure");
+                    envPtr = builder->CreateExtractValue(closureVal, 0, "qt.env");
+                    fnPtr = builder->CreateExtractValue(closureVal, 1, "qt.fn");
+                } else {
+                    logError(node->loc, "vyb_qt_on_event argument is not a fn() closure");
+                    m_currentLLVMValue = nullptr; return;
+                }
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int8PtrType, int8PtrType}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {envPtr, fnPtr}, "qt.cb");
                 return;
             }
         }

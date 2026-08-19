@@ -19,9 +19,15 @@
 // how curses refuses to run without a real terminal - GUI code expects a GUI.
 //
 // Threading: a QApplication must be created and its widgets driven from the
-// main thread, which is where a Vyb program's `main` runs. The event loop is
-// *polled* (qt_process_events) rather than callback-driven so tests stay
-// deterministic under xvfb/offscreen and the FFI stays Int/String-shaped.
+// main thread, which is where a Vyb program's `main` runs. Two event-loop
+// models coexist:
+//   * Polled (qt_process_events / qt_wait_event + qt_event_*) is the default
+//     and stays deterministic under xvfb/offscreen.
+//   * Native (qt_run) enters QApplication::exec() and dispatches queued control
+//     events into a callback registered with qt_on_event, so a GUI program can
+//     run Qt's own main loop and still drive Vyb handlers from it. Background
+//     asyncs keep running on their worker threads and their enqueued results
+//     are picked up by the loop's queue-draining tick.
 // ============================================================================
 #include <QApplication>
 #include <QWidget>
@@ -36,6 +42,7 @@
 #include <QDial>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QTimer>
 #include <QString>
 #include <QByteArray>
 #include <chrono>
@@ -90,6 +97,61 @@ static std::mutex g_events_mtx;
 static void vyb_qt_enqueue(int64_t handle, int64_t kind) {
     std::lock_guard<std::mutex> lk(g_events_mtx);
     g_events.push_back(vyb_qt_event{handle, kind});
+}
+
+// ----------------------------------------------------------------------------
+// Callback dispatch (qt_run native event loop)
+// ----------------------------------------------------------------------------
+// Qt signals never call into Vyb; the polled queue is the seam. qt_run() owns
+// the native event loop (QApplication::exec()) and drives a short QTimer tick
+// that drains the queued (handle, kind) records into the registered Vyb fn.
+// That dispatch runs on the main thread (Qt thread affinity) and is the only
+// place the handler is invoked, so GUI code never touches widgets off-thread.
+extern "C" void* __vyb_closure_retain(void* env);
+extern "C" void  __vyb_closure_release(void* env);
+
+static void* g_handler_env = nullptr;   // closure env (retained while registered)
+static void* g_handler_fn = nullptr;    // fn(env, handle, kind) -> Void
+static bool  g_loop_active = false;     // qt_run() is inside QApplication::exec()
+static bool  g_quit_requested = false;  // teardown pending until exec() returns
+
+static void vyb_qt_release_handler() {
+    if (g_handler_env) { __vyb_closure_release(g_handler_env); g_handler_env = nullptr; }
+    g_handler_fn = nullptr;
+}
+
+// Drain every queued control event into the registered handler. Safe no-op when
+// no handler is registered (the polled qt_event_* path still owns the queue).
+static void vyb_qt_dispatch_queued() {
+    if (!g_handler_fn) return;
+    typedef void (*handler_t)(void*, int64_t, int64_t);
+    handler_t cb = (handler_t)g_handler_fn;
+    for (;;) {
+        int64_t handle = 0, kind = 0;
+        {
+            std::lock_guard<std::mutex> lk(g_events_mtx);
+            if (g_events.empty()) break;
+            handle = g_events.front().handle;
+            kind = g_events.front().kind;
+            g_events.pop_front();
+        }
+        cb(g_handler_env, handle, kind);
+    }
+}
+
+// Register the `fn(handle, kind) -> Void` closure (a `{ env, fn }` pair) that
+// qt_run() dispatches queued control events into. The env is retained for the
+// lifetime of the registration; a re-registration and full teardown both release
+// it. Returns 0 on success, -1 on a null callback.
+extern "C" VYB_WEAK int64_t __vyb_qt_on_event(void* env, void* fn) {
+    if (!fn) return -1;
+    if (g_handler_env != env || g_handler_fn != fn) {
+        vyb_qt_release_handler();                  // drop the prior handler's ref
+        if (env) env = __vyb_closure_retain(env);  // hold ours for the app's life
+        g_handler_env = env;
+        g_handler_fn = fn;
+    }
+    return 0;
 }
 
 // Opaque handle helpers: widgets cross as qintptr-sized QWidget; layouts as
@@ -147,11 +209,28 @@ extern "C" VYB_WEAK int64_t __vyb_qt_init(void) {
     return 1;
 }
 
-// Shut the GUI down, destroying any live widgets and timers. Terminal.
-extern "C" VYB_WEAK int64_t __vyb_qt_quit(void) {
+// Full teardown: drop the callback handler's env reference, clear the queue and
+// timer, and destroy the app and any live widgets. Only safe after qt_run() has
+// returned (the exec() stack is unwound). Terminal.
+static void vyb_qt_full_teardown() {
     g_timer_ms = 0;
+    vyb_qt_release_handler();
     { std::lock_guard<std::mutex> lk(g_events_mtx); g_events.clear(); }
     delete g_app; g_app = nullptr;
+}
+
+// Shut the GUI down, destroying any live widgets and timers. Terminal. If the
+// native qt_run() loop is currently live, this requests the loop to stop and
+// defers the actual teardown until exec() has returned (so a handler calling
+// qt_quit() cannot delete the app out from under the running loop).
+extern "C" VYB_WEAK int64_t __vyb_qt_quit(void) {
+    if (!g_app) return -1;
+    if (g_loop_active) {
+        g_quit_requested = true;
+        g_app->quit();
+        return 0;
+    }
+    vyb_qt_full_teardown();
     return 0;
 }
 
@@ -167,6 +246,40 @@ extern "C" VYB_WEAK int64_t __vyb_qt_active(void) { return g_app ? 1 : 0; }
 extern "C" VYB_WEAK int64_t __vyb_qt_process_events(void) {
     if (!g_app) return -1;
     QCoreApplication::processEvents();
+    return 0;
+}
+
+// Run the Qt native event loop, dispatching queued control events to the
+// qt_on_event handler as they arrive. A 2 ms QTimer tick drains the queue on the
+// main thread (Qt thread affinity), so real input/paint/timer signals from Qt and
+// records enqueued by background asyncs are both delivered to the handler. Runs
+// until __vyb_qt_run_stop()/qt_quit() quits the loop; returns the exit code, or
+// -1 if the GUI is not running. If qt_quit() requested teardown from inside a
+// handler, it is finalized here once exec() has unwound.
+extern "C" VYB_WEAK int64_t __vyb_qt_run(void) {
+    if (!g_app) return -1;
+    g_loop_active = true;
+    g_quit_requested = false;
+    QTimer tick;
+    tick.setInterval(2);
+    tick.setTimerType(Qt::PreciseTimer);
+    QObject::connect(&tick, &QTimer::timeout, [] { vyb_qt_dispatch_queued(); });
+    tick.start();
+    int rc = g_app->exec();
+    tick.stop();
+    g_loop_active = false;
+    if (g_quit_requested) {
+        g_quit_requested = false;
+        vyb_qt_full_teardown();
+    }
+    return rc;
+}
+
+// Stop a running qt_run() loop gracefully (the GUI stays up). Returns 0 on
+// success, -1 if there is no running loop to stop.
+extern "C" VYB_WEAK int64_t __vyb_qt_run_stop(void) {
+    if (!g_app || !g_loop_active) return -1;
+    g_app->quit();
     return 0;
 }
 

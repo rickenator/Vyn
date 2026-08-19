@@ -1,0 +1,63 @@
+// @test: qt stdlib module - native qt_run event loop + qt_on_event callback
+// @description: Headless-deterministic coverage for the qt_run native event-loop
+//   model: qt_on_event registers a fn(handle, kind) handler, qt_run() enters
+//   QApplication::exec() and dispatches queued control events into it, and the
+//   handler can stop the loop gracefully (qt_run_stop, GUI survives) or tear it
+//   down (qt_quit). Runs on the offscreen QPA platform so it needs no X server.
+// @category: qt, stdlib, gui
+// @expect: pass
+// @expect-output: qt-run-ok
+// @env: VYB_STDLIB=stdlib
+// @env: QT_QPA_PLATFORM=offscreen
+
+import qt
+
+main()<Int> -> {
+    if (qt_init() == false) {
+        // Qt5 not linked into this build (stub shims): degrade gracefully.
+        println("qt-run-ok (Qt5 unavailable)")
+        return 0
+    }
+    if (qt_active() == false) { return 1 }
+
+    w<Int> = qt_window_create()
+    if (w == 0) { return 2 }
+    combo<Int> = qt_combo_create(w)
+    if (combo == 0) { return 3 }
+    if (qt_combo_add_item(combo, "a") != 0) { return 4 }
+    if (qt_combo_add_item(combo, "b") != 0) { return 5 }
+    status<Int> = qt_label_create(w, "idle")
+    if (status == 0) { return 6 }
+
+    // --- Phase 1: qt_run dispatches a queued event into the handler, which
+    // stops the loop gracefully (GUI stays up). --------------------------------
+    if (qt_on_event(|h<Int>, k<Int>| -> {
+        if (k == QtEvent::indexChanged) {
+            qt_label_set_text(status, "ran")
+            qt_run_stop()
+        }
+    }) != 0) { return 7 }
+
+    // Changing the selected index enqueues QtEvent::IndexChanged synchronously.
+    if (qt_combo_set_current_index(combo, 1) != 0) { return 8 }
+    rc1<Int> = qt_run()
+    if (rc1 != 0) { return 9 }
+    if (qt_label_text(status) != "ran") { return 10 }
+    if (qt_active() == false) { return 11 }    // graceful stop keeps the GUI
+
+    // qt_run_stop with no running loop reports -1.
+    if (qt_run_stop() != -1) { return 12 }
+
+    // --- Phase 2: a handler calling qt_quit() tears the whole GUI down once the
+    // loop returns. --------------------------------------------------------------
+    if (qt_on_event(|h2<Int>, k2<Int>| -> {
+        qt_quit()
+    }) != 0) { return 13 }
+    if (qt_combo_set_current_index(combo, 0) != 0) { return 14 }
+    rc2<Int> = qt_run()
+    if (rc2 != 0) { return 15 }
+    if (qt_active() == true) { return 16 }    // quit teardown leaves no GUI
+
+    println("qt-run-ok")
+    return 0
+}

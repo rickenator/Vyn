@@ -84,6 +84,10 @@ VYB_WEAK int64_t __vyb_qt_event_handle() { return 0; }
 VYB_WEAK int64_t __vyb_qt_event_kind() { return 0; }
 VYB_WEAK int64_t __vyb_qt_event_pop() { return -1; }
 VYB_WEAK int64_t __vyb_qt_wait_event(int64_t timeout) { (void)timeout; return -1; }
+VYB_WEAK int64_t __vyb_qt_run() { return -1; }
+VYB_WEAK int64_t __vyb_qt_run_stop() { return -1; }
+VYB_WEAK int64_t __vyb_qt_on_event(void* env, void* fn)
+    { (void)env; (void)fn; return 0; }
 VYB_WEAK int64_t __vyb_qt_combo_create(int64_t parent) { (void)parent; return 0; }
 VYB_WEAK int64_t __vyb_qt_combo_add_item(int64_t combo, const char* text, int64_t len)
     { (void)combo; (void)text; return -1; }

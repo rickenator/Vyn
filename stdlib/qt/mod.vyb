@@ -14,11 +14,18 @@
 # platform so qt_init() stays deterministic; GUI code is still expected to run
 # where a GUI is available.
 #
-# There is no callback signal surface yet: the event loop is *polled*. Call
-# qt_process_events() to pump paint/timer/input events, and arm a polled timer
-# with qt_set_timer(ms) then check qt_timer_fired() (it clears on read). This
-# keeps the module deterministic and testable under xvfb/offscreen, and fits
-# the Int/String FFI the other stdlib modules use.
+# Two event-loop models coexist. The default is *polled*: call
+# qt_process_events() to pump paint/timer/input events, arm a polled timer with
+# qt_set_timer(ms) then check qt_timer_fired() (it clears on read), and drain
+# control signals with qt_event_count/handle/kind/pop (or qt_wait_event). This
+# stays deterministic under xvfb/offscreen and fits the Int/String FFI.
+#
+# For a GUI program, qt_run() enters Qt's own native loop (QApplication::exec())
+# and dispatches queued control events into the handler registered with
+# qt_on_event(fn(handle, kind)); stop it from a handler with qt_run_stop() (whose
+# GUI survives) or qt_quit() (full teardown after the loop returns). Background
+# asyncs keep running on their worker threads and their enqueued results reach
+# the handler through the same queue-draining loop.
 #
 # Everything returns 0 on success and -1 on error (handle lookups fail on a 0/
 # stale or non-matching handle; operation with no QApplication returns -1),
@@ -278,6 +285,24 @@ qt_event_pop()<Int> -> {
 share(all)
 qt_wait_event(timeout<Int>)<Bool> -> {
     return vyb_qt_wait_event(timeout) == 1
+}
+
+# Run the Qt native event loop, dispatching queued control events to the qt_on_event handler, until qt_run_stop()/qt_quit(). Returns exit code.
+share(all)
+qt_run()<Int> -> {
+    return vyb_qt_run()
+}
+
+# Stop a running qt_run() loop (graceful; GUI stays up). Returns 0, or -1 if not running.
+share(all)
+qt_run_stop()<Int> -> {
+    return vyb_qt_run_stop()
+}
+
+# Register fn(handle, kind) called for each control event queued while qt_run() runs. Returns 0.
+share(all)
+qt_on_event(handler<fn(Int, Int) -> Void>)<Int> -> {
+    return vyb_qt_on_event(handler)
 }
 
 # Create a combo box under `parent`; index changes enqueue QtEvent::IndexChanged.

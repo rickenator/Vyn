@@ -1586,6 +1586,8 @@ qt_slider_set_value(s<Int>, value<Int>)<Int>
 qt_dial_create(parent<Int>, min<Int>, max<Int>)<Int>      qt_dial_value(d<Int>)<Int>
 qt_dial_set_value(d<Int>, value<Int>)<Int>
 qt_wait_event(timeout<Int>)<Bool>
+qt_run()<Int>                  qt_run_stop()<Int>            qt_active()<Bool>
+qt_on_event(handler<fn(Int, Int) -> Void>)<Int>
 ```
 
 The public API + stub, codegen dispatch, semantic lists, JIT registrations, and
@@ -1597,20 +1599,25 @@ out at `dial` (10); combo/spin/slider/dial enqueue `QtEvent::ValueChanged`.
 Call `qt_init()` once. `QApplication` must live on the main thread (a Vyb
 program's `main`), and construction needs a Qt platform — xcb under a display,
 `offscreen` for headless/CI (`QT_QPA_PLATFORM=offscreen`), etc; with neither a
-QPA platform nor a `$DISPLAY` the bridge falls back to `offscreen`. There is no
-callback signal surface yet: the event loop is *polled* with `qt_process_events`,
-the repeat timer is a steady-clock deadline (`qt_set_timer(ms)` +
-`qt_timer_fired()`, which clears on read), and control signals are captured on a
-FIFO event queue (`qt_button_create`/`qt_checkbox_create`/`qt_edit_set_text`
-enqueue `QtEvent::Click|Toggled|TextChanged` records, drained via
-`qt_event_count`/`qt_event_handle`/`qt_event_kind`/`qt_event_pop`), so GUI tests
-stay deterministic under `offscreen`. `qt_kind(h)` reports a widget's static
+QPA platform nor a `$DISPLAY` the bridge falls back to `offscreen`. Two event-loop models coexist. The default is *polled*:
+`qt_process_events` pumps once, the repeat timer is a steady-clock deadline
+(`qt_set_timer(ms)` + `qt_timer_fired()`, which clears on read), and control
+signals are captured on a FIFO event queue (`qt_button_create`/`qt_checkbox_create`/
+`qt_edit_set_text` enqueue `QtEvent::Click|Toggled|TextChanged` records, drained
+via `qt_event_count`/`qt_event_handle`/`qt_event_kind`/`qt_event_pop`), so GUI
+tests stay deterministic under `offscreen`. For a GUI app, the *native* model
+enters Qt's own loop with `qt_run()` and routes control events through the
+callback registered by `qt_on_event(handler<fn(Int, Int) -> Void>)`, so a handler
+replies to clicks/edits/toggles the idiomatic way; the loop keeps running until a
+handler calls `qt_run_stop()` (graceful; GUI survives) or `qt_quit()` (full
+teardown once the loop returns). `qt_kind(h)` reports a widget's static
 `QtWidgetKind` (window/label/button/edit/checkbox/progress/combo/spin/slider) so
 typed wrappers can validate handles. `qt_wait_event(timeout)` pumps the Qt loop
 until a control event or timeout arrives, so a main-thread UI loop blocks without
 busy-spinning while the `asyncs` fiber pool runs background work concurrently (a
 worker fiber can set a widget, enqueueing a record that wakes a blocked
-`qt_wait_event`). Combo (`qt_combo_*`), spin (`qt_spin_*`), and slider
+`qt_wait_event`, or is picked up by `qt_run`'s queue-draining tick and handed to
+the handler). Combo (`qt_combo_*`), spin (`qt_spin_*`), and slider
 (`qt_slider_*`) enqueue `QtEvent::IndexChanged`/`ValueChanged` records. Handles
 are opaque; closing a window deletes it and its children.
 When Qt5 is absent the module's stub shims resolve but report the GUI as
@@ -1808,6 +1815,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

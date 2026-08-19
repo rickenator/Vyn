@@ -2154,14 +2154,16 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_qt_layout_add" || name == "vyb_qt_kind" ||
             name == "vyb_qt_event_count" || name == "vyb_qt_event_handle" ||
             name == "vyb_qt_event_kind" || name == "vyb_qt_event_pop" ||
-            name == "vyb_qt_wait_event" || name == "vyb_qt_combo_create" ||
-            name == "vyb_qt_combo_add_item" || name == "vyb_qt_combo_count" ||
-            name == "vyb_qt_combo_current_index" || name == "vyb_qt_combo_set_current_index" ||
-            name == "vyb_qt_combo_item_text" || name == "vyb_qt_spin_create" ||
-            name == "vyb_qt_spin_value" || name == "vyb_qt_spin_set_value" ||
-            name == "vyb_qt_slider_create" || name == "vyb_qt_slider_value" ||
-            name == "vyb_qt_slider_set_value" || name == "vyb_qt_dial_create" ||
-            name == "vyb_qt_dial_value" || name == "vyb_qt_dial_set_value") {
+            name == "vyb_qt_wait_event" || name == "vyb_qt_run" ||
+            name == "vyb_qt_run_stop" || name == "vyb_qt_on_event" ||
+            name == "vyb_qt_combo_create" || name == "vyb_qt_combo_add_item" ||
+            name == "vyb_qt_combo_count" || name == "vyb_qt_combo_current_index" ||
+            name == "vyb_qt_combo_set_current_index" || name == "vyb_qt_combo_item_text" ||
+            name == "vyb_qt_spin_create" || name == "vyb_qt_spin_value" ||
+            name == "vyb_qt_spin_set_value" || name == "vyb_qt_slider_create" ||
+            name == "vyb_qt_slider_value" || name == "vyb_qt_slider_set_value" ||
+            name == "vyb_qt_dial_create" || name == "vyb_qt_dial_value" ||
+            name == "vyb_qt_dial_set_value") {
 // gen_qt[sem_allow]: end
             isIntrinsic = true;
         }
@@ -2707,6 +2709,9 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 "vyb_qt_event_kind",
                 "vyb_qt_event_pop",
                 "vyb_qt_wait_event",
+                "vyb_qt_run",
+                "vyb_qt_run_stop",
+                "vyb_qt_on_event",
                 "vyb_qt_combo_create",
                 "vyb_qt_combo_add_item",
                 "vyb_qt_combo_count",

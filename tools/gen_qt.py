@@ -157,6 +157,17 @@ QT_FUNCS = [
          shape="int1", stub="-1",
          doc="Pump Qt until a control event (true) or `timeout` ms lapses (false); negative waits."),
 
+    # Native event loop (qt_run): QApplication::exec() with callback dispatch.
+    dict(mod="qt_run", vn="vyb_qt_run", cn="__vyb_qt_run", args=[], ret="Int", shape="int0", stub="-1",
+         doc="Run the Qt native event loop, dispatching queued control events to the qt_on_event handler, until qt_run_stop()/qt_quit(). Returns exit code."),
+    dict(mod="qt_run_stop", vn="vyb_qt_run_stop", cn="__vyb_qt_run_stop", args=[], ret="Int", shape="int0", stub="-1",
+         doc="Stop a running qt_run() loop (graceful; GUI stays up). Returns 0, or -1 if not running."),
+    dict(mod="qt_on_event", vn="vyb_qt_on_event", cn="__vyb_qt_on_event",
+         args=[("env", "Ptr"), ("fn", "Ptr")], ret="Int", shape="cb", stub="0",
+         doc="Register fn(handle, kind) called for each control event queued while qt_run() runs. Returns 0.",
+         wrap_sig="handler<fn(Int, Int) -> Void>",
+         wrap_body="return vyb_qt_on_event(handler)"),
+
     # Combo boxes (QComboBox)
     dict(mod="qt_combo_create", vn="vyb_qt_combo_create", cn="__vyb_qt_combo_create", args=[("parent", "Int")], ret="Int",
          shape="int1", stub="0", doc="Create a combo box under `parent`; index changes enqueue QtEvent::IndexChanged."),
@@ -252,6 +263,8 @@ def cpp_args(f):
     for name, typ in f["args"]:
         if typ == "String":
             parts.append("const char* %s, int64_t len" % name)
+        elif typ == "Ptr":
+            parts.append("void* %s" % name)
         else:
             parts.append("int64_t %s" % name)
     return ", ".join(parts)
@@ -291,7 +304,7 @@ def cond_lines(names, indent="                "):
     return line
 
 
-SHAPES = ["int0", "int1", "str1", "str2", "text", "value", "3int"]
+SHAPES = ["int0", "int1", "str1", "str2", "text", "value", "3int", "cb"]
 
 BRANCH = {
     "int0": ('if (!checkArity(0)) return;\n'
@@ -325,6 +338,24 @@ BRANCH = {
              'if (!a || !b || !c) return;\n'
              'llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type, int64Type}, false);\n'
              'm_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a), toI64(b), toI64(c)}, "qt.i3");'),
+    "cb": ('if (!checkArity(1)) return;\n'
+           'node->arguments[0]->accept(*this);\n'
+           'llvm::Value* cl = m_currentLLVMValue; if (!cl) return;\n'
+           'llvm::StructType* closureTy = getClosureStructType();\n'
+           'llvm::Value* envPtr = nullptr; llvm::Value* fnPtr = nullptr;\n'
+           'if (cl->getType()->isStructTy()) {\n'
+           '    envPtr = builder->CreateExtractValue(cl, 0, "qt.env");\n'
+           '    fnPtr = builder->CreateExtractValue(cl, 1, "qt.fn");\n'
+           '} else if (cl->getType()->isPointerTy()) {\n'
+           '    llvm::Value* closureVal = builder->CreateLoad(closureTy, cl, "qt.closure");\n'
+           '    envPtr = builder->CreateExtractValue(closureVal, 0, "qt.env");\n'
+           '    fnPtr = builder->CreateExtractValue(closureVal, 1, "qt.fn");\n'
+           '} else {\n'
+           '    logError(node->loc, "vyb_qt_on_event argument is not a fn() closure");\n'
+           '    m_currentLLVMValue = nullptr; return;\n'
+           '}\n'
+           'llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int8PtrType, int8PtrType}, false);\n'
+           'm_currentLLVMValue = builder->CreateCall(getQtFn(ft), {envPtr, fnPtr}, "qt.cb");'),
 }
 
 
@@ -449,9 +480,14 @@ def emit_mod_wrappers():
     for f in QT_FUNCS:
         out.append("# %s" % f["doc"])
         out.append("share(all)")
-        args = ", ".join("%s<%s>" % (n, t) for n, t in f["args"])
-        out.append("%s(%s)<%s> -> {" % (f["mod"], args, f["ret"]))
-        if "body" in f:
+        if "wrap_sig" in f:
+            sig = f["wrap_sig"]
+        else:
+            sig = ", ".join("%s<%s>" % (n, t) for n, t in f["args"])
+        out.append("%s(%s)<%s> -> {" % (f["mod"], sig, f["ret"]))
+        if "wrap_body" in f:
+            out.append("    " + f["wrap_body"])
+        elif "body" in f:
             out.append("    " + f["body"])
         else:
             call = "%s(%s)" % (f["vn"], ", ".join(n for n, _ in f["args"]))
