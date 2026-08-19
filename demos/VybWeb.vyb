@@ -1,10 +1,11 @@
 // VybWeb - a small native browser using the stdlib `qt` module (QWebEngineView).
 //
 // Shows a QMainWindow-less web app: a window whose vertical column nests a
-// horizontal toolbar (back / forward / reload / address bar / Go / Quit) above a
-// QtWebEngine web view that fills the rest of the window. The address bar is
-// kept in sync with the current URL on every loadFinished, and the title bar
-// tracks the page title. Drops you on https://www.google.com/.
+// horizontal toolbar (back / forward / reload / address bar / Go / Quit) BELOW a
+// QtWebEngine web view that fills the window above it (the chrome ducks under
+// the page, just to be different). The address bar is kept in sync with the
+// current URL on every loadFinished, and the title bar tracks the page title.
+// Drops you on https://www.google.com/.
 //
 // Requires a build with Qt5 WebEngine (CMake finds Qt5WebEngineWidgets); if the
 // surface is unavailable qt_web_create returns 0 and the app reports it.
@@ -50,16 +51,17 @@ main()<Int> -> {
     if (qt_layout_add(bar, btnGo) != 0) { return 1 }
     if (qt_layout_add(bar, btnQuit) != 0) { return 1 }
 
-    // The web view fills the column; the toolbar row keeps its natural height.
-    if (qt_layout_add_layout(col, bar) != 0) { return 1 }
     web<Int> = qt_web_create(w)
     if (web == 0) {
         println("VybWeb: QtWebEngine unavailable in this build")
         qt_quit()
         return 1
     }
+    // Web view fills the column; the toolbar row tucks along the BOTTOM edge
+    // (Qt boxes lay out top-to-bottom, so the web goes in first, then the bar).
     if (qt_layout_add(col, web) != 0) { return 1 }
-    if (qt_layout_set_stretch(col, 1, 1) != 0) { return 1 }
+    if (qt_layout_add_layout(col, bar) != 0) { return 1 }
+    if (qt_layout_set_stretch(col, 0, 1) != 0) { return 1 }
 
     // Navigation handler: buttons drive the page; a finished load syncs the
     // address bar and window title to the rendered page.
