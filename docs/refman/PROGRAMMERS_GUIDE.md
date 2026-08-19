@@ -1607,6 +1607,15 @@ qt_menu_add(mw<Int>, title<String>)<Int>  qt_action_add(menu<Int>, text<String>)
 qt_action_count(menu<Int>)<Int>
 qt_statusbar_message(mw<Int>, text<String>)<Int>  qt_statusbar_text(mw<Int>)<String>
 qt_toolbar_create(mw<Int>, title<String>)<Int>
+qt_msg_info/warn/error/about(parent<Int>, title<String>, text<String>)<Int>
+qt_msg_question(parent<Int>, title<String>, text<String>)<Int>
+qt_file_open/save(parent<Int>, title<String>, filter<String>)<String>
+qt_dir_select(parent<Int>, title<String>)<String>
+qt_rich_create(parent<Int>)<Int>   qt_rich_set_html/set_plain/append(e<Int>, text<String>)<Int>
+qt_rich_html/plain(e<Int>)<String> qt_rich_clear(e<Int>)<Int>
+qt_rich_set_text_color(e<Int>, r<Int>, g<Int>, b<Int>)<Int>
+qt_widget_set_font_size(h<Int>, pt<Int>)<Int>   qt_widget_set_font_bold(h<Int>, on<Int>)<Int>
+qt_widget_set_text_color(h<Int>, r<Int>, g<Int>, b<Int>)<Int>
 qt_wait_event(timeout<Int>)<Bool>
 qt_run()<Int>                  qt_run_stop()<Int>            qt_active()<Bool>
 qt_on_event(handler<fn(Int, Int) -> Void>)<Int>
@@ -1616,7 +1625,7 @@ The public API + stub, codegen dispatch, semantic lists, JIT registrations, and
 wrappers/enums are generated from `tools/gen_qt.py` (one table row per function);
 add a widget by adding a row and writing the bridge implementation, then run
 `python3 tools/gen_qt.py` (or `--check` to verify no drift). QtWidgetKind now tops
-out at `list` (16) — list/tabs/web/group/textEdit/radio join window/label/button/
+out at `rich` (20) — list/tabs/web/group/textEdit/radio/rich join window/label/button/
 edit/checkbox/progress/combo/spin/slider/dial. A multi-line `text_edit` enqueues
 `QtEvent::TextChanged`; radio and checkbox enqueue `QtEvent::Toggled`;
 combo/spin/slider/dial enqueue `QtEvent::IndexChanged`/`ValueChanged`; a tab or
@@ -1640,6 +1649,21 @@ the `qt_event_*` poll. `qt_post_event(h, kind)` enqueues a synthetic event from
 any thread (the queue is mutex-guarded) — a background `asyncs` fiber uses it to
 signal the UI loop without touching a QWidget off the main thread, and the
 `qt_run` handler or `qt_event_*` poll resolves it on the main thread.
+
+The modal dialog tier adds native `QMessageBox`/`QFileDialog` pickers
+(`qt_msg_info`/`qt_msg_warn`/`qt_msg_error`/`qt_msg_about`/`qt_msg_question` and
+`qt_file_open`/`qt_file_save`/`qt_dir_select`) that block the main thread for
+user input and return the chosen result — a standard-button code (1 for Yes on a
+question) or a selected path (`""` on cancel). A `QTextEdit` rich-text editor
+(`qt_rich_*`, kind `rich`) carries HTML (`qt_rich_set_html`/`qt_rich_html`, with
+`<b>`/`<i>`/`<font color>` etc.), plain text (`qt_rich_set_plain`/`qt_rich_plain`),
+appending/clearing, and a whole-body text color (`qt_rich_set_text_color(r,g,b)`);
+its edits enqueue `QtEvent::TextChanged`. Generic `QFont`/`QPalette` helpers style
+any widget: `qt_widget_set_font_size(pt)`, `qt_widget_set_font_bold(on)`, and
+`qt_widget_set_text_color(r,g,b)`. Modal dialogs have an opt-in
+`VYB_QT_DIALOG_AUTO=1` env seam that auto-answers them once shown (Ok/Yes/accept),
+so GUI tests stay deterministic under `offscreen`; with it unset the box blocks
+until the user responds.
 
 Call `qt_init()` once. `QApplication` must live on the main thread (a Vyb
 program's `main`), and construction needs a Qt platform — xcb under a display,
@@ -1860,6 +1884,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

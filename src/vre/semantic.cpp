@@ -2183,7 +2183,17 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_qt_main_window_create" || name == "vyb_qt_menubar" ||
             name == "vyb_qt_menu_add" || name == "vyb_qt_action_add" ||
             name == "vyb_qt_action_count" || name == "vyb_qt_statusbar_message" ||
-            name == "vyb_qt_statusbar_text" || name == "vyb_qt_toolbar_create") {
+            name == "vyb_qt_statusbar_text" || name == "vyb_qt_toolbar_create" ||
+            name == "vyb_qt_msg_info" || name == "vyb_qt_msg_warn" ||
+            name == "vyb_qt_msg_error" || name == "vyb_qt_msg_about" ||
+            name == "vyb_qt_msg_question" || name == "vyb_qt_file_open" ||
+            name == "vyb_qt_file_save" || name == "vyb_qt_dir_select" ||
+            name == "vyb_qt_rich_create" || name == "vyb_qt_rich_set_html" ||
+            name == "vyb_qt_rich_html" || name == "vyb_qt_rich_set_plain" ||
+            name == "vyb_qt_rich_plain" || name == "vyb_qt_rich_append" ||
+            name == "vyb_qt_rich_clear" || name == "vyb_qt_rich_set_text_color" ||
+            name == "vyb_qt_widget_set_font_size" || name == "vyb_qt_widget_set_font_bold" ||
+            name == "vyb_qt_widget_set_text_color") {
 // gen_qt[sem_allow]: end
             isIntrinsic = true;
         }
@@ -2788,6 +2798,25 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 "vyb_qt_statusbar_message",
                 "vyb_qt_statusbar_text",
                 "vyb_qt_toolbar_create",
+                "vyb_qt_msg_info",
+                "vyb_qt_msg_warn",
+                "vyb_qt_msg_error",
+                "vyb_qt_msg_about",
+                "vyb_qt_msg_question",
+                "vyb_qt_file_open",
+                "vyb_qt_file_save",
+                "vyb_qt_dir_select",
+                "vyb_qt_rich_create",
+                "vyb_qt_rich_set_html",
+                "vyb_qt_rich_html",
+                "vyb_qt_rich_set_plain",
+                "vyb_qt_rich_plain",
+                "vyb_qt_rich_append",
+                "vyb_qt_rich_clear",
+                "vyb_qt_rich_set_text_color",
+                "vyb_qt_widget_set_font_size",
+                "vyb_qt_widget_set_font_bold",
+                "vyb_qt_widget_set_text_color",
 // gen_qt[sem_int]: end
             };
             static const std::set<std::string> qtStrFuncs = {
@@ -2802,6 +2831,11 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 "vyb_qt_text_edit_text",
                 "vyb_qt_list_item_text",
                 "vyb_qt_statusbar_text",
+                "vyb_qt_file_open",
+                "vyb_qt_file_save",
+                "vyb_qt_dir_select",
+                "vyb_qt_rich_html",
+                "vyb_qt_rich_plain",
 // gen_qt[sem_str]: end
             };
             if (qtIntFuncs.count(name) || qtStrFuncs.count(name)) {

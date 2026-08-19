@@ -48,6 +48,13 @@
 #include <QHBoxLayout>
 #include <QTabWidget>
 #include <QListWidget>
+#include <QTextEdit>
+#include <QMessageBox>
+#include <QFileDialog>
+#include <QFont>
+#include <QPalette>
+#include <QTextCursor>
+#include <QTextCharFormat>
 #include <QMainWindow>
 #include <QMenuBar>
 #include <QMenu>
@@ -576,6 +583,7 @@ extern "C" VYB_WEAK int64_t __vyb_qt_kind(int64_t h) {
     if (dynamic_cast<QMenu*>(w))           return 18; // Menu
     if (dynamic_cast<QToolBar*>(w))        return 19; // Toolbar
     if (dynamic_cast<QPlainTextEdit*>(w))  return 12; // TextEdit
+    if (dynamic_cast<QTextEdit*>(w))       return 20; // Rich
     if (dynamic_cast<QRadioButton*>(w))    return 13; // Radio
 #if defined(VYB_HAVE_QT_WEBENGINE)
     if (dynamic_cast<QWebEngineView*>(w))  return 14; // Web
@@ -1071,4 +1079,203 @@ extern "C" VYB_WEAK vyb_qt_str __vyb_qt_statusbar_text(int64_t h) {
 extern "C" VYB_WEAK int64_t __vyb_qt_toolbar_create(int64_t h, const char* s, int64_t len) {
     QMainWindow* mw = dynamic_cast<QMainWindow*>(htowed(h)); if (!mw) return 0;
     return reinterpret_cast<int64_t>(mw->addToolBar(qt_from_bytes(s, len)));
+}
+
+// ----------------------------------------------------------------------------
+// Modal dialogs (QMessageBox / QFileDialog)
+// ----------------------------------------------------------------------------
+// These block on the main thread for user input, exactly like a real GUI app.
+// A modal dialog's exec() runs a private nested event loop; under the offscreen
+// QPA platform there is no user to click, so the bridge honors an opt-in env
+// var VYB_QT_DIALOG_AUTO=1 that auto-answers the dialog (Ok / Yes / the accept
+// path) once it is shown, keeping CI/GUI tests deterministic. Production use is
+// unchanged: with the var unset the box blocks until the user responds.
+
+static bool vyb_qt_dialog_auto() {
+    const char* v = std::getenv("VYB_QT_DIALOG_AUTO");
+    return v && *v;
+}
+
+// Shared modal message-box driver. `question` selects Yes/No (returns 1 for
+// Yes, 0 for No/dismiss); the rest use Ok and return 0.
+static int64_t vyb_qt_message_box(QWidget* parent, const char* title, int64_t tlen,
+                                  const char* text, int64_t nlen, QMessageBox::Icon icon,
+                                  bool question) {
+    if (!g_app) return -1;
+    QMessageBox box(icon, qt_from_bytes(title, tlen), qt_from_bytes(text, nlen),
+                    QMessageBox::NoButton, parent);
+    QMessageBox::StandardButtons btns = question ? (QMessageBox::Yes | QMessageBox::No)
+                                                 : QMessageBox::Ok;
+    QMessageBox::StandardButton dflt = question ? QMessageBox::Yes : QMessageBox::Ok;
+    box.setStandardButtons(btns);
+    box.setDefaultButton(dflt);
+    if (vyb_qt_dialog_auto())
+        QTimer::singleShot(0, &box, [&box, dflt]() { box.done(dflt); });
+    QMessageBox::StandardButton r = (QMessageBox::StandardButton)box.exec();
+    qApp->processEvents();                             // drain the auto-accept pump
+    if (question) return (r == QMessageBox::Yes) ? 1 : 0;
+    return 0;
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_msg_info(int64_t parent, const char* title, int64_t tlen,
+                                              const char* text, int64_t nlen) {
+    return vyb_qt_message_box(parent ? htowed(parent) : nullptr, title, tlen, text, nlen,
+                              QMessageBox::Information, false);
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_msg_warn(int64_t parent, const char* title, int64_t tlen,
+                                              const char* text, int64_t nlen) {
+    return vyb_qt_message_box(parent ? htowed(parent) : nullptr, title, tlen, text, nlen,
+                              QMessageBox::Warning, false);
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_msg_error(int64_t parent, const char* title, int64_t tlen,
+                                               const char* text, int64_t nlen) {
+    return vyb_qt_message_box(parent ? htowed(parent) : nullptr, title, tlen, text, nlen,
+                              QMessageBox::Critical, false);
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_msg_about(int64_t parent, const char* title, int64_t tlen,
+                                               const char* text, int64_t nlen) {
+    return vyb_qt_message_box(parent ? htowed(parent) : nullptr, title, tlen, text, nlen,
+                              QMessageBox::Information, false);
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_msg_question(int64_t parent, const char* title, int64_t tlen,
+                                                  const char* text, int64_t nlen) {
+    return vyb_qt_message_box(parent ? htowed(parent) : nullptr, title, tlen, text, nlen,
+                              QMessageBox::Question, true);
+}
+
+// Shared native file-dialog driver. `mode` 0=open, 1=save, 2=directory.
+static vyb_qt_str vyb_qt_file_dialog(int64_t parent, const char* title, int64_t tlen,
+                                     const char* filter, int64_t flen, int mode) {
+    if (!g_app) return { nullptr, 0 };
+    QWidget* pw = parent ? htowed(parent) : nullptr;
+    QFileDialog dlg(pw, qt_from_bytes(title, tlen), QString(), qt_from_bytes(filter, flen));
+    if (mode == 0) {
+        dlg.setAcceptMode(QFileDialog::AcceptOpen);
+        dlg.setFileMode(QFileDialog::ExistingFile);
+    } else if (mode == 1) {
+        dlg.setAcceptMode(QFileDialog::AcceptSave);
+    } else {
+        dlg.setFileMode(QFileDialog::Directory);
+        dlg.setOption(QFileDialog::ShowDirsOnly, true);
+    }
+    if (vyb_qt_dialog_auto())
+        QTimer::singleShot(0, &dlg, [&dlg]() { dlg.QDialog::done(QDialog::Accepted); });
+    if (dlg.exec() == QDialog::Accepted && !dlg.selectedFiles().isEmpty())
+        return qt_to_owned(dlg.selectedFiles().first());
+    return qt_to_owned(QString());
+}
+
+extern "C" VYB_WEAK vyb_qt_str __vyb_qt_file_open(int64_t parent, const char* title, int64_t tlen,
+                                                  const char* filter, int64_t flen) {
+    return vyb_qt_file_dialog(parent, title, tlen, filter, flen, 0);
+}
+
+extern "C" VYB_WEAK vyb_qt_str __vyb_qt_file_save(int64_t parent, const char* title, int64_t tlen,
+                                                  const char* filter, int64_t flen) {
+    return vyb_qt_file_dialog(parent, title, tlen, filter, flen, 1);
+}
+
+extern "C" VYB_WEAK vyb_qt_str __vyb_qt_dir_select(int64_t parent, const char* title, int64_t tlen) {
+    return vyb_qt_file_dialog(parent, title, tlen, nullptr, 0, 2);
+}
+
+// ----------------------------------------------------------------------------
+// Rich-text editor (QTextEdit) and font/color helpers
+// ----------------------------------------------------------------------------
+
+// Create a rich-text editor as a child of `parent` (0 = none). Returns its Int
+// handle, or 0 on failure. A text change enqueues a QtEvent::TextChanged record.
+extern "C" VYB_WEAK int64_t __vyb_qt_rich_create(int64_t parent) {
+    if (!g_app) return 0;
+    QWidget* pw = parent ? htowed(parent) : nullptr;
+    QTextEdit* e = new QTextEdit(pw);
+    QObject::connect(e, &QTextEdit::textChanged,
+        [e]() { vyb_qt_enqueue(wetoh(e), VYB_QT_EVT_TEXTCHANGED); });
+    return wetoh(e);
+}
+
+// Set the rich-text body from HTML (supports <b>/<i>/<u>/<font color> etc).
+extern "C" VYB_WEAK int64_t __vyb_qt_rich_set_html(int64_t h, const char* s, int64_t len) {
+    QTextEdit* e = dynamic_cast<QTextEdit*>(htowed(h)); if (!e) return -1;
+    e->setHtml(qt_from_bytes(s, len));
+    return 0;
+}
+
+// Current rich-text body as HTML (String); "" on a bad handle.
+extern "C" VYB_WEAK vyb_qt_str __vyb_qt_rich_html(int64_t h) {
+    QTextEdit* e = dynamic_cast<QTextEdit*>(htowed(h)); if (!e) return { nullptr, 0 };
+    return qt_to_owned(e->toHtml());
+}
+
+// Replace the rich-text editor's content with plain text (clears formatting).
+extern "C" VYB_WEAK int64_t __vyb_qt_rich_set_plain(int64_t h, const char* s, int64_t len) {
+    QTextEdit* e = dynamic_cast<QTextEdit*>(htowed(h)); if (!e) return -1;
+    e->setPlainText(qt_from_bytes(s, len));
+    return 0;
+}
+
+// Current plain text (String); "" on a bad handle.
+extern "C" VYB_WEAK vyb_qt_str __vyb_qt_rich_plain(int64_t h) {
+    QTextEdit* e = dynamic_cast<QTextEdit*>(htowed(h)); if (!e) return { nullptr, 0 };
+    return qt_to_owned(e->toPlainText());
+}
+
+// Append `text` at the end, keeping the current character format.
+extern "C" VYB_WEAK int64_t __vyb_qt_rich_append(int64_t h, const char* s, int64_t len) {
+    QTextEdit* e = dynamic_cast<QTextEdit*>(htowed(h)); if (!e) return -1;
+    e->append(qt_from_bytes(s, len));
+    return 0;
+}
+
+// Clear all rich-text content.
+extern "C" VYB_WEAK int64_t __vyb_qt_rich_clear(int64_t h) {
+    QTextEdit* e = dynamic_cast<QTextEdit*>(htowed(h)); if (!e) return -1;
+    e->clear();
+    return 0;
+}
+
+// Set the editor's text color from (r,g,b) 0-255 (applies to the entire body).
+extern "C" VYB_WEAK int64_t __vyb_qt_rich_set_text_color(int64_t h, int64_t r, int64_t g, int64_t b) {
+    QTextEdit* e = dynamic_cast<QTextEdit*>(htowed(h)); if (!e) return -1;
+    QTextCharFormat cf = e->currentCharFormat();
+    cf.setForeground(QBrush(QColor((int)(r & 0xff), (int)(g & 0xff), (int)(b & 0xff))));
+    e->setCurrentCharFormat(cf);
+    e->selectAll();
+    QTextCursor cur = e->textCursor();
+    cur.mergeCharFormat(cf);
+    e->setTextCursor(cur);
+    e->moveCursor(QTextCursor::Start);
+    return 0;
+}
+
+// Set a widget's font point size (any QWidget).
+extern "C" VYB_WEAK int64_t __vyb_qt_widget_set_font_size(int64_t h, int64_t pt) {
+    QWidget* w = htowed(h); if (!w) return -1;
+    QFont f = w->font();
+    f.setPointSize((int)pt);
+    w->setFont(f);
+    return 0;
+}
+
+// Toggle a widget's font bold (on != 0).
+extern "C" VYB_WEAK int64_t __vyb_qt_widget_set_font_bold(int64_t h, int64_t on) {
+    QWidget* w = htowed(h); if (!w) return -1;
+    QFont f = w->font();
+    f.setBold(on ? true : false);
+    w->setFont(f);
+    return 0;
+}
+
+// Set a widget's foreground text color via its palette (r,g,b 0-255). Works on
+// any QWidget that paints text from WindowText (QLabel, QLineEdit, buttons...).
+extern "C" VYB_WEAK int64_t __vyb_qt_widget_set_text_color(int64_t h, int64_t r, int64_t g, int64_t b) {
+    QWidget* w = htowed(h); if (!w) return -1;
+    QPalette pal = w->palette();
+    pal.setColor(w->foregroundRole(), QColor((int)(r & 0xff), (int)(g & 0xff), (int)(b & 0xff)));
+    w->setPalette(pal);
+    return 0;
 }

@@ -168,6 +168,42 @@ VYB_WEAK vyb_qt_str __vyb_qt_statusbar_text(int64_t mw)
     { (void)mw; return qt_stub_str(); }
 VYB_WEAK int64_t __vyb_qt_toolbar_create(int64_t mw, const char* title, int64_t len)
     { (void)mw; (void)title; return 0; }
+VYB_WEAK int64_t __vyb_qt_msg_info(int64_t parent, const char* title, int64_t len, const char* text, int64_t len2)
+    { (void)parent; (void)title; (void)text; return -1; }
+VYB_WEAK int64_t __vyb_qt_msg_warn(int64_t parent, const char* title, int64_t len, const char* text, int64_t len2)
+    { (void)parent; (void)title; (void)text; return -1; }
+VYB_WEAK int64_t __vyb_qt_msg_error(int64_t parent, const char* title, int64_t len, const char* text, int64_t len2)
+    { (void)parent; (void)title; (void)text; return -1; }
+VYB_WEAK int64_t __vyb_qt_msg_about(int64_t parent, const char* title, int64_t len, const char* text, int64_t len2)
+    { (void)parent; (void)title; (void)text; return -1; }
+VYB_WEAK int64_t __vyb_qt_msg_question(int64_t parent, const char* title, int64_t len, const char* text, int64_t len2)
+    { (void)parent; (void)title; (void)text; return -1; }
+VYB_WEAK vyb_qt_str __vyb_qt_file_open(int64_t parent, const char* title, int64_t len, const char* filter, int64_t len2)
+    { (void)parent; (void)title; (void)filter; return qt_stub_str(); }
+VYB_WEAK vyb_qt_str __vyb_qt_file_save(int64_t parent, const char* title, int64_t len, const char* filter, int64_t len2)
+    { (void)parent; (void)title; (void)filter; return qt_stub_str(); }
+VYB_WEAK vyb_qt_str __vyb_qt_dir_select(int64_t parent, const char* title, int64_t len)
+    { (void)parent; (void)title; return qt_stub_str(); }
+VYB_WEAK int64_t __vyb_qt_rich_create(int64_t parent) { (void)parent; return 0; }
+VYB_WEAK int64_t __vyb_qt_rich_set_html(int64_t ed, const char* html, int64_t len)
+    { (void)ed; (void)html; return -1; }
+VYB_WEAK vyb_qt_str __vyb_qt_rich_html(int64_t ed)
+    { (void)ed; return qt_stub_str(); }
+VYB_WEAK int64_t __vyb_qt_rich_set_plain(int64_t ed, const char* text, int64_t len)
+    { (void)ed; (void)text; return -1; }
+VYB_WEAK vyb_qt_str __vyb_qt_rich_plain(int64_t ed)
+    { (void)ed; return qt_stub_str(); }
+VYB_WEAK int64_t __vyb_qt_rich_append(int64_t ed, const char* text, int64_t len)
+    { (void)ed; (void)text; return -1; }
+VYB_WEAK int64_t __vyb_qt_rich_clear(int64_t ed) { (void)ed; return -1; }
+VYB_WEAK int64_t __vyb_qt_rich_set_text_color(int64_t ed, int64_t r, int64_t g, int64_t b)
+    { (void)ed; (void)r; (void)g; (void)b; return -1; }
+VYB_WEAK int64_t __vyb_qt_widget_set_font_size(int64_t h, int64_t pt)
+    { (void)h; (void)pt; return -1; }
+VYB_WEAK int64_t __vyb_qt_widget_set_font_bold(int64_t h, int64_t on)
+    { (void)h; (void)on; return -1; }
+VYB_WEAK int64_t __vyb_qt_widget_set_text_color(int64_t h, int64_t r, int64_t g, int64_t b)
+    { (void)h; (void)r; (void)g; (void)b; return -1; }
 // gen_qt[stub]: end
 } // extern "C"
 #endif // !VYB_HAVE_QT5

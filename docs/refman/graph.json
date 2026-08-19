@@ -1,5 +1,5 @@
 {
-  "git_rev": "ce67dd232132a9a4fd8da1155a53d17957ca26b6",
+  "git_rev": "b21a224d8b8f6c467ec25cc7b982d47548c3505a",
   "modules": [
     "agents",
     "asyncs",
@@ -152,7 +152,7 @@
         "files": [
           "stdlib/qt/mod.vyb"
         ],
-        "exported": 102,
+        "exported": 121,
         "fan_in": 0,
         "fan_out": 0
       },
@@ -659,6 +659,25 @@
           "qt_statusbar_message",
           "qt_statusbar_text",
           "qt_toolbar_create",
+          "qt_msg_info",
+          "qt_msg_warn",
+          "qt_msg_error",
+          "qt_msg_about",
+          "qt_msg_question",
+          "qt_file_open",
+          "qt_file_save",
+          "qt_dir_select",
+          "qt_rich_create",
+          "qt_rich_set_html",
+          "qt_rich_html",
+          "qt_rich_set_plain",
+          "qt_rich_plain",
+          "qt_rich_append",
+          "qt_rich_clear",
+          "qt_rich_set_text_color",
+          "qt_widget_set_font_size",
+          "qt_widget_set_font_bold",
+          "qt_widget_set_text_color",
           "QtEvent",
           "QtWidgetKind"
         ]
@@ -2993,6 +3012,15 @@
         "fan_in": 0
       },
       {
+        "name": "qt_dir_select",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_dir_select(parent<Int>, title<String>)<String> ->",
+        "summary": "Modal directory picker; returns the chosen path (String) or \"\" on cancel.",
+        "fan_in": 0
+      },
+      {
         "name": "qt_edit_create",
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
@@ -3062,6 +3090,24 @@
         "kind": "fn",
         "signature": "qt_event_pop()<Int> ->",
         "summary": "Remove the oldest queued event. Returns 0, or -1 if empty.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_file_open",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_file_open(parent<Int>, title<String>, filter<String>)<String> ->",
+        "summary": "Modal 'open file' picker; returns the chosen path (String) or \"\" on cancel.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_file_save",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_file_save(parent<Int>, title<String>, filter<String>)<String> ->",
+        "summary": "Modal 'save file' picker; returns the chosen path (String) or \"\" on cancel.",
         "fan_in": 0
       },
       {
@@ -3236,6 +3282,51 @@
         "fan_in": 0
       },
       {
+        "name": "qt_msg_about",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_msg_about(parent<Int>, title<String>, text<String>)<Int> ->",
+        "summary": "Show a modal 'about' box (blocks until dismissed). Returns 0.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_msg_error",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_msg_error(parent<Int>, title<String>, text<String>)<Int> ->",
+        "summary": "Show a modal critical-error message box (blocks until dismissed). Returns 0.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_msg_info",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_msg_info(parent<Int>, title<String>, text<String>)<Int> ->",
+        "summary": "Show a modal informational message box (blocks until dismissed). Returns 0.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_msg_question",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_msg_question(parent<Int>, title<String>, text<String>)<Int> ->",
+        "summary": "Show a modal Yes/No question. Returns 1 for Yes, 0 for No/dismiss.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_msg_warn",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_msg_warn(parent<Int>, title<String>, text<String>)<Int> ->",
+        "summary": "Show a modal warning message box (blocks until dismissed). Returns 0.",
+        "fan_in": 0
+      },
+      {
         "name": "qt_on_event",
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
@@ -3314,6 +3405,78 @@
         "kind": "fn",
         "signature": "qt_radio_set_checked(radio<Int>, on<Bool>)<Int> ->",
         "summary": "Check (true) / uncheck (false) the radio (enqueues QtEvent::Toggled). Returns 0.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_rich_append",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_rich_append(ed<Int>, text<String>)<Int> ->",
+        "summary": "Append `text` at the end (keeps the current character format). Returns 0.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_rich_clear",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_rich_clear(ed<Int>)<Int> ->",
+        "summary": "Clear all rich-text content. Returns 0.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_rich_create",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_rich_create(parent<Int>)<Int> ->",
+        "summary": "Create a rich-text editor (QTextEdit) under `parent`; edits enqueue QtEvent::TextChanged.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_rich_html",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_rich_html(ed<Int>)<String> ->",
+        "summary": "Current rich-text body as HTML (String); \"\" on a bad handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_rich_plain",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_rich_plain(ed<Int>)<String> ->",
+        "summary": "Current plain text (String); \"\" on a bad handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_rich_set_html",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_rich_set_html(ed<Int>, html<String>)<Int> ->",
+        "summary": "Set the rich-text editor body from `html` (supports <b>/<i>/<font color> etc). Returns 0.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_rich_set_plain",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_rich_set_plain(ed<Int>, text<String>)<Int> ->",
+        "summary": "Set the rich-text editor's plain text (clears formatting). Returns 0.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_rich_set_text_color",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_rich_set_text_color(ed<Int>, r<Int>, g<Int>, b<Int>)<Int> ->",
+        "summary": "Set the editor's text color to (r,g,b) each 0-255. Returns 0.",
         "fan_in": 0
       },
       {
@@ -3611,6 +3774,33 @@
         "kind": "fn",
         "signature": "qt_widget_set_enabled(h<Int>, on<Bool>)<Int> ->",
         "summary": "Enable (true) / disable (false) any widget. Returns 0, or -1 on a non-widget handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_widget_set_font_bold",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_widget_set_font_bold(h<Int>, on<Int>)<Int> ->",
+        "summary": "Toggle a widget's font bold (on != 0). Returns 0, or -1 on a bad handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_widget_set_font_size",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_widget_set_font_size(h<Int>, pt<Int>)<Int> ->",
+        "summary": "Set a widget's font point size. Returns 0, or -1 on a bad handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_widget_set_text_color",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_widget_set_text_color(h<Int>, r<Int>, g<Int>, b<Int>)<Int> ->",
+        "summary": "Set a widget's foreground text color via palette (r,g,b each 0-255). Returns 0, or -1 on a bad handle.",
         "fan_in": 0
       },
       {
@@ -7017,6 +7207,12 @@
     {
       "type": "runtimeRef",
       "from_module": "qt",
+      "from_symbol": "qt_dir_select",
+      "to_symbol": "vyb_qt_dir_select"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
       "from_symbol": "qt_edit_create",
       "to_symbol": "vyb_qt_edit_create"
     },
@@ -7061,6 +7257,18 @@
       "from_module": "qt",
       "from_symbol": "qt_event_pop",
       "to_symbol": "vyb_qt_event_pop"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_file_open",
+      "to_symbol": "vyb_qt_file_open"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_file_save",
+      "to_symbol": "vyb_qt_file_save"
     },
     {
       "type": "runtimeRef",
@@ -7179,6 +7387,36 @@
     {
       "type": "runtimeRef",
       "from_module": "qt",
+      "from_symbol": "qt_msg_about",
+      "to_symbol": "vyb_qt_msg_about"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_msg_error",
+      "to_symbol": "vyb_qt_msg_error"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_msg_info",
+      "to_symbol": "vyb_qt_msg_info"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_msg_question",
+      "to_symbol": "vyb_qt_msg_question"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_msg_warn",
+      "to_symbol": "vyb_qt_msg_warn"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
       "from_symbol": "qt_on_event",
       "to_symbol": "vyb_qt_on_event"
     },
@@ -7229,6 +7467,54 @@
       "from_module": "qt",
       "from_symbol": "qt_radio_set_checked",
       "to_symbol": "vyb_qt_radio_set_checked"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_rich_append",
+      "to_symbol": "vyb_qt_rich_append"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_rich_clear",
+      "to_symbol": "vyb_qt_rich_clear"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_rich_create",
+      "to_symbol": "vyb_qt_rich_create"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_rich_html",
+      "to_symbol": "vyb_qt_rich_html"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_rich_plain",
+      "to_symbol": "vyb_qt_rich_plain"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_rich_set_html",
+      "to_symbol": "vyb_qt_rich_set_html"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_rich_set_plain",
+      "to_symbol": "vyb_qt_rich_set_plain"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_rich_set_text_color",
+      "to_symbol": "vyb_qt_rich_set_text_color"
     },
     {
       "type": "runtimeRef",
@@ -7427,6 +7713,24 @@
       "from_module": "qt",
       "from_symbol": "qt_widget_set_enabled",
       "to_symbol": "vyb_qt_widget_set_enabled"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_widget_set_font_bold",
+      "to_symbol": "vyb_qt_widget_set_font_bold"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_widget_set_font_size",
+      "to_symbol": "vyb_qt_widget_set_font_size"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_widget_set_text_color",
+      "to_symbol": "vyb_qt_widget_set_text_color"
     },
     {
       "type": "runtimeRef",

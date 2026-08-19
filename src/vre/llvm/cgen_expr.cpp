@@ -3331,6 +3331,25 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_qt_statusbar_message") rtName = "__vyb_qt_statusbar_message";
         else if (fname == "vyb_qt_statusbar_text") rtName = "__vyb_qt_statusbar_text";
         else if (fname == "vyb_qt_toolbar_create") rtName = "__vyb_qt_toolbar_create";
+        else if (fname == "vyb_qt_msg_info") rtName = "__vyb_qt_msg_info";
+        else if (fname == "vyb_qt_msg_warn") rtName = "__vyb_qt_msg_warn";
+        else if (fname == "vyb_qt_msg_error") rtName = "__vyb_qt_msg_error";
+        else if (fname == "vyb_qt_msg_about") rtName = "__vyb_qt_msg_about";
+        else if (fname == "vyb_qt_msg_question") rtName = "__vyb_qt_msg_question";
+        else if (fname == "vyb_qt_file_open") rtName = "__vyb_qt_file_open";
+        else if (fname == "vyb_qt_file_save") rtName = "__vyb_qt_file_save";
+        else if (fname == "vyb_qt_dir_select") rtName = "__vyb_qt_dir_select";
+        else if (fname == "vyb_qt_rich_create") rtName = "__vyb_qt_rich_create";
+        else if (fname == "vyb_qt_rich_set_html") rtName = "__vyb_qt_rich_set_html";
+        else if (fname == "vyb_qt_rich_html") rtName = "__vyb_qt_rich_html";
+        else if (fname == "vyb_qt_rich_set_plain") rtName = "__vyb_qt_rich_set_plain";
+        else if (fname == "vyb_qt_rich_plain") rtName = "__vyb_qt_rich_plain";
+        else if (fname == "vyb_qt_rich_append") rtName = "__vyb_qt_rich_append";
+        else if (fname == "vyb_qt_rich_clear") rtName = "__vyb_qt_rich_clear";
+        else if (fname == "vyb_qt_rich_set_text_color") rtName = "__vyb_qt_rich_set_text_color";
+        else if (fname == "vyb_qt_widget_set_font_size") rtName = "__vyb_qt_widget_set_font_size";
+        else if (fname == "vyb_qt_widget_set_font_bold") rtName = "__vyb_qt_widget_set_font_bold";
+        else if (fname == "vyb_qt_widget_set_text_color") rtName = "__vyb_qt_widget_set_text_color";
         if (!rtName.empty()) {
             auto getQtFn = [&](llvm::FunctionType* ft) -> llvm::Function* {
                 llvm::Function* f2 = module->getFunction(rtName);
@@ -3421,7 +3440,9 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_list_count" ||
                 fname == "vyb_qt_list_current" ||
                 fname == "vyb_qt_menubar" ||
-                fname == "vyb_qt_action_count") {
+                fname == "vyb_qt_action_count" ||
+                fname == "vyb_qt_rich_create" ||
+                fname == "vyb_qt_rich_clear") {
                 if (!checkArity(1)) return;
                 llvm::Value* a = needArg(0); if (!a) return;
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
@@ -3433,7 +3454,9 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_button_text" ||
                 fname == "vyb_qt_edit_text" ||
                 fname == "vyb_qt_text_edit_text" ||
-                fname == "vyb_qt_statusbar_text") {
+                fname == "vyb_qt_statusbar_text" ||
+                fname == "vyb_qt_rich_html" ||
+                fname == "vyb_qt_rich_plain") {
                 if (!checkArity(1)) return;
                 llvm::Value* a = needArg(0); if (!a) return;
                 llvm::FunctionType* ft = llvm::FunctionType::get(qtStrRet(), {int64Type}, false);
@@ -3445,6 +3468,13 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 if (!a || !b) return;
                 llvm::FunctionType* ft = llvm::FunctionType::get(qtStrRet(), {int64Type, int64Type}, false);
                 m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a), toI64(b)}, "qt.s2");
+                return;
+            } else if (fname == "vyb_qt_file_open" || fname == "vyb_qt_file_save") {
+                if (!checkArity(3)) return;
+                llvm::Value* a = needArg(0); llvm::Value* s = needArg(1); llvm::Value* t = needArg(2);
+                if (!a || !s || !t) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(qtStrRet(), {int64Type, int8PtrType, int64Type, int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a), toStrPtr(s), strLenOf(s), toStrPtr(t), strLenOf(t)}, "qt.s3");
                 return;
             } else if (fname == "vyb_qt_web_load" || fname == "vyb_qt_window_set_title" ||
                 fname == "vyb_qt_label_create" ||
@@ -3464,12 +3494,32 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_menu_add" ||
                 fname == "vyb_qt_action_add" ||
                 fname == "vyb_qt_statusbar_message" ||
-                fname == "vyb_qt_toolbar_create") {
+                fname == "vyb_qt_toolbar_create" ||
+                fname == "vyb_qt_rich_set_html" ||
+                fname == "vyb_qt_rich_set_plain" ||
+                fname == "vyb_qt_rich_append") {
                 if (!checkArity(2)) return;
                 llvm::Value* a = needArg(0); llvm::Value* s = needArg(1);
                 if (!a || !s) return;
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int8PtrType, int64Type}, false);
                 m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a), toStrPtr(s), strLenOf(s)}, "qt.text");
+                return;
+            } else if (fname == "vyb_qt_msg_info" || fname == "vyb_qt_msg_warn" ||
+                fname == "vyb_qt_msg_error" ||
+                fname == "vyb_qt_msg_about" ||
+                fname == "vyb_qt_msg_question") {
+                if (!checkArity(3)) return;
+                llvm::Value* a = needArg(0); llvm::Value* s = needArg(1); llvm::Value* t = needArg(2);
+                if (!a || !s || !t) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int8PtrType, int64Type, int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a), toStrPtr(s), strLenOf(s), toStrPtr(t), strLenOf(t)}, "qt.t2");
+                return;
+            } else if (fname == "vyb_qt_dir_select") {
+                if (!checkArity(2)) return;
+                llvm::Value* a = needArg(0); llvm::Value* s = needArg(1);
+                if (!a || !s) return;
+                llvm::FunctionType* ft = llvm::FunctionType::get(qtStrRet(), {int64Type, int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a), toStrPtr(s), strLenOf(s)}, "qt.st");
                 return;
             } else if (fname == "vyb_qt_button_set_enabled" || fname == "vyb_qt_checkbox_set_checked" ||
                 fname == "vyb_qt_progress_create" ||
@@ -3484,7 +3534,9 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_widget_set_enabled" ||
                 fname == "vyb_qt_widget_set_visible" ||
                 fname == "vyb_qt_tabs_set_current" ||
-                fname == "vyb_qt_list_set_current") {
+                fname == "vyb_qt_list_set_current" ||
+                fname == "vyb_qt_widget_set_font_size" ||
+                fname == "vyb_qt_widget_set_font_bold") {
                 if (!checkArity(2)) return;
                 llvm::Value* a = needArg(0); llvm::Value* b = needArg(1);
                 if (!a || !b) return;
@@ -3500,7 +3552,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type, int64Type}, false);
                 m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a), toI64(b), toI64(c)}, "qt.i3");
                 return;
-            } else if (fname == "vyb_qt_grid_add") {
+            } else if (fname == "vyb_qt_grid_add" || fname == "vyb_qt_rich_set_text_color" ||
+                fname == "vyb_qt_widget_set_text_color") {
                 if (!checkArity(4)) return;
                 llvm::Value* a=needArg(0); llvm::Value* b=needArg(1); llvm::Value* c=needArg(2); llvm::Value* d=needArg(3);
                 if (!a || !b || !c || !d) return;

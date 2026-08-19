@@ -324,6 +324,72 @@ QT_FUNCS = [
     dict(mod="qt_toolbar_create", vn="vyb_qt_toolbar_create", cn="__vyb_qt_toolbar_create",
          args=[("mw", "Int"), ("title", "String")], ret="Int", shape="text", stub="0",
          doc="Add a toolbar titled `title` to the main window; returns its handle or 0."),
+
+    # Modal dialogs (QMessageBox / QFileDialog). These block on the main thread
+    # for user input and return the chosen result (standard-button code for
+    # message boxes; selected path or "" for file/dir dialogs). Under the
+    # offscreen QPA platform a modal exec() has no user to click, so the bridge
+    # honors an opt-in VYB_QT_DIALOG_AUTO env var to auto-accept for tests.
+    dict(mod="qt_msg_info", vn="vyb_qt_msg_info", cn="__vyb_qt_msg_info",
+         args=[("parent", "Int"), ("title", "String"), ("text", "String")], ret="Int", shape="text2", stub="-1",
+         doc="Show a modal informational message box (blocks until dismissed). Returns 0."),
+    dict(mod="qt_msg_warn", vn="vyb_qt_msg_warn", cn="__vyb_qt_msg_warn",
+         args=[("parent", "Int"), ("title", "String"), ("text", "String")], ret="Int", shape="text2", stub="-1",
+         doc="Show a modal warning message box (blocks until dismissed). Returns 0."),
+    dict(mod="qt_msg_error", vn="vyb_qt_msg_error", cn="__vyb_qt_msg_error",
+         args=[("parent", "Int"), ("title", "String"), ("text", "String")], ret="Int", shape="text2", stub="-1",
+         doc="Show a modal critical-error message box (blocks until dismissed). Returns 0."),
+    dict(mod="qt_msg_about", vn="vyb_qt_msg_about", cn="__vyb_qt_msg_about",
+         args=[("parent", "Int"), ("title", "String"), ("text", "String")], ret="Int", shape="text2", stub="-1",
+         doc="Show a modal 'about' box (blocks until dismissed). Returns 0."),
+    dict(mod="qt_msg_question", vn="vyb_qt_msg_question", cn="__vyb_qt_msg_question",
+         args=[("parent", "Int"), ("title", "String"), ("text", "String")], ret="Int", shape="text2", stub="-1",
+         doc="Show a modal Yes/No question. Returns 1 for Yes, 0 for No/dismiss."),
+    dict(mod="qt_file_open", vn="vyb_qt_file_open", cn="__vyb_qt_file_open",
+         args=[("parent", "Int"), ("title", "String"), ("filter", "String")], ret="String", shape="str3",
+         stub="qt_stub_str()",
+         doc="Modal 'open file' picker; returns the chosen path (String) or \"\" on cancel."),
+    dict(mod="qt_file_save", vn="vyb_qt_file_save", cn="__vyb_qt_file_save",
+         args=[("parent", "Int"), ("title", "String"), ("filter", "String")], ret="String", shape="str3",
+         stub="qt_stub_str()",
+         doc="Modal 'save file' picker; returns the chosen path (String) or \"\" on cancel."),
+    dict(mod="qt_dir_select", vn="vyb_qt_dir_select", cn="__vyb_qt_dir_select",
+         args=[("parent", "Int"), ("title", "String")], ret="String", shape="strtext", stub="qt_stub_str()",
+         doc="Modal directory picker; returns the chosen path (String) or \"\" on cancel."),
+
+    # Rich-text editor (QTextEdit) + font/color helpers.
+    dict(mod="qt_rich_create", vn="vyb_qt_rich_create", cn="__vyb_qt_rich_create", args=[("parent", "Int")],
+         ret="Int", shape="int1", stub="0",
+         doc="Create a rich-text editor (QTextEdit) under `parent`; edits enqueue QtEvent::TextChanged."),
+    dict(mod="qt_rich_set_html", vn="vyb_qt_rich_set_html", cn="__vyb_qt_rich_set_html",
+         args=[("ed", "Int"), ("html", "String")], ret="Int", shape="text", stub="-1",
+         doc="Set the rich-text editor body from `html` (supports <b>/<i>/<font color> etc). Returns 0."),
+    dict(mod="qt_rich_html", vn="vyb_qt_rich_html", cn="__vyb_qt_rich_html", args=[("ed", "Int")],
+         ret="String", shape="str1", stub="qt_stub_str()",
+         doc="Current rich-text body as HTML (String); \"\" on a bad handle."),
+    dict(mod="qt_rich_set_plain", vn="vyb_qt_rich_set_plain", cn="__vyb_qt_rich_set_plain",
+         args=[("ed", "Int"), ("text", "String")], ret="Int", shape="text", stub="-1",
+         doc="Set the rich-text editor's plain text (clears formatting). Returns 0."),
+    dict(mod="qt_rich_plain", vn="vyb_qt_rich_plain", cn="__vyb_qt_rich_plain", args=[("ed", "Int")],
+         ret="String", shape="str1", stub="qt_stub_str()",
+         doc="Current plain text (String); \"\" on a bad handle."),
+    dict(mod="qt_rich_append", vn="vyb_qt_rich_append", cn="__vyb_qt_rich_append",
+         args=[("ed", "Int"), ("text", "String")], ret="Int", shape="text", stub="-1",
+         doc="Append `text` at the end (keeps the current character format). Returns 0."),
+    dict(mod="qt_rich_clear", vn="vyb_qt_rich_clear", cn="__vyb_qt_rich_clear", args=[("ed", "Int")],
+         ret="Int", shape="int1", stub="-1", doc="Clear all rich-text content. Returns 0."),
+    dict(mod="qt_rich_set_text_color", vn="vyb_qt_rich_set_text_color", cn="__vyb_qt_rich_set_text_color",
+         args=[("ed", "Int"), ("r", "Int"), ("g", "Int"), ("b", "Int")], ret="Int", shape="4int", stub="-1",
+         doc="Set the editor's text color to (r,g,b) each 0-255. Returns 0."),
+    dict(mod="qt_widget_set_font_size", vn="vyb_qt_widget_set_font_size", cn="__vyb_qt_widget_set_font_size",
+         args=[("h", "Int"), ("pt", "Int")], ret="Int", shape="value", stub="-1",
+         doc="Set a widget's font point size. Returns 0, or -1 on a bad handle."),
+    dict(mod="qt_widget_set_font_bold", vn="vyb_qt_widget_set_font_bold", cn="__vyb_qt_widget_set_font_bold",
+         args=[("h", "Int"), ("on", "Int")], ret="Int", shape="value", stub="-1",
+         doc="Toggle a widget's font bold (on != 0). Returns 0, or -1 on a bad handle."),
+    dict(mod="qt_widget_set_text_color", vn="vyb_qt_widget_set_text_color", cn="__vyb_qt_widget_set_text_color",
+         args=[("h", "Int"), ("r", "Int"), ("g", "Int"), ("b", "Int")], ret="Int", shape="4int", stub="-1",
+         doc="Set a widget's foreground text color via palette (r,g,b each 0-255). Returns 0, or -1 on a bad handle."),
 ]
 
 QT_WEB_FUNCS = [
@@ -363,6 +429,7 @@ QT_WIDGETS = [
     ("checkbox", 5), ("progress", 6), ("combo", 7), ("spin", 8), ("slider", 9),
     ("dial", 10), ("group", 11), ("textEdit", 12), ("radio", 13), ("web", 14),
     ("tabs", 15), ("list", 16), ("menuBar", 17), ("menu", 18), ("toolbar", 19),
+    ("rich", 20),
 ]
 
 
@@ -397,9 +464,12 @@ def write(path, text):
 
 def cpp_args(f):
     parts = []
+    lens = 0
     for name, typ in f["args"]:
         if typ == "String":
-            parts.append("const char* %s, int64_t len" % name)
+            ln = "len" if lens == 0 else "len%d" % (lens + 1)
+            lens += 1
+            parts.append("const char* %s, int64_t %s" % (name, ln))
         elif typ == "Ptr":
             parts.append("void* %s" % name)
         else:
@@ -441,7 +511,8 @@ def cond_lines(names, indent="                "):
     return line
 
 
-SHAPES = ["int0", "int1", "str1", "str2", "text", "value", "3int", "4int", "cb"]
+SHAPES = ["int0", "int1", "str1", "str2", "str3", "text", "text2", "strtext",
+          "value", "3int", "4int", "cb"]
 
 BRANCH = {
     "int0": ('if (!checkArity(0)) return;\n'
@@ -460,11 +531,30 @@ BRANCH = {
              'if (!a || !b) return;\n'
              'llvm::FunctionType* ft = llvm::FunctionType::get(qtStrRet(), {int64Type, int64Type}, false);\n'
              'm_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a), toI64(b)}, "qt.s2");'),
+    "str3": ('if (!checkArity(3)) return;\n'
+             'llvm::Value* a = needArg(0); llvm::Value* s = needArg(1); llvm::Value* t = needArg(2);\n'
+             'if (!a || !s || !t) return;\n'
+             'llvm::FunctionType* ft = llvm::FunctionType::get(qtStrRet(), '
+             '{int64Type, int8PtrType, int64Type, int8PtrType, int64Type}, false);\n'
+             'm_currentLLVMValue = builder->CreateCall(getQtFn(ft), '
+             '{toI64(a), toStrPtr(s), strLenOf(s), toStrPtr(t), strLenOf(t)}, "qt.s3");'),
     "text": ('if (!checkArity(2)) return;\n'
              'llvm::Value* a = needArg(0); llvm::Value* s = needArg(1);\n'
              'if (!a || !s) return;\n'
              'llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int8PtrType, int64Type}, false);\n'
              'm_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a), toStrPtr(s), strLenOf(s)}, "qt.text");'),
+    "text2": ('if (!checkArity(3)) return;\n'
+              'llvm::Value* a = needArg(0); llvm::Value* s = needArg(1); llvm::Value* t = needArg(2);\n'
+              'if (!a || !s || !t) return;\n'
+              'llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, '
+              '{int64Type, int8PtrType, int64Type, int8PtrType, int64Type}, false);\n'
+              'm_currentLLVMValue = builder->CreateCall(getQtFn(ft), '
+              '{toI64(a), toStrPtr(s), strLenOf(s), toStrPtr(t), strLenOf(t)}, "qt.t2");'),
+    "strtext": ('if (!checkArity(2)) return;\n'
+                'llvm::Value* a = needArg(0); llvm::Value* s = needArg(1);\n'
+                'if (!a || !s) return;\n'
+                'llvm::FunctionType* ft = llvm::FunctionType::get(qtStrRet(), {int64Type, int8PtrType, int64Type}, false);\n'
+                'm_currentLLVMValue = builder->CreateCall(getQtFn(ft), {toI64(a), toStrPtr(s), strLenOf(s)}, "qt.st");'),
     "value": ('if (!checkArity(2)) return;\n'
               'llvm::Value* a = needArg(0); llvm::Value* b = needArg(1);\n'
               'if (!a || !b) return;\n'

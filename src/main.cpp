@@ -314,6 +314,25 @@ extern "C" {
     int64_t __vyb_qt_statusbar_message(int64_t mw, const char* text, int64_t len);
     vyb_file_str __vyb_qt_statusbar_text(int64_t mw);
     int64_t __vyb_qt_toolbar_create(int64_t mw, const char* title, int64_t len);
+    int64_t __vyb_qt_msg_info(int64_t parent, const char* title, int64_t len, const char* text, int64_t len2);
+    int64_t __vyb_qt_msg_warn(int64_t parent, const char* title, int64_t len, const char* text, int64_t len2);
+    int64_t __vyb_qt_msg_error(int64_t parent, const char* title, int64_t len, const char* text, int64_t len2);
+    int64_t __vyb_qt_msg_about(int64_t parent, const char* title, int64_t len, const char* text, int64_t len2);
+    int64_t __vyb_qt_msg_question(int64_t parent, const char* title, int64_t len, const char* text, int64_t len2);
+    vyb_file_str __vyb_qt_file_open(int64_t parent, const char* title, int64_t len, const char* filter, int64_t len2);
+    vyb_file_str __vyb_qt_file_save(int64_t parent, const char* title, int64_t len, const char* filter, int64_t len2);
+    vyb_file_str __vyb_qt_dir_select(int64_t parent, const char* title, int64_t len);
+    int64_t __vyb_qt_rich_create(int64_t parent);
+    int64_t __vyb_qt_rich_set_html(int64_t ed, const char* html, int64_t len);
+    vyb_file_str __vyb_qt_rich_html(int64_t ed);
+    int64_t __vyb_qt_rich_set_plain(int64_t ed, const char* text, int64_t len);
+    vyb_file_str __vyb_qt_rich_plain(int64_t ed);
+    int64_t __vyb_qt_rich_append(int64_t ed, const char* text, int64_t len);
+    int64_t __vyb_qt_rich_clear(int64_t ed);
+    int64_t __vyb_qt_rich_set_text_color(int64_t ed, int64_t r, int64_t g, int64_t b);
+    int64_t __vyb_qt_widget_set_font_size(int64_t h, int64_t pt);
+    int64_t __vyb_qt_widget_set_font_bold(int64_t h, int64_t on);
+    int64_t __vyb_qt_widget_set_text_color(int64_t h, int64_t r, int64_t g, int64_t b);
 // gen_qt[main_decl]: end
 
 #ifdef VYB_HAVE_OPENSSL
@@ -1836,6 +1855,44 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_statusbar_text), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_toolbar_create")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_toolbar_create), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_msg_info")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_msg_info), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_msg_warn")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_msg_warn), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_msg_error")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_msg_error), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_msg_about")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_msg_about), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_msg_question")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_msg_question), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_file_open")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_file_open), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_file_save")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_file_save), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_dir_select")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_dir_select), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_rich_create")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_rich_create), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_rich_set_html")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_rich_set_html), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_rich_html")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_rich_html), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_rich_set_plain")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_rich_set_plain), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_rich_plain")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_rich_plain), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_rich_append")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_rich_append), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_rich_clear")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_rich_clear), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_rich_set_text_color")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_rich_set_text_color), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_widget_set_font_size")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_widget_set_font_size), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_widget_set_font_bold")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_widget_set_font_bold), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_widget_set_text_color")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_widget_set_text_color), llvm::JITSymbolFlags::Exported);
 // gen_qt[main_reg]: end
         runtimeSymbols[mangle("__vyb_net_open")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_open), llvm::JITSymbolFlags::Exported);

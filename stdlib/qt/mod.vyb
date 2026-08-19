@@ -657,6 +657,120 @@ share(all)
 qt_toolbar_create(mw<Int>, title<String>)<Int> -> {
     return vyb_qt_toolbar_create(mw, title)
 }
+
+# Show a modal informational message box (blocks until dismissed). Returns 0.
+share(all)
+qt_msg_info(parent<Int>, title<String>, text<String>)<Int> -> {
+    return vyb_qt_msg_info(parent, title, text)
+}
+
+# Show a modal warning message box (blocks until dismissed). Returns 0.
+share(all)
+qt_msg_warn(parent<Int>, title<String>, text<String>)<Int> -> {
+    return vyb_qt_msg_warn(parent, title, text)
+}
+
+# Show a modal critical-error message box (blocks until dismissed). Returns 0.
+share(all)
+qt_msg_error(parent<Int>, title<String>, text<String>)<Int> -> {
+    return vyb_qt_msg_error(parent, title, text)
+}
+
+# Show a modal 'about' box (blocks until dismissed). Returns 0.
+share(all)
+qt_msg_about(parent<Int>, title<String>, text<String>)<Int> -> {
+    return vyb_qt_msg_about(parent, title, text)
+}
+
+# Show a modal Yes/No question. Returns 1 for Yes, 0 for No/dismiss.
+share(all)
+qt_msg_question(parent<Int>, title<String>, text<String>)<Int> -> {
+    return vyb_qt_msg_question(parent, title, text)
+}
+
+# Modal 'open file' picker; returns the chosen path (String) or "" on cancel.
+share(all)
+qt_file_open(parent<Int>, title<String>, filter<String>)<String> -> {
+    return vyb_qt_file_open(parent, title, filter)
+}
+
+# Modal 'save file' picker; returns the chosen path (String) or "" on cancel.
+share(all)
+qt_file_save(parent<Int>, title<String>, filter<String>)<String> -> {
+    return vyb_qt_file_save(parent, title, filter)
+}
+
+# Modal directory picker; returns the chosen path (String) or "" on cancel.
+share(all)
+qt_dir_select(parent<Int>, title<String>)<String> -> {
+    return vyb_qt_dir_select(parent, title)
+}
+
+# Create a rich-text editor (QTextEdit) under `parent`; edits enqueue QtEvent::TextChanged.
+share(all)
+qt_rich_create(parent<Int>)<Int> -> {
+    return vyb_qt_rich_create(parent)
+}
+
+# Set the rich-text editor body from `html` (supports <b>/<i>/<font color> etc). Returns 0.
+share(all)
+qt_rich_set_html(ed<Int>, html<String>)<Int> -> {
+    return vyb_qt_rich_set_html(ed, html)
+}
+
+# Current rich-text body as HTML (String); "" on a bad handle.
+share(all)
+qt_rich_html(ed<Int>)<String> -> {
+    return vyb_qt_rich_html(ed)
+}
+
+# Set the rich-text editor's plain text (clears formatting). Returns 0.
+share(all)
+qt_rich_set_plain(ed<Int>, text<String>)<Int> -> {
+    return vyb_qt_rich_set_plain(ed, text)
+}
+
+# Current plain text (String); "" on a bad handle.
+share(all)
+qt_rich_plain(ed<Int>)<String> -> {
+    return vyb_qt_rich_plain(ed)
+}
+
+# Append `text` at the end (keeps the current character format). Returns 0.
+share(all)
+qt_rich_append(ed<Int>, text<String>)<Int> -> {
+    return vyb_qt_rich_append(ed, text)
+}
+
+# Clear all rich-text content. Returns 0.
+share(all)
+qt_rich_clear(ed<Int>)<Int> -> {
+    return vyb_qt_rich_clear(ed)
+}
+
+# Set the editor's text color to (r,g,b) each 0-255. Returns 0.
+share(all)
+qt_rich_set_text_color(ed<Int>, r<Int>, g<Int>, b<Int>)<Int> -> {
+    return vyb_qt_rich_set_text_color(ed, r, g, b)
+}
+
+# Set a widget's font point size. Returns 0, or -1 on a bad handle.
+share(all)
+qt_widget_set_font_size(h<Int>, pt<Int>)<Int> -> {
+    return vyb_qt_widget_set_font_size(h, pt)
+}
+
+# Toggle a widget's font bold (on != 0). Returns 0, or -1 on a bad handle.
+share(all)
+qt_widget_set_font_bold(h<Int>, on<Int>)<Int> -> {
+    return vyb_qt_widget_set_font_bold(h, on)
+}
+
+# Set a widget's foreground text color via palette (r,g,b each 0-255). Returns 0, or -1 on a bad handle.
+share(all)
+qt_widget_set_text_color(h<Int>, r<Int>, g<Int>, b<Int>)<Int> -> {
+    return vyb_qt_widget_set_text_color(h, r, g, b)
+}
 # gen_qt[mod_wrappers]: end
 
 # gen_qt[mod_enums]: begin
@@ -696,5 +810,6 @@ enum QtWidgetKind {
     menuBar = 17
     menu = 18
     toolbar = 19
+    rich = 20
 }
 # gen_qt[mod_enums]: end
