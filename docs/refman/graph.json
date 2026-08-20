@@ -1,5 +1,5 @@
 {
-  "git_rev": "25b9f3a27f71904dd6d2336801a569b0102285b3",
+  "git_rev": "fedd9eff10badf624c2f4f8661173ea2d1e8e065",
   "modules": [
     "agents",
     "asyncs",
@@ -116,7 +116,7 @@
         "files": [
           "stdlib/io/mod.vyb"
         ],
-        "exported": 12,
+        "exported": 14,
         "fan_in": 0,
         "fan_out": 0
       },
@@ -485,6 +485,7 @@
         "symbols": [
           "FileFlag",
           "File",
+          "IoError",
           "open",
           "open_read",
           "open_write",
@@ -494,6 +495,7 @@
           "read_all",
           "error_code",
           "error_message",
+          "io_error",
           "io_status_message"
         ]
       },
@@ -2382,6 +2384,15 @@
         "fan_in": 0
       },
       {
+        "name": "IoError",
+        "module": "io",
+        "file": "stdlib/io/mod.vyb",
+        "kind": "struct",
+        "signature": "struct IoError {",
+        "summary": "A shared error value for escalating a failed file operation into the",
+        "fan_in": 0
+      },
+      {
         "name": "close",
         "module": "io",
         "file": "stdlib/io/mod.vyb",
@@ -2406,6 +2417,15 @@
         "kind": "fn",
         "signature": "error_message()<String> ->",
         "summary": "Human-readable message for the last file operation error.",
+        "fan_in": 0
+      },
+      {
+        "name": "io_error",
+        "module": "io",
+        "file": "stdlib/io/mod.vyb",
+        "kind": "fn",
+        "signature": "io_error(operation<String>, path<String>)<IoError> ->",
+        "summary": "Build an `IoError` carrying the current `error_message()` diagnostic for the",
         "fan_in": 0
       },
       {
@@ -5442,6 +5462,13 @@
     {
       "type": "call",
       "from_module": "io",
+      "from_symbol": "io_error",
+      "to_module": "io",
+      "to_symbol": "error_message"
+    },
+    {
+      "type": "call",
+      "from_module": "io",
       "from_symbol": "open_append",
       "to_module": "io",
       "to_symbol": "open"
@@ -6527,6 +6554,34 @@
       "from_symbol": "samekey<K<Equatable>>",
       "to_module": "core",
       "to_symbol": "Equatable"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "io",
+      "from_symbol": "IoError",
+      "to_module": "io",
+      "to_symbol": "error_message"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "io",
+      "from_symbol": "IoError",
+      "to_module": "io",
+      "to_symbol": "io_error"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "io",
+      "from_symbol": "io_error",
+      "to_module": "io",
+      "to_symbol": "IoError"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "io",
+      "from_symbol": "io_error",
+      "to_module": "io",
+      "to_symbol": "error_message"
     },
     {
       "type": "proseRef",
@@ -8549,6 +8604,13 @@
       "from_symbol": "close",
       "to_module": "io",
       "to_symbol": "File"
+    },
+    {
+      "type": "usesType",
+      "from_module": "io",
+      "from_symbol": "io_error",
+      "to_module": "io",
+      "to_symbol": "IoError"
     },
     {
       "type": "usesType",

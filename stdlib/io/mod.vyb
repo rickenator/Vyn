@@ -16,6 +16,11 @@
 #       r -> { println(read_all(r)) }
 #       ? -> { println("open failed: " + error_message()) }
 #   }
+#   # Or escalate the absent File? into the fail/trap framework:
+#   match (open_read("data.txt")) {
+#       r -> { println(read_all(r)) }
+#       ? -> { fail io_error("open", "data.txt") }
+#   }
 #
 # Diagnostic surface: `error_code()` (0 = no error) and `error_message()` report
 # the result of the last file operation.
@@ -39,6 +44,18 @@ share(all)
 struct File {
     fd<Int>,
     path<String>
+}
+
+# A shared error value for escalating a failed file operation into the
+# fail/trap framework. `operation` names the failing call ("open", "read",
+# "write", "close"); `path` is the affected file; `message` is the last
+# diagnostic from `error_message()`. Build it directly with a struct literal or
+# via the `io_error()` convenience.
+share(all)
+struct IoError {
+    operation<String>,
+    path<String>,
+    message<String>
 }
 
 # Open (or create) `path` with the given `FileFlag` flags. Returns the file as
@@ -100,6 +117,15 @@ error_code()<Int> -> {
 share(all)
 error_message()<String> -> {
     return vyb_io_error_message()
+}
+
+# Build an `IoError` carrying the current `error_message()` diagnostic for the
+# named `operation` on `path`. Typical use is shaping an absent `File?` into a
+# fail:
+#   match (open_read(p)) { f -> body(pay(f)), ? -> { fail io_error("open", p) } }
+share(all)
+io_error(operation<String>, path<String>)<IoError> -> {
+    return IoError { operation = operation, path = path, message = error_message() }
 }
 
 # Compatibility status probe (kept for the module-surface import test).

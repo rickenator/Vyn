@@ -822,9 +822,7 @@ from taking the `?` seriously rather than comparing descriptors. Unwrap with
 `else` for a local default, or `match` the absent arm to escalate.
 
 ```vyb
-import io::{open_read, read_all, close}
-
-struct FileOpenError { path<String> }
+import io::{open_read, read_all, close, io_error, IoError}
 
 # `else` is lazy: the default only evaluates when the optional is absent, so a
 # side-effecting default does not run on the happy path.
@@ -832,6 +830,8 @@ mk_default()<Int> -> { return -1 }
 a<Int?> = Int?(7)
 r<Int> = a else mk_default()     # present -> r = 7, mk_default NOT called
 
+# `stdlib/io` ships an `IoError` plus an `io_error(...)` convenience that
+# snapshots the last diagnostic, so there is no user-defined error struct.
 # Escalate "absent" into a fail, letting a caller trap/recover:
 open_data(path<String>)<String> -> {
     match (open_read(path)) {
@@ -841,7 +841,7 @@ open_data(path<String>)<String> -> {
             return s
         }
         ? -> {
-            fail FileOpenError { path = path }
+            fail io_error("open", path)
         }
     }
 }
@@ -850,8 +850,8 @@ main()<Int> -> {
     {
         s<String> = open_data("config.toml")
         println(s)
-    } trap (e<FileOpenError>) -> {
-        println("could not open: " + e.path)
+    } trap (e<IoError>) -> {
+        println("could not open " + e.operation + " " + e.path + ": " + e.message)
     }
     return 0
 }
@@ -1206,6 +1206,16 @@ sentinel `fd == -1` to test, and `File` is only ever constructed valid. Unwrap
 with `else` for a local default, or `match (open(p)) { f -> …, ? -> … }` to
 shape the absent arm (e.g. into a `fail`), then diagnose via
 `error_message()`.
+
+```vyb
+struct IoError { operation<String>, path<String>, message<String> }  # shared
+io_error(operation<String>, path<String>)<IoError>  # snapshots error_message()
+```
+
+`IoError` is the module-provided error value for the fail/trap framework: build
+it with a struct literal or via `io_error(...)`, which fills `message` from the
+last diagnostic. Escalate an absent `File?` with `fail io_error("open", path)`
+and let a caller `trap (e<IoError>)`. See §3.16.
 
 ### 4.3 `term` — terminal and stdin
 
@@ -2014,6 +2024,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 
