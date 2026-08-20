@@ -23,7 +23,11 @@
 #   socket_recv(conn, 5)   // "hello"
 #
 # Diagnostics: `socket_error_code()` (0 = no error) and `socket_error_message()`
-# report the result of the last network operation.
+# report the result of the last low-level network operation. The high-level
+# wrappers (`tcp_connect`, `tcp_listen`, `tcp_accept`, `udp_bind`, `async_*`)
+# return a native optional: absence *is* the failed operation, so callers never
+# touch a sentinel `fd`. Unwrap with `else` for a default, or `match` to escalate
+# into the fail/trap framework via the shared `NetError`/`net_error(op, target)`.
 
 # Domain / socket-type constants. A constant enum: each member is a compile-time
 # Int (scoped under `Socket`), so they flow straight into the Int params of the
@@ -116,6 +120,27 @@ socket_error_message()<String> -> {
     return vyb_net_error_message()
 }
 
+# A shared error value for escalating a failed network operation into the
+# fail/trap framework. `operation` names the failing call ("connect", "listen",
+# "accept", "bind", "resolve"); `target` is the affected host/address; `message`
+# is the last diagnostic from `socket_error_message()`. Build it directly with a
+# struct literal or via the `net_error()` convenience.
+share(all)
+struct NetError {
+    operation<String>,
+    target<String>,
+    message<String>
+}
+
+# Build a `NetError` carrying the current `socket_error_message()` diagnostic for
+# the named `operation` on `target`. Typical use is shaping an absent `TcpStream?`
+# into a fail:
+#   match (tcp_connect(h, p)) { s -> body(s), ? -> { fail net_error("connect", h) } }
+share(all)
+net_error(operation<String>, target<String>)<NetError> -> {
+    return NetError { operation = operation, target = target, message = socket_error_message() }
+}
+
 # --- Higher-level wrappers: TcpStream / TcpListener / UdpSocket --------------
 # Ergonomically-bound socket types layered on the raw helpers above. A value
 # carries its descriptor plus peer/endpoint metadata, and the bound methods give
@@ -155,7 +180,6 @@ aspect TcpStreamOps {
     close(self<Self>)<Int> -> { }
     peer_ip(self<Self>)<String> -> { }
     peer_port(self<Self>)<Int> -> { }
-    is_open(self<Self>)<Bool> -> { }
 }
 
 share(all)
@@ -174,9 +198,6 @@ bind TcpStreamOps -> TcpStream {
     }
     peer_port(self<Self>)<Int> -> {
         return self.peer_port
-    }
-    is_open(self<Self>)<Bool> -> {
-        return self.fd >= 0
     }
 }
 
@@ -216,68 +237,65 @@ bind UdpSocketOps -> UdpSocket {
     close(self<Self>)<Int> -> { return vyb_net_close(self.fd) }
 }
 
-# Connect to `ip:port`. Returns an established TcpStream, or one with fd == -1 on
-# failure (see socket_error_code()).
+# Connect to `ip:port`. Returns the established stream as `TcpStream?` -- present
+# on success, absent on failure. The wrap happens here, so callers never touch a
+# sentinel `fd`. Use `else` for a default or `match` to escalate via
+# `fail net_error("connect", ip)`.
 share(all)
-tcp_connect(ip<String>, port<Int>)<TcpStream> -> {
+tcp_connect(ip<String>, port<Int>)<TcpStream?> -> {
     fd<Int> = vyb_net_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
-    if (fd < 0) { return TcpStream { fd = -1, peer_ip = "", peer_port = -1 } }
+    if (fd < 0) { return TcpStream?() }
     if (vyb_net_connect(fd, ip, port) != 0) {
         vyb_net_close(fd)
-        return TcpStream { fd = -1, peer_ip = "", peer_port = -1 }
+        return TcpStream?()
     }
-    return TcpStream { fd = fd, peer_ip = ip, peer_port = port }
+    return TcpStream?(TcpStream { fd = fd, peer_ip = ip, peer_port = port })
 }
 
 # Listen on `ip:port` ("" or "0.0.0.0" = all interfaces; port 0 = ephemeral,
-# read back with local_port(listener)). Returns a TcpListener, or one with
-# fd == -1 on failure.
+# read back with local_port(listener)). Returns `TcpListener?` -- present on
+# success, absent on failure.
 share(all)
-tcp_listen(ip<String>, port<Int>, backlog<Int>)<TcpListener> -> {
+tcp_listen(ip<String>, port<Int>, backlog<Int>)<TcpListener?> -> {
     fd<Int> = vyb_net_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
-    if (fd < 0) {
-        return TcpListener { fd = -1, local_ip = "", local_port = -1 }
-    }
+    if (fd < 0) { return TcpListener?() }
     if (vyb_net_bind(fd, ip, port) != 0 || vyb_net_listen(fd, backlog) != 0) {
         vyb_net_close(fd)
-        return TcpListener { fd = -1, local_ip = "", local_port = -1 }
+        return TcpListener?()
     }
     lp<Int> = vyb_net_local_port(fd)
-    return TcpListener { fd = fd, local_ip = ip, local_port = lp }
+    return TcpListener?(TcpListener { fd = fd, local_ip = ip, local_port = lp })
 }
 
-# Accept the next pending connection on `listener`. Returns the new TcpStream,
-# or one with fd == -1 on failure (blocking accept; see async_tcp_accept for the
-# event-loop variant).
+# Accept the next pending connection on `listener`. Returns the new stream as
+# `TcpStream?` -- present on success, absent on failure (blocking accept; see
+# `async_tcp_accept` for the event-loop variant).
 share(all)
-tcp_accept(listener<TcpListener>)<TcpStream> -> {
+tcp_accept(listener<TcpListener>)<TcpStream?> -> {
     c<Int> = vyb_net_accept(listener.fd)
-    if (c < 0) { return TcpStream { fd = -1, peer_ip = "", peer_port = -1 } }
-    return TcpStream { fd = c, peer_ip = "", peer_port = -1 }
+    if (c < 0) { return TcpStream?() }
+    return TcpStream?(TcpStream { fd = c, peer_ip = "", peer_port = -1 })
 }
 
 # Bind a datagram socket on `ip:port` ("" / "0.0.0.0" = all interfaces; port 0 =
-# ephemeral, read back with local_port(sock)). Returns a UdpSocket, or one with
-# fd == -1 on failure.
+# ephemeral, read back with local_port(sock)). Returns `UdpSocket?` -- present on
+# success, absent on failure.
 share(all)
-udp_bind(ip<String>, port<Int>)<UdpSocket> -> {
+udp_bind(ip<String>, port<Int>)<UdpSocket?> -> {
     fd<Int> = vyb_net_open(Socket::AF_INET, Socket::SOCK_DGRAM, Socket::IPPROTO_UDP)
-    if (fd < 0) {
-        return UdpSocket { fd = -1, local_ip = "", local_port = -1 }
-    }
+    if (fd < 0) { return UdpSocket?() }
     if (vyb_net_bind(fd, ip, port) != 0) {
         vyb_net_close(fd)
-        return UdpSocket { fd = -1, local_ip = "", local_port = -1 }
+        return UdpSocket?()
     }
     lp<Int> = vyb_net_local_port(fd)
-    return UdpSocket { fd = fd, local_ip = ip, local_port = lp }
+    return UdpSocket?(UdpSocket { fd = fd, local_ip = ip, local_port = lp })
 }
 
 # Send one datagram to `ip:port` (the socket need not be connected). Returns the
 # number of bytes sent, or -1 on failure.
 share(all)
 udp_send_to(s<UdpSocket>, ip<String>, port<Int>, data<String>)<Int> -> {
-    if (s.fd < 0) { return -1 }
     return vyb_net_sendto(s.fd, data, ip, port)
 }
 
@@ -285,7 +303,6 @@ udp_send_to(s<UdpSocket>, ip<String>, port<Int>, data<String>)<Int> -> {
 # udp_last_peer_ip() / udp_last_peer_port(). Empty on error/EOF.
 share(all)
 udp_recv_from(s<UdpSocket>, max<Int>)<String> -> {
-    if (s.fd < 0) { return "" }
     return vyb_net_recvfrom(s.fd, max)
 }
 
@@ -310,43 +327,39 @@ udp_close(s<UdpSocket>)<Int> -> {
 # async fn() (seeded via asyncs::async_spawn).
 
 share(all)
-async_tcp_accept(listener<TcpListener>)<TcpStream> -> {
+async_tcp_accept(listener<TcpListener>)<TcpStream?> -> {
     c<Int> = vyb_async_accept(listener.fd)
-    if (c < 0) { return TcpStream { fd = -1, peer_ip = "", peer_port = -1 } }
-    return TcpStream { fd = c, peer_ip = "", peer_port = -1 }
+    if (c < 0) { return TcpStream?() }
+    return TcpStream?(TcpStream { fd = c, peer_ip = "", peer_port = -1 })
 }
 
 share(all)
-async_tcp_connect(ip<String>, port<Int>)<TcpStream> -> {
+async_tcp_connect(ip<String>, port<Int>)<TcpStream?> -> {
     fd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
-    if (fd < 0) { return TcpStream { fd = -1, peer_ip = "", peer_port = -1 } }
+    if (fd < 0) { return TcpStream?() }
     if (vyb_async_connect(fd, ip, port) != 0) {
         socket_close(fd)
-        return TcpStream { fd = -1, peer_ip = "", peer_port = -1 }
+        return TcpStream?()
     }
-    return TcpStream { fd = fd, peer_ip = ip, peer_port = port }
+    return TcpStream?(TcpStream { fd = fd, peer_ip = ip, peer_port = port })
 }
 
 share(all)
 async_tcp_write(s<TcpStream>, data<String>)<Int> -> {
-    if (s.fd < 0) { return -1 }
     return vyb_async_send(s.fd, data)
 }
 
 share(all)
 async_tcp_read(s<TcpStream>, max<Int>)<String> -> {
-    if (s.fd < 0) { return "" }
     return vyb_async_recv(s.fd, max)
 }
 
 share(all)
 async_udp_send_to(s<UdpSocket>, ip<String>, port<Int>, data<String>)<Int> -> {
-    if (s.fd < 0) { return -1 }
     return vyb_async_sendto(s.fd, data, ip, port)
 }
 
 share(all)
 async_udp_recv_from(s<UdpSocket>, max<Int>)<String> -> {
-    if (s.fd < 0) { return "" }
     return vyb_async_recvfrom(s.fd, max)
 }

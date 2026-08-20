@@ -1434,13 +1434,23 @@ Module page: [`network.md`](network.md). Raw `socket_*` primitives, ergonomic
 TCP/UDP wrappers, and `async_*` variants.
 
 ```vyb
-# TCP
-l = tcp_listen(ip, port, backlog)<TcpListener>
-s = tcp_connect(ip, port)<TcpStream>
-c = tcp_accept(l)<TcpStream>
+# TCP - the ergonomic wrappers return a native optional: absence *is* a failed
+# op, so callers unwrap with `match` (or `else`) and never probe a sentinel fd.
+match (tcp_listen(ip, port, backlog)) {   # TcpListener?
+    l -> handle(l)
+    ? -> { fail net_error("listen", ip) }
+}
+match (tcp_connect(ip, port)) {           # TcpStream?
+    s -> handle(s)
+    ? -> { fail net_error("connect", ip) }
+}
+c = tcp_accept(l)<TcpStream?>             # absent if the accept fails
 
 # UDP
-u = udp_bind(ip, port)<UdpSocket>
+match (udp_bind(ip, port)) {              # UdpSocket?
+    u -> handle(u)
+    ? -> { fail net_error("bind", ip) }
+}
 udp_send_to(u, ip, port, data)
 udp_recv_from(u, max)<String>
 udp_last_peer_ip()
@@ -1464,9 +1474,19 @@ socket_error_message()
 `TcpStream`, `TcpListener`, and `UdpSocket` are structs; their method surface
 comes from the matching aspect:
 
-- `TcpStreamOps` — `write` / `read` / `close`, plus `peer_ip` / `peer_port` / `is_open`
+- `TcpStreamOps` — `write` / `read` / `close`, plus `peer_ip` / `peer_port`
 - `TcpListenerOps` — `local_ip` / `local_port` / `close`
 - `UdpSocketOps` — `send_to` / `recv_from`, plus `local_ip` / `local_port` / `close`
+
+Each high-level wrapper (`tcp_listen`, `tcp_connect`, `tcp_accept`, `udp_bind`,
+and the `async_tcp_*` / `async_udp_*` forms) returns a native optional that is
+present on success and absent on failure, mirroring `File?` in `io`: the absent
+arm shapes the failure via the shared `NetError { operation, target, message }`,
+built with `net_error(op, target)` (which snapshots `socket_error_message()`).
+Raise it with `fail net_error("connect", ip)` and catch it with
+`trap (e<NetError>) -> { ... }`. Because absent already means "failed", a
+constructed `TcpStream` / `TcpListener` / `UdpSocket` is always valid — there is
+no `is_open()` probe and no `fd == -1` sentinel to test.
 
 `enum Socket` holds the constants `AF_INET`, `SOCK_STREAM`, `SOCK_DGRAM`,
 `AF_INET6`, `IPPROTO_TCP`, and `IPPROTO_UDP` used by the raw `socket_*` calls.
@@ -1888,24 +1908,35 @@ import network
 import threads
 
 main()<Int> -> {
-    l = tcp_listen("0.0.0.0", 9000, 16)      # "" = all interfaces
-    if (l.fd == -1) { return 1 }
-    while (true) {
-        c = tcp_accept(l)
-        h = thread_spawn(|| -> { handle(c); return 0 })
-        thread_detach(h)
+    match (tcp_listen("0.0.0.0", 9000, 16)) {   # "" = all interfaces
+        l -> {
+            while (true) {
+                match (tcp_accept(l)) {
+                    c -> {
+                        h = thread_spawn(|| -> { handle(c); return 0 })
+                        thread_detach(h)
+                    }
+                    ? -> { break }
+                }
+            }
+            return 0
+        }
+        ? -> { return 1 }
     }
-    return 0
 }
 ```
 
 ### UDP datagram peer
 
 ```vyb
-u = udp_bind("0.0.0.0", 9001)
-udp_send_to(u, "127.0.0.1", 9002, "ping")
-reply = udp_recv_from(u, 1400)
-peer = udp_last_peer_ip() + ":" + udp_last_peer_port().to_string()
+match (udp_bind("0.0.0.0", 9001)) {
+    u -> {
+        udp_send_to(u, "127.0.0.1", 9002, "ping")
+        reply = udp_recv_from(u, 1400)
+        peer = udp_last_peer_ip() + ":" + udp_last_peer_port().to_string()
+    }
+    ? -> { fail net_error("bind", "0.0.0.0") }
+}
 ```
 
 ### HTTP server
@@ -2024,6 +2055,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

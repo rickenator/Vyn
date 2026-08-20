@@ -1,0 +1,84 @@
+// @test: network module NetError shared across modules via fail/trap
+// @description: an absent TcpStream? is escalated with net::net_error -> a
+//   NetError caught by a cross-module trap; the fields carry operation/target and
+//   a diagnostic message. A fresh loopback accept/connect is the happy path.
+// @category: network, modules, stdlib, error_handling, fail, trap
+// @expect: pass
+// @expect-return: 0
+// @execute-jit: true
+// @env: VYB_STDLIB=stdlib
+
+import network::{tcp_listen, tcp_connect, net_error, NetError}
+
+# Determine a closed loopback port deterministically: bind ephemeral, note the
+# port, close, then connect to the now-closed port -> connection refused.
+closed_port()<Int> -> {
+    match (tcp_listen("127.0.0.1", 0, 4)) {
+        l -> {
+            p<Int> = l.local_port()
+            l.close()
+            return p
+        }
+        ? -> { return 1000 }
+    }
+}
+
+# Escalate an absent stream into the fail/trap framework via net_error.
+connect_to(ip<String>, port<Int>)<Void> -> {
+    match (tcp_connect(ip, port)) {
+        s -> {
+            s.close()
+            fail net_error("connect", ip)
+        }
+        ? -> {
+            fail net_error("connect", ip)
+        }
+    }
+}
+
+main()<Int> -> {
+    cp<Int> = closed_port()
+
+    # A refused connect escalates into a NetError that a caller can trap.
+    caught<Bool> = false
+    op = ""
+    tgt = ""
+    msg = ""
+    {
+        connect_to("127.0.0.1", cp)
+    } trap (e<NetError>) -> {
+        caught = true
+        op = e.operation
+        tgt = e.target
+        msg = e.message
+    }
+
+    if (!caught || op != "connect" || tgt != "127.0.0.1" || msg == "") {
+        println("net-error-trap: failed")
+        return 1
+    }
+
+    # The happy path must not raise, and the NetError literal is available
+    # cross-module (partial-field struct literal).
+    direct<NetError> = NetError { operation = "connect", target = "127.0.0.1" }
+    match (tcp_listen("127.0.0.1", 0, 4)) {
+        l -> {
+            p2<Int> = l.local_port()
+            match (tcp_connect("127.0.0.1", p2)) {
+                s -> {
+                    s.write("net")
+                    s.close()
+                    l.close()
+                    if (direct.operation != "connect") {
+                        println("net-error-trap: literal failed")
+                        return 2
+                    }
+                    println("net-error-trap: ok")
+                    return 0
+                }
+                ? -> { println("net-error-trap: happy-connect-failed"); return 3 }
+            }
+        }
+        ? -> { println("net-error-trap: listener-failed"); return 3 }
+    }
+}

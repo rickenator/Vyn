@@ -1,5 +1,5 @@
 {
-  "git_rev": "fedd9eff10badf624c2f4f8661173ea2d1e8e065",
+  "git_rev": "1e44709f84c2e27d879d3252bf09e89351a30fa0",
   "modules": [
     "agents",
     "asyncs",
@@ -125,7 +125,7 @@
         "files": [
           "stdlib/network/mod.vyb"
         ],
-        "exported": 38,
+        "exported": 40,
         "fan_in": 2,
         "fan_out": 0
       },
@@ -517,6 +517,8 @@
           "socket_resolve",
           "socket_error_code",
           "socket_error_message",
+          "NetError",
+          "net_error",
           "TcpStream",
           "TcpListener",
           "UdpSocket",
@@ -2492,6 +2494,15 @@
         "fan_in": 0
       },
       {
+        "name": "NetError",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "struct",
+        "signature": "struct NetError {",
+        "summary": "A shared error value for escalating a failed network operation into the",
+        "fan_in": 0
+      },
+      {
         "name": "Socket",
         "module": "network",
         "file": "stdlib/network/mod.vyb",
@@ -2586,7 +2597,7 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "async_tcp_accept(listener<TcpListener>)<TcpStream> ->",
+        "signature": "async_tcp_accept(listener<TcpListener>)<TcpStream?> ->",
         "summary": "",
         "fan_in": 0
       },
@@ -2595,7 +2606,7 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "async_tcp_connect(ip<String>, port<Int>)<TcpStream> ->",
+        "signature": "async_tcp_connect(ip<String>, port<Int>)<TcpStream?> ->",
         "summary": "",
         "fan_in": 0
       },
@@ -2633,6 +2644,15 @@
         "kind": "fn",
         "signature": "async_udp_send_to(s<UdpSocket>, ip<String>, port<Int>, data<String>)<Int> ->",
         "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "net_error",
+        "module": "network",
+        "file": "stdlib/network/mod.vyb",
+        "kind": "fn",
+        "signature": "net_error(operation<String>, target<String>)<NetError> ->",
+        "summary": "Build a `NetError` carrying the current `socket_error_message()` diagnostic for",
         "fan_in": 0
       },
       {
@@ -2757,8 +2777,8 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "tcp_accept(listener<TcpListener>)<TcpStream> ->",
-        "summary": "Accept the next pending connection on `listener`. Returns the new TcpStream,",
+        "signature": "tcp_accept(listener<TcpListener>)<TcpStream?> ->",
+        "summary": "Accept the next pending connection on `listener`. Returns the new stream as",
         "fan_in": 0
       },
       {
@@ -2766,8 +2786,8 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "tcp_connect(ip<String>, port<Int>)<TcpStream> ->",
-        "summary": "Connect to `ip:port`. Returns an established TcpStream, or one with fd == -1 on",
+        "signature": "tcp_connect(ip<String>, port<Int>)<TcpStream?> ->",
+        "summary": "Connect to `ip:port`. Returns the established stream as `TcpStream?` -- present",
         "fan_in": 0
       },
       {
@@ -2775,7 +2795,7 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "tcp_listen(ip<String>, port<Int>, backlog<Int>)<TcpListener> ->",
+        "signature": "tcp_listen(ip<String>, port<Int>, backlog<Int>)<TcpListener?> ->",
         "summary": "Listen on `ip:port` (\"\" or \"0.0.0.0\" = all interfaces; port 0 = ephemeral,",
         "fan_in": 0
       },
@@ -2784,7 +2804,7 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "udp_bind(ip<String>, port<Int>)<UdpSocket> ->",
+        "signature": "udp_bind(ip<String>, port<Int>)<UdpSocket?> ->",
         "summary": "Bind a datagram socket on `ip:port` (\"\" / \"0.0.0.0\" = all interfaces; port 0 =",
         "fan_in": 0
       },
@@ -5502,6 +5522,13 @@
       "to_symbol": "socket_open"
     },
     {
+      "type": "call",
+      "from_module": "network",
+      "from_symbol": "net_error",
+      "to_module": "network",
+      "to_symbol": "socket_error_message"
+    },
+    {
       "type": "implement",
       "from_module": "collections",
       "from_symbol": "BTreeMapOps->BTreeMap",
@@ -6603,6 +6630,41 @@
       "from_symbol": "read_all",
       "to_module": "io",
       "to_symbol": "error_code"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "network",
+      "from_symbol": "NetError",
+      "to_module": "network",
+      "to_symbol": "net_error"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "network",
+      "from_symbol": "NetError",
+      "to_module": "network",
+      "to_symbol": "socket_error_message"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "network",
+      "from_symbol": "net_error",
+      "to_module": "network",
+      "to_symbol": "NetError"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "network",
+      "from_symbol": "net_error",
+      "to_module": "network",
+      "to_symbol": "socket_error_message"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "network",
+      "from_symbol": "tcp_accept",
+      "to_module": "network",
+      "to_symbol": "async_tcp_accept"
     },
     {
       "type": "runtimeRef",
@@ -8702,6 +8764,13 @@
       "from_symbol": "async_udp_send_to",
       "to_module": "network",
       "to_symbol": "UdpSocket"
+    },
+    {
+      "type": "usesType",
+      "from_module": "network",
+      "from_symbol": "net_error",
+      "to_module": "network",
+      "to_symbol": "NetError"
     },
     {
       "type": "usesType",

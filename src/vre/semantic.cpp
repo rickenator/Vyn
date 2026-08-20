@@ -5508,6 +5508,27 @@ void SemanticAnalyzer::visit(ast::FunctionExpression* node) {
                         if (fs->body) children.push_back(fs->body.get());
                     } else if (auto* ws = dynamic_cast<ast::WhileStatement*>(stmt)) {
                         if (ws->body) children.push_back(ws->body.get());
+                    } else if (auto* ms = dynamic_cast<ast::MatchStatement*>(stmt)) {
+                        // A `match`'s arms carry the body as an expression: a
+                        // `{ ... }` arm is a BlockExpression wrapping a
+                        // BlockStatement, so descend into each arm to find the
+                        // `return` statements that set the lambda's return type.
+                        auto collectArmStatements =
+                            [](const vyb::ast::ExprPtr& armBody,
+                               std::vector<vyb::ast::Statement*>& out) {
+                                if (!armBody) return;
+                                if (auto* be =
+                                        dynamic_cast<ast::BlockExpression*>(armBody.get())) {
+                                    if (be->block)
+                                        for (auto& s : be->block->body) out.push_back(s.get());
+                                } else if (auto* bs =
+                                               dynamic_cast<ast::BlockStatement*>(armBody.get())) {
+                                    for (auto& s : bs->body) out.push_back(s.get());
+                                }
+                            };
+                        for (const auto& arm : ms->cases) {
+                            collectArmStatements(arm.second, children);
+                        }
                     }
                     scan(children);
                 }

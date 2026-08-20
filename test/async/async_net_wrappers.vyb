@@ -1,7 +1,8 @@
-// Async network wrappers on the event-loop executor: async_tcp_accept/connect/
+// @test: Async network wrappers on the event-loop executor: async_tcp_accept/connect/
 // read/write echo over a TcpListener/TcpStream pair, and async_udp_send_to /
 // recv_from bounce a datagram between two UdpSockets -- all inside fibers so no
-// worker thread ever blocks on a socket.
+// worker thread ever blocks on a socket. The high-level wrappers return native
+// optionals; the `?` match arm is the failed op.
 // @expect: pass
 // @expect-output: ok
 // @expect-return: 0
@@ -14,57 +15,76 @@ MSG<String> = "async tcp"
 UDG<String> = "async udp"
 
 main()<Int> -> {
-    l<TcpListener> = tcp_listen("127.0.0.1", 0, 4)
-    if (l.fd < 0) { return 1 }
-    port<Int> = l.local_port()
-    lfd<Int> = l.fd
-    srv<Int> = async_spawn(|| -> {
-        c<TcpStream> = async_tcp_accept(TcpListener { fd = lfd, local_ip = "", local_port = 0 })
-        if (c.fd < 0) { return 1 }
-        data<String> = async_tcp_read(c, 4096)
-        nt<Int> = async_tcp_write(c, data)
-        c.close()
-        if (data == MSG && nt == MSG.len()) { return 0 }
-        return 2
-    })
-    cli<Int> = async_spawn(|| -> {
-        s<TcpStream> = async_tcp_connect("127.0.0.1", port)
-        if (s.fd < 0) { return 1 }
-        async_tcp_write(s, MSG)
-        back<String> = async_tcp_read(s, 4096)
-        s.close()
-        if (back == MSG) { return 0 }
-        return 2
-    })
-    r0<Int> = async_await(srv)
-    r1<Int> = async_await(cli)
-    l.close()
-    async_run_all()
+    match (tcp_listen("127.0.0.1", 0, 4)) {
+        l -> {
+            port<Int> = l.local_port()
+            lfd<Int> = l.fd
+            srv<Int> = async_spawn(|| -> {
+                match (async_tcp_accept(TcpListener { fd = lfd, local_ip = "", local_port = 0 })) {
+                    c -> {
+                        data<String> = async_tcp_read(c, 4096)
+                        nt<Int> = async_tcp_write(c, data)
+                        c.close()
+                        if (data == MSG && nt == MSG.len()) { return 0 }
+                        return 2
+                    }
+                    ? -> { return 1 }
+                }
+            })
+            cli<Int> = async_spawn(|| -> {
+                match (async_tcp_connect("127.0.0.1", port)) {
+                    s -> {
+                        async_tcp_write(s, MSG)
+                        back<String> = async_tcp_read(s, 4096)
+                        s.close()
+                        if (back == MSG) { return 0 }
+                        return 2
+                    }
+                    ? -> { return 1 }
+                }
+            })
+            r0<Int> = async_await(srv)
+            r1<Int> = async_await(cli)
+            l.close()
+            async_run_all()
 
-    a<UdpSocket> = udp_bind("127.0.0.1", 0)
-    b<UdpSocket> = udp_bind("127.0.0.1", 0)
-    ap<Int> = a.local_port()
-    bp<Int> = b.local_port()
-    afd<Int> = a.fd
-    bfd<Int> = b.fd
-    ua<Int> = async_spawn(|| -> {
-        return async_udp_send_to(UdpSocket { fd = afd, local_ip = "", local_port = 0 },
-                                 "127.0.0.1", bp, UDG)
-    })
-    ub<Int> = async_spawn(|| -> {
-        async_sleep_ms(5)
-        m<String> = async_udp_recv_from(UdpSocket { fd = bfd, local_ip = "", local_port = 0 }, 4096)
-        if (m == UDG) { return 0 }
-        return 7
-    })
-    ru0<Int> = async_await(ua)
-    ru1<Int> = async_await(ub)
-    a.close()
-    b.close()
-    async_run_all()
+            match (udp_bind("127.0.0.1", 0)) {
+                a -> {
+                    match (udp_bind("127.0.0.1", 0)) {
+                        b -> {
+                            ap<Int> = a.local_port()
+                            bp<Int> = b.local_port()
+                            afd<Int> = a.fd
+                            bfd<Int> = b.fd
+                            ua<Int> = async_spawn(|| -> {
+                                return async_udp_send_to(
+                                    UdpSocket { fd = afd, local_ip = "", local_port = 0 },
+                                    "127.0.0.1", bp, UDG)
+                            })
+                            ub<Int> = async_spawn(|| -> {
+                                async_sleep_ms(5)
+                                m<String> = async_udp_recv_from(
+                                    UdpSocket { fd = bfd, local_ip = "", local_port = 0 }, 4096)
+                                if (m == UDG) { return 0 }
+                                return 7
+                            })
+                            ru0<Int> = async_await(ua)
+                            ru1<Int> = async_await(ub)
+                            a.close()
+                            b.close()
+                            async_run_all()
 
-    if (r0 != 0 || r1 != 0) { return 3 }
-    if (ru0 < 0 || ru1 != 0) { return 4 }
-    println("ok")
-    return 0
+                            if (r0 != 0 || r1 != 0) { return 3 }
+                            if (ru0 < 0 || ru1 != 0) { return 4 }
+                            println("ok")
+                            return 0
+                        }
+                        ? -> { return 1 }
+                    }
+                }
+                ? -> { return 1 }
+            }
+        }
+        ? -> { return 1 }
+    }
 }
