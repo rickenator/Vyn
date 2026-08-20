@@ -1,0 +1,34 @@
+# Test 19: catch -> report -> rethrow via `fail` inside a trap handler
+# A `fail` raised inside a handler for the same error type must propagate to the
+# next enclosing trap rather than re-enter the current handler (which used to
+# loop / re-dispatch infinitely). This is the catch-report-rethrow shape.
+// @expect: pass
+// @expect-return: 0
+// @expect-output: caught at main: data.txt
+// @execute-jit: true
+
+struct FdError { path<String> }
+
+open_thing(p<String>)<Int> -> {
+    fail FdError { path = p }
+}
+
+caller(p<String>)<Int> -> {
+    # Catch FdError, report it, then re-raise the same type outward.
+    return {
+        open_thing(p)
+    } trap (e<FdError>) -> {
+        println("reported: " + e.path)
+        fail FdError { path = e.path }
+    }
+}
+
+main()<Int> -> {
+    {
+        caller("data.txt")
+    } trap (e<FdError>) -> {
+        println("caught at main: " + e.path)
+        return 0
+    }
+    return 1   # unreachable: the outer handler above should have fired
+}

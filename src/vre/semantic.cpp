@@ -1854,6 +1854,32 @@ void SemanticAnalyzer::visit(ast::BinaryExpression* node) {
         return;
     }
 
+    // `opt == null` / `opt != null` is a presence check on a native optional, so
+    // it is allowed and handled by codegen. Comparing a non-optional, non-pointer
+    // scalar to `null` is a type error; reject it here so it fails the build
+    // instead of reaching codegen with mismatched LLVM types (which used to
+    // abort()). Pointer-like and struct/enum operands are left to codegen, which
+    // compares pointers to null and diagnoses the rest.
+    if (node->op.type == TokenType::EQEQ || node->op.type == TokenType::NOTEQ) {
+        bool leftNil  = dynamic_cast<ast::NilLiteral*>(node->left.get()) != nullptr;
+        bool rightNil = dynamic_cast<ast::NilLiteral*>(node->right.get()) != nullptr;
+        if (leftNil != rightNil) {
+            ast::TypeNode* otherType = leftNil ? rightType : leftType;
+            if (!dynamic_cast<ast::OptionalType*>(otherType)) {
+                static const std::set<std::string> scalarPrims = {
+                    "Int", "Int8", "Int16", "Int32", "Int64",
+                    "UInt", "UInt8", "UInt16", "UInt32", "UInt64",
+                    "Float", "Float32", "Float64", "Bool", "Char", "String"};
+                std::string otherName = otherType->toString();
+                if (scalarPrims.count(otherName)) {
+                    addError("cannot compare '" + otherName +
+                             "' to 'null'; only pointers and optionals (T?) may be compared to null.", node);
+                    return;
+                }
+            }
+        }
+    }
+
     switch (node->op.type) {
         case TokenType::PLUS:
         case TokenType::MINUS:

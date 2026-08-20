@@ -1,0 +1,30 @@
+// @test: native optional T? else-default evaluates lazily
+// @description: `opt else default` must only evaluate the default when the
+//   optional is absent, so a side-effecting or failable default (e.g.
+//   `open(...)`, a `fail`) must not run on the success path. Regression: the
+//   default was once eagerly evaluated before a CreateSelect, so a failable
+//   default raised on success too.
+// @category: optionals, control-flow, codegen
+// @expect: pass
+// @expect-return: 0
+// @execute-jit: true
+
+must_error(p<String>)<Int> -> {
+    fail FdError { path = p }
+}
+
+main()<Int> -> {
+    # Present optional: the failable default must NOT be evaluated, or it would
+    # raise an untrapped error and this test would fail.
+    p<Int?> = Int?(7)
+    r<Int> = p else must_error("should-not-run")
+    if (r != 7) { return 1 }
+
+    # Absent optional: the default runs and yields its value.
+    a<Int?> = Int?()
+    r2<Int> = a else 42
+    if (r2 != 42) { return 2 }
+
+    println("ok")
+    return 0
+}

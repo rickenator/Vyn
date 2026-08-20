@@ -1,0 +1,36 @@
+// @test: native optional T? vs null presence check
+// @description: `opt == null` / `opt != null` on a native optional is a presence
+//   check: the absent optional equals null, a present one does not. Regression
+//   for a crash where the optional's `{ T, i1 }` struct was compared to the null
+//   literal's `i8*` (LLVM ICmpInst type mismatch, abort).
+// @category: optionals, comparison, codegen
+// @expect: pass
+// @expect-return: 0
+// @execute-jit: true
+
+main()<Int> -> {
+    a<Int?> = Int?()
+    p<Int?> = Int?(5)
+    s<String?> = String?("hi")
+    es<String?> = String?()
+
+    # Absent optional equals null, in both operand orders.
+    if ((a == null) != true)  { return 1 }
+    if ((a != null) != false) { return 2 }
+    if ((null == a) != true)  { return 3 }
+    if ((null != a) != false) { return 4 }
+
+    # Present optional does not equal null.
+    if ((p == null) != false) { return 5 }
+    if ((p != null) != true)  { return 6 }
+    if ((null == p) != false) { return 7 }
+    if ((null != p) != true)  { return 8 }
+
+    # String payloads behave the same way.
+    if ((s == null) != false)  { return 9 }
+    if ((es == null) != true)  { return 10 }
+    if ((es != null) != false) { return 11 }
+
+    println("ok")
+    return 0
+}

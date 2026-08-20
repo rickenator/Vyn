@@ -558,6 +558,61 @@ void LLVMCodegen::visit(vyb::ast::UnaryExpression *node) {
 }
 
 void LLVMCodegen::visit(vyb::ast::BinaryExpression *node) {
+    // Native `T?` default: `optional else default`. Handled first (before
+    // visiting operands) so the default is only evaluated when the optional is
+    // absent. An eager `CreateSelect` would run the default's expression on the
+    // success path too -- wrong for side-effecting defaults such as a failable
+    // call or an `open(...)`. We branch on presence, visit the default only in
+    // the absent block, then merge with a phi.
+    if (node->op.type == TokenType::KEYWORD_ELSE) {
+        if (!node->left || !node->right) {
+            logError(node->loc, "Malformed 'else' expression.");
+            m_currentLLVMValue = nullptr;
+            return;
+        }
+        node->left->accept(*this);
+        llvm::Value* L = m_currentLLVMValue;
+        if (!L || !L->getType()->isStructTy() ||
+            llvm::cast<llvm::StructType>(L->getType())->getNumElements() < 2) {
+            logError(node->loc, "'else' operator requires an optional (T?) left value.");
+            m_currentLLVMValue = nullptr;
+            return;
+        }
+        llvm::Value* present = builder->CreateExtractValue(L, 1, "opt.present");
+        llvm::Value* payload = builder->CreateExtractValue(L, 0, "opt.payload");
+
+        llvm::Function* parentFn = builder->GetInsertBlock()->getParent();
+        llvm::BasicBlock* presentBB = llvm::BasicBlock::Create(*context, "opt.else.present", parentFn);
+        llvm::BasicBlock* defaultBB = llvm::BasicBlock::Create(*context, "opt.else.default", parentFn);
+        llvm::BasicBlock* mergeBB  = llvm::BasicBlock::Create(*context, "opt.else.merge", parentFn);
+
+        builder->CreateCondBr(present, presentBB, defaultBB);
+
+        builder->SetInsertPoint(presentBB);
+        builder->CreateBr(mergeBB);
+
+        builder->SetInsertPoint(defaultBB);
+        node->right->accept(*this);
+        llvm::Value* defaultVal = m_currentLLVMValue;
+        if (!defaultVal || defaultVal->getType() != payload->getType()) {
+            defaultVal = tryCast(defaultVal, payload->getType(), node->loc);
+            if (!defaultVal) {
+                logError(node->loc, "'else' default value is not assignable to the optional payload type.");
+                m_currentLLVMValue = nullptr;
+                return;
+            }
+        }
+        llvm::BasicBlock* defaultSrcBB = builder->GetInsertBlock();
+        builder->CreateBr(mergeBB);
+
+        builder->SetInsertPoint(mergeBB);
+        llvm::PHINode* result = builder->CreatePHI(payload->getType(), 2, "opt.else.result");
+        result->addIncoming(payload, presentBB);
+        result->addIncoming(defaultVal, defaultSrcBB);
+        m_currentLLVMValue = result;
+        return;
+    }
+
     node->left->accept(*this);
     llvm::Value *L = m_currentLLVMValue;
     vyb::ast::TypeNode* leftTypeNode = node->left->type.get(); // Get AST type of left operand
@@ -566,30 +621,42 @@ void LLVMCodegen::visit(vyb::ast::BinaryExpression *node) {
     llvm::Value *R = m_currentLLVMValue;
     vyb::ast::TypeNode* rightTypeNode = node->right->type.get(); // Get AST type of right operand
 
-
     if (!L || !R) {
         logError(node->loc, "One or both operands of binary expression are null.");
         m_currentLLVMValue = nullptr;
         return;
     }
 
-    // Native `T?` default: `optional else default` picks the payload when the
-    // optional is present, otherwise the default value. The optional is a
-    // `{ bool hasValue, T value }` struct (builtin OptionalType).
-    if (node->op.type == TokenType::KEYWORD_ELSE) {
-        if (!L->getType()->isStructTy() || llvm::cast<llvm::StructType>(L->getType())->getNumElements() < 2) {
-            logError(node->loc, "'else' operator requires an optional (T?) left value.");
-            m_currentLLVMValue = nullptr;
-            return;
+    // An optional compared against a `null`/`nil` literal is a presence check:
+    // the absent optional equals `null`. `opt == null` <=> !present;
+    // `opt != null` <=> present. Without this, the optional's `{ T, i1 }` struct
+    // is compared against the null literal's `i8*`, which abort()s in LLVM
+    // (ICmpInst type mismatch). Non-optional pointers keep the plain null test.
+    // This must run before any pointer/int swap below so operands are in their
+    // original order.
+    {
+        bool leftNil  = dynamic_cast<ast::NilLiteral*>(node->left.get()) != nullptr;
+        bool rightNil = dynamic_cast<ast::NilLiteral*>(node->right.get()) != nullptr;
+        if ((node->op.type == vyb::TokenType::EQEQ || node->op.type == vyb::TokenType::NOTEQ) &&
+            leftNil != rightNil) {
+            llvm::Value* other = leftNil ? R : L;
+            if (isOptionalStructType(other->getType())) {
+                llvm::Value* opt = other;
+                llvm::Value* present = builder->CreateExtractValue(opt, 1, "optcmp.null.present");
+                m_currentLLVMValue = (node->op.type == vyb::TokenType::EQEQ)
+                    ? builder->CreateNot(present, "optcmp.null.isnull")
+                    : present;
+                return;
+            }
+            // A plain value compared against null is only meaningful for
+            // pointers; anything else used to abort() inside LLVM with an
+            // ICmpInst type mismatch, so turn it into a clean diagnostic.
+            if (!other->getType()->isPointerTy()) {
+                logError(node->loc, "cannot compare a non-pointer, non-optional value against 'null'");
+                m_currentLLVMValue = nullptr;
+                return;
+            }
         }
-        llvm::Value* present = builder->CreateExtractValue(L, 1, "opt.present");
-        llvm::Value* payload = builder->CreateExtractValue(L, 0, "opt.payload");
-        if (R->getType() != payload->getType()) {
-            R = tryCast(R, payload->getType(), node->loc);
-            if (!R) { m_currentLLVMValue = nullptr; return; }
-        }
-        m_currentLLVMValue = builder->CreateSelect(present, payload, R, "opt.elze");
-        return;
     }
 
     bool isFloatOp = L->getType()->isFloatingPointTy() || R->getType()->isFloatingPointTy();
@@ -8884,6 +8951,13 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
             auto oldNamedValues = namedValues;
             namedValues[trapClause->errorName->name] = typedErrorValue;
 
+            // A `fail` raised inside this handler must not re-enter the same
+            // handler (which would loop for a matching error type); it should
+            // propagate to the next enclosing trap. Disable this block's trap
+            // for the duration of the handler body so FailStatement skips it.
+            size_t myTrapIdx = trapStack.size() - 1;
+            trapStack[myTrapIdx].disabled = true;
+
             // Execute trap handler
             llvm::Value* clauseResult = nullptr;
             if (trapClause->handler) {
@@ -8933,6 +9007,8 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
                     clauseResult = m_currentLLVMValue;
                 }
             }
+
+            trapStack[myTrapIdx].disabled = false;
 
             // Restore scope
             namedValues = std::move(oldNamedValues);

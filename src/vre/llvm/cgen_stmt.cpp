@@ -2231,32 +2231,37 @@ void LLVMCodegen::visit(vyb::ast::FailStatement* node) {
         "fail.error"
     );
 
-    // Check if we're inside a trap context
-    if (!trapStack.empty()) {
-        // We have an active trap handler - store error and jump to landing pad
-        TrapContext& trap = trapStack.back();
+    // Find the innermost trap that is eligible to catch this fail. A trap whose
+    // own handler body is being generated is marked disabled, so a `fail` raised
+    // inside a handler propagates to the next enclosing trap instead of
+    // re-entering the same handler (which once looped for matching error types).
+    // A newly nested block's own trap is enabled, so inner fails are caught
+    // there first, preserving normal nesting.
+    {
+        int target = (int)trapStack.size() - 1;
+        while (target >= 0 && trapStack[(size_t)target].disabled) {
+            target--;
+        }
 
-        // Store the error pointer in the error slot
-        // Error pointer now contains type ID header, so no separate type storage needed
-        builder->CreateStore(errorPtr, trap.errorSlot);
+        if (target >= 0) {
+            // Store the error pointer in the selected trap's error slot and jump
+            // to its landing pad.
+            TrapContext& trap = trapStack[(size_t)target];
+            builder->CreateStore(errorPtr, trap.errorSlot);
+            builder->CreateBr(trap.landingPad);
+            m_currentLLVMValue = nullptr;
+            return;
+        }
 
-        // Jump to the landing pad for error handling
-        builder->CreateBr(trap.landingPad);
-
-    } else {
-        // No trap handler in current scope
-
-        // Phase 3: Check if we're in a failable function that can propagate errors
+        // No enabled trap in scope: either there is no trap at all, or every
+        // enclosing trap's handler is still on the stack. Propagate like the
+        // untrapped case.
         if ((currentFunctionAST && currentFunctionAST->needsErrorReturn) || m_currentFunctionFailable) {
             
             emitPropagatingErrorReturn(errorPtr);
         } else {
-            // No trap handler and not a failable function - this is an untrapped error
             llvm::Function* untrappedFn = getVybUntrappedErrorFunction();
-            // Call untrapped error handler (noreturn)
             builder->CreateCall(untrappedFn, {errorPtr});
-
-            // Mark as unreachable
             builder->CreateUnreachable();
         }
     }

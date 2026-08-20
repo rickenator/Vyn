@@ -203,6 +203,10 @@ private:
         std::string errorVarName;            // Name of error variable
         llvm::BasicBlock* ensureBlock;       // Ensure block to run before resuming (if any)
         llvm::AllocaInst* resultAlloca;      // Result alloca for storing handler return values
+        bool disabled = false;               // Set while this trap's own handler body
+                                              // is being generated, so a `fail` raised
+                                              // there propagates outward instead of
+                                              // re-entering the same handler.
     };
     std::vector<TrapContext> trapStack;      // Stack of active trap contexts
     bool inTrapHandler = false;           // True when executing trap handler body
