@@ -1,5 +1,5 @@
 {
-  "git_rev": "1566ba21e5272cfb0578ebcafe85d5cc07f7c2c0",
+  "git_rev": "25b9f3a27f71904dd6d2336801a569b0102285b3",
   "modules": [
     "agents",
     "asyncs",
@@ -2369,7 +2369,7 @@
         "file": "stdlib/io/mod.vyb",
         "kind": "struct",
         "signature": "struct File {",
-        "summary": "An open file. `fd` is -1 when the last open failed; `path` records the target.",
+        "summary": "An open file. Only ever constructed valid; `path` records the target. The open",
         "fan_in": 0
       },
       {
@@ -2422,8 +2422,8 @@
         "module": "io",
         "file": "stdlib/io/mod.vyb",
         "kind": "fn",
-        "signature": "open(path<String>, flags<Int>)<File> ->",
-        "summary": "Open (or create) `path` with the given `FileFlag` flags. Returns the `File`; test",
+        "signature": "open(path<String>, flags<Int>)<File?> ->",
+        "summary": "Open (or create) `path` with the given `FileFlag` flags. Returns the file as",
         "fan_in": 0
       },
       {
@@ -2431,8 +2431,8 @@
         "module": "io",
         "file": "stdlib/io/mod.vyb",
         "kind": "fn",
-        "signature": "open_append(path<String>)<File> ->",
-        "summary": "Convenience: open for appending, creating the file if absent.",
+        "signature": "open_append(path<String>)<File?> ->",
+        "summary": "Convenience: open for appending, creating the file if absent (`File?`).",
         "fan_in": 0
       },
       {
@@ -2440,8 +2440,8 @@
         "module": "io",
         "file": "stdlib/io/mod.vyb",
         "kind": "fn",
-        "signature": "open_read(path<String>)<File> ->",
-        "summary": "Convenience: open an existing file for reading.",
+        "signature": "open_read(path<String>)<File?> ->",
+        "summary": "Convenience: open an existing file for reading (`File?`, absent on failure).",
         "fan_in": 0
       },
       {
@@ -2449,8 +2449,8 @@
         "module": "io",
         "file": "stdlib/io/mod.vyb",
         "kind": "fn",
-        "signature": "open_write(path<String>)<File> ->",
-        "summary": "Convenience: create/truncate a file for writing.",
+        "signature": "open_write(path<String>)<File?> ->",
+        "summary": "Convenience: create/truncate a file for writing (`File?`, absent on failure).",
         "fan_in": 0
       },
       {
@@ -6533,13 +6533,6 @@
       "from_module": "io",
       "from_symbol": "open",
       "to_module": "io",
-      "to_symbol": "File"
-    },
-    {
-      "type": "proseRef",
-      "from_module": "io",
-      "from_symbol": "open",
-      "to_module": "io",
       "to_symbol": "FileFlag"
     },
     {
@@ -6547,7 +6540,7 @@
       "from_module": "io",
       "from_symbol": "open",
       "to_module": "io",
-      "to_symbol": "error_code"
+      "to_symbol": "error_message"
     },
     {
       "type": "proseRef",

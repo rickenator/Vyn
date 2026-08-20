@@ -953,13 +953,15 @@ start_download(urlStr<String>)<Void> -> {
         outPath<String> = download_path(s)
         resp<HttpResponse> = download_fetch(s, 6)
         if (resp.status >= 200 && resp.status < 300) {
-            f<File> = open_write(outPath)
-            if (f.fd >= 0) {
-                nb<Int> = write_str(f, resp.body)
-                close(f)
-                strchan_send(dl_progress, "saved " + outPath + " (" + nb.to_string() + " bytes)")
-            } else {
-                strchan_send(dl_progress, "error writing " + outPath + ": " + error_message() )
+            match (open_write(outPath)) {
+                f -> {
+                    nb<Int> = write_str(f, resp.body)
+                    close(f)
+                    strchan_send(dl_progress, "saved " + outPath + " (" + nb.to_string() + " bytes)")
+                }
+                ? -> {
+                    strchan_send(dl_progress, "error writing " + outPath + ": " + error_message() )
+                }
             }
         } else {
             strchan_send(dl_progress, "download failed: HTTP " + resp.status.to_string())

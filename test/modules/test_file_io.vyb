@@ -1,6 +1,7 @@
 // @test: File I/O open/close/read_all/write_str
 // @description: write a file, reopen read, read it back, check content/close, and
-//   exercise the error surface (missing path reports a non-zero error code).
+//   exercise the error surface (a missing path is the absent `File?`, with a
+//   non-zero error code for the diagnostic message).
 // @category: io, stdlib, files
 // @expect: pass
 // @expect-output: io-ok
@@ -11,39 +12,49 @@ import io
 
 main()<Int> -> {
     path<String> = "/tmp/vyb_file_io_test.txt"
+    content<String> = ""
 
-    w<File> = open_write(path)
-    if (w.fd < 0) {
-        println("io-fail-open-write:" + error_message())
-        return 1
-    }
-    n<Int> = write_str(w, "hello vyb")
-    if (n != 9) {
-        println("io-fail-write:" + error_message())
-        close(w)
-        return 2
-    }
-    if (close(w) != 0) {
-        println("io-fail-close:" + error_message())
-        return 3
+    match (open_write(path)) {
+        w -> {
+            n<Int> = write_str(w, "hello vyb")
+            if (n != 9) {
+                println("io-fail-write:" + error_message())
+                close(w)
+                return 2
+            }
+            if (close(w) != 0) {
+                println("io-fail-close:" + error_message())
+                return 3
+            }
+        }
+        ? -> {
+            println("io-fail-open-write:" + error_message())
+            return 1
+        }
     }
 
-    r<File> = open_read(path)
-    if (r.fd < 0) {
-        println("io-fail-open-read:" + error_message())
-        return 4
+    match (open_read(path)) {
+        r -> {
+            content = read_all(r)
+            close(r)
+        }
+        ? -> {
+            println("io-fail-open-read:" + error_message())
+            return 4
+        }
     }
-    content<String> = read_all(r)
-    close(r)
     if (content != "hello vyb") {
         println("io-fail-content:" + content)
         return 5
     }
 
-    bad<File> = open_read("/tmp/vyb_does_not_exist_xyz")
-    ec<Int> = error_code()
-    if (bad.fd >= 0 || ec == 0) {
-        close(bad)
+    # A missing file is the absent optional (no sentinel fd to test).
+    missing<Bool> = false
+    match (open_read("/tmp/vyb_does_not_exist_xyz")) {
+        x -> { missing = true }
+        ? -> { missing = false }
+    }
+    if (missing || error_code() == 0) {
         println("io-fail-missing:" + error_message())
         return 6
     }

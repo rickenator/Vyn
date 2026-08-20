@@ -8,10 +8,14 @@
 #
 # Usage:
 #   import io::{open_write, write_str, close, open_read, read_all}
-#   f<File> = open_write("data.txt")     # FileFlag::WRITE | CREATE | TRUNC
-#   write_str(f, "hello"); close(f)
-#   r<File> = open_read("data.txt")
-#   println(read_all(r)); close(r)
+#   match (open_write("data.txt")) {
+#       f -> { write_str(f, "hello"); close(f) }
+#       ? -> { println("open failed: " + error_message()) }
+#   }
+#   match (open_read("data.txt")) {
+#       r -> { println(read_all(r)) }
+#       ? -> { println("open failed: " + error_message()) }
+#   }
 #
 # Diagnostic surface: `error_code()` (0 = no error) and `error_message()` report
 # the result of the last file operation.
@@ -28,53 +32,54 @@ enum FileFlag {
     APPEND = 1024
 }
 
-# An open file. `fd` is -1 when the last open failed; `path` records the target.
+# An open file. Only ever constructed valid; `path` records the target. The open
+# functions return `File?` (absent when opening failed), so a `File` carries no
+# sentinel "failed" state.
 share(all)
 struct File {
     fd<Int>,
     path<String>
 }
 
-# Open (or create) `path` with the given `FileFlag` flags. Returns the `File`; test
-# `fd >= 0` (or `error_code()`) to detect failure.
+# Open (or create) `path` with the given `FileFlag` flags. Returns the file as
+# `File?` -- present when the open succeeds, absent when it fails. The wrap
+# happens here in the module, so callers never touch a sentinel `fd`. Use `else`
+# for a local default, `match` to shape the absent arm into a `fail`, or
+# diagnose via `error_message()`.
 share(all)
-open(path<String>, flags<Int>)<File> -> {
-    return File { fd = vyb_io_open(path, flags), path = path }
+open(path<String>, flags<Int>)<File?> -> {
+    fd<Int> = vyb_io_open(path, flags)
+    if (fd < 0) { return File?() }
+    return File?(File { fd = fd, path = path })
 }
 
-# Convenience: open an existing file for reading.
+# Convenience: open an existing file for reading (`File?`, absent on failure).
 share(all)
-open_read(path<String>)<File> -> {
+open_read(path<String>)<File?> -> {
     return open(path, FileFlag::READ)
 }
 
-# Convenience: create/truncate a file for writing.
+# Convenience: create/truncate a file for writing (`File?`, absent on failure).
 share(all)
-open_write(path<String>)<File> -> {
+open_write(path<String>)<File?> -> {
     return open(path, FileFlag::WRITE | FileFlag::CREATE | FileFlag::TRUNC)
 }
 
-# Convenience: open for appending, creating the file if absent.
+# Convenience: open for appending, creating the file if absent (`File?`).
 share(all)
-open_append(path<String>)<File> -> {
+open_append(path<String>)<File?> -> {
     return open(path, FileFlag::APPEND | FileFlag::CREATE)
 }
 
 # Close an open file. Returns 0 on success, -1 on failure.
 share(all)
 close(f<File>)<Int> -> {
-    if (f.fd < 0) {
-        return -1
-    }
     return vyb_io_close(f.fd)
 }
 
 # Write `s` to the file. Returns the number of bytes written, or -1 on failure.
 share(all)
 write_str(f<File>, s<String>)<Int> -> {
-    if (f.fd < 0) {
-        return -1
-    }
     return vyb_io_write(f.fd, s)
 }
 
@@ -82,9 +87,6 @@ write_str(f<File>, s<String>)<Int> -> {
 # `error_code()` to distinguish an empty file from an error).
 share(all)
 read_all(f<File>)<String> -> {
-    if (f.fd < 0) {
-        return ""
-    }
     return vyb_io_read_all(f.fd)
 }
 

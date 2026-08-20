@@ -446,8 +446,33 @@ iterable — including custom `bind Iterator` types — so `v.iter()`, a
 
 ### 3.7 Pattern matching: `match` and `select`
 
-`match` is a statement whose arms can `return` from the enclosing function;
-`select` is an expression that yields a value.
+`match` is the **statement-first** form (its arms can `return` from the
+enclosing function, but it also works as a value expression); `select` is the
+**expression-first** form that yields a value. See *Choosing between `match`
+and `select`* at the end of this section.
+
+```vyb
+# match as a statement: side effects + early return from the function
+describe_http(code<Int>)<String> -> {
+    match (code) {
+        200 -> { return "ok" }
+        404 -> { return "not found" }
+        ? -> { return "unknown" }
+    }
+}
+```
+
+```vyb
+# match as a value expression: the matched arm's value becomes the result
+grade(score<Int>)<String> -> {
+    return match (score) {
+        >= 90 -> "A",
+        >= 80 -> "B",
+        >= 70 -> "C",
+        ? -> "F"
+    }
+}
+```
 
 ```vyb
 # select returns a value
@@ -519,10 +544,12 @@ count toward `select` exhaustiveness checks on tagged-union enums.
   nested as the arm of an enclosing `select`. A result leaves the arm as a
   naked expression (`1 -> 10`) or via `pass value`, which returns from the
   arm only, not the enclosing function.
-- **`match` is a *statement***: it produces no value and only drives control
-  flow. Its arms `return`/`break` out of the enclosing function or loop, which
-  is the reason to reach for it when the point is early exit from a
-  side-effecting dispatch rather than computing a value.
+- **`match` is *statement-first*:** its statement form is about control flow —
+  arms `return`/`break` out of the enclosing function or loop, so it suits an
+  early-exit dispatch. It can also appear in *expression* position
+  (`let r = match (x) { ... }` or `return match (x) { ... }`), where the
+  matched arm's value becomes the result. Reach for it when you want richer
+  patterns (below) or an early exit.
 - **Pattern coverage differs.** Both accept `?`, comparison patterns
   (`>= 90`), literals, and enum-variant payloads (`Circle(r)`). `match` alone
   adds range patterns (`5..10`), struct destructuring (`Point { x, y }`), and
@@ -534,9 +561,10 @@ count toward `select` exhaustiveness checks on tagged-union enums.
   because it is the one that also composes into a value, so the same idiom
   scales from replacing `if`/`else` chains to returning a computed result.
 
-In short: `select` is pattern matching as an expression (value-first,
-composable); `match` is pattern matching as a statement (control-flow first,
-with richer destructuring and guards).
+In short: `select` is pattern matching as an expression (value-first, with
+`pass` and set patterns); `match` is the control-flow-first form (with richer
+destructuring and guards), and both can appear as statements or value
+expressions.
 
 ### 3.8 Tuples and variadic tuples
 
@@ -1110,18 +1138,22 @@ Module page: [`io.md`](io.md). `File` is a small struct (`fd`, `path`) and
 all ops live on it.
 
 ```vyb
-open(path<String>, flags<Int>)<File>            # flags from FileFlag
-open_read(path<String>)<File>                   # convenience: read
-open_write(path<String>)<File>                  # create/truncate, write
-open_append(path<String>)<File>                 # append/create
+open(path<String>, flags<Int>)<File?>           # flags from FileFlag
+open_read(path<String>)<File?>                  # convenience: read
+open_write(path<String>)<File?>                 # create/truncate, write
+open_append(path<String>)<File?>                # append/create
 read_all(f<File>)<String>                       # whole file ("" on failure)
 write_str(f<File>, s<String>)<Int>              # bytes written or -1
-close(f<File>)<Void>
+close(f<File>)<Int>
 ```
 
 `enum FileFlag` constant members (`READ`, `WRITE`, `RDWR`, `CREATE`, `TRUNC`,
 `APPEND`) combine with `|`. `io_status_message()` is the import-surface probe.
-`File` with `fd == -1` signals a failed open.
+The open functions return `File?`: **absence is a failed open** — there is no
+sentinel `fd == -1` to test, and `File` is only ever constructed valid. Unwrap
+with `else` for a local default, or `match (open(p)) { f -> …, ? -> … }` to
+shape the absent arm (e.g. into a `fail`), then diagnose via
+`error_message()`.
 
 ### 4.3 `term` — terminal and stdin
 
@@ -1930,6 +1962,8 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
+
 
 
 
