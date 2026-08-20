@@ -1,0 +1,33 @@
+// @test: trap block as a void function's only statement compiles and runs
+// @description: a failable-void function whose entire body is a single trap
+//   block (handler catches without re-raising) must emit a proper void return
+//   at its continuation block -- a case that once produced invalid IR
+//   ("block.continue does not have a terminator") and crashed codegen.
+// @category: error_handling, trap, codegen
+// @expect: pass
+// @expect-return: 0
+// @expect-output: handled: x
+// @expect-output: done
+// @execute-jit: true
+
+struct FdError { path<String> }
+
+boom()<Int> -> {
+    fail FdError { path = "x" }
+}
+
+handle()<Void> -> {
+    {
+        boom()
+    } trap (e<FdError>) -> {
+        println("handled: " + e.path)
+    }
+}
+
+main()<Int> -> {
+    {
+        handle()
+    } trap (e<FdError>) -> { println("leaked"); return 1 }
+    println("done")
+    return 0
+}

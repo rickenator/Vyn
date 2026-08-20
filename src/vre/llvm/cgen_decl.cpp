@@ -980,9 +980,11 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
         currentTrapHandlerIndex = -1;
 
         node->body->accept(*this); // Generate code for the function body
+
         // Pop defer scope (any remaining deferred statements for implicit returns)
         if (!m_deferStack.empty()) {
-            if (!m_deferStack.back().empty() && !func->empty() && !func->back().getTerminator()) {
+            llvm::BasicBlock* bodyBB = builder->GetInsertBlock();
+            if (!m_deferStack.back().empty() && bodyBB && !bodyBB->getTerminator()) {
                 // Emit remaining deferred statements before implicit return
                 auto& defers = m_deferStack.back();
                 for (auto it = defers.rbegin(); it != defers.rend(); ++it) {
@@ -998,25 +1000,34 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
         // explicit `return`, the ReturnStatement's exitToFunctionBaseline() has
         // already emitted cleanup for every live scope, and the current block is
         // terminated - inserting another cleanup here would corrupt the IR.
-        if (!func->empty() && !func->back().getTerminator()) {
+        if (builder->GetInsertBlock() && !builder->GetInsertBlock()->getTerminator()) {
             exitScope();
         }
+
+        // The true fall-through block is wherever the builder now sits, AFTER
+        // deferred-statement and scope-cleanup emission -- NOT necessarily the
+        // last-created block in the function. A trailing block/trap expression
+        // leaves the builder on its continuation block while its trap handlers,
+        // landing pads and cleanup blocks are created after it, so `func->back()`
+        // points past the unterminated continuation and the implicit-return
+        // checks below would wrongly think the function had already terminated.
+        llvm::BasicBlock* fallthroughBlock = builder->GetInsertBlock();
 
         // Verify function return: ensure all paths return if non-void, or add implicit return.
         const bool isFailableVoidFunction =
             node->needsErrorReturn && originalReturnType && originalReturnType->isVoidTy();
         if (returnType->isVoidTy()) {
             // Non-failable void function: if the last block has no terminator, add `ret void`.
-            if (!func->empty() && !func->back().getTerminator()) {
+            if (fallthroughBlock && !fallthroughBlock->getTerminator()) {
                 // Make sure we're inserting at the end of the last block
-                builder->SetInsertPoint(&func->back());
+                builder->SetInsertPoint(fallthroughBlock);
                 // Phase 6.4: Pop call frame before implicit return
                 generatePopFrameCall();
                 builder->CreateRetVoid();
             }
         } else if (isFailableVoidFunction) {
-            if (!func->empty() && !func->back().getTerminator()) {
-                builder->SetInsertPoint(&func->back());
+            if (fallthroughBlock && !fallthroughBlock->getTerminator()) {
+                builder->SetInsertPoint(fallthroughBlock);
                 generatePopFrameCall();
 
                 llvm::StructType* returnStructType = llvm::cast<llvm::StructType>(returnType);
@@ -1029,13 +1040,13 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
         } else {
             // For non-void functions, ensure all paths return. LLVM's verifier will catch most issues.
             // A simple check: if the last block in a non-empty function doesn't have a terminator, it's an error.
-            if (!func->empty() && !func->back().getTerminator()) {
+            if (fallthroughBlock && !fallthroughBlock->getTerminator()) {
                 logError(node->loc, "Function '" + node->id->name + "' has a non-void return type but may not return on all paths (missing return at end of body).");
                 // Keep the IR verifier happy: terminate the fall-through block with
                 // `unreachable`. This happens when a function falls out of its last
                 // statement (e.g. a `match` whose arms all `return`) without a final
                 // trailing return; the diagnostic above reports the real bug.
-                builder->SetInsertPoint(&func->back());
+                builder->SetInsertPoint(fallthroughBlock);
                 builder->CreateUnreachable();
             }
         }
