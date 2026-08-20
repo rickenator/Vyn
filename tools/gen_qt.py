@@ -72,6 +72,14 @@ QT_FUNCS = [
     dict(mod="qt_window_visible", vn="vyb_qt_window_visible", cn="__vyb_qt_window_visible", args=[("w", "Int")],
          ret="Bool", shape="int1", stub="0", doc="true while window `w` is visible, else false."),
 
+    # Screen (QApplication::primaryScreen)
+    dict(mod="qt_screen_width", vn="vyb_qt_screen_width", cn="__vyb_qt_screen_width", args=[], ret="Int",
+         shape="int0", stub="-1", doc="Primary screen width in logical pixels, or -1 if no screen."),
+    dict(mod="qt_screen_height", vn="vyb_qt_screen_height", cn="__vyb_qt_screen_height", args=[], ret="Int",
+         shape="int0", stub="-1", doc="Primary screen height in logical pixels, or -1 if no screen."),
+    dict(mod="qt_screen_dpi", vn="vyb_qt_screen_dpi", cn="__vyb_qt_screen_dpi", args=[], ret="Int",
+         shape="int0", stub="100", doc="Primary screen device-pixel-ratio scaled to 96dpi (100 = 1.0x), or 100 if no screen."),
+
     # Label (QLabel)
     dict(mod="qt_label_create", vn="vyb_qt_label_create", cn="__vyb_qt_label_create",
          args=[("parent", "Int"), ("text", "String")], ret="Int", shape="text", stub="0",
@@ -459,6 +467,10 @@ QT_WEB_FUNCS = [
          ret="Int", shape="int1", stub="-1", doc="Go forward in history. Returns 0, or -1 on a bad handle."),
     dict(mod="qt_web_reload", vn="vyb_qt_web_reload", cn="__vyb_qt_web_reload", args=[("web", "Int")],
          ret="Int", shape="int1", stub="-1", doc="Reload the page. Returns 0, or -1 on a bad handle."),
+    dict(mod="qt_web_zoom_in", vn="vyb_qt_web_zoom_in", cn="__vyb_qt_web_zoom_in", args=[("web", "Int")],
+         ret="Int", shape="int1", stub="-1", doc="Zoom the web view in (larger text). Returns 0, or -1 on a bad handle."),
+    dict(mod="qt_web_zoom_out", vn="vyb_qt_web_zoom_out", cn="__vyb_qt_web_zoom_out", args=[("web", "Int")],
+         ret="Int", shape="int1", stub="-1", doc="Zoom the web view out (smaller text). Returns 0, or -1 on a bad handle."),
 ]
 
 QT_ALL = QT_WEB_FUNCS + QT_FUNCS
@@ -469,6 +481,9 @@ QT_EVENTS = [
     ("loadFinished", 6), ("titleChanged", 7), ("loadProgress", 8),
     ("currentChanged", 9),
     ("dialog", 10),
+    ("editReturn", 11),
+    ("zoomIn", 12),
+    ("zoomOut", 13),
 ]
 
 QT_WIDGETS = [
@@ -532,8 +547,10 @@ def stub_body(f):
     ret = "vyb_qt_str" if f["ret"] == "String" else "int64_t"
     sig = "VYB_WEAK %s %s(%s)" % (ret, f["cn"], cpp_args(f))
     s = f["stub"]
-    if s in ("0", "-1"):
+    if s.lstrip("-").isdigit():
         expr = "return %s;" % s
+    elif s == "qt_stub_str()":
+        expr = "return qt_stub_str();"
     else:  # qt_stub_str()
         expr = "return qt_stub_str();"
     casts = void_casts(f)

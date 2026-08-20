@@ -3239,6 +3239,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_qt_web_back") rtName = "__vyb_qt_web_back";
         else if (fname == "vyb_qt_web_forward") rtName = "__vyb_qt_web_forward";
         else if (fname == "vyb_qt_web_reload") rtName = "__vyb_qt_web_reload";
+        else if (fname == "vyb_qt_web_zoom_in") rtName = "__vyb_qt_web_zoom_in";
+        else if (fname == "vyb_qt_web_zoom_out") rtName = "__vyb_qt_web_zoom_out";
         else if (fname == "vyb_qt_init") rtName = "__vyb_qt_init";
         else if (fname == "vyb_qt_quit") rtName = "__vyb_qt_quit";
         else if (fname == "vyb_qt_active") rtName = "__vyb_qt_active";
@@ -3255,6 +3257,9 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_qt_window_show") rtName = "__vyb_qt_window_show";
         else if (fname == "vyb_qt_window_hide") rtName = "__vyb_qt_window_hide";
         else if (fname == "vyb_qt_window_visible") rtName = "__vyb_qt_window_visible";
+        else if (fname == "vyb_qt_screen_width") rtName = "__vyb_qt_screen_width";
+        else if (fname == "vyb_qt_screen_height") rtName = "__vyb_qt_screen_height";
+        else if (fname == "vyb_qt_screen_dpi") rtName = "__vyb_qt_screen_dpi";
         else if (fname == "vyb_qt_label_create") rtName = "__vyb_qt_label_create";
         else if (fname == "vyb_qt_label_set_text") rtName = "__vyb_qt_label_set_text";
         else if (fname == "vyb_qt_label_text") rtName = "__vyb_qt_label_text";
@@ -3408,6 +3413,9 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_process_events" ||
                 fname == "vyb_qt_timer_fired" ||
                 fname == "vyb_qt_window_create" ||
+                fname == "vyb_qt_screen_width" ||
+                fname == "vyb_qt_screen_height" ||
+                fname == "vyb_qt_screen_dpi" ||
                 fname == "vyb_qt_event_count" ||
                 fname == "vyb_qt_event_handle" ||
                 fname == "vyb_qt_event_kind" ||
@@ -3424,6 +3432,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 fname == "vyb_qt_web_back" ||
                 fname == "vyb_qt_web_forward" ||
                 fname == "vyb_qt_web_reload" ||
+                fname == "vyb_qt_web_zoom_in" ||
+                fname == "vyb_qt_web_zoom_out" ||
                 fname == "vyb_qt_set_timer" ||
                 fname == "vyb_qt_window_close" ||
                 fname == "vyb_qt_window_width" ||

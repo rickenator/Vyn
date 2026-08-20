@@ -222,6 +222,8 @@ extern "C" {
     int64_t __vyb_qt_web_back(int64_t web);
     int64_t __vyb_qt_web_forward(int64_t web);
     int64_t __vyb_qt_web_reload(int64_t web);
+    int64_t __vyb_qt_web_zoom_in(int64_t web);
+    int64_t __vyb_qt_web_zoom_out(int64_t web);
     int64_t __vyb_qt_init();
     int64_t __vyb_qt_quit();
     int64_t __vyb_qt_active();
@@ -238,6 +240,9 @@ extern "C" {
     int64_t __vyb_qt_window_show(int64_t w);
     int64_t __vyb_qt_window_hide(int64_t w);
     int64_t __vyb_qt_window_visible(int64_t w);
+    int64_t __vyb_qt_screen_width();
+    int64_t __vyb_qt_screen_height();
+    int64_t __vyb_qt_screen_dpi();
     int64_t __vyb_qt_label_create(int64_t parent, const char* text, int64_t len);
     int64_t __vyb_qt_label_set_text(int64_t label, const char* text, int64_t len);
     vyb_file_str __vyb_qt_label_text(int64_t label);
@@ -1780,6 +1785,10 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_web_forward), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_web_reload")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_web_reload), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_web_zoom_in")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_web_zoom_in), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_web_zoom_out")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_web_zoom_out), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_init")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_init), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_quit")] = llvm::orc::ExecutorSymbolDef(
@@ -1812,6 +1821,12 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_window_hide), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_window_visible")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_window_visible), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_screen_width")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_screen_width), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_screen_height")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_screen_height), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_screen_dpi")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_screen_dpi), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_label_create")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_label_create), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_label_set_text")] = llvm::orc::ExecutorSymbolDef(

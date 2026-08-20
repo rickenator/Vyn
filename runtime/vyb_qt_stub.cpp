@@ -47,6 +47,9 @@ VYB_WEAK int64_t __vyb_qt_window_height(int64_t w) { (void)w; return -1; }
 VYB_WEAK int64_t __vyb_qt_window_show(int64_t w) { (void)w; return -1; }
 VYB_WEAK int64_t __vyb_qt_window_hide(int64_t w) { (void)w; return -1; }
 VYB_WEAK int64_t __vyb_qt_window_visible(int64_t w) { (void)w; return 0; }
+VYB_WEAK int64_t __vyb_qt_screen_width() { return -1; }
+VYB_WEAK int64_t __vyb_qt_screen_height() { return -1; }
+VYB_WEAK int64_t __vyb_qt_screen_dpi() { return 100; }
 VYB_WEAK int64_t __vyb_qt_label_create(int64_t parent, const char* text, int64_t len)
     { (void)parent; (void)text; return 0; }
 VYB_WEAK int64_t __vyb_qt_label_set_text(int64_t label, const char* text, int64_t len)
@@ -249,6 +252,8 @@ VYB_WEAK int64_t __vyb_qt_web_loading(int64_t web) { (void)web; return 0; }
 VYB_WEAK int64_t __vyb_qt_web_back(int64_t web) { (void)web; return -1; }
 VYB_WEAK int64_t __vyb_qt_web_forward(int64_t web) { (void)web; return -1; }
 VYB_WEAK int64_t __vyb_qt_web_reload(int64_t web) { (void)web; return -1; }
+VYB_WEAK int64_t __vyb_qt_web_zoom_in(int64_t web) { (void)web; return -1; }
+VYB_WEAK int64_t __vyb_qt_web_zoom_out(int64_t web) { (void)web; return -1; }
 // gen_qt[web_stub]: end
 } // extern "C"
 #endif // !VYB_HAVE_QT_WEBENGINE

@@ -4,7 +4,7 @@
 //   (qt_web_create == 0) and every qt_web_* call returns its documented default
 //   without crashing. When it is present, a headless pass (a) checks the widget
 //   kind, (b) navigates a deterministic network-free data: URL pair and verifies
-//   back/forward/reload update the page url + title, and (c) loads
+//   back/forward/reload + zoom in/out against it, and (c) loads
 //   https://www.google.com/ and confirms a real page renders (a titleChanged /
 //   loadProgress control event + a non-empty url and title).
 // @category: qt, stdlib, gui, web
@@ -66,6 +66,8 @@ main()<Int> -> {
         if (qt_web_back(0) != -1) { return 7 }
         if (qt_web_forward(0) != -1) { return 8 }
         if (qt_web_reload(0) != -1) { return 9 }
+        if (qt_web_zoom_in(0) != -1) { return 10 }
+        if (qt_web_zoom_out(0) != -1) { return 11 }
         qt_quit()
         println("qt-web-ok (QtWebEngine unavailable)")
         return 0
@@ -75,6 +77,8 @@ main()<Int> -> {
     if (qt_kind(web) != QtWidgetKind::web) { return 20 }
     if (qt_web_load(web, "about:blank") != 0) { return 21 }
     if (qt_web_reload(web) != 0) { return 22 }
+    if (qt_web_zoom_in(web) != 0) { return 23 }
+    if (qt_web_zoom_out(web) != 0) { return 24 }
 
     // Deterministic navigation with network-free data: URLs.
     ua<String> = "data:text/html,<title>VybA</title>a"

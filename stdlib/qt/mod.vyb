@@ -91,6 +91,18 @@ qt_web_reload(web<Int>)<Int> -> {
     return vyb_qt_web_reload(web)
 }
 
+# Zoom the web view in (larger text). Returns 0, or -1 on a bad handle.
+share(all)
+qt_web_zoom_in(web<Int>)<Int> -> {
+    return vyb_qt_web_zoom_in(web)
+}
+
+# Zoom the web view out (smaller text). Returns 0, or -1 on a bad handle.
+share(all)
+qt_web_zoom_out(web<Int>)<Int> -> {
+    return vyb_qt_web_zoom_out(web)
+}
+
 # Initialize the QApplication (once); true if the GUI is available.
 share(all)
 qt_init()<Bool> -> {
@@ -185,6 +197,24 @@ qt_window_hide(w<Int>)<Int> -> {
 share(all)
 qt_window_visible(w<Int>)<Bool> -> {
     return vyb_qt_window_visible(w) == 1
+}
+
+# Primary screen width in logical pixels, or -1 if no screen.
+share(all)
+qt_screen_width()<Int> -> {
+    return vyb_qt_screen_width()
+}
+
+# Primary screen height in logical pixels, or -1 if no screen.
+share(all)
+qt_screen_height()<Int> -> {
+    return vyb_qt_screen_height()
+}
+
+# Primary screen device-pixel-ratio scaled to 96dpi (100 = 1.0x), or 100 if no screen.
+share(all)
+qt_screen_dpi()<Int> -> {
+    return vyb_qt_screen_dpi()
 }
 
 # Create a label with `text` under `parent` (0 = none); returns its handle or 0.
@@ -865,6 +895,9 @@ enum QtEvent {
     loadProgress = 8
     currentChanged = 9
     dialog = 10
+    editReturn = 11
+    zoomIn = 12
+    zoomOut = 13
 }
 
 share(all)

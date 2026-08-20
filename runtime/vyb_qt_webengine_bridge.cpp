@@ -21,6 +21,8 @@
 #include <QString>
 #include <QByteArray>
 #include <QApplication>
+#include <QShortcut>
+#include <QKeySequence>
 #include <unordered_map>
 #include <mutex>
 
@@ -49,6 +51,8 @@ extern "C" int64_t __vyb_qt_event_enqueue_widget(int64_t handle, int64_t kind);
 #define VYB_QT_EVT_LOADFINISHED 6
 #define VYB_QT_EVT_TITLECHANGED 7
 #define VYB_QT_EVT_LOADPROGRESS 8
+#define VYB_QT_EVT_ZOOMIN    12
+#define VYB_QT_EVT_ZOOMOUT   13
 
 static QWidget* htowed(int64_t h) { return reinterpret_cast<QWidget*>(h); }
 static int64_t wetoh(QWidget* w) { return reinterpret_cast<int64_t>(w); }
@@ -112,7 +116,48 @@ extern "C" VYB_WEAK int64_t __vyb_qt_web_create(int64_t parent) {
         [handle](const QString&) { __vyb_qt_event_enqueue_widget(handle, VYB_QT_EVT_TITLECHANGED); });
     QObject::connect(v, &QWebEngineView::loadProgress,
         [handle](int) { __vyb_qt_event_enqueue_widget(handle, VYB_QT_EVT_LOADPROGRESS); });
+
+    // Ctrl+Plus / Ctrl+Equal (zoom in) and Ctrl+Minus (zoom out) adjust the page
+    // zoom. They are WindowShortcuts so they work no matter which child has
+    // focus (the address bar included) and enqueue a zoomIn/zoomOut event that
+    // the Vyb handler turns into a qt_web_zoom_in/out call.
+    QWidget* win = v->window() ? v->window() : static_cast<QWidget*>(v);
+    auto makeZoom = [handle, win](const QKeySequence& seq, int64_t kind) {
+        QShortcut* sc = new QShortcut(seq, win);
+        sc->setContext(Qt::WindowShortcut);
+        QObject::connect(sc, &QShortcut::activated, [handle, kind]() {
+            __vyb_qt_event_enqueue_widget(handle, kind);
+        });
+    };
+    makeZoom(QKeySequence(Qt::CTRL | Qt::Key_Plus), VYB_QT_EVT_ZOOMIN);
+    makeZoom(QKeySequence(Qt::CTRL | Qt::Key_Equal), VYB_QT_EVT_ZOOMIN);
+    makeZoom(QKeySequence(Qt::CTRL | Qt::Key_Minus), VYB_QT_EVT_ZOOMOUT);
     return handle;
+}
+
+
+// Step each Ctrl+/- press changes the page zoom factor. Clamped so the page can
+// neither collapse to unreadable nor balloon without bound.
+static const double kZoomStep = 0.25;
+static const double kZoomMin  = 0.50;
+static const double kZoomMax  = 4.00;
+
+// Zoom the web view in one step (larger text). Returns 0, or -1 on a bad handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_web_zoom_in(int64_t h) {
+    QWebEngineView* v = htowe(h); if (!v) return -1;
+    double f = v->zoomFactor() + kZoomStep;
+    if (f > kZoomMax) f = kZoomMax;
+    v->setZoomFactor(f);
+    return 0;
+}
+
+// Zoom the web view out one step (smaller text). Returns 0, or -1 on a bad handle.
+extern "C" VYB_WEAK int64_t __vyb_qt_web_zoom_out(int64_t h) {
+    QWebEngineView* v = htowe(h); if (!v) return -1;
+    double f = v->zoomFactor() - kZoomStep;
+    if (f < kZoomMin) f = kZoomMin;
+    v->setZoomFactor(f);
+    return 0;
 }
 
 // Begin loading `url` in the web view (asynchronous). Returns 0, or -1 on a bad

@@ -11,9 +11,19 @@
 // navigation (go / back / forward / reload), address-bar sync, title sync, and
 // teardown are all methods on the struct rather than free functions juggling
 // raw handles. The event handler dispatches with `select` on the QtEvent kind
-// (the QtEvent constants are bound to Ints and matched with == comparison arms) and sub-dispatches on the
-// widget handle with == comparison patterns against bound identifiers. Teardown
-// uses `defer qt_quit()` so the GUI unwinds cleanly on every exit path.
+// (the QtEvent constants are bound to Ints and matched with == comparison arms)
+// and sub-dispatches on the widget handle with == comparison patterns against
+// bound identifiers. Teardown uses `defer qt_quit()` so the GUI unwinds cleanly
+// on every exit path.
+//
+// The window is sized from the primary screen's dimensions and DPI (80% of the
+// screen, floored at 1024x768) so it comes up reasonably large on any display.
+// The web view renders at 1:1 by default (Ctrl+/- adjusts zoom) and shows scrollbars for content that
+// overflows its viewport — the page does not scale with the window. The address
+// bar normalizes scheme-less input (weather.com -> https://weather.com) and
+// Enter in the bar triggers navigation (QtEvent::editReturn). Ctrl+Plus /
+// Ctrl+Minus (or Ctrl+=) zoom the rendered page in and out as window-wide
+// shortcuts that arrive as QtEvent::zoomIn / zoomOut events.
 //
 // Requires a build with Qt5 WebEngine (CMake finds Qt5WebEngineWidgets); if the
 // surface is unavailable qt_web_create returns 0 and the app reports it.
@@ -44,6 +54,18 @@ struct Browser {
     btnQuit<Int>
 }
 
+# --- URL normalization -------------------------------------------------------
+# A scheme-less address (weather.com, www.weather.com) is an invalid QUrl and
+# loads to about:blank. Normalize by prepending https:// when there is no
+// scheme marker ("://") and no known special-scheme prefix. Trims whitespace.
+share(all)
+normalize_url(raw<String>)<String> -> {
+    s<String> = raw.trim()
+    if (s.index_of("://") >= 0) { return s }
+    if (s.starts_with("about:") || s.starts_with("data:") || s.starts_with("file:")) { return s }
+    return "https://" + s
+}
+
 # --- Behaviour bound to the Browser struct ------------------------------------
 # The `BrowserOps` aspect declares the operations that act on an already-built
 # Browser: navigation (go / back / forward / reload), address-bar sync, title
@@ -55,15 +77,17 @@ aspect BrowserOps {
     back(self<Browser>)<Void>
     forward(self<Browser>)<Void>
     reload(self<Browser>)<Void>
+    zoom_in(self<Browser>)<Void>
+    zoom_out(self<Browser>)<Void>
     sync_title(self<Browser>)<Void>
     quit(self<Browser>)<Void>
 }
 
 share(all)
 bind BrowserOps -> Browser {
-    # Navigate to the URL currently in the address bar.
+    # Navigate to the URL currently in the address bar (normalized).
     go(self<Browser>)<Void> -> {
-        qt_web_load(self.web, qt_edit_text(self.urlBar))
+        qt_web_load(self.web, normalize_url(qt_edit_text(self.urlBar)))
     }
 
     # Go back in history.
@@ -79,6 +103,15 @@ bind BrowserOps -> Browser {
     # Reload the current page.
     reload(self<Browser>)<Void> -> {
         qt_web_reload(self.web)
+    }
+
+    # Zoom the rendered page in/out (Ctrl+/Ctrl- in the window). The bridge
+    # clamps the zoom factor, so no bounds math here.
+    zoom_in(self<Browser>)<Void> -> {
+        qt_web_zoom_in(self.web)
+    }
+    zoom_out(self<Browser>)<Void> -> {
+        qt_web_zoom_out(self.web)
     }
 
     # Sync the address bar and window title to the rendered page (called on
@@ -100,11 +133,12 @@ bind BrowserOps -> Browser {
 
 # --- Event dispatch ----------------------------------------------------------
 # The qt_on_event handler is a closure over (handle, kind). `k` arrives as a
-# plain Int from FFI holding a QtEvent value (click=1, loadFinished=6), so the
-# outer select uses integer-literal arms (the VybLynx cmd_of idiom). The inner
-# select binds each widget handle to a bare identifier and dispatches with ==
-# comparison patterns. This replaces the old nested if/else ladder with a
-# declarative pattern match — the RFE select idiom.
+# plain Int from FFI holding a QtEvent value (click=1, loadFinished=6,
+# editReturn=11, zoomIn=12, zoomOut=13), so the outer select uses == comparison
+# arms against bound constants. The inner select binds each widget handle to a
+# bare identifier and dispatches with == comparison patterns. Ctrl+/- arrive as
+# zoomIn/zoomOut events carrying the web handle. This replaces the old nested
+# if/else ladder with a declarative pattern match — the RFE select idiom.
 share(all)
 handle_event(b<Browser>, h<Int>, k<Int>)<Void> -> {
     hQuit<Int>   = b.btnQuit
@@ -113,8 +147,12 @@ handle_event(b<Browser>, h<Int>, k<Int>)<Void> -> {
     hReload<Int> = b.btnReload
     hGo<Int>     = b.btnGo
     hWeb<Int>    = b.web
-    kClick<Int> = QtEvent::click
-    kLoad<Int>  = QtEvent::loadFinished
+    hUrl<Int>    = b.urlBar
+    kClick<Int>   = QtEvent::click
+    kLoad<Int>    = QtEvent::loadFinished
+    kReturn<Int>  = QtEvent::editReturn
+    kZoomIn<Int>  = QtEvent::zoomIn
+    kZoomOut<Int> = QtEvent::zoomOut
     select (k) -> {
         == kClick -> {
             select (h) -> {
@@ -131,8 +169,46 @@ handle_event(b<Browser>, h<Int>, k<Int>)<Void> -> {
                 b.sync_title()
             }
         }
+        == kReturn -> {
+            if (h == hUrl) {
+                b.go()
+            }
+        }
+        == kZoomIn -> {
+            if (h == hWeb) {
+                b.zoom_in()
+            }
+        }
+        == kZoomOut -> {
+            if (h == hWeb) {
+                b.zoom_out()
+            }
+        }
         ? -> { }
     }
+}
+
+# --- Window sizing -----------------------------------------------------------
+# Size the window from the primary screen's dimensions and DPI: 80% of the
+# screen, floored at 1024x768 so it is never tiny. Falls back to 1100x720 when
+# no screen is available (offscreen/headless without a display). The DPI is
+# queried for awareness; QWebEngineView handles HiDPI rendering automatically.
+share(all)
+window_width()<Int> -> {
+    sw<Int> = qt_screen_width()
+    if (sw <= 0) { return 1100 }
+    w<Int> = (sw * 4) / 5   # 80% of the screen width
+    if (w < 1024) { w = 1024 }
+    return w
+}
+
+share(all)
+window_height()<Int> -> {
+    sh<Int> = qt_screen_height()
+    if (sh <= 0) { return 720 }
+    h<Int> = (sh * 4) / 5   # 80% of the screen height
+    if (h < 768) { h = 768 }
+    return h
 }
 
 main()<Int> -> {
@@ -141,9 +217,15 @@ main()<Int> -> {
         return 1
     }
 
+    // Size the window from the screen dimensions + DPI (reasonably large).
+    winW<Int> = window_width()
+    winH<Int> = window_height()
+    dpi<Int> = qt_screen_dpi()
+    println("VybWeb: screen " + qt_screen_width().to_string() + "x" + qt_screen_height().to_string() + " @ " + dpi.to_string() + "%, window " + winW.to_string() + "x" + winH.to_string())
+
     w<Int> = qt_window_create()
     if (w == 0) { return 1 }
-    if (qt_window_resize(w, 1100, 720) != 0) { return 1 }
+    if (qt_window_resize(w, winW, winH) != 0) { return 1 }
     if (qt_window_set_title(w, "VybWeb") != 0) { return 1 }
 
     // Column layout + nested toolbar row.
@@ -153,6 +235,7 @@ main()<Int> -> {
     if (bar == 0) { return 1 }
 
     // Toolbar controls (parented to the window, placed by the toolbar row).
+    // Placed on the bottom of the window, because Vyb plays like that.
     btnBack<Int> = qt_button_create(w, "< Back")
     btnFwd<Int>  = qt_button_create(w, "Fwd >")
     btnReload<Int> = qt_button_create(w, "Reload")
@@ -175,6 +258,8 @@ main()<Int> -> {
     }
     // Web view fills the column; the toolbar row tucks along the BOTTOM edge
     // (Qt boxes lay out top-to-bottom, so the web goes in first, then the bar).
+    // The page renders at 1:1 by default; Ctrl+/- zooms in and out; QWebEngineView shows scrollbars for
+    // content that overflows its viewport.
     if (qt_layout_add(col, web) != 0) { return 1 }
     if (qt_layout_add_layout(col, bar) != 0) { return 1 }
     if (qt_layout_set_stretch(col, 0, 1) != 0) { return 1 }
@@ -184,8 +269,9 @@ main()<Int> -> {
     b<Browser> = Browser { win = w, web = web, urlBar = url, btnBack = btnBack, btnFwd = btnFwd, btnReload = btnReload, btnGo = btnGo, btnQuit = btnQuit }
 
     // Navigation handler: buttons drive the page; a finished load syncs the
-    // address bar and window title to the rendered page. The handler dispatches
-    // with select on the QtEvent kind (see handle_event above).
+    // address bar and window title to the rendered page; Enter in the address
+    // bar navigates. The handler dispatches with select on the QtEvent kind
+    // (see handle_event above).
     if (qt_on_event(|h<Int>, k<Int>| -> {
         handle_event(b, h, k)
     }) != 0) { return 1 }

@@ -1,5 +1,5 @@
 {
-  "git_rev": "492a068c613add6fed3beba1889d744c34ba34b2",
+  "git_rev": "1566ba21e5272cfb0578ebcafe85d5cc07f7c2c0",
   "modules": [
     "agents",
     "asyncs",
@@ -152,7 +152,7 @@
         "files": [
           "stdlib/qt/mod.vyb"
         ],
-        "exported": 134,
+        "exported": 139,
         "fan_in": 0,
         "fan_out": 0
       },
@@ -567,6 +567,8 @@
           "qt_web_back",
           "qt_web_forward",
           "qt_web_reload",
+          "qt_web_zoom_in",
+          "qt_web_zoom_out",
           "qt_init",
           "qt_quit",
           "qt_active",
@@ -583,6 +585,9 @@
           "qt_window_show",
           "qt_window_hide",
           "qt_window_visible",
+          "qt_screen_width",
+          "qt_screen_height",
+          "qt_screen_dpi",
           "qt_label_create",
           "qt_label_set_text",
           "qt_label_text",
@@ -3628,6 +3633,33 @@
         "fan_in": 0
       },
       {
+        "name": "qt_screen_dpi",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_screen_dpi()<Int> ->",
+        "summary": "Primary screen device-pixel-ratio scaled to 96dpi (100 = 1.0x), or 100 if no screen.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_screen_height",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_screen_height()<Int> ->",
+        "summary": "Primary screen height in logical pixels, or -1 if no screen.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_screen_width",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_screen_width()<Int> ->",
+        "summary": "Primary screen width in logical pixels, or -1 if no screen.",
+        "fan_in": 0
+      },
+      {
         "name": "qt_set_timer",
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
@@ -3886,6 +3918,24 @@
         "kind": "fn",
         "signature": "qt_web_url(web<Int>)<String> ->",
         "summary": "Current page URL (String); \"\" on a bad handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_web_zoom_in",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_web_zoom_in(web<Int>)<Int> ->",
+        "summary": "Zoom the web view in (larger text). Returns 0, or -1 on a bad handle.",
+        "fan_in": 0
+      },
+      {
+        "name": "qt_web_zoom_out",
+        "module": "qt",
+        "file": "stdlib/qt/mod.vyb",
+        "kind": "fn",
+        "signature": "qt_web_zoom_out(web<Int>)<Int> ->",
+        "summary": "Zoom the web view out (smaller text). Returns 0, or -1 on a bad handle.",
         "fan_in": 0
       },
       {
@@ -7739,6 +7789,24 @@
     {
       "type": "runtimeRef",
       "from_module": "qt",
+      "from_symbol": "qt_screen_dpi",
+      "to_symbol": "vyb_qt_screen_dpi"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_screen_height",
+      "to_symbol": "vyb_qt_screen_height"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_screen_width",
+      "to_symbol": "vyb_qt_screen_width"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
       "from_symbol": "qt_set_timer",
       "to_symbol": "vyb_qt_set_timer"
     },
@@ -7909,6 +7977,18 @@
       "from_module": "qt",
       "from_symbol": "qt_web_url",
       "to_symbol": "vyb_qt_web_url"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_web_zoom_in",
+      "to_symbol": "vyb_qt_web_zoom_in"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "qt",
+      "from_symbol": "qt_web_zoom_out",
+      "to_symbol": "vyb_qt_web_zoom_out"
     },
     {
       "type": "runtimeRef",

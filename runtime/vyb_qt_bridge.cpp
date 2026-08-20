@@ -65,6 +65,7 @@
 #include <QTimer>
 #include <QString>
 #include <QByteArray>
+#include <QScreen>
 #if defined(VYB_HAVE_QT_WEBENGINE)
 #include <QWebEngineView>
 #endif
@@ -78,6 +79,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <climits>
+#include <cmath>
 
 #if defined(__GNUC__) || defined(__clang__)
 #define VYB_WEAK __attribute__((weak))
@@ -120,6 +122,7 @@ static std::chrono::steady_clock::time_point g_timer_start = std::chrono::steady
 #define VYB_QT_EVT_VALUECHANGED 5
 #define VYB_QT_EVT_CURRENTCHANGED 9
 #define VYB_QT_EVT_DIALOG    10
+#define VYB_QT_EVT_EDITRETURN 11
 
 // A queued record carries an optional int64 `result` payload (default 0) so a
 // finished dialog can hand its answer (1 = Yes/Accepted, else 0) to the
@@ -435,6 +438,30 @@ extern "C" VYB_WEAK int64_t __vyb_qt_window_visible(int64_t h) {
 }
 
 // ----------------------------------------------------------------------------
+// Screen (QApplication::primaryScreen)
+// ----------------------------------------------------------------------------
+
+// Primary screen width in logical pixels, or -1 if no screen is available.
+extern "C" VYB_WEAK int64_t __vyb_qt_screen_width(void) {
+    QScreen* s = QApplication::primaryScreen(); if (!s) return -1;
+    return static_cast<int64_t>(s->geometry().width());
+}
+
+// Primary screen height in logical pixels, or -1 if no screen is available.
+extern "C" VYB_WEAK int64_t __vyb_qt_screen_height(void) {
+    QScreen* s = QApplication::primaryScreen(); if (!s) return -1;
+    return static_cast<int64_t>(s->geometry().height());
+}
+
+// Primary screen device-pixel-ratio scaled to 96dpi (100 = 1.0x), or 100 if no
+// screen is available. Qt 5.15 removed logicalDpi/physicalDpi; devicePixelRatio
+// is the remaining DPI surface (1.0 on a standard display, 2.0 on a 2x HiDPI).
+extern "C" VYB_WEAK int64_t __vyb_qt_screen_dpi(void) {
+    QScreen* s = QApplication::primaryScreen(); if (!s) return 100;
+    return static_cast<int64_t>(std::lround(s->devicePixelRatio() * 100.0));
+}
+
+// ----------------------------------------------------------------------------
 // Label (QLabel)
 // ----------------------------------------------------------------------------
 
@@ -497,6 +524,7 @@ extern "C" VYB_WEAK int64_t __vyb_qt_edit_create(int64_t parent, const char* s, 
     QWidget* pw = parent ? htowed(parent) : nullptr;
     QLineEdit* e = new QLineEdit(qt_from_bytes(s, len), pw);
     QObject::connect(e, &QLineEdit::textChanged, [e]() { vyb_qt_enqueue(wetoh(e), VYB_QT_EVT_TEXTCHANGED); });
+    QObject::connect(e, &QLineEdit::returnPressed, [e]() { vyb_qt_enqueue(wetoh(e), VYB_QT_EVT_EDITRETURN); });
     return wetoh(e);
 }
 
