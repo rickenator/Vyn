@@ -1,7 +1,7 @@
-# Test 19: catch -> report -> rethrow via `fail` inside a trap handler
+# Test 19: catch -> report -> refail via `fail` inside a trap handler
 # A `fail` raised inside a handler for the same error type must propagate to the
 # next enclosing trap rather than re-enter the current handler (which used to
-# loop / re-dispatch infinitely). This is the catch-report-rethrow shape.
+# loop / re-dispatch infinitely). This is the catch-report-refail shape.
 // @expect: pass
 // @expect-return: 0
 // @expect-output: caught at main: data.txt

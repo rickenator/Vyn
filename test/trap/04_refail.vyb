@@ -1,4 +1,4 @@
-# Test 04: Rethrow statement
+# Test 04: Refail statement
 # Tests propagating an error to the caller
 // @expect: fail
 
@@ -11,8 +11,8 @@ outer_function()<Int> -> {
     {
         inner_function()
     } trap (e<NetworkError>) -> {
-        println("Caught in outer, rethrowing...")
-        rethrow  # Propagate to caller
+        println("Caught in outer, refailing...")
+        refail  # Propagate to caller
     }
     return 0
 }

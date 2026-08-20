@@ -40,7 +40,7 @@
 
 ## Implementation Status
 
-- [x] Phase 1: AST nodes for fail/trap/panic/rethrow/ensure
+- [x] Phase 1: AST nodes for fail/trap/panic/refail/ensure
 - [x] Phase 2: Parser for error handling statements
 - [x] Phase 3: Semantic analysis for error handling
 - [x] Phase 4a: LLVM IR codegen for error statements
@@ -52,7 +52,7 @@
 - [ ] Phase 6: VybError structure creation for fail statements
 - [ ] Phase 7: Cross-function error propagation via Result types
 - [ ] Phase 8: Ensure clause execution
-- [ ] Phase 9: Rethrow statement support
+- [ ] Phase 9: Refail statement support
 
 ## Next Steps
 
@@ -74,4 +74,4 @@
    - Nested trap handlers
    - Multiple trap clauses with type checking
    - Ensure clause execution during unwinding
-   - Rethrow statement for error transformation
+   - Refail statement for error transformation

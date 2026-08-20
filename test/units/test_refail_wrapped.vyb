@@ -1,0 +1,40 @@
+// @test: wrapped refail raises a new error carrying the caught (cause) error
+// @description: a handler wraps a low-level error into a high-level one via
+//   `refail HighLevelError { cause = e }`, preserving the original as a field.
+// @category: error_handling, refail, trap, cause
+// @expect: pass
+// @expect-return: 0
+// @expect-output: high: Failed: Disk read failed
+// @expect-output: cause errno: 42
+// @execute-jit: true
+
+struct LowLevelError { errno<Int>, message<String> }
+struct HighLevelError { operation<String>, message<String>, cause<LowLevelError> }
+
+low()<Int> -> {
+    fail LowLevelError { errno = 42, message = "Disk read failed" }
+    return 0
+}
+
+high()<Int> -> {
+    return {
+        low()
+    } trap (e<LowLevelError>) -> {
+        refail HighLevelError {
+            operation = "data_processing",
+            message = "Failed: " + e.message,
+            cause = e
+        }
+    }
+}
+
+main()<Int> -> {
+    {
+        high()
+    } trap (e<HighLevelError>) -> {
+        println("high: " + e.message)
+        println("cause errno: " + e.cause.errno)
+        return 0
+    }
+    return 1
+}

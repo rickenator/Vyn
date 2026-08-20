@@ -7653,32 +7653,42 @@ void SemanticAnalyzer::visit(ast::EnsureClause* node) {
     // They execute for side effects (cleanup resources)
 }
 
-void SemanticAnalyzer::visit(ast::RethrowStatement* node) {
-    // Verify rethrow is inside a trap clause
+void SemanticAnalyzer::visit(ast::RefailStatement* node) {
+    // refail propagates an in-flight error outward, so the enclosing function
+    // (and any enclosing lambda) must use the failable (T, error) ABI.
+    if (currentFunction) {
+        currentFunction->canFail = true;
+        currentFunction->needsErrorReturn = true;
+    }
+    if (!lambdaStack.empty() && lambdaStack.back()) {
+        lambdaStack.back()->canFail = true;
+    }
+
+    // Verify refail is inside a trap clause
     if (trapDepth == 0) {
-        addError("rethrow statement can only be used inside a trap clause", node);
+        addError("refail statement can only be used inside a trap clause", node);
         return;
     }
 
-    VYB_CDBG << "DEBUG: rethrow statement at trap depth " << trapDepth << std::endl;
+    VYB_CDBG << "DEBUG: refail statement at trap depth " << trapDepth << std::endl;
 
     // If transforming the error, type check the new error expression
-    if (node->transformedError) {
-        node->transformedError->accept(*this);
+    if (node->wrappedError) {
+        node->wrappedError->accept(*this);
 
         // Get the type of the transformed error
-        auto it = expressionTypes.find(node->transformedError.get());
+        auto it = expressionTypes.find(node->wrappedError.get());
         if (it != expressionTypes.end() && it->second) {
             ast::TypeNode* newErrorType = it->second;
-            VYB_CDBG << "DEBUG: rethrow with transformed error type: " << newErrorType->toString() << std::endl;
+            VYB_CDBG << "DEBUG: refail with transformed error type: " << newErrorType->toString() << std::endl;
 
             // TODO: Verify new error type is compatible with outer trap handlers
         }
     } else {
-        // Simple rethrow - propagates current error
+        // Simple refail - propagates current error
         if (!activeTrapTypes.empty()) {
             ast::TypeNode* currentErrorType = activeTrapTypes.back();
-            VYB_CDBG << "DEBUG: rethrow current error type: " << currentErrorType->toString() << std::endl;
+            VYB_CDBG << "DEBUG: refail current error type: " << currentErrorType->toString() << std::endl;
         }
     }
 }

@@ -1,0 +1,34 @@
+// @test: bare refail re-raises the caught error to the next trap
+// @description: a handler reports then `refail`s the exact caught error; the
+//   next enclosing trap sees the same type and payload (ownership hand-off).
+// @category: error_handling, refail, trap
+// @expect: pass
+// @expect-return: 0
+// @expect-output: reported: a.txt
+// @expect-output: caught at main: a.txt
+// @execute-jit: true
+
+struct FdError { path<String> }
+
+inner()<Int> -> {
+    fail FdError { path = "a.txt" }
+}
+
+middle()<Int> -> {
+    return {
+        inner()
+    } trap (e<FdError>) -> {
+        println("reported: " + e.path)
+        refail
+    }
+}
+
+main()<Int> -> {
+    {
+        middle()
+    } trap (e<FdError>) -> {
+        println("caught at main: " + e.path)
+        return 0
+    }
+    return 1
+}

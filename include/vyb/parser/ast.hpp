@@ -91,7 +91,7 @@ class AssertStatement; // Added
 class FailStatement; // Error handling: fail with error value
 class TrapClause; // Error handling: trap clause for handling failures
 class EnsureClause; // Error handling: ensure clause for cleanup
-class RethrowStatement; // Error handling: rethrow current error
+class RefailStatement; // Error handling: refail current error
 class PanicStatement; // Error handling: unrecoverable panic
 class ExitStatement;  // Process exit with code: exit(n)
 class DeferStatement; // Deferred execution at scope exit
@@ -251,7 +251,7 @@ enum class NodeType {
     FAIL_STATEMENT, // Error handling: fail
     TRAP_CLAUSE, // Error handling: trap clause
     ENSURE_CLAUSE, // Error handling: ensure clause
-    RETHROW_STATEMENT, // Error handling: rethrow
+    REFAIL_STATEMENT, // Error handling: refail
     PANIC_STATEMENT, // Error handling: panic
     EXIT_STATEMENT,  // Process exit with code
     DEFER_STATEMENT, // Deferred execution at scope exit
@@ -362,7 +362,7 @@ public:
     virtual void visit(FailStatement* node) = 0;
     virtual void visit(TrapClause* node) = 0;
     virtual void visit(EnsureClause* node) = 0;
-    virtual void visit(RethrowStatement* node) = 0;
+    virtual void visit(RefailStatement* node) = 0;
     virtual void visit(PanicStatement* node) = 0;
     virtual void visit(ExitStatement* node) = 0;
     virtual void visit(DeferStatement* node) = 0;
@@ -1718,13 +1718,13 @@ public:
     void accept(Visitor& visitor) override;
 };
 
-// RethrowStatement - Propagate current error to caller
-class RethrowStatement : public Statement {
+// RefailStatement - Propagate current error to caller
+class RefailStatement : public Statement {
 public:
-    ExprPtr transformedError; // Optional: transform error before rethrowing
+    ExprPtr wrappedError; // Optional: transform error before refailing
 
-    RethrowStatement(SourceLocation loc, ExprPtr transformedError = nullptr);
-    ~RethrowStatement() override = default;
+    RefailStatement(SourceLocation loc, ExprPtr wrappedError = nullptr);
+    ~RefailStatement() override = default;
     NodeType getType() const override;
     std::string toString() const override;
     void accept(Visitor& visitor) override;

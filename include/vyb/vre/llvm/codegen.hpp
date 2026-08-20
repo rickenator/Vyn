@@ -207,6 +207,10 @@ private:
                                               // is being generated, so a `fail` raised
                                               // there propagates outward instead of
                                               // re-entering the same handler.
+        bool errorHandedOff = false;         // Set when this handler's `refail` re-raised
+                                              // the caught error: ownership of the error
+                                              // object transfers outward, so the handler
+                                              // must NOT free it on exit.
     };
     std::vector<TrapContext> trapStack;      // Stack of active trap contexts
     bool inTrapHandler = false;           // True when executing trap handler body
@@ -381,6 +385,8 @@ private:
     void setupTrapContext(ast::BlockExpression* blockExpr, llvm::BasicBlock* continueBB);
     void cleanupTrapContext();
     llvm::Value* createErrorValue(ast::Expression* errorExpr, ast::TypeNode* errorType);
+    llvm::Value* buildRuntimeErrorFromValue(const std::string& typeName, llvm::Value* errorValue, const SourceLocation& loc);
+    void forwardError(llvm::Value* errorPtr, const SourceLocation& loc);
     void preCreateTrapAllocas(ast::Statement* stmt, llvm::Function* func, llvm::Instruction** lastAllocaInsertPt = nullptr);
     void emitDeferredStatementsForCurrentFunction();
     void emitPropagatingErrorReturn(llvm::Value* errorPtr);
@@ -748,7 +754,7 @@ public:
     void visit(vyb::ast::FailStatement* node) override;
     void visit(vyb::ast::TrapClause* node) override;
     void visit(vyb::ast::EnsureClause* node) override;
-    void visit(vyb::ast::RethrowStatement* node) override;
+    void visit(vyb::ast::RefailStatement* node) override;
     void visit(vyb::ast::PanicStatement* node) override;
     void visit(vyb::ast::ExitStatement* node) override;
     void visit(vyb::ast::DeferStatement* node) override;

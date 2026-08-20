@@ -862,7 +862,7 @@ Notes:
 - `fail` is a **statement**, so a bare `x else fail<…>(…)` does not parse;
   shape the absent arm with `match (opt) { v -> …, ? -> … }` and `fail` there.
 - Re-raising from inside a `trap` handler propagates to the next enclosing
-  handler (the catch → report → rethrow shape), and `rethrow` re-raises the
+  handler (the catch → report → refail shape), and `refail` re-raises the
   caught error untouched.
 
 ### 3.17 Strings
@@ -2237,7 +2237,7 @@ statement               ::= expression_statement
                           | fail_statement
                           | panic_statement
                           | exit_statement
-                          | rethrow_statement
+                          | refail_statement
                           | try_statement
                           | freedom_statement
                           | defer_statement
@@ -2269,7 +2269,7 @@ fail_statement          ::= 'fail' ( '<' type '>' '(' expression ')'
                                    | expression ) [';']
 panic_statement         ::= 'panic' '(' expression ')' [';']
 exit_statement          ::= 'exit' '(' expression ')' [';']
-rethrow_statement       ::= 'rethrow' [';']
+refail_statement         ::= 'refail' [ expression ] [';']
 await_statement         ::= 'await' expression [';']
 freedom_statement       ::= 'freedom' block_statement
 defer_statement         ::= 'defer' ( expression_statement | block_statement )
@@ -2401,7 +2401,7 @@ bound; exports use the `share(all)` marker.
 
 **Errors**
 
-`fail` / `trap` / `ensure`, plus `rethrow`; no `throw`/`throws`.
+`fail` / `trap` / `ensure`, plus `refail`; no `throw`/`throws`.
 
 **Ownership wrappers**
 

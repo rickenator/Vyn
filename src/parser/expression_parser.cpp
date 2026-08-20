@@ -1087,7 +1087,7 @@ regular_array_literal:
                 is_block = false;
             } else if (next_type == TokenType::KEYWORD_FAIL ||
                        next_type == TokenType::KEYWORD_PANIC ||
-                       next_type == TokenType::KEYWORD_RETHROW ||
+                       next_type == TokenType::KEYWORD_REFAIL ||
                        next_type == TokenType::KEYWORD_RETURN ||
                        next_type == TokenType::KEYWORD_IF ||
                        next_type == TokenType::KEYWORD_WHILE ||

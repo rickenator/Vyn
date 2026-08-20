@@ -9037,7 +9037,14 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
                 // Handler ended in `return`: free the error before the terminator.
                 builder->SetInsertPoint(term);
             }
-            builder->CreateCall(freeErrFn, {errorPtr});
+            // A bare `refail` re-raises the SAME caught error object, so its
+            // ownership transferred outward and this handler must not free it
+            // (freeing it here would dangle the re-raised error). `fail` and the
+            // wrapped `refail NewError { cause = e }` build a NEW error object,
+            // so the original caught error is still freed as usual.
+            if (!trapStack[myTrapIdx].errorHandedOff) {
+                builder->CreateCall(freeErrFn, {errorPtr});
+            }
 
             // Branch to ensure/continue after handling and record exit block.
             // Skipped when the handler terminated via `return` (no merge needed).

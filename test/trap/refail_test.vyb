@@ -1,4 +1,4 @@
-# Semantic Test: Rethrow statement validation
+# Semantic Test: Refail statement validation
 // @expect: fail
 
 struct NetworkError {
@@ -18,8 +18,8 @@ process_data()<Int> -> {
         return 100
     } trap (e<NetworkError>) -> {
         println("Caught network error: " + e.message)
-        # Transform and rethrow
-        rethrow TransformedError {
+        # Transform and refail
+        refail TransformedError {
             original_code = e.code,
             new_message = "Transformed: " + e.message
         }

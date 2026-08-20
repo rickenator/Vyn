@@ -2057,22 +2057,22 @@ void EnsureClause::accept(Visitor& visitor) {
     visitor.visit(this);
 }
 
-// RethrowStatement implementation
-RethrowStatement::RethrowStatement(SourceLocation loc, ExprPtr transformedError)
-    : Statement(loc), transformedError(std::move(transformedError)) {}
+// RefailStatement implementation
+RefailStatement::RefailStatement(SourceLocation loc, ExprPtr wrappedError)
+    : Statement(loc), wrappedError(std::move(wrappedError)) {}
 
-NodeType RethrowStatement::getType() const {
-    return NodeType::RETHROW_STATEMENT;
+NodeType RefailStatement::getType() const {
+    return NodeType::REFAIL_STATEMENT;
 }
 
-std::string RethrowStatement::toString() const {
-    if (transformedError) {
-        return "fail " + transformedError->toString();
+std::string RefailStatement::toString() const {
+    if (wrappedError) {
+        return "refail " + wrappedError->toString();
     }
-    return "rethrow";
+    return "refail";
 }
 
-void RethrowStatement::accept(Visitor& visitor) {
+void RefailStatement::accept(Visitor& visitor) {
     visitor.visit(this);
 }
 

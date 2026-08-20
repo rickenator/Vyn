@@ -1,0 +1,16 @@
+# Semantic Test: Invalid refail outside trap clause
+// @expect: fail
+
+struct MyError {
+    code<Int>
+}
+
+bad_function()<Int> -> {
+    # This should fail semantic analysis - refail outside trap
+    refail MyError { code = 1 }
+    return 0
+}
+
+main()<Int> -> {
+    return bad_function()
+}

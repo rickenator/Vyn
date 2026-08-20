@@ -2135,51 +2135,11 @@ void LLVMCodegen::visit(ast::ExternStatement* node) {
 
 // --- Error Handling Codegen Implementations ---
 
-void LLVMCodegen::visit(vyb::ast::FailStatement* node) {
-    // Generate:
-    // 1. Evaluate error expression
-    // 2. Check if there's a trap handler in scope
-    // 3. If no trap: call __vyb_runtime_untrapped_error() and unreachable
-    // 4. If trap: store error and jump to trap landing pad
-
-    llvm::Function* function = getCurrentFunction();
-    if (!function) {
-        logError(node->loc, "Fail statement outside function context");
-        m_currentLLVMValue = nullptr;
-        return;
-    }
-
-    if (!node->error) {
-        logError(node->loc, "Fail statement missing error expression");
-        m_currentLLVMValue = nullptr;
-        return;
-    }
-
-    // Evaluate the error expression
-    node->error->accept(*this);
-    llvm::Value* errorValue = m_currentLLVMValue;
-
+llvm::Value* LLVMCodegen::buildRuntimeErrorFromValue(const std::string& typeName, llvm::Value* errorValue, const SourceLocation& loc) {
+    // Wrap an already-evaluated error payload value in a concrete runtime
+    // VybError object (the same shape `fail` uses), returning its i8* handle.
     if (!errorValue) {
-        logError(node->loc, "Error expression evaluated to null");
-        m_currentLLVMValue = nullptr;
-        return;
-    }
-
-    // Construct a concrete runtime VybError object.
-    std::string typeName;
-    if (node->errorType) {
-        typeName = node->errorType->toString();
-    } else if (node->error && node->error->type) {
-        typeName = node->error->type->toString();
-    } else if (errorValue->getType()->isIntegerTy(1)) {
-        typeName = "Bool";
-    } else if (errorValue->getType()->isIntegerTy()) {
-        typeName = "Int";
-    } else if (errorValue->getType()->isFloatingPointTy()) {
-        typeName = "Float";
-    }
-    if (typeName.empty()) {
-        typeName = "Error";
+        return nullptr;
     }
 
     llvm::DataLayout dataLayout(module.get());
@@ -2214,9 +2174,9 @@ void LLVMCodegen::visit(vyb::ast::FailStatement* node) {
     llvm::Value* payloadSizeValue = llvm::ConstantInt::get(builder->getInt64Ty(), payloadSize);
     llvm::Type* destructorTy = createErrFn->getFunctionType()->getParamType(4);
     llvm::Value* nullDestructor = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(destructorTy));
-    llvm::Value* fileValue = builder->CreateGlobalStringPtr(node->loc.filePath, "fail.file");
+    llvm::Value* fileValue = builder->CreateGlobalStringPtr(loc.filePath, "fail.file");
 
-    llvm::Value* errorPtr = builder->CreateCall(
+    return builder->CreateCall(
         createErrFn,
         {
             typeNameValue,
@@ -2225,47 +2185,97 @@ void LLVMCodegen::visit(vyb::ast::FailStatement* node) {
             payloadSizeValue,
             nullDestructor,
             fileValue,
-            llvm::ConstantInt::get(builder->getInt32Ty(), node->loc.line),
-            llvm::ConstantInt::get(builder->getInt32Ty(), node->loc.column)
+            llvm::ConstantInt::get(builder->getInt32Ty(), loc.line),
+            llvm::ConstantInt::get(builder->getInt32Ty(), loc.column)
         },
         "fail.error"
     );
+}
 
-    // Find the innermost trap that is eligible to catch this fail. A trap whose
-    // own handler body is being generated is marked disabled, so a `fail` raised
-    // inside a handler propagates to the next enclosing trap instead of
-    // re-entering the same handler (which once looped for matching error types).
-    // A newly nested block's own trap is enabled, so inner fails are caught
-    // there first, preserving normal nesting.
-    {
-        int target = (int)trapStack.size() - 1;
-        while (target >= 0 && trapStack[(size_t)target].disabled) {
-            target--;
-        }
-
-        if (target >= 0) {
-            // Store the error pointer in the selected trap's error slot and jump
-            // to its landing pad.
-            TrapContext& trap = trapStack[(size_t)target];
-            builder->CreateStore(errorPtr, trap.errorSlot);
-            builder->CreateBr(trap.landingPad);
-            m_currentLLVMValue = nullptr;
-            return;
-        }
-
-        // No enabled trap in scope: either there is no trap at all, or every
-        // enclosing trap's handler is still on the stack. Propagate like the
-        // untrapped case.
-        if ((currentFunctionAST && currentFunctionAST->needsErrorReturn) || m_currentFunctionFailable) {
-            
-            emitPropagatingErrorReturn(errorPtr);
-        } else {
-            llvm::Function* untrappedFn = getVybUntrappedErrorFunction();
-            builder->CreateCall(untrappedFn, {errorPtr});
-            builder->CreateUnreachable();
-        }
+void LLVMCodegen::forwardError(llvm::Value* errorPtr, const SourceLocation& loc) {
+    // Find the innermost trap that is eligible to catch this error. A trap whose
+    // own handler body is being generated is marked disabled, so an error raised
+    // inside a handler (via `fail` or `refail`) propagates to the next enclosing
+    // trap instead of re-entering the same handler (which once looped for
+    // matching error types). A newly nested block's own trap is enabled, so inner
+    // errors are caught there first, preserving normal nesting.
+    if (!errorPtr) {
+        return;
     }
 
+    int target = (int)trapStack.size() - 1;
+    while (target >= 0 && trapStack[(size_t)target].disabled) {
+        target--;
+    }
+
+    if (target >= 0) {
+        // Store the error pointer in the selected trap's error slot and jump
+        // to its landing pad.
+        TrapContext& trap = trapStack[(size_t)target];
+        builder->CreateStore(errorPtr, trap.errorSlot);
+        builder->CreateBr(trap.landingPad);
+        m_currentLLVMValue = nullptr;
+        return;
+    }
+
+    // No enabled trap in scope: either there is no trap at all, or every
+    // enclosing trap's handler is still on the stack. Propagate like the
+    // untrapped case.
+    if ((currentFunctionAST && currentFunctionAST->needsErrorReturn) || m_currentFunctionFailable) {
+        emitPropagatingErrorReturn(errorPtr);
+    } else {
+        llvm::Function* untrappedFn = getVybUntrappedErrorFunction();
+        builder->CreateCall(untrappedFn, {errorPtr});
+        builder->CreateUnreachable();
+    }
+
+    m_currentLLVMValue = nullptr;
+}
+
+void LLVMCodegen::visit(vyb::ast::FailStatement* node) {
+    // Generate:
+    // 1. Evaluate error expression
+    // 2. Wrap it in a runtime VybError object
+    // 3. Forward to the innermost eligible trap (or propagate / untrapped)
+    llvm::Function* function = getCurrentFunction();
+    if (!function) {
+        logError(node->loc, "Fail statement outside function context");
+        m_currentLLVMValue = nullptr;
+        return;
+    }
+
+    if (!node->error) {
+        logError(node->loc, "Fail statement missing error expression");
+        m_currentLLVMValue = nullptr;
+        return;
+    }
+
+    node->error->accept(*this);
+    llvm::Value* errorValue = m_currentLLVMValue;
+    if (!errorValue) {
+        logError(node->loc, "Error expression evaluated to null");
+        m_currentLLVMValue = nullptr;
+        return;
+    }
+
+    std::string typeName;
+    if (node->errorType) {
+        typeName = node->errorType->toString();
+    } else if (node->error && node->error->type) {
+        typeName = node->error->type->toString();
+    } else if (errorValue->getType()->isIntegerTy(1)) {
+        typeName = "Bool";
+    } else if (errorValue->getType()->isIntegerTy()) {
+        typeName = "Int";
+    } else if (errorValue->getType()->isFloatingPointTy()) {
+        typeName = "Float";
+    }
+    if (typeName.empty()) {
+        typeName = "Error";
+    }
+
+    llvm::Value* errorPtr = buildRuntimeErrorFromValue(typeName, errorValue, node->loc);
+    forwardError(errorPtr, node->loc);
     m_currentLLVMValue = nullptr;
 }
 
@@ -2293,69 +2303,75 @@ void LLVMCodegen::visit(vyb::ast::EnsureClause* node) {
     m_currentLLVMValue = nullptr;
 }
 
-void LLVMCodegen::visit(vyb::ast::RethrowStatement* node) {
-    // Generate:
-    // 1. If transformedError: evaluate new error expression
-    // 2. Pop current trap context and rethrow to outer handler
-    // 3. Mark as unreachable (no return)
-
+void LLVMCodegen::visit(vyb::ast::RefailStatement* node) {
+    // Two forms:
+    //   refail                          re-raise the exact caught error, untouched
+    //   refail NewError { cause = e }   build a NEW error that wraps/transforms the
+    //                                   caught `e`, then raise it
+    // Both forward past the current (disabled) handler to the next eligible trap,
+    // or propagate out of the frame when no enclosing trap is present.
     llvm::Function* function = getCurrentFunction();
     if (!function) {
-        logError(node->loc, "Rethrow statement outside function context");
+        logError(node->loc, "Refail statement outside function context");
         m_currentLLVMValue = nullptr;
         return;
     }
 
     // Semantic analysis should have ensured we're inside a trap clause
     if (trapStack.empty()) {
-        logError(node->loc, "Rethrow outside trap context (should be caught by semantic analysis)");
+        logError(node->loc, "Refail outside trap context (should be caught by semantic analysis)");
         m_currentLLVMValue = nullptr;
         return;
     }
 
-    llvm::Value* errorToRethrow = nullptr;
+    llvm::Value* errorToRefail = nullptr;
 
-    if (node->transformedError) {
-        // Evaluate the transformed error expression
-        node->transformedError->accept(*this);
-        errorToRethrow = m_currentLLVMValue;
-    } else {
-        // Rethrow the current error (load from error slot)
-        TrapContext& currentTrap = trapStack.back();
-        // errorSlot is now a heap pointer, always stores ptr type
-        llvm::Type* errorType = llvm::PointerType::get(*context, 0);
-        errorToRethrow = builder->CreateLoad(errorType, currentTrap.errorSlot, "rethrow_error");
-    }
-
-    if (!errorToRethrow) {
-        logError(node->loc, "Rethrow error value is null");
-        m_currentLLVMValue = nullptr;
-        return;
-    }
-
-    // Check if there's an outer trap handler
-    if (trapStack.size() > 1) {
-        // Store error in outer trap's error slot and jump to its landing pad
-        TrapContext& outerTrap = trapStack[trapStack.size() - 2];
-        builder->CreateStore(errorToRethrow, outerTrap.errorSlot);
-        builder->CreateBr(outerTrap.landingPad);
-    } else {
-        // No outer trap - call untrapped error handler
-        llvm::Function* untrappedFn = getVybUntrappedErrorFunction();
-
-        llvm::Value* errorPtr = errorToRethrow;
-        if (!errorToRethrow->getType()->isPointerTy()) {
-            llvm::AllocaInst* tempAlloca = builder->CreateAlloca(errorToRethrow->getType(), nullptr, "rethrow_temp");
-            builder->CreateStore(errorToRethrow, tempAlloca);
-            errorPtr = builder->CreateBitCast(tempAlloca, int8PtrType, "rethrow_as_ptr");
-        } else {
-            errorPtr = builder->CreateBitCast(errorToRethrow, int8PtrType, "rethrow_as_ptr");
+    if (node->wrappedError) {
+        // Wrapped form: build a new runtime VybError from the wrapping value
+        // (typically a struct carrying the caught error, e.g. cause = e).
+        node->wrappedError->accept(*this);
+        llvm::Value* wrappedValue = m_currentLLVMValue;
+        if (!wrappedValue) {
+            logError(node->loc, "Refail wrapped error expression evaluated to null");
+            m_currentLLVMValue = nullptr;
+            return;
         }
 
-        builder->CreateCall(untrappedFn, {errorPtr});
-        builder->CreateUnreachable();
+        std::string typeName;
+        if (node->wrappedError->type) {
+            typeName = node->wrappedError->type->toString();
+        } else if (wrappedValue->getType()->isIntegerTy(1)) {
+            typeName = "Bool";
+        } else if (wrappedValue->getType()->isIntegerTy()) {
+            typeName = "Int";
+        } else if (wrappedValue->getType()->isFloatingPointTy()) {
+            typeName = "Float";
+        }
+        if (typeName.empty()) {
+            typeName = "Error";
+        }
+
+        errorToRefail = buildRuntimeErrorFromValue(typeName, wrappedValue, node->loc);
+    } else {
+        // Bare form: forward the exact caught error (load from the innermost
+        // trap's error slot, which holds the error this handler caught).
+        TrapContext& currentTrap = trapStack.back();
+        llvm::Type* errorType = llvm::PointerType::get(*context, 0);
+        errorToRefail = builder->CreateLoad(errorType, currentTrap.errorSlot, "refail_error");
+
+        // Ownership of the caught error object transfers to the next handler
+        // (or out of this frame); the handler-exit free must be suppressed so
+        // the re-raised error is not freed underneath the refail.
+        currentTrap.errorHandedOff = true;
     }
 
+    if (!errorToRefail) {
+        logError(node->loc, "Refail error value is null");
+        m_currentLLVMValue = nullptr;
+        return;
+    }
+
+    forwardError(errorToRefail, node->loc);
     m_currentLLVMValue = nullptr;
 }
 

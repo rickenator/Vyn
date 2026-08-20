@@ -641,7 +641,7 @@ vyb::TokenType Lexer::get_keyword_type(const std::string& word) {
         {"auto", vyb::TokenType::KEYWORD_AUTO},
         {"fail", vyb::TokenType::KEYWORD_FAIL},
         {"trap", vyb::TokenType::KEYWORD_TRAP},
-        {"rethrow", vyb::TokenType::KEYWORD_RETHROW},
+        {"refail", vyb::TokenType::KEYWORD_REFAIL},
         {"ensure", vyb::TokenType::KEYWORD_ENSURE},
         {"panic", vyb::TokenType::KEYWORD_PANIC},
         {"exit", vyb::TokenType::KEYWORD_EXIT},

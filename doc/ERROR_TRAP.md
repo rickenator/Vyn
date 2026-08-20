@@ -12,7 +12,7 @@
 
 Vyb has a **production-ready error handling system** with:
 - Runtime infrastructure: VybError struct, heap allocation, type IDs (C++ level)
-- Language features: fail/trap/rethrow/ensure/panic keywords
+- Language features: fail/trap/refail/ensure/panic keywords
 - Advanced patterns: wildcard `trap (e<?>) ->`, multi-type `trap (e<A|B>) ->`
 - Stack traces with source locations
 - Zero-cost success path
@@ -181,9 +181,9 @@ dangerous_operation()<Int> -> {
 
 ---
 
-## Propagation: `rethrow`
+## Propagation: `refail`
 
-The `rethrow` keyword propagates the error upward without handling it.
+The `refail` keyword propagates the error upward without handling it.
 
 ```vyb
 wrapper_function()<Int> -> {
@@ -194,12 +194,12 @@ wrapper_function()<Int> -> {
         return 0
     } trap (e<CriticalError>) -> {
         println("Critical error, propagating!")
-        rethrow  # Send error to caller
+        refail  # Send error to caller
     }
 }
 ```
 
-### Rethrow with Transformation
+### Refail with Transformation
 
 ```vyb
 {
@@ -504,7 +504,7 @@ async fetch_data(url<String>)<Future<String>> -> {
 1. **Trap Type Compatibility:** Each trap parameter type must be compatible with failure types in the block
 2. **Return Type Unification:** All trap bodies must return same type as block expression
 3. **Ensure Type Validation:** Ensure blocks must return `Void` or be expression statements
-4. **Rethrow Context:** `rethrow` only valid inside trap clauses
+4. **Refail Context:** `refail` only valid inside trap clauses
 5. **Fail Type Requirement:** `fail` argument must implement `Errable` aspect
 
 ### Codegen Strategy
@@ -512,7 +512,7 @@ async fetch_data(url<String>)<Future<String>> -> {
 1. **Block Wrapping:** Wrap blocks with trap clauses in hidden try-like mechanism (LLVM exception handling)
 2. **Type Dispatch:** Generate type checks for each trap clause (most specific first)
 3. **Ensure Execution:** Use RAII-like patterns to guarantee ensure execution
-4. **Rethrow:** Generate throw of current error being handled
+4. **Refail:** Generate throw of current error being handled
 5. **Cleanup:** Integrate with ownership system for proper resource cleanup
 
 ### Error Value Representation
@@ -534,7 +534,7 @@ struct VybError {
 ### Keywords
 - `fail` - Trigger a failure with an error value
 - `trap` - Catch and handle specific error types
-- `rethrow` - Propagate error to caller
+- `refail` - Propagate error to caller
 - `ensure` - Cleanup code that always runs
 - `panic` - Unrecoverable error (crashes immediately)
 
@@ -549,7 +549,7 @@ ensure_clause ::= 'ensure' '->' block
 
 fail_statement ::= 'fail' expression [';']
 
-rethrow_statement ::= 'rethrow' [';']
+refail_statement ::= 'refail' [ expression ] [';']
 
 panic_statement ::= 'panic' '(' STRING_LITERAL ')' [';']
 ```
@@ -598,7 +598,7 @@ process_transaction(txn<Transaction>)<Result> -> {
     } trap (e<DatabaseError>) -> {
         println("Database error: " + e.message())
         rollback_transaction(txn)
-        rethrow  # Critical - propagate to caller
+        refail  # Critical - propagate to caller
     } trap (e<NotificationError>) -> {
         println("Failed to notify user, but transaction succeeded")
         # Don't fail the transaction
@@ -682,7 +682,7 @@ Error: DivisionByZero { dividend = 10 }
 **Capture Timing:**
 - Stack is captured **at the point of `fail`**
 - Minimal runtime overhead (only when errors occur)
-- Stack is **preserved** through `rethrow` with additional frames appended
+- Stack is **preserved** through `refail` with additional frames appended
 
 **Example with Stack Access:**
 ```vyb
@@ -694,8 +694,8 @@ process()<Void> -> {
         println("Error occurred:")
         println(e.stack_trace())
 
-        # Optionally rethrow with additional context
-        rethrow NetworkError {
+        # Optionally refail with additional context
+        refail NetworkError {
             message = "Failed in process()",
             cause = e  # Preserves original trace
         }
@@ -767,9 +767,9 @@ process_file(path<String>)<String> -> {
 - **Release builds:** Function names and locations only
 - **Compile flag:** `--strip-stack-traces` for minimal binary size
 
-### Integration with `rethrow`
+### Integration with `refail`
 
-When rethrowing, the **original stack is preserved** and new frames are appended:
+When refailing, the **original stack is preserved** and new frames are appended:
 
 **Example:**
 ```vyb
@@ -777,8 +777,8 @@ level1()<Void> -> {
     {
         level2()
     } trap (e<DataError>) -> {
-        # Rethrow preserves original trace
-        rethrow ApplicationError {
+        # Refail preserves original trace
+        refail ApplicationError {
             message = "Failed in level1",
             cause = e
         }
@@ -791,7 +791,7 @@ level2()<Void> -> {
 
 # Resulting stack trace:
 # Error: ApplicationError { message = "Failed in level1", cause = ... }
-#   at level1 (main.vyb:15:9)  ← Rethrow frame
+#   at level1 (main.vyb:15:9)  ← Refail frame
 # Caused by: DataError { field = "invalid" }
 #   at level2 (main.vyb:23:5)  ← Original fail
 #   at level1 (main.vyb:12:9)
@@ -1129,7 +1129,7 @@ VYB_ERROR_NO_COLOR=1 ./program
 - ✅ `fail` statement parsing and semantic analysis
 - ✅ `trap` clause parsing and type checking
 - ✅ Multiple trap clauses with type dispatch
-- ✅ `rethrow` statement for error propagation
+- ✅ `refail` statement for error propagation
 - ✅ `ensure` clause for cleanup
 - ✅ `panic` for unrecoverable errors
 - ✅ Runtime VybError infrastructure (C++ level)
@@ -1192,7 +1192,7 @@ Expose runtime error system to Vyb code through stdlib:
 
 1. **Basic Failure:** Simple fail/trap scenarios
 2. **Type Dispatch:** Multiple traps with type hierarchy
-3. **Propagation:** Rethrow and nested traps
+3. **Propagation:** Refail and nested traps
 4. **Cleanup:** Ensure clause execution order
 5. **Integration:** Errors with ownership, async, generics
 6. **Edge Cases:** Empty traps, unreachable traps, type mismatches

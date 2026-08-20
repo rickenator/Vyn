@@ -232,7 +232,7 @@ public:
         stmt(node->handler);
     }
     void visit(ast::EnsureClause* node) override { if (node) stmt(node->cleanupBlock); }
-    void visit(ast::RethrowStatement* node) override { if (node) expr(node->transformedError); }
+    void visit(ast::RefailStatement* node) override { if (node) expr(node->wrappedError); }
     void visit(ast::PanicStatement* node) override { if (node) expr(node->message); }
     void visit(ast::ExitStatement* node) override { if (node) expr(node->code); }
     void visit(ast::DeferStatement* node) override { if (node) stmt(node->statement); }
@@ -719,8 +719,8 @@ public:
     void visit(ast::EnsureClause* node) override {
         result_ = std::make_unique<ast::EnsureClause>(node->loc, cloneStmt(node->cleanupBlock.get()));
     }
-    void visit(ast::RethrowStatement* node) override {
-        result_ = std::make_unique<ast::RethrowStatement>(node->loc, cloneExpr(node->transformedError.get()));
+    void visit(ast::RefailStatement* node) override {
+        result_ = std::make_unique<ast::RefailStatement>(node->loc, cloneExpr(node->wrappedError.get()));
     }
     void visit(ast::PanicStatement* node) override {
         result_ = std::make_unique<ast::PanicStatement>(node->loc, cloneExpr(node->message.get()));
@@ -964,8 +964,8 @@ static void rewriteNamespaceRawStmt(ast::Statement* stmt, const ModuleNSMap& loc
         rewriteNamespaceExpr(n->message, localNS);
     } else if (auto* n = dynamic_cast<ast::FailStatement*>(stmt)) {
         rewriteNamespaceExpr(n->error, localNS);
-    } else if (auto* n = dynamic_cast<ast::RethrowStatement*>(stmt)) {
-        rewriteNamespaceExpr(n->transformedError, localNS);
+    } else if (auto* n = dynamic_cast<ast::RefailStatement*>(stmt)) {
+        rewriteNamespaceExpr(n->wrappedError, localNS);
     } else if (auto* n = dynamic_cast<ast::PanicStatement*>(stmt)) {
         rewriteNamespaceExpr(n->message, localNS);
     } else if (auto* n = dynamic_cast<ast::ExitStatement*>(stmt)) {
@@ -1248,8 +1248,8 @@ static void mangleBareRawStmt(ast::Statement* stmt, const NSSymbolMap& symbolToM
         MANGLE_MEMBER(n->condition); MANGLE_MEMBER(n->message);
     } else if (auto* n = dynamic_cast<ast::FailStatement*>(stmt)) {
         MANGLE_MEMBER(n->error);
-    } else if (auto* n = dynamic_cast<ast::RethrowStatement*>(stmt)) {
-        MANGLE_MEMBER(n->transformedError);
+    } else if (auto* n = dynamic_cast<ast::RefailStatement*>(stmt)) {
+        MANGLE_MEMBER(n->wrappedError);
     } else if (auto* n = dynamic_cast<ast::PanicStatement*>(stmt)) {
         MANGLE_MEMBER(n->message);
     } else if (auto* n = dynamic_cast<ast::ExitStatement*>(stmt)) {

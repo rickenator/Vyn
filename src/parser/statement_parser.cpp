@@ -161,8 +161,8 @@ vyb::ast::StmtPtr StatementParser::parse() {
             return parse_panic();
         case vyb::TokenType::KEYWORD_EXIT:
             return parse_exit();
-        case vyb::TokenType::KEYWORD_RETHROW:
-            return parse_rethrow();
+        case vyb::TokenType::KEYWORD_REFAIL:
+            return parse_refail();
         default:
             // Check if this could be a variable declaration with unified syntax (name<Type>)
             if (current_token.type == vyb::TokenType::IDENTIFIER) {
@@ -1391,7 +1391,7 @@ bool StatementParser::is_statement_start(vyb::TokenType type) const {
         case vyb::TokenType::KEYWORD_FAIL:
         case vyb::TokenType::KEYWORD_PANIC:
         case vyb::TokenType::KEYWORD_EXIT:
-        case vyb::TokenType::KEYWORD_RETHROW:
+        case vyb::TokenType::KEYWORD_REFAIL:
         case vyb::TokenType::KEYWORD_DEFER:
         case vyb::TokenType::IDENTIFIER: // Added identifier for relaxed syntax
             return true;
@@ -1851,18 +1851,32 @@ std::unique_ptr<vyb::ast::ExitStatement> StatementParser::parse_exit() {
     return std::make_unique<vyb::ast::ExitStatement>(loc, std::move(codeExpr));
 }
 
-// Parses a rethrow statement: 'rethrow' or 'fail NewError { cause = e }'
-std::unique_ptr<vyb::ast::RethrowStatement> StatementParser::parse_rethrow() {
-    SourceLocation loc = expect(vyb::TokenType::KEYWORD_RETHROW, "Expected 'rethrow'").location;
+// Parses a refail statement: 'refail' or 'refail NewError { cause = e }'.
+// The bare form re-raises the caught error untouched; the wrapped form raises
+// a new error value that typically carries the caught handler variable (e.g.
+// `cause = e`) as a field.
+std::unique_ptr<vyb::ast::RefailStatement> StatementParser::parse_refail() {
+    SourceLocation loc = expect(vyb::TokenType::KEYWORD_REFAIL, "Expected 'refail'").location;
 
-    // Check if there's an error transformation (currently we just support simple rethrow)
-    // In the future, we might support: rethrow NewError { cause = e }
-    // For now, just simple rethrow
+    // A wrapped-error expression is present unless the next token is a hard
+    // statement terminator (bare refail terminates the statement). A wrapped
+    // `refail NewError { cause = e }` sits on the same line, so lookahead on
+    // the next token is unambiguous.
+    vyb::ast::ExprPtr wrappedError = nullptr;
+    vyb::TokenType nextType = peek().type;
+    bool terminates = nextType == vyb::TokenType::SEMICOLON ||
+                      nextType == vyb::TokenType::NEWLINE ||
+                      nextType == vyb::TokenType::RBRACE ||
+                      nextType == vyb::TokenType::DEDENT ||
+                      this->IsAtEnd();
+    if (!terminates) {
+        wrappedError = expr_parser_.parse_expression();
+    }
 
     // Optional semicolon
     match(vyb::TokenType::SEMICOLON);
 
-    return std::make_unique<vyb::ast::RethrowStatement>(loc, nullptr);
+    return std::make_unique<vyb::ast::RefailStatement>(loc, std::move(wrappedError));
 }
 
 } // namespace vyb

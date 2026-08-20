@@ -415,7 +415,7 @@ public:
     void visit(ast::FailStatement* node) override;
     void visit(ast::TrapClause* node) override;
     void visit(ast::EnsureClause* node) override;
-    void visit(ast::RethrowStatement* node) override;
+    void visit(ast::RefailStatement* node) override;
     void visit(ast::PanicStatement* node) override;
     void visit(ast::ExitStatement* node) override;
     void visit(ast::DeferStatement* node) override;
