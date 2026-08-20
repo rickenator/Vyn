@@ -7,6 +7,14 @@
 // current URL on every loadFinished, and the title bar tracks the page title.
 // Drops you on https://www.google.com/.
 //
+// Behaviour hangs off a `Browser` struct via the `BrowserOps` aspect + bind:
+// navigation (go / back / forward / reload), address-bar sync, title sync, and
+// teardown are all methods on the struct rather than free functions juggling
+// raw handles. The event handler dispatches with `select` on the QtEvent kind
+// (the QtEvent constants are bound to Ints and matched with == comparison arms) and sub-dispatches on the
+// widget handle with == comparison patterns against bound identifiers. Teardown
+// uses `defer qt_quit()` so the GUI unwinds cleanly on every exit path.
+//
 // Requires a build with Qt5 WebEngine (CMake finds Qt5WebEngineWidgets); if the
 // surface is unavailable qt_web_create returns 0 and the app reports it.
 //
@@ -19,6 +27,113 @@
 // launch. Quit with the Quit button (or Ctrl-C).
 
 import qt
+
+# --- Browser state -----------------------------------------------------------
+# All the widget handles for one browser window, collected into a struct so the
+# behaviour can hang off it via aspect + bind instead of being free functions
+# that take six Int arguments.
+share(all)
+struct Browser {
+    win<Int>,
+    web<Int>,
+    urlBar<Int>,
+    btnBack<Int>,
+    btnFwd<Int>,
+    btnReload<Int>,
+    btnGo<Int>,
+    btnQuit<Int>
+}
+
+# --- Behaviour bound to the Browser struct ------------------------------------
+# The `BrowserOps` aspect declares the operations that act on an already-built
+# Browser: navigation (go / back / forward / reload), address-bar sync, title
+# sync, and teardown. The bind below implements them as methods, so the event
+# handler writes `b.go()` instead of `qt_web_load(b.web, qt_edit_text(b.urlBar))`.
+share(all)
+aspect BrowserOps {
+    go(self<Browser>)<Void>
+    back(self<Browser>)<Void>
+    forward(self<Browser>)<Void>
+    reload(self<Browser>)<Void>
+    sync_title(self<Browser>)<Void>
+    quit(self<Browser>)<Void>
+}
+
+share(all)
+bind BrowserOps -> Browser {
+    # Navigate to the URL currently in the address bar.
+    go(self<Browser>)<Void> -> {
+        qt_web_load(self.web, qt_edit_text(self.urlBar))
+    }
+
+    # Go back in history.
+    back(self<Browser>)<Void> -> {
+        qt_web_back(self.web)
+    }
+
+    # Go forward in history.
+    forward(self<Browser>)<Void> -> {
+        qt_web_forward(self.web)
+    }
+
+    # Reload the current page.
+    reload(self<Browser>)<Void> -> {
+        qt_web_reload(self.web)
+    }
+
+    # Sync the address bar and window title to the rendered page (called on
+    # loadFinished). The title is only pushed when non-empty so a blank page
+    # doesn't clobber the "VybWeb" default.
+    sync_title(self<Browser>)<Void> -> {
+        qt_edit_set_text(self.urlBar, qt_web_url(self.web))
+        title<String> = qt_web_title(self.web)
+        if (title != "") {
+            qt_window_set_title(self.win, "VybWeb - " + title)
+        }
+    }
+
+    # Tear down the GUI (terminal — do not use Qt handles afterwards).
+    quit(self<Browser>)<Void> -> {
+        qt_quit()
+    }
+}
+
+# --- Event dispatch ----------------------------------------------------------
+# The qt_on_event handler is a closure over (handle, kind). `k` arrives as a
+# plain Int from FFI holding a QtEvent value (click=1, loadFinished=6), so the
+# outer select uses integer-literal arms (the VybLynx cmd_of idiom). The inner
+# select binds each widget handle to a bare identifier and dispatches with ==
+# comparison patterns. This replaces the old nested if/else ladder with a
+# declarative pattern match — the RFE select idiom.
+share(all)
+handle_event(b<Browser>, h<Int>, k<Int>)<Void> -> {
+    hQuit<Int>   = b.btnQuit
+    hBack<Int>   = b.btnBack
+    hFwd<Int>    = b.btnFwd
+    hReload<Int> = b.btnReload
+    hGo<Int>     = b.btnGo
+    hWeb<Int>    = b.web
+    kClick<Int> = QtEvent::click
+    kLoad<Int>  = QtEvent::loadFinished
+    select (k) -> {
+        == kClick -> {
+            select (h) -> {
+                == hQuit   -> { b.quit() }
+                == hBack   -> { b.back() }
+                == hFwd    -> { b.forward() }
+                == hReload -> { b.reload() }
+                == hGo     -> { b.go() }
+                ? -> { }
+            }
+        }
+        == kLoad -> {
+            if (h == hWeb) {
+                b.sync_title()
+            }
+        }
+        ? -> { }
+    }
+}
 
 main()<Int> -> {
     if (qt_init() == false) {
@@ -64,35 +179,24 @@ main()<Int> -> {
     if (qt_layout_add_layout(col, bar) != 0) { return 1 }
     if (qt_layout_set_stretch(col, 0, 1) != 0) { return 1 }
 
+    // Collect all handles into the Browser struct; behaviour hangs off it via
+    // the BrowserOps bind above.
+    b<Browser> = Browser { win = w, web = web, urlBar = url, btnBack = btnBack, btnFwd = btnFwd, btnReload = btnReload, btnGo = btnGo, btnQuit = btnQuit }
+
     // Navigation handler: buttons drive the page; a finished load syncs the
-    // address bar and window title to the rendered page.
+    // address bar and window title to the rendered page. The handler dispatches
+    // with select on the QtEvent kind (see handle_event above).
     if (qt_on_event(|h<Int>, k<Int>| -> {
-        if (k == QtEvent::click) {
-            if (h == btnQuit) {
-                qt_quit()
-            } else {
-                if (h == btnBack) { qt_web_back(web) }
-                if (h == btnFwd)  { qt_web_forward(web) }
-                if (h == btnReload) { qt_web_reload(web) }
-                if (h == btnGo) {
-                    qt_web_load(web, qt_edit_text(url))
-                }
-            }
-        } else {
-            if (h == web && k == QtEvent::loadFinished) {
-                qt_edit_set_text(url, qt_web_url(web))
-                title<String> = qt_web_title(web)
-                if (title != "") { qt_window_set_title(w, "VybWeb - " + title) }
-            }
-        }
+        handle_event(b, h, k)
     }) != 0) { return 1 }
 
     // Build the tree before showing (offscreen visibility semantics).
     if (qt_window_show(w) != 0) { return 1 }
 
     // Start on Google and hand control to Qt's native event loop. The handler
-    // (above) drives everything; qt_quit() from Quit unwinds the loop and tears
-    // the GUI down, after which we return.
+    // (above) drives everything; defer qt_quit() unwinds the GUI cleanly on
+    // every exit path (Quit button, window close, or error).
+    defer qt_quit()
     qt_web_load(web, "https://www.google.com/")
     qt_run()
     return 0
