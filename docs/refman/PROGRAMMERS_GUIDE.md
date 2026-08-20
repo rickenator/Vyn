@@ -813,6 +813,58 @@ handle() -> {
 - **Untrapped errors** propagate up the call chain; the harness and the
   serialization path treat them explicitly.
 
+#### Optional (`T?`) shapes and escalation
+
+Fallible openers (e.g. `stdlib/io`'s `open_read`) return a native optional
+(`File?`): **absence *is* the failed open**. There is no sentinel `-1` or
+`fd == -1` to test — a `File` is only ever constructed valid, so failure flows
+from taking the `?` seriously rather than comparing descriptors. Unwrap with
+`else` for a local default, or `match` the absent arm to escalate.
+
+```vyb
+import io::{open_read, read_all, close}
+
+struct FileOpenError { path<String> }
+
+# `else` is lazy: the default only evaluates when the optional is absent, so a
+# side-effecting default does not run on the happy path.
+mk_default()<Int> -> { return -1 }
+a<Int?> = Int?(7)
+r<Int> = a else mk_default()     # present -> r = 7, mk_default NOT called
+
+# Escalate "absent" into a fail, letting a caller trap/recover:
+open_data(path<String>)<String> -> {
+    match (open_read(path)) {
+        f -> {
+            s<String> = read_all(f)
+            close(f)
+            return s
+        }
+        ? -> {
+            fail FileOpenError { path = path }
+        }
+    }
+}
+
+main()<Int> -> {
+    {
+        s<String> = open_data("config.toml")
+        println(s)
+    } trap (e<FileOpenError>) -> {
+        println("could not open: " + e.path)
+    }
+    return 0
+}
+```
+
+Notes:
+
+- `fail` is a **statement**, so a bare `x else fail<…>(…)` does not parse;
+  shape the absent arm with `match (opt) { v -> …, ? -> … }` and `fail` there.
+- Re-raising from inside a `trap` handler propagates to the next enclosing
+  handler (the catch → report → rethrow shape), and `rethrow` re-raises the
+  caught error untouched.
+
 ### 3.17 Strings
 
 `String` is a fat pointer (data + length), immutable, with runtime bounds

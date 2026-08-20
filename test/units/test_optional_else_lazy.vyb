@@ -9,8 +9,10 @@
 // @expect-return: 0
 // @execute-jit: true
 
+struct MustNotRunError { path<String> }
+
 must_error(p<String>)<Int> -> {
-    fail FdError { path = p }
+    fail MustNotRunError { path = p }
 }
 
 main()<Int> -> {
