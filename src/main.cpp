@@ -817,6 +817,8 @@ int link_vyb_executable(const std::vector<std::string>& objectFiles,
     // systems without OpenSSL/ncurses dev packages.
     bool needTls = false;
     bool needCurses = false;
+    bool needQt = false;
+    bool needWebEngine = false;
     for (const auto& objFile : objectFiles) {
         if (!needTls && system(("grep -aq __vyb_tls_ " + objFile).c_str()) == 0) {
             needTls = true;
@@ -824,8 +826,15 @@ int link_vyb_executable(const std::vector<std::string>& objectFiles,
         if (!needCurses && system(("grep -aq __vyb_curses_ " + objFile).c_str()) == 0) {
             needCurses = true;
         }
+        if (!needQt && system(("grep -aq __vyb_qt_ " + objFile).c_str()) == 0) {
+            needQt = true;
+        }
+        if (!needWebEngine && system(("grep -aq __vyb_qt_web_ " + objFile).c_str()) == 0) {
+            needWebEngine = true;
+        }
     }
 
+    std::vector<std::string> qtLibs;   // Qt5 link libraries for a `qt`-using app
     std::vector<std::string> runtimeObjects;
     for (const auto& unit : runtimeUnits) {
         fs::path runtimeObject = exeOutDir / unit.obj;
@@ -846,6 +855,92 @@ int link_vyb_executable(const std::vector<std::string>& objectFiles,
             return 1;
         }
         runtimeObjects.push_back(runtimeObject.string());
+    }
+
+    // Qt5 native GUI (`qt` stdlib module). Mirror the CMake layout: the stub
+    // shims are always present and the real C++ bridges are layered on top when
+    // Qt5 (and optionally Qt5 WebEngine) is installed, so a standalone binary
+    // owns the __vyb_qt_* / __vyb_qt_web_* symbols its object references.
+    if (needQt) {
+        auto pkgConfig = [](const std::string& args) -> std::string {
+            std::string out;
+            FILE* p = popen(("pkg-config " + args + " 2>/dev/null").c_str(), "r");
+            if (!p) return "";
+            char buf[512];
+            while (fgets(buf, sizeof buf, p)) out += buf;
+            pclose(p);
+            size_t e = out.find_last_not_of(" \t\r\n");
+            if (e != std::string::npos) out.resize(e + 1);
+            return out;
+        };
+        auto tokenize = [](const std::string& s, std::vector<std::string>& out) {
+            std::string cur;
+            for (char c : s) {
+                if (c == ' ' || c == '\t') {
+                    if (!cur.empty()) { out.push_back(cur); cur.clear(); }
+                } else {
+                    cur += c;
+                }
+            }
+            if (!cur.empty()) out.push_back(cur);
+        };
+
+        std::string qtCxx = "c++";
+        std::string qtCxxFlags = "-D_GNU_SOURCE -std=c++17 -O2 -fPIC -I" +
+                                 (repoRoot / "include").string();
+        bool qtAvail = (system("pkg-config --exists Qt5Widgets") == 0);
+        bool webAvail = (system("pkg-config --exists Qt5WebEngineWidgets") == 0);
+        if (!qtAvail) {
+            // No Qt dev headers: link only the stub shims so the __vyb_qt_*
+            // symbols resolve and the module degrades (qt_init()==false).
+            fs::path stubObj = exeOutDir / "vyb_qt_stub.o";
+            if (system((qtCxx + " -c " + qtCxxFlags + " " +
+                        (runtimeDir / "vyb_qt_stub.cpp").string() + " -o " + stubObj.string()).c_str()) != 0) {
+                std::cerr << "Failed to compile qt stub" << std::endl;
+                return 1;
+            }
+            runtimeObjects.push_back(stubObj.string());
+        } else {
+            std::string qtCflags = pkgConfig("--cflags Qt5Widgets");
+            fs::path bridgeObj = exeOutDir / "vyb_qt_bridge.o";
+            std::string bridgeCmd = qtCxx + " -c " + qtCxxFlags + " " + qtCflags +
+                                    " -DVYB_HAVE_QT5" +
+                                    (needWebEngine ? " -DVYB_HAVE_QT_WEBENGINE" : "") +
+                                    " " + (runtimeDir / "vyb_qt_bridge.cpp").string() +
+                                    " -o " + bridgeObj.string();
+            if (needWebEngine && webAvail)
+                bridgeCmd = qtCxx + " -c " + qtCxxFlags + " " +
+                            pkgConfig("--cflags Qt5Widgets Qt5WebEngineWidgets") +
+                            " -DVYB_HAVE_QT5 -DVYB_HAVE_QT_WEBENGINE " +
+                            (runtimeDir / "vyb_qt_bridge.cpp").string() +
+                            " -o " + bridgeObj.string();
+            if (system(bridgeCmd.c_str()) != 0) {
+                std::cerr << "Failed to compile qt bridge" << std::endl;
+                return 1;
+            }
+            runtimeObjects.push_back(bridgeObj.string());
+            tokenize(pkgConfig("--libs Qt5Widgets"), qtLibs);
+
+            if (needWebEngine && webAvail) {
+                fs::path webObj = exeOutDir / "vyb_qt_webengine_bridge.o";
+                std::string webCmd = qtCxx + " -c " + qtCxxFlags + " " +
+                                     pkgConfig("--cflags Qt5Widgets Qt5WebEngineWidgets") +
+                                     " -DVYB_HAVE_QT5 -DVYB_HAVE_QT_WEBENGINE " +
+                                     (runtimeDir / "vyb_qt_webengine_bridge.cpp").string() +
+                                     " -o " + webObj.string();
+                if (system(webCmd.c_str()) != 0) {
+                    std::cerr << "Failed to compile qt webengine bridge" << std::endl;
+                    return 1;
+                }
+                runtimeObjects.push_back(webObj.string());
+                tokenize(pkgConfig("--libs Qt5Widgets Qt5WebEngineWidgets"), qtLibs);
+            } else if (needWebEngine) {
+                std::cerr << "Error: this program uses the Qt web surface but Qt5 "
+                             "WebEngine is not installed (install qtwebengine5-dev)."
+                          << std::endl;
+                return 1;
+            }
+        }
     }
 
     // Prefer the C++ compiler driver for the final link: it pulls in CRT
@@ -946,6 +1041,7 @@ int link_vyb_executable(const std::vector<std::string>& objectFiles,
         linkerArgs.push_back("-ltinfo");
 #endif
     }
+    for (const auto& lib : qtLibs) linkerArgs.push_back(lib);
 
     // Link against the C standard library and math library.
     if (staticLink) {

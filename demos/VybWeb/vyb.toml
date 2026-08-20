@@ -1,0 +1,10 @@
+[package]
+name = "vybweb"
+version = "0.1.0"
+
+[[bin]]
+name = "vybweb"
+path = "src/main.vyb"
+
+# Static Qt5 (Widgets + WebEngine) is linked automatically by `vyb build` when
+# the program uses the stdlib `qt` module.

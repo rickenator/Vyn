@@ -18,4 +18,4 @@ The demos are intentionally compact; richer runtime examples, including
 | `ffi_http_get/` | external URL request through C FFI and `curl` |
 | `ffi_native_3d/` | native GLFW/OpenGL scene launched through C FFI |
 | `finalization_targets.vyb` | borrow scope checks, typed `fail`/`trap`, and C ABI aliases |
-| `VybWeb.vyb` | native Qt5 browser (stdlib `qt` + `QWebEngineView`), starts on Google, with back/forward/reload, an address bar, Go, and Quit |
+| `VybWeb/` | native Qt5 browser package (`vyb build demos/VybWeb` → `target/vybweb`; stdlib `qt` + `QWebEngineView`), starts on Google, with back/forward/reload, an address bar, Go, and Quit |

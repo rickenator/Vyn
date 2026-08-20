@@ -10,7 +10,8 @@
 // Requires a build with Qt5 WebEngine (CMake finds Qt5WebEngineWidgets); if the
 // surface is unavailable qt_web_create returns 0 and the app reports it.
 //
-//   build/vyb demos/VybWeb.vyb
+//   build/vyb build demos/VybWeb          # package build -> target/vybweb
+//   ./demos/VybWeb/target/vybweb          # run the built executable
 //
 // On a headless box run with a GUI value of QT_QPA_PLATFORM (offscreen works);
 // a container that restricts Chromium's namespace sandbox may need

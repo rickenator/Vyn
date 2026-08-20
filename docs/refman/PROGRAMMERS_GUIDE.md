@@ -1659,8 +1659,8 @@ signal the UI loop without touching a QWidget off the main thread, and the
 layouts nest: `qt_layout_add_layout(parent, sub)` adopts a sub-`QBoxLayout`
 inside another (a browser column can host a horizontal toolbar row), and
 `qt_layout_set_stretch(layout, index, stretch)` makes a child (e.g. the web
-view) fill the leftover space while the toolbar stays thin. `demos/VybWeb.vyb`
-is a small native browser built on this — it drops on `https://www.google.com/`
+view) fill the leftover space while the toolbar stays thin. `demos/VybWeb/` is a
+small native browser built on this — it drops on `https://www.google.com/`
 with back/forward/reload, a live address bar, Go, and Quit.
 
 The modal dialog tier adds native `QMessageBox`/`QFileDialog` pickers
