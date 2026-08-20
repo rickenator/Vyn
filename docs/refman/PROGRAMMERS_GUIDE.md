@@ -511,6 +511,33 @@ type, and the `?` wildcard must remain the last arm. A value listed in more
 than one arm is claimed by the earliest arm (no error). Enum-variant elements
 count toward `select` exhaustiveness checks on tagged-union enums.
 
+**Choosing between `match` and `select`.** The effective difference is
+**expression vs. statement**, and everything else follows from it:
+
+- **`select` is an *expression***: it produces a value, so it can appear
+  anywhere an expression can — assigned to a variable, used as an operand, or
+  nested as the arm of an enclosing `select`. A result leaves the arm as a
+  naked expression (`1 -> 10`) or via `pass value`, which returns from the
+  arm only, not the enclosing function.
+- **`match` is a *statement***: it produces no value and only drives control
+  flow. Its arms `return`/`break` out of the enclosing function or loop, which
+  is the reason to reach for it when the point is early exit from a
+  side-effecting dispatch rather than computing a value.
+- **Pattern coverage differs.** Both accept `?`, comparison patterns
+  (`>= 90`), literals, and enum-variant payloads (`Circle(r)`). `match` alone
+  adds range patterns (`5..10`), struct destructuring (`Point { x, y }`), and
+  guard clauses (`pattern if cond`). `select` alone adds brace set patterns
+  (`{1, 3, 5}`) and `pass`.
+- **When they converge.** `select` also has a bare-statement form — block arms
+  without `pass` just fall through — so for pure side-effect dispatch (as in
+  event loops) the two are equivalent. Code tends to favor `select` there
+  because it is the one that also composes into a value, so the same idiom
+  scales from replacing `if`/`else` chains to returning a computed result.
+
+In short: `select` is pattern matching as an expression (value-first,
+composable); `match` is pattern matching as a statement (control-flow first,
+with richer destructuring and guards).
+
 ### 3.8 Tuples and variadic tuples
 
 Tuples are value sequences useful for multi-return and heterogeneous groups:
