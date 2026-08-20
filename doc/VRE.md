@@ -17,7 +17,7 @@ The Vyb runtime environment (VRE) will be responsible for executing compiled Vyb
 
 ## 3. Memory Management
 
-Vyb aims for memory safety without a traditional garbage collector by default.
+Vyb aims for memory safety through deterministic ownership by default.
 
 *   **Ownership and Borrowing:** The primary mechanism, similar to Rust. The compiler will enforce these rules at compile time.
     *   `Box<T>`: For heap-allocated data with a single owner.
@@ -146,7 +146,6 @@ A minimal standard library will be needed, providing core functionalities. This 
 
 ## 10. Future Considerations
 
-*   **Garbage Collection:** While the primary approach is ownership/ARC, a tracing GC might be an option for specific use cases or to simplify certain types of programming, perhaps as an opt-in feature.
 *   **JIT Compilation:** For scripting or dynamic code loading.
 *   **WebAssembly Target:** Compiling Vyb to WASM.
 *   **Coroutine/Async Support:** Requires careful design of task scheduling and state machine transformation at the LLVM IR level.

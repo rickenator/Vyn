@@ -1811,9 +1811,8 @@ println("{} {}: {}".format(resp.status_code, resp.headers.len(), resp.body))
 - **Layout:** `Int` sizes are exact; `String` is a fat pointer; structs are
   plain C-layout aggregates; a function that can fail returns
   `{ value, error }` in LLVM.
-- **GC is a policy, not a default.** The default is deterministic
-  ownership/refcounts. Optional GC coverage is a roadmap item (post-1.0), not
-  required for embedded targets where memory must be explicit.
+- **Ownership is deterministic.** The default is deterministic
+  ownership/refcounts, so embedded targets get explicit, predictable memory.
 - **Allocation discipline:** string transforms allocate; read-only ops don't.
   Collection growth amortizes like any growable array; `Vec(n)` preallocates.
   Rehash vs memory on maps: deterministic growth is the embedded-friendly

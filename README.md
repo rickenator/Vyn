@@ -906,7 +906,7 @@ Vyb's native bridge to C libraries is shipped and production-usable:
 
 | Layer | Status | Description |
 |-------|--------|-------------|
-| **Vyb Runtime** | ✅ Complete | `runtime/vyb_runtime.c` — ownership-tracked Vec/String/Math/I/O (no GC; `our<T>` is reference-counted) all linked automatically |
+| **Vyb Runtime** | ✅ Complete | `runtime/vyb_runtime.c` — ownership-tracked Vec/String/Math/I/O (`our<T>` is reference-counted) all linked automatically |
 | **LLVM intrinsics** | ✅ Complete | `malloc`, `free`, `memset`, `printf`-style print all registered in JIT |
 | **C stdlib (math)** | ✅ Complete | `libm` linked; `sqrt`, `sin`, `cos`, `pow`, etc. all working |
 | **C stdlib (I/O)** | ✅ Complete | `libc` linked; I/O built on top of C runtime |

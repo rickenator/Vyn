@@ -453,7 +453,6 @@ git push origin feature/new-async-debugging
 
 #### Advanced Projects
 - **Self-hosting**: Port compiler from C++ to Vyb
-- **Garbage collection**: Implement optional GC system
 - **JIT optimization**: Enhance LLVM ORC JIT performance
 - **Parallel compilation**: Add multi-threaded compilation
 
