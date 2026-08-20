@@ -1501,18 +1501,41 @@ Module page: [`tls.md`](tls.md). Layers over OpenSSL; a `TlsContext` is the
 `SSL_CTX`, a `TlsStream` is a TLS session on an already-connected fd.
 
 ```vyb
-ctx = tls_server_context(cert_pem, key_pem)<TlsContext>
-ctx = tls_client_context()<TlsContext>                 # unverified
-ctx = tls_client_context_verified(ca_pem)<TlsContext>  # pinned CA
-s = tls_stream(ctx, fd, host)<TlsStream>
-tls_connect(s)<Int>                                    # client handshake
-tls_accept(s)<Int>                                     # server handshake
-tls_write(s, data)<Int>
-tls_read(s, max)<String>
-tls_close(s)<Void>
-tls_free_context(ctx)<Void>
-tls_error_code()
-tls_error_message()
+# contexts and streams are native optionals -- absence IS a failure
+match (tls_server_context(cert_pem, key_pem)) {         # TlsContext?
+    ctx -> {
+        match (tls_stream(ctx, fd, host)) {             # TlsStream?
+            s   -> {
+                match (s.connect()) {                   # TlsStream? (accept() server-side)
+                    c   -> { tls_write(c, data); tls_read(c, max); tls_close(c) }
+                    ?   -> { tls_close(s); fail tls_error("connect", host) }
+                }
+                tls_free_context(ctx)
+            }
+            ?   -> { socket_close(fd); fail tls_error("stream", host) }
+        }
+    }
+    ? -> { fail tls_error("context", host) }
+}
+```
+
+`tls_client_context()`, `tls_client_context_verified(ca_pem)`, and
+`tls_server_context(cert_pem, key_pem)` each return `TlsContext?`; `tls_stream`
+returns `TlsStream?`; the client handshake is `TlsStreamOps.connect()` and the
+server handshake is `TlsStreamOps.accept()`, both returning `TlsStream?`
+(present = the connected stream, absent = failure). A handshake failure leaves
+the fd owned by the stream, so an absent `connect()`/`accept()` arm should still
+`tls_close` the receiver. Low-level `tls_write`/`tls_read`/`tls_close` return
+the raw byte/status as before, and `tls_error_code()` / `tls_error_message()`
+report the last low-level result.
+
+**Fail/trap shape.** Escalate a `T?` absence into the fail/trap framework with
+`fail tls_error(op, host)`, which builds a shared `TlsError { op, host, message }`
+snapshotting the last `tls_error_message()` diagnostic. A cross-module `trap`
+can then match on it:
+
+```vyb
+{ connect_verified(host, port, cert) } trap (e<TlsError>) -> { ... e.op / e.host / e.message }
 ```
 
 `TlsStreamOps` and `TlsContextOps` bind the method surface (`write`, `read`,
@@ -2055,6 +2078,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

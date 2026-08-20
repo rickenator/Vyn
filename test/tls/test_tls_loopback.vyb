@@ -13,9 +13,9 @@
 import network::{socket_open, socket_bind, socket_listen, socket_accept,
                  socket_connect, socket_close, socket_local_port, Socket}
 import threads::{thread_spawn, thread_join}
-import tls::{tls_client_context, tls_server_context, tls_stream, tls_connect,
-              tls_accept, tls_write, tls_read, tls_close, tls_free_context,
-              TlsContext, TlsStream}
+import tls::{tls_client_context, tls_server_context, tls_stream,
+              tls_write, tls_read, tls_close, tls_free_context,
+              TlsContext, TlsStream, TlsStreamOps}
 
 main()<Int> -> {
     cert<String> = "-----BEGIN CERTIFICATE-----
@@ -73,43 +73,62 @@ QsM4qhE7CXh5EW4f/zlKqRoL
     if (port <= 0) { return 3 }
     if (socket_listen(srv, 1) < 0) { return 4 }
 
-    scx<TlsContext> = tls_server_context(cert, key)
-    if (scx.ctx < 0) { return 5 }
+    match (tls_server_context(cert, key)) {
+        scx -> {
+            // Server worker: accept, complete the TLS server handshake, echo once.
+            th<Int> = thread_spawn(|| -> {
+                c<Int> = socket_accept(srv)
+                if (c < 0) { return 1 }
+                match (tls_stream(scx, c, "")) {
+                    s -> {
+                        match (s.accept()) {
+                            ok -> {
+                                msg<String> = tls_read(ok, 64)
+                                if (msg.len() == 0) { tls_close(ok); return 3 }
+                                tls_write(ok, msg)
+                                tls_close(ok)
+                                return 0
+                            }
+                            ? -> { tls_close(s); return 2 }
+                        }
+                    }
+                    ? -> { socket_close(c); return 2 }
+                }
+            })
+            if (th < 0) { return 6 }
 
-    // Server worker: accept, complete the TLS server handshake, echo once.
-    th<Int> = thread_spawn(|| -> {
-        c<Int> = socket_accept(srv)
-        if (c < 0) { return 1 }
-        s<TlsStream> = tls_stream(scx, c, "")
-        if (tls_accept(s) != 0) { return 2 }
-        msg<String> = tls_read(s, 64)
-        if (msg.len() == 0) { return 3 }
-        tls_write(s, msg)
-        tls_close(s)
-        return 0
-    })
-    if (th < 0) { return 6 }
+            // Client: connect the raw socket, wrap it in TLS, bring the handshake up.
+            cfd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
+            if (cfd < 0) { return 7 }
+            if (socket_connect(cfd, "127.0.0.1", port) < 0) { return 8 }
+            match (tls_client_context()) {
+                ccx -> {
+                    match (tls_stream(ccx, cfd, "localhost")) {
+                        cs -> {
+                            match (cs.connect()) {
+                                ok2 -> {
+                                    tls_write(ok2, "hello-tls")
+                                    echo<String> = tls_read(ok2, 64)
+                                    tls_close(ok2)
+                                    tls_free_context(ccx)
 
-    // Client: connect the raw socket, wrap it in TLS, bring the handshake up.
-    cfd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
-    if (cfd < 0) { return 7 }
-    if (socket_connect(cfd, "127.0.0.1", port) < 0) { return 8 }
-    ccx<TlsContext> = tls_client_context()
-    if (ccx.ctx < 0) { return 9 }
-    cs<TlsStream> = tls_stream(ccx, cfd, "localhost")
-    if (cs.ssl < 0) { return 10 }
-    if (tls_connect(cs) != 0) { return 11 }
+                                    if (thread_join(th) != 0) { return 12 }
+                                    tls_free_context(scx)
+                                    socket_close(srv)
 
-    tls_write(cs, "hello-tls")
-    echo<String> = tls_read(cs, 64)
-    tls_close(cs)
-    tls_free_context(ccx)
-
-    if (thread_join(th) != 0) { return 12 }
-    tls_free_context(scx)
-    socket_close(srv)
-
-    if (echo != "hello-tls") { return 13 }
-    println("ok")
-    return 0
+                                    if (echo != "hello-tls") { return 13 }
+                                    println("ok")
+                                    return 0
+                                }
+                                ? -> { tls_close(cs); tls_free_context(ccx); return 11 }
+                            }
+                        }
+                        ? -> { tls_free_context(ccx); socket_close(cfd); return 10 }
+                    }
+                }
+                ? -> { socket_close(cfd); return 9 }
+            }
+        }
+        ? -> { return 5 }
+    }
 }

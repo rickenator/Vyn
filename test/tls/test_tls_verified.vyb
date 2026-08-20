@@ -14,8 +14,8 @@ import network::{socket_open, socket_bind, socket_listen, socket_accept,
                  socket_connect, socket_close, socket_local_port, Socket}
 import threads::{thread_spawn, thread_join}
 import tls::{tls_client_context_verified, tls_server_context, tls_stream,
-             tls_connect, tls_accept, tls_read, tls_write, tls_close,
-             tls_free_context, TlsContext, TlsStream}
+             tls_read, tls_write, tls_close,
+             tls_free_context, TlsContext, TlsStream, TlsStreamOps}
 
 main()<Int> -> {
     cert<String> = "-----BEGIN CERTIFICATE-----
@@ -73,57 +73,87 @@ QsM4qhE7CXh5EW4f/zlKqRoL
     if (port <= 0) { return 3 }
     if (socket_listen(srv, 2) < 0) { return 4 }
 
-    scx<TlsContext> = tls_server_context(cert, key)
-    if (scx.ctx < 0) { return 5 }
+    match (tls_server_context(cert, key)) {
+        scx -> {
+            // Server worker: serve two connections. Only the first completes a
+            // clean handshake; the second (hostname mismatch) sees the client
+            // abort, so its stream match hits the absent arm.
+            th<Int> = thread_spawn(|| -> {
+                n<Int> = 0
+                while (n < 2) {
+                    c<Int> = socket_accept(srv)
+                    if (c < 0) { continue }
+                    match (tls_stream(scx, c, "")) {
+                        s -> {
+                            match (s.accept()) {
+                                ok -> {
+                                    msg<String> = tls_read(ok, 64)
+                                    tls_write(ok, msg)
+                                    tls_close(ok)
+                                }
+                                ? -> { tls_close(s) }
+                            }
+                        }
+                        ? -> { socket_close(c) }
+                    }
+                    n = n + 1
+                }
+                return 0
+            })
+            if (th < 0) { return 6 }
 
-    // Server worker: serve two connections. Only the first completes a clean
-    // handshake; the second (hostname mismatch) sees the client abort.
-    th<Int> = thread_spawn(|| -> {
-        n<Int> = 0
-        while (n < 2) {
-            c<Int> = socket_accept(srv)
-            if (c < 0) { continue }
-            s<TlsStream> = tls_stream(scx, c, "")
-            if (tls_accept(s) == 0) {
-                msg<String> = tls_read(s, 64)
-                tls_write(s, msg)
+            // 1) Correct hostname: the pinned self-signed cert is trusted and
+            //    the name matches, so the handshake succeeds and echoes.
+            match (tls_client_context_verified(cert)) {
+                vctx -> {
+                    c1<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
+                    if (c1 < 0) { return 8 }
+                    if (socket_connect(c1, "127.0.0.1", port) < 0) { return 9 }
+                    match (tls_stream(vctx, c1, "localhost")) {
+                        v1 -> {
+                            match (v1.connect()) {
+                                ok1 -> {
+                                    tls_write(ok1, "verified-ok")
+                                    got<String> = tls_read(ok1, 64)
+                                    tls_close(ok1)
+                                    if (got != "verified-ok") { return 12 }
+
+                                    // 2) Wrong hostname against the same trusted
+                                    //    cert: the handshake must fail (absent).
+                                    c2<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
+                                    if (c2 < 0) { return 13 }
+                                    if (socket_connect(c2, "127.0.0.1", port) < 0) { return 14 }
+                                    match (tls_stream(vctx, c2, "wrong-host.invalid")) {
+                                        v2 -> {
+                                            match (v2.connect()) {
+                                                ok2 -> {
+                                                    tls_close(ok2)
+                                                    println("tls-verified: wrong host unexpectedly connected")
+                                                    return 16
+                                                }
+                                                ? -> {
+                                                    tls_close(v2)   # expected failure
+                                                }
+                                            }
+                                            tls_free_context(vctx)
+                                            if (thread_join(th) != 0) { return 17 }
+                                            tls_free_context(scx)
+                                            socket_close(srv)
+                                            println("ok")
+                                            return 0
+                                        }
+                                        ? -> { socket_close(c2); return 15 }
+                                    }
+                                }
+                                ? -> { tls_close(v1); return 11 }
+                            }
+                        }
+                        ? -> { socket_close(c1); return 10 }
+                    }
+                }
+                ? -> { return 7 }
             }
-            tls_close(s)
-            n = n + 1
         }
-        return 0
-    })
-    if (th < 0) { return 6 }
-
-    // 1) Correct hostname: the pinned self-signed cert is trusted and the name
-    //    matches, so the handshake should succeed and the echo round-trips.
-    vctx<TlsContext> = tls_client_context_verified(cert)
-    if (vctx.ctx < 0) { return 7 }
-    c1<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
-    if (c1 < 0) { return 8 }
-    if (socket_connect(c1, "127.0.0.1", port) < 0) { return 9 }
-    v1<TlsStream> = tls_stream(vctx, c1, "localhost")
-    if (v1.ssl < 0) { return 10 }
-    if (tls_connect(v1) != 0) { return 11 }
-    tls_write(v1, "verified-ok")
-    got<String> = tls_read(v1, 64)
-    tls_close(v1)
-    if (got != "verified-ok") { return 12 }
-
-    // 2) Wrong hostname against the same trusted cert: the handshake must fail.
-    c2<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
-    if (c2 < 0) { return 13 }
-    if (socket_connect(c2, "127.0.0.1", port) < 0) { return 14 }
-    v2<TlsStream> = tls_stream(vctx, c2, "wrong-host.invalid")
-    if (v2.ssl < 0) { return 15 }
-    if (tls_connect(v2) == 0) { return 16 }
-    tls_close(v2)
-
-    tls_free_context(vctx)
-    if (thread_join(th) != 0) { return 17 }
-    tls_free_context(scx)
-    socket_close(srv)
-
-    println("ok")
-    return 0
+        ? -> { return 5 }
+    }
 }

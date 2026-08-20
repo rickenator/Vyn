@@ -20,6 +20,7 @@
 #include <arpa/inet.h>
 #include <poll.h>
 #include <termios.h>
+#include <signal.h>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <regex.h>
@@ -3531,5 +3532,11 @@ static void vyb_async_atexit(void) {
     if (g_pump_started) pthread_join(g_pump_thread, NULL);
     async_cleanup_all();
 }
+// A peer aborting mid-TLS-handshake makes OpenSSL write a fatal alert to a
+// socket that has already RST; without ignoring SIGPIPE that raises SIGPIPE and
+// kills the process instead of surfacing an error the module can trap.
+static void vyb_ignore_sigpipe(void) { signal(SIGPIPE, SIG_IGN); }
+static void vyb_sigpipe_reg(void) __attribute__((constructor));
+static void vyb_sigpipe_reg(void) { vyb_ignore_sigpipe(); }
 static void vyb_async_atexit_reg(void) __attribute__((constructor));
 static void vyb_async_atexit_reg(void) { atexit(vyb_async_atexit); }

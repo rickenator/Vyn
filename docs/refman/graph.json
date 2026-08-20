@@ -1,5 +1,5 @@
 {
-  "git_rev": "1e44709f84c2e27d879d3252bf09e89351a30fa0",
+  "git_rev": "486587cc9f2e2ed2e80b809f17628ccfe00a7055",
   "modules": [
     "agents",
     "asyncs",
@@ -215,7 +215,7 @@
         "files": [
           "stdlib/tls/mod.vyb"
         ],
-        "exported": 18,
+        "exported": 20,
         "fan_in": 1,
         "fan_out": 0
       },
@@ -798,6 +798,7 @@
         "symbols": [
           "TlsContext",
           "TlsStream",
+          "TlsError",
           "TlsContextOps",
           "TlsContextOps->TlsContext",
           "TlsStreamOps",
@@ -813,7 +814,8 @@
           "tls_read",
           "tls_close",
           "tls_error_code",
-          "tls_error_message"
+          "tls_error_message",
+          "tls_error"
         ]
       },
       {
@@ -4627,6 +4629,15 @@
         "fan_in": 0
       },
       {
+        "name": "TlsError",
+        "module": "tls",
+        "file": "stdlib/tls/mod.vyb",
+        "kind": "struct",
+        "signature": "struct TlsError {",
+        "summary": "A shared error value for escalating a failed TLS operation into the fail/trap",
+        "fan_in": 0
+      },
+      {
         "name": "TlsStream",
         "module": "tls",
         "file": "stdlib/tls/mod.vyb",
@@ -4642,7 +4653,7 @@
         "kind": "aspect",
         "signature": "aspect TlsStreamOps {",
         "summary": "",
-        "fan_in": 0
+        "fan_in": 1
       },
       {
         "name": "TlsStreamOps->TlsStream",
@@ -4658,17 +4669,17 @@
         "module": "tls",
         "file": "stdlib/tls/mod.vyb",
         "kind": "fn",
-        "signature": "tls_accept(s<TlsStream>)<Int> ->",
-        "summary": "Complete the server handshake. Returns 0 on success, -1 on error.",
-        "fan_in": 1
+        "signature": "tls_accept(s<TlsStream>)<TlsStream?> ->",
+        "summary": "Complete the server handshake: present on success, absent on failure.",
+        "fan_in": 0
       },
       {
         "name": "tls_client_context",
         "module": "tls",
         "file": "stdlib/tls/mod.vyb",
         "kind": "fn",
-        "signature": "tls_client_context()<TlsContext> ->",
-        "summary": "A client SSL_CTX (no peer verification). Release with tls_free_context(ctx).",
+        "signature": "tls_client_context()<TlsContext?> ->",
+        "summary": "A client SSL_CTX (no peer verification). Returns `TlsContext?` -- present on",
         "fan_in": 1
       },
       {
@@ -4676,7 +4687,7 @@
         "module": "tls",
         "file": "stdlib/tls/mod.vyb",
         "kind": "fn",
-        "signature": "tls_client_context_verified(ca_pem<String>)<TlsContext> ->",
+        "signature": "tls_client_context_verified(ca_pem<String>)<TlsContext?> ->",
         "summary": "A client SSL_CTX that verifies the server against a pinned CA given as in-line",
         "fan_in": 1
       },
@@ -4694,9 +4705,18 @@
         "module": "tls",
         "file": "stdlib/tls/mod.vyb",
         "kind": "fn",
-        "signature": "tls_connect(s<TlsStream>)<Int> ->",
-        "summary": "Complete the client handshake. Returns 0 on success, -1 on error.",
-        "fan_in": 1
+        "signature": "tls_connect(s<TlsStream>)<TlsStream?> ->",
+        "summary": "Complete the client handshake: present on success, absent on failure.",
+        "fan_in": 0
+      },
+      {
+        "name": "tls_error",
+        "module": "tls",
+        "file": "stdlib/tls/mod.vyb",
+        "kind": "fn",
+        "signature": "tls_error(op<String>, host<String>)<TlsError> ->",
+        "summary": "Build a `TlsError` carrying the current `tls_error_message()` diagnostic for",
+        "fan_in": 0
       },
       {
         "name": "tls_error_code",
@@ -4704,7 +4724,7 @@
         "file": "stdlib/tls/mod.vyb",
         "kind": "fn",
         "signature": "tls_error_code()<Int> ->",
-        "summary": "Diagnostic helpers: the last TLS operation's result (0 / \"no error\").",
+        "summary": "Diagnostic helpers: the last low-level TLS operation's result (0 / \"\").",
         "fan_in": 0
       },
       {
@@ -4739,7 +4759,7 @@
         "module": "tls",
         "file": "stdlib/tls/mod.vyb",
         "kind": "fn",
-        "signature": "tls_server_context(cert_pem<String>, key_pem<String>)<TlsContext> ->",
+        "signature": "tls_server_context(cert_pem<String>, key_pem<String>)<TlsContext?> ->",
         "summary": "A server SSL_CTX loaded from in-line PEM certificate / private-key strings.",
         "fan_in": 1
       },
@@ -4748,7 +4768,7 @@
         "module": "tls",
         "file": "stdlib/tls/mod.vyb",
         "kind": "fn",
-        "signature": "tls_stream(ctx<TlsContext>, fd<Int>, host<String>)<TlsStream> ->",
+        "signature": "tls_stream(ctx<TlsContext>, fd<Int>, host<String>)<TlsStream?> ->",
         "summary": "Wrap an already-connected fd in a TLS stream under `ctx`. `host` (if non-empty)",
         "fan_in": 1
       },
@@ -5281,13 +5301,6 @@
       "from_module": "https",
       "from_symbol": "https_selfhost",
       "to_module": "tls",
-      "to_symbol": "tls_accept"
-    },
-    {
-      "type": "call",
-      "from_module": "https",
-      "from_symbol": "https_selfhost",
-      "to_module": "tls",
       "to_symbol": "tls_close"
     },
     {
@@ -5387,13 +5400,6 @@
       "from_symbol": "https_selfhost_verified",
       "to_module": "threads",
       "to_symbol": "thread_spawn"
-    },
-    {
-      "type": "call",
-      "from_module": "https",
-      "from_symbol": "https_selfhost_verified",
-      "to_module": "tls",
-      "to_symbol": "tls_accept"
     },
     {
       "type": "call",
@@ -5527,6 +5533,13 @@
       "from_symbol": "net_error",
       "to_module": "network",
       "to_symbol": "socket_error_message"
+    },
+    {
+      "type": "call",
+      "from_module": "tls",
+      "from_symbol": "tls_error",
+      "to_module": "tls",
+      "to_symbol": "tls_error_message"
     },
     {
       "type": "implement",
@@ -6355,7 +6368,7 @@
       "from_module": "https",
       "from_symbol": "",
       "to_module": "tls",
-      "to_symbol": "tls_accept",
+      "to_symbol": "TlsStreamOps",
       "reexport": false,
       "resolved": true
     },
@@ -6383,15 +6396,6 @@
       "from_symbol": "",
       "to_module": "tls",
       "to_symbol": "tls_close",
-      "reexport": false,
-      "resolved": true
-    },
-    {
-      "type": "import",
-      "from_module": "https",
-      "from_symbol": "",
-      "to_module": "tls",
-      "to_symbol": "tls_connect",
       "reexport": false,
       "resolved": true
     },
@@ -6665,6 +6669,34 @@
       "from_symbol": "tcp_accept",
       "to_module": "network",
       "to_symbol": "async_tcp_accept"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "tls",
+      "from_symbol": "TlsError",
+      "to_module": "tls",
+      "to_symbol": "tls_error"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "tls",
+      "from_symbol": "TlsError",
+      "to_module": "tls",
+      "to_symbol": "tls_error_message"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "tls",
+      "from_symbol": "tls_error",
+      "to_module": "tls",
+      "to_symbol": "TlsError"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "tls",
+      "from_symbol": "tls_error",
+      "to_module": "tls",
+      "to_symbol": "tls_error_message"
     },
     {
       "type": "runtimeRef",
@@ -8838,6 +8870,13 @@
     {
       "type": "usesType",
       "from_module": "tls",
+      "from_symbol": "tls_accept",
+      "to_module": "tls",
+      "to_symbol": "TlsStream"
+    },
+    {
+      "type": "usesType",
+      "from_module": "tls",
       "from_symbol": "tls_client_context",
       "to_module": "tls",
       "to_symbol": "TlsContext"
@@ -8862,6 +8901,20 @@
       "from_symbol": "tls_connect",
       "to_module": "tls",
       "to_symbol": "TlsStream"
+    },
+    {
+      "type": "usesType",
+      "from_module": "tls",
+      "from_symbol": "tls_connect",
+      "to_module": "tls",
+      "to_symbol": "TlsStream"
+    },
+    {
+      "type": "usesType",
+      "from_module": "tls",
+      "from_symbol": "tls_error",
+      "to_module": "tls",
+      "to_symbol": "TlsError"
     },
     {
       "type": "usesType",

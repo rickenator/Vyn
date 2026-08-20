@@ -7779,20 +7779,26 @@ void LLVMCodegen::visit(ast::ConstructionExpression* node) {
             }
         }
         llvm::AllocaInst* optAlloca = builder->CreateAlloca(optStruct, nullptr, "opt.tmp");
-        {
-            llvm::DataLayout dl(module.get());
-            builder->CreateMemSet(
-                optAlloca,
-                llvm::ConstantInt::get(builder->getInt8Ty(), 0),
-                llvm::ConstantInt::get(builder->getInt64Ty(), dl.getTypeAllocSize(optStruct)),
-                llvm::Align(dl.getPrefTypeAlign(optStruct).value()));
-        }
         if (payload) {
             builder->CreateStore(payload,
                                  builder->CreateStructGEP(optStruct, optAlloca, 0, "opt.payload.ptr"));
-            builder->CreateStore(builder->getInt1(true),
-                                 builder->CreateStructGEP(optStruct, optAlloca, 1, "opt.present.ptr"));
+        } else {
+            // Absent `T?()`: zero the payload so a bare matching that reads it is
+            // well-defined, and ALWAYS set the hasValue flag explicitly rather than
+            // relying on a whole-struct memset. DataLayout on a module that has not
+            // yet been given its `target datalayout` under-sizes `{ T, i1 }` when T
+            // contains a Bool (its alloc size is just T's), leaving the flag at a
+            // higher offset uninitialized -- which made absent matching hit a random
+            // arm. Explicitly storing false pins the absent case.
+            builder->CreateMemSet(
+                optAlloca,
+                llvm::ConstantInt::get(builder->getInt8Ty(), 0),
+                llvm::ConstantInt::get(builder->getInt64Ty(),
+                    llvm::DataLayout(module.get()).getTypeAllocSize(optStruct->getElementType(0))),
+                llvm::MaybeAlign());
         }
+        builder->CreateStore(payload ? builder->getInt1(true) : builder->getInt1(false),
+                             builder->CreateStructGEP(optStruct, optAlloca, 1, "opt.present.ptr"));
         m_currentLLVMValue = builder->CreateLoad(optStruct, optAlloca, "opt.val");
         return;
     }
