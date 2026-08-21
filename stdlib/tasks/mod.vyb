@@ -22,7 +22,7 @@
 #   import tasks
 #   t<Int> = task_spawn(|| -> 40 + 2) else 0
 #   v = task_await(t)         // 42
-#   task_free(t)              // 0
+#   task_free(t)              // Bool? -> present on success
 #
 #   t2<Int> = task_spawn(|| -> 99) else 0
 #   while (task_poll(t2) else 0 != 99) { }   // spin until ready
@@ -54,8 +54,10 @@ task_poll(h<Int>)<Int?> -> {
     return vyb_task_poll_opt(h)
 }
 
-# Reclaim the task handle; returns 0 or -1.
+# Reclaim the task handle. Returns `Bool?` -- present on success, absent on a
+# bad handle.
 share(all)
-task_free(h<Int>)<Int> -> {
-    return vyb_task_free(h)
+task_free(h<Int>)<Bool?> -> {
+    if (vyb_task_free(h) != 0) { return Bool?() }
+    return Bool?(true)
 }

@@ -38,7 +38,7 @@ main()<Int> -> {
                     back<String> = s.read(4096)
                     s.close()
                     l.close()
-                    r<Int> = thread_join(srv)
+                    r<Int> = thread_join(srv) else -2
                     if (r != 0) { return 4 }
                     if (back != MSG) { return 5 }
                     println("ok")

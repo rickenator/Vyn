@@ -38,7 +38,7 @@ main()<Int> -> {
     if (i2 != 0) { return 6 }
     if ((chan_recv(a) else -1) != 100) { return 7 }
 
-    if (thread_join(w) != 0 || thread_join(w2) != 0) { return 8 }
+    if ((thread_join(w) else -2) != 0 || (thread_join(w2) else -2) != 0) { return 8 }
 
     chan_free(a)
     chan_free(b)

@@ -28,7 +28,7 @@ main()<Int> -> {
     s3<Int> = ch.recv()
     s4<Int> = ch.recv()
     if (s1 + s2 + s3 + s4 != 62) { return 3 }
-    if (thread_join(p1) != 0 || thread_join(p2) != 0) { return 4 }
+    if ((thread_join(p1) else -2) != 0 || (thread_join(p2) else -2) != 0) { return 4 }
     if (ch.len() != 0) { return 5 }
     if (ch.free() != 0) { return 6 }
 
@@ -40,7 +40,7 @@ main()<Int> -> {
     a<String> = sc.recv()
     b<String> = sc.recv()
     if (a != "alpha" || b != "beta") { return 9 }
-    if (thread_join(q1) != 0) { return 10 }
+    if ((thread_join(q1) else -2) != 0) { return 10 }
     if (sc.free() != 0) { return 11 }
 
     println("channels ok")

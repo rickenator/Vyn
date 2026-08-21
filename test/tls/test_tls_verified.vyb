@@ -135,7 +135,7 @@ QsM4qhE7CXh5EW4f/zlKqRoL
                                                 }
                                             }
                                             tls_free_context(vctx)
-                                            if (thread_join(th) != 0) { return 17 }
+                                            if ((thread_join(th) else -2) != 0) { return 17 }
                                             tls_free_context(scx)
                                             socket_close(srv)
                                             println("ok")

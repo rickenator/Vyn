@@ -17,29 +17,29 @@ import time::{sleep_ms, time_mono_millis}
 
 main()<Int> -> {
     // Correctness: each thread returns its own result; sum matches.
-    a<Int> = thread_join(thread_spawn(|| -> 10) else -1)
-    b<Int> = thread_join(thread_spawn(|| -> 20) else -1)
-    c<Int> = thread_join(thread_spawn(|| -> 12) else -1)
+    a<Int> = thread_join(thread_spawn(|| -> 10) else -1) else -2
+    b<Int> = thread_join(thread_spawn(|| -> 20) else -1) else -2
+    c<Int> = thread_join(thread_spawn(|| -> 12) else -1) else -2
     if (a + b + c != 42) { return 1 }
 
     // Edge cases: unknown handle and already-joined handle both report -2.
-    if (thread_join(9999) != -2) { return 2 }
+    if ((thread_join(9999) else -2) != -2) { return 2 }
     d<Int> = thread_spawn(|| -> 7) else -1
-    if (thread_join(d) != 7) { return 3 }
-    if (thread_join(d) != -2) { return 4 }
+    if ((thread_join(d) else -2) != 7) { return 3 }
+    if ((thread_join(d) else -2) != -2) { return 4 }
 
     // Detach semantics: a detached thread is not joinable (-2), detaching it
     // again reports -1, and a handle already reclaimed by join detaches to -2.
     e<Int> = thread_spawn(|| -> 0) else -1
     if (e < 0) { return 12 }
-    if (thread_detach(e) != 0) { return 13 }
-    if (thread_join(e) != -2) { return 14 }
-    if (thread_detach(e) != -1) { return 15 }
+    if (!(thread_detach(e) else false)) { return 13 }
+    if ((thread_join(e) else -2) != -2) { return 14 }
+    if (thread_detach(e) else false) { return 15 }   # already detached -> absent
     f<Int> = thread_spawn(|| -> 0) else -1
     if (f < 0) { return 16 }
-    if (thread_join(f) != 0) { return 17 }
-    if (thread_detach(f) != -2) { return 18 }
-    if (thread_detach(9999) != -2) { return 19 }
+    if ((thread_join(f) else -2) != 0) { return 17 }
+    if (thread_detach(f) else false) { return 18 }   # already reaped -> absent
+    if (thread_detach(9999) else false) { return 19 }   # bad handle -> absent
 
     // Reaper: spawn+detach more than the 256-slot cap sequentially; the
     // detached reaper frees each slot as its body returns, so no spawn fails.
@@ -70,11 +70,11 @@ main()<Int> -> {
     if (elapsed < 30) { return 7 }    // implausibly instant
 
     // Mutex round-trip.
-    m<Int> = mutex_new()
+    m<Int> = mutex_new() else 0
     if (m == 0) { return 8 }
-    if (mutex_lock(m) != 0) { return 9 }
-    if (mutex_unlock(m) != 0) { return 10 }
-    if (mutex_free(m) != 0) { return 11 }
+    if (!(mutex_lock(m) else false)) { return 9 }
+    if (!(mutex_unlock(m) else false)) { return 10 }
+    if (!(mutex_free(m) else false)) { return 11 }
 
     println("ok")
     return 0

@@ -36,7 +36,7 @@ main()<Int> -> {
     s3<Int> = chan_recv(ch) else -1
     s4<Int> = chan_recv(ch) else -1
     if (s1 + s2 + s3 + s4 != 100) { return 5 }
-    if (thread_join(p1) != 0 || thread_join(p2) != 0) { return 6 }
+    if ((thread_join(p1) else -2) != 0 || (thread_join(p2) else -2) != 0) { return 6 }
 
     # Bounded channel: fixed capacity, full send returns 0, order preserved.
     bc<Int> = chan_bounded(2)

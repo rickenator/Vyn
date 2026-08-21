@@ -111,7 +111,7 @@ QsM4qhE7CXh5EW4f/zlKqRoL
                                     tls_close(ok2)
                                     tls_free_context(ccx)
 
-                                    if (thread_join(th) != 0) { return 12 }
+                                    if ((thread_join(th) else -2) != 0) { return 12 }
                                     tls_free_context(scx)
                                     socket_close(srv)
 

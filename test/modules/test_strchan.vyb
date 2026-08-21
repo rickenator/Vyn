@@ -28,7 +28,7 @@ main()<Int> -> {
     w<Int> = thread_spawn(|| -> { sleep_ms(5); strchan_send(sc, "hello from worker"); return 0 }) else -1
     if (w < 0) { return 4 }
     if ((strchan_recv(sc) else "") != "hello from worker") { return 5 }
-    if (thread_join(w) != 0) { return 6 }
+    if ((thread_join(w) else -2) != 0) { return 6 }
 
     # Bounded String channel: full send returns 0, order preserved.
     bs<Int> = strchan_bounded(2)

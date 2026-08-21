@@ -17,7 +17,7 @@ import time::{sleep_ms}
 
 main()<Int> -> {
     # --- AtomicInt: ordering and compare-and-swap ---
-    cnt<Int> = atomic_new(5)
+    cnt<Int> = atomic_new(5) else 0
     if (atomic_load(cnt) != 5) { return 1 }
     if (atomic_add(cnt, 3) != 8) { return 2 }
     if (atomic_load(cnt) != 8) { return 3 }
@@ -30,10 +30,10 @@ main()<Int> -> {
     atomic_free(cnt)
 
     # --- CondVar + Mutex: a worker waits until a flag is published ---
-    cv<Int> = cond_new()
+    cv<Int> = cond_new() else 0
     if (cv == 0) { return 9 }
-    m<Int> = mutex_new()
-    flag<Int> = atomic_new(0)   # 0 = not ready, 1 = ready
+    m<Int> = mutex_new() else 0
+    flag<Int> = atomic_new(0) else 0   # 0 = not ready, 1 = ready
 
     w<fn() -> Int> = || -> {
         mutex_lock(m)
@@ -53,7 +53,7 @@ main()<Int> -> {
     cond_signal(cv)
     mutex_unlock(m)
 
-    if (thread_join(s) != 1) { return 11 }
+    if ((thread_join(s) else -2) != 1) { return 11 }
 
     cond_free(cv)
     mutex_free(m)

@@ -390,6 +390,7 @@ extern "C" {
     // arrives as { env, fn }; spawn runs it on a pthread.
     int64_t __vyb_thread_spawn(void* env, void* fn);
     int64_t __vyb_thread_join(int64_t handle);
+    int64_t __vyb_thread_join_opt(int64_t handle, int64_t* out);
     int64_t __vyb_thread_detach(int64_t handle);
     int64_t __vyb_agent_start(void* env, void* fn, int64_t failable, int64_t cap);
     int64_t __vyb_agent_start_bool(void* env, void* fn, int64_t failable, int64_t cap);
@@ -2202,6 +2203,8 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_thread_spawn), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_thread_join")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_thread_join), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_thread_join_opt")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_thread_join_opt), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_mutex_new")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_mutex_new), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_mutex_lock")] = llvm::orc::ExecutorSymbolDef(

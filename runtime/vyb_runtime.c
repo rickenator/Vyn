@@ -2076,6 +2076,36 @@ VYB_WEAK int64_t __vyb_thread_join(int64_t handle) {
     return result;
 }
 
+// Lossless thread join: blocks until the thread completes, writes its result to
+// *out, and returns 1 when a result was produced. Returns 0 for an
+// unknown/already-joined/detached handle. Mirrors __vyb_thread_join but keeps a
+// legitimate result of -2 distinct from a bad handle.
+VYB_WEAK int64_t __vyb_thread_join_opt(int64_t handle, int64_t* out) {
+    if (!out) return 0;
+    int idx = (int)handle - 1;
+    if (idx < 0 || idx >= VYB_THREAD_CAP) return 0;
+    pthread_mutex_lock(&vyb_threads_lock);
+    vyb_thread* t = &vyb_threads[idx];
+    if (!t->used) {
+        pthread_mutex_unlock(&vyb_threads_lock);
+        return 0;
+    }
+    if (t->detach) {
+        pthread_mutex_unlock(&vyb_threads_lock);
+        return 0;  // detached threads are not joinable
+    }
+    pthread_mutex_unlock(&vyb_threads_lock);
+
+    pthread_join(t->tid, NULL); // blocks until the thread completes
+
+    pthread_mutex_lock(&vyb_threads_lock);
+    int64_t result = t->result;
+    t->used = 0; // reclaim the slot
+    pthread_mutex_unlock(&vyb_threads_lock);
+    *out = result;
+    return 1;
+}
+
 // Detach a spawned thread: it becomes non-joinable and its slot is reclaimed
 // automatically when its body returns (a reaper), so fire-and-forget threads
 // (e.g. per-request HTTP handlers) can't exhaust the fixed table. Returns 0 on

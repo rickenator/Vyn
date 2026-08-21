@@ -267,7 +267,7 @@ https_selfhost(cert_pem<String>, key_pem<String>)<Int> -> {
                 resp -> { code = resp.status; got = resp.body; rs = resp.reason }
                 ? -> { }
             }
-            io<Int> = thread_join(th)
+            io<Int> = thread_join(th) else -2
             tls_free_context(scx)
             socket_close(srv)
             if (io != 0) { return -1 }
@@ -324,7 +324,7 @@ https_selfhost_verified(cert_pem<String>, key_pem<String>)<Int> -> {
                 resp -> { code = resp.status; got = resp.body; rs = resp.reason }
                 ? -> { }
             }
-            io<Int> = thread_join(th)
+            io<Int> = thread_join(th) else -2
             tls_free_context(scx)
             socket_close(srv)
             if (io != 0) { return -1 }

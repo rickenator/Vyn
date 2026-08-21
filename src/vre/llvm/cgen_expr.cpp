@@ -4950,6 +4950,32 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "udp.h"), 1);
             m_currentLLVMValue = opt;
             return;
+        } else if (fname == "vyb_thread_join_opt") {
+            // Lossless thread join returning a native `Int?` ({ Int, has });
+            // present holding the joined result (which may legitimately be -2),
+            // absent when the handle is unknown/already-joined/detached.
+            if (node->arguments.size() != 1) {
+                logError(node->loc, "vyb_thread_join_opt expects 1 argument (handle)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this); llvm::Value* th = m_currentLLVMValue;
+            if (!th) return;
+            llvm::Value* th64 = th;
+            if (th64->getType()->isIntegerTy() && !th64->getType()->isIntegerTy(64))
+                th64 = builder->CreateSExt(th64, int64Type, "tjoin.toi64");
+            llvm::StructType* optTy = llvm::StructType::get(*context, {int64Type, llvm::Type::getInt1Ty(*context)}, false);
+            llvm::Value* slot = builder->CreateAlloca(int64Type, nullptr, "tjoin.slot");
+            llvm::FunctionType* ft = llvm::FunctionType::get(
+                int64Type, {int64Type, llvm::PointerType::get(*context, 0)}, false);
+            llvm::Function* f = module->getFunction("__vyb_thread_join_opt");
+            if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_thread_join_opt", module.get());
+            llvm::Value* has = builder->CreateCall(f, {th64, slot}, "tjoin.has");
+            llvm::Value* val = builder->CreateLoad(int64Type, slot, "tjoin.val");
+            llvm::Value* opt = llvm::UndefValue::get(optTy);
+            opt = builder->CreateInsertValue(opt, val, 0, "tjoin.v");
+            opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "tjoin.h"), 1);
+            m_currentLLVMValue = opt;
+            return;
         } else if (fname == "vyb_net_resolve_opt") {
             // Lossless hostname->IPv4 resolution returning a native `String?`.
             if (node->arguments.size() != 1) {

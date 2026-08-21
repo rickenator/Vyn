@@ -20,8 +20,8 @@ main()<Int> -> {
     a<Int> = mk(111)
     b<Int> = mk(222)
     if (a < 0 || b < 0) { return 1 }
-    xa<Int> = thread_join(a)
-    xb<Int> = thread_join(b)
+    xa<Int> = thread_join(a) else -2
+    xb<Int> = thread_join(b) else -2
     if (xa != 111) { return 2 }  // would be 222 if both workers shared one env
     if (xb != 222) { return 3 }
     println("ok")

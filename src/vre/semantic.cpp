@@ -2092,7 +2092,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_time_epoch_secs" || name == "vyb_time_epoch_millis" ||
             name == "vyb_time_nanos" || name == "vyb_time_mono_millis" ||
             name == "vyb_time_sleep_ms" ||
-            name == "vyb_thread_spawn" || name == "vyb_thread_join" || name == "vyb_thread_detach" ||
+            name == "vyb_thread_spawn" || name == "vyb_thread_join" || name == "vyb_thread_join_opt" || name == "vyb_thread_detach" ||
             name == "vyb_agent_start" || name == "vyb_agent_start_bool" ||
             name == "vyb_agent_start_float" || name == "vyb_agent_start_string" ||
             name == "vyb_agent_send" || name == "vyb_agent_send_bool" ||
@@ -3147,6 +3147,20 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 name == "vyb_strchan_len" || name == "vyb_strchan_free") {
                 auto* resTy = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "Int"));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+
+            // Lossless thread join: thread_join_opt returns a native `Int?` --
+            // present holding the joined thread's result (which may legitimately
+            // be -2), absent when the handle is unknown/already-joined/detached.
+            // Disambiguates from the plain thread_join's -2 sentinel.
+            if (name == "vyb_thread_join_opt") {
+                auto* inner = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "Int"));
+                auto* resTy = new ast::OptionalType(node->loc,
+                    std::unique_ptr<ast::TypeNode>(inner));
                 expressionTypes[node] = retainType(resTy);
                 node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
                 return;
