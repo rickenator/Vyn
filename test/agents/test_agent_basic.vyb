@@ -18,9 +18,9 @@ main()<Int> -> {
     })
     println("started alive=" + agent_alive(a).to_string())
 
-    ok<Int> = agent_send(a, 21)
+    ok<Bool> = agent_send(a, 21) else false
     println("send1 ok=" + ok.to_string())
-    ok = agent_send(a, 50)
+    ok = agent_send(a, 50) else false
     println("send2 ok=" + ok.to_string())
     println("len=" + agent_len(a).to_string())
 
@@ -31,7 +31,7 @@ main()<Int> -> {
 
     # Closing is lossless: post one more, then close; the agent drains it.
     agent_send(a, 7)
-    rc<Int> = agent_close(a)
+    rc<Bool> = agent_close(a) else false
     println("close rc=" + rc.to_string())
     r3<Int> = chan_recv(replies) else -1   # 7 * 2
     println("r3=" + r3.to_string())

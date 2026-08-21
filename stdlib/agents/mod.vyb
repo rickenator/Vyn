@@ -13,7 +13,7 @@
 #       println("got " + v.to_string())
 #   })
 #
-#   ok = agent_send(counter, 42)   // 1
+#   ok = agent_send(counter, 42)   // Bool? -> present when accepted
 #   agent_send(counter, 43)
 #   agent_close(counter)           // drain then stop (lossless)
 #   agent_free(counter)            // wait for the worker and reclaim
@@ -30,11 +30,13 @@
 # bounded send returns 0 immediately (non-blocking backpressure); 0/omitted means
 # unbounded (like `chan_new()` vs `chan_bounded(cap)`).
 
-# Post a message (non-blocking). Returns 1 on accepted, or 0 if the agent is
-# stopped/closed or its bounded mailbox is full.
+# Post a message (non-blocking). Returns `Bool?` -- present when the message
+# was accepted, absent if the agent is stopped/closed or its bounded mailbox is
+# full.
 share(all)
-agent_send(a<Int>, v<Int>)<Int> -> {
-    return vyb_agent_send(a, v)
+agent_send(a<Int>, v<Int>)<Bool?> -> {
+    if (vyb_agent_send(a, v) == 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Number of buffered-but-unhandled messages (-1 on a bad handle).
@@ -50,17 +52,20 @@ agent_alive(a<Int>)<Int> -> {
 }
 
 # Gracefully stop: close the mailbox; the agent drains buffered messages then
-# stops. Returns 1, or -1 on a bad handle.
+# stops. Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-agent_close(a<Int>)<Int> -> {
-    return vyb_agent_close(a)
+agent_close(a<Int>)<Bool?> -> {
+    if (vyb_agent_close(a) < 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Reclaim an agent: waits for the worker to exit (closing first if needed), then
-# frees the mailbox and slot. Returns 0, or -1 on a bad handle.
+# frees the mailbox and slot. Returns `Bool?` -- present on success, absent on a
+# bad handle.
 share(all)
-agent_free(a<Int>)<Int> -> {
-    return vyb_agent_free(a)
+agent_free(a<Int>)<Bool?> -> {
+    if (vyb_agent_free(a) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # --- Payload breadth (Stage 2) ----------------------------------------------
@@ -70,23 +75,29 @@ agent_free(a<Int>)<Int> -> {
 # alive and is handed to the behavior as an owned transfer. The lifecycle
 # functions (len/close/free/alive) are payload-agnostic.
 
-# Post a Bool message (non-blocking). 1 on accepted, 0 if stopped/full.
+# Post a Bool message (non-blocking). Returns `Bool?` -- present when accepted,
+# absent if stopped/full.
 share(all)
-agent_send_bool(a<Int>, b<Bool>)<Int> -> {
-    return vyb_agent_send_bool(a, b)
+agent_send_bool(a<Int>, b<Bool>)<Bool?> -> {
+    if (vyb_agent_send_bool(a, b) == 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Post a Float message (non-blocking). 1 on accepted, 0 if stopped/full.
+# Post a Float message (non-blocking). Returns `Bool?` -- present when accepted,
+# absent if stopped/full.
 share(all)
-agent_send_float(a<Int>, f<Float>)<Int> -> {
-    return vyb_agent_send_float(a, f)
+agent_send_float(a<Int>, f<Float>)<Bool?> -> {
+    if (vyb_agent_send_float(a, f) == 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Post a String message (non-blocking). 1 on accepted, 0 if stopped/full. The
-# message buffer is retained until the behavior receives it.
+# Post a String message (non-blocking). Returns `Bool?` -- present when accepted,
+# absent if stopped/full. The message buffer is retained until the behavior
+# receives it.
 share(all)
-agent_send_string(a<Int>, s<String>)<Int> -> {
-    return vyb_agent_send_string(a, s)
+agent_send_string(a<Int>, s<String>)<Bool?> -> {
+    if (vyb_agent_send_string(a, s) == 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # --- Request/response + composition (Stage 3) --------------------------------
@@ -132,8 +143,10 @@ agent_error(a<Int>)<String> -> {
 
 # Register an int-slot reply channel as a dead-letter: on failure the runtime
 # sends the agent's own handle into `ch` so a supervisor can react, then query
-# agent_status / agent_error for details. Returns 1, or -1 on a bad handle.
+# agent_status / agent_error for details. Returns `Bool?` -- present on success,
+# absent on a bad handle.
 share(all)
-agent_dead_letter(a<Int>, ch<Int>)<Int> -> {
-    return vyb_agent_set_dead_letter(a, ch)
+agent_dead_letter(a<Int>, ch<Int>)<Bool?> -> {
+    if (vyb_agent_set_dead_letter(a, ch) < 0) { return Bool?() }
+    return Bool?(true)
 }

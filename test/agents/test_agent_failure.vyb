@@ -26,7 +26,7 @@ main()<Int> -> {
     })
     if (a == 0) { return 1 }
 
-    if (agent_dead_letter(a, big) != 1) { return 2 }
+    if (!(agent_dead_letter(a, big) else false)) { return 2 }
 
     # Happy path first.
     agent_send(a, 1)
@@ -36,7 +36,7 @@ main()<Int> -> {
 
     # Trigger the failure. The accept returns 1 (mailbox open); the worker then
     # processes -5, fails, reports on the dead-letter, and closes the mailbox.
-    if (agent_send(a, -5) != 1) { return 5 }
+    if (!(agent_send(a, -5) else false)) { return 5 }
 
     # Dead-letter delivery guarantees the failure has been recorded.
     fh<Int> = chan_recv(big) else -1
@@ -51,7 +51,7 @@ main()<Int> -> {
 
     # The mailbox is closed: sends now return 0 rather than queue into a dead
     # agent or hang.
-    if (agent_send(a, 9) != 0) { return 10 }
+    if (agent_send(a, 9) else false) { return 10 }
 
     agent_free(a)
     chan_free(out)

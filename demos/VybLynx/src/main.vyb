@@ -989,8 +989,8 @@ start_download(urlStr<String>)<Void> -> {
         return
     }
     dl_running = do
-    sent<Int> = agent_send_string(do, urlStr)
-    if (sent == 0) {
+    sent<Bool> = agent_send_string(do, urlStr) else false
+    if (!sent) {
         dl_running = 0
         agent_close(do)
         agent_free(do)

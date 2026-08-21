@@ -27,8 +27,8 @@ main()<Int> -> {
     # Fill until the bounded mailbox rejects a send.
     sends<Int> = 0
     while (true) {
-        r<Int> = agent_send(a, sends + 1)
-        if (r == 0) { break }
+        r<Bool> = agent_send(a, sends + 1) else false
+        if (!r) { break }
         sends = sends + 1
         if (sends > 100) { return 2 }
     }
@@ -36,7 +36,7 @@ main()<Int> -> {
     # box fills, so `sends` is cap..cap+1; the box itself is always full (cap).
     if (sends < 3 || sends > 4) { return 3 }
     if (agent_len(a) != 3) { return 4 }   # box is full: 3 buffered
-    if (agent_send(a, 500) != 0) { return 5 }   # full -> non-blocking 0
+    if (agent_send(a, 500) else false) { return 5 }   # full -> absent
 
     # Drain with one gate token per outstanding message; replies are FIFO.
     i<Int> = 1
@@ -47,7 +47,7 @@ main()<Int> -> {
         i = i + 1
     }
     if (agent_len(a) != 0) { return 7 }
-    if (agent_send(a, 77) != 1) { return 8 }   # emptied -> accepts again
+    if (!(agent_send(a, 77) else false)) { return 8 }   # emptied -> accepts again
 
     chan_send(gate, 1)
     if ((chan_recv(out) else -1) != 77) { return 9 }
@@ -61,18 +61,18 @@ main()<Int> -> {
     sa<Int> = agent_start_string(|sv<String>| -> {
         chan_recv(sgate)
     }, 2)
-    if (agent_send_string(sa, "a") != 1) { return 10 }
-    if (agent_send_string(sa, "b") != 1) { return 11 }
+    if (!(agent_send_string(sa, "a") else false)) { return 10 }
+    if (!(agent_send_string(sa, "b") else false)) { return 11 }
     ssends<Int> = 2
     while (true) {
-        r<Int> = agent_send_string(sa, "x")
-        if (r == 0) { break }
+        r<Bool> = agent_send_string(sa, "x") else false
+        if (!r) { break }
         ssends = ssends + 1
         if (ssends > 100) { return 12 }
     }
     # 2 buffered + 0..1 in-flight -> a full send returns 0 (non-blocking).
     if (ssends < 2 || ssends > 3) { return 12 }
-    if (agent_send_string(sa, "e") != 0) { return 13 }   # full -> 0
+    if (agent_send_string(sa, "e") else false) { return 13 }   # full -> absent
     c2<Int> = 0
     while (c2 < ssends) {
         chan_send(sgate, 1)
@@ -86,7 +86,7 @@ main()<Int> -> {
     u<Int> = agent_start(|v<Int>| -> { }, 0)
     c<Int> = 0
     while (c < 100) {
-        if (agent_send(u, c) != 1) { return 15 }
+        if (!(agent_send(u, c) else false)) { return 15 }
         c = c + 1
     }
     agent_close(u)

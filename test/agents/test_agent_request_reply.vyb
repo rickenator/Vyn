@@ -96,8 +96,8 @@ main()<Int> -> {
     if (chan_select(hs2) != 1) { return 10 }
     if ((chan_recv(resG) else -1) != 77) { return 11 }
 
-    chk<Int> = agent_close(da)
-    if (chk != 1) { return 12 }
+    chk<Bool> = agent_close(da) else false
+    if (!chk) { return 12 }
     if (chan_len(mb) != 0) { return 13 }       # drained; mailbox handle still valid
     if (agent_len(da) != 0) { return 14 }
     agent_free(da)
