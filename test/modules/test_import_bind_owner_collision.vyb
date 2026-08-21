@@ -1,0 +1,27 @@
+// @test: bind/impl methods keep their module owner under name collisions
+// @description: A bind's method must stay owned by the module that owns the bind,
+//   never by an unrelated module that happens to export a same-named top-level
+//   function. Here the `tls` TlsStreamOps bind defines a `close` method while the
+//   `io` module exports its own top-level `close`. Importing both on the same
+//   consumer used to reparent the impl `close` to io, hiding TlsStream behind the
+//   module-scope gate ("Unknown type identifier: TlsStream"). Regression for #126.
+// @category: modules, import, aspects
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import tls::{TlsStream, TlsStreamOps}
+import io::{close}
+
+# Touch the TlsStreamOps bind surface so the fused consumer's semantic pass must
+# resolve its `TlsStream?` return types against the tls module's own scope.
+no_stream()<TlsStream?> -> {
+    return TlsStream?()
+}
+
+main()<Int> -> {
+    no_stream()
+    println("ok")
+    return 0
+}

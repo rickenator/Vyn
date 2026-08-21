@@ -1338,9 +1338,16 @@ void SemanticAnalyzer::visit(ast::FunctionDeclaration* node) {
     // module's resolvable scope, so a module's private dependencies are usable
     // here but stay hidden from any consumer that calls this function.
     ownerStack_.push_back(scopeGate_.currentOwner);
-    auto ownerIt = scopeGate_.ownerByName.find(node->id->name);
-    if (ownerIt != scopeGate_.ownerByName.end()) {
-        scopeGate_.currentOwner = ownerIt->second;
+    // A bind/impl method belongs to the module that owns the bind (the owner is
+    // already set when the bind is entered), never to a module that happens to
+    // export a same-named top-level function. Re-resolving the owner by method
+    // name here could reparent the method to that unrelated module and then hide
+    // the bind's own types (e.g. a bind method `close` colliding with io::close).
+    if (!processingTraitOrBindMethod) {
+        auto ownerIt = scopeGate_.ownerByName.find(node->id->name);
+        if (ownerIt != scopeGate_.ownerByName.end()) {
+            scopeGate_.currentOwner = ownerIt->second;
+        }
     }
 
     enterScope();
