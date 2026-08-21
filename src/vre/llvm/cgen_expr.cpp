@@ -4717,6 +4717,49 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "envopt.h"), 1);
             m_currentLLVMValue = opt;
             return;
+        } else if (fname == "vyb_regex_capture_match_opt" || fname == "vyb_regex_capture_opt") {
+            // Lossless regex capture returning a native `String?` (`{ String, has }`);
+            // present holding the captured text (which may be empty) on a match,
+            // absent when the pattern does not match. Mirrors vyb_env_get_opt.
+            if (node->arguments.size() != 2) {
+                logError(node->loc, fname + " expects 2 arguments (pattern, s)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this);
+            llvm::Value* pat = m_currentLLVMValue; if (!pat) return;
+            node->arguments[1]->accept(*this);
+            llvm::Value* str = m_currentLLVMValue; if (!str) return;
+            llvm::Value* patPtr = pat;
+            if (patPtr->getType()->isStructTy())
+                patPtr = builder->CreateExtractValue(patPtr, 0, "capopt.pat");
+            llvm::Value* patLen = pat;
+            if (pat->getType()->isStructTy())
+                patLen = builder->CreateExtractValue(pat, 1, "capopt.patlen");
+            else
+                patLen = llvm::ConstantInt::get(int64Type, 0);
+            llvm::Value* strPtr = str;
+            if (strPtr->getType()->isStructTy())
+                strPtr = builder->CreateExtractValue(strPtr, 0, "capopt.str");
+            llvm::Value* strLen = str;
+            if (str->getType()->isStructTy())
+                strLen = builder->CreateExtractValue(str, 1, "capopt.strlen");
+            else
+                strLen = llvm::ConstantInt::get(int64Type, 0);
+            llvm::StructType* strTy = llvm::StructType::get(*context, {int8PtrType, int64Type}, false);
+            llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
+            llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "capopt.slot");
+            llvm::FunctionType* ft = llvm::FunctionType::get(
+                int64Type, {int8PtrType, int64Type, int8PtrType, int64Type, llvm::PointerType::get(*context, 0)}, false);
+            std::string rtN = (fname == "vyb_regex_capture_match_opt") ? "__vyb_regex_capture_match_opt" : "__vyb_regex_capture_opt";
+            llvm::Function* f = module->getFunction(rtN);
+            if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, rtN, module.get());
+            llvm::Value* has = builder->CreateCall(f, {patPtr, patLen, strPtr, strLen, slot}, "capopt.has");
+            llvm::Value* val = builder->CreateLoad(strTy, slot, "capopt.val");
+            llvm::Value* opt = llvm::UndefValue::get(optTy);
+            opt = builder->CreateInsertValue(opt, val, 0, "capopt.v");
+            opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "capopt.h"), 1);
+            m_currentLLVMValue = opt;
+            return;
         } else if (fname == "vyb_strchan_recv") {
             // Blocking recv returning a String { ptr, len } that the caller owns.
             if (node->arguments.size() != 1) {

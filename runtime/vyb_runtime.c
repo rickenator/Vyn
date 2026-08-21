@@ -1450,6 +1450,66 @@ VYB_WEAK vyb_file_str __vyb_regex_capture(const char* pat, int64_t plen,
     return r;
 }
 
+// Lossless whole-match capture (group 0): reports presence via the return value
+// and writes the String to *out on a match. A pattern that matches empty is
+// present (holding ""), distinct from "no match"; absent only when the pattern
+// does not match (or fails to compile) on this input. *out is untouched on 0.
+VYB_WEAK int64_t __vyb_regex_capture_match_opt(const char* pat, int64_t plen,
+                                               const char* s, int64_t slen,
+                                               vyb_file_str* out) {
+    if (!out) return 0;
+    char* p = vyb_strndup(pat, plen);
+    char* str = vyb_strndup(s, slen);
+    if (!p || !str) { free(p); free(str); return 0; }
+    regex_t re;
+    if (regcomp(&re, p, REG_EXTENDED) != 0) { free(p); free(str); return 0; }
+    regmatch_t rm[2];
+    rm[0].rm_so = 0; rm[0].rm_eo = (regoff_t)slen;
+    int rc = regexec(&re, str, 2, rm, REG_STARTEND);
+    regfree(&re);
+    free(p);
+    if (rc != 0 || rm[0].rm_so < 0) { free(str); return 0; }
+    regoff_t so = rm[0].rm_so, eo = rm[0].rm_eo;
+    size_t n = (size_t)(eo - so);
+    char* buf = (char*)malloc(n + 1);
+    if (!buf) { free(str); return 0; }
+    memcpy(buf, str + so, n); buf[n] = '\0';
+    __vyb_string_register(buf);
+    free(str);
+    *out = (vyb_file_str){ buf, (int64_t)n };
+    return 1;
+}
+
+// Lossless first-group capture (group 1): reports presence via the return value
+// and writes the String to *out on a match. An empty group capture is present
+// (holding ""), distinct from "no match"; absent only when the pattern has no
+// group or does not match (or fails to compile) on this input.
+VYB_WEAK int64_t __vyb_regex_capture_opt(const char* pat, int64_t plen,
+                                         const char* s, int64_t slen,
+                                         vyb_file_str* out) {
+    if (!out) return 0;
+    char* p = vyb_strndup(pat, plen);
+    char* str = vyb_strndup(s, slen);
+    if (!p || !str) { free(p); free(str); return 0; }
+    regex_t re;
+    if (regcomp(&re, p, REG_EXTENDED) != 0) { free(p); free(str); return 0; }
+    regmatch_t rm[2];
+    rm[0].rm_so = 0; rm[0].rm_eo = (regoff_t)slen;
+    int rc = regexec(&re, str, 2, rm, REG_STARTEND);
+    regfree(&re);
+    free(p);
+    if (rc != 0 || rm[1].rm_so < 0) { free(str); return 0; }
+    regoff_t so = rm[1].rm_so, eo = rm[1].rm_eo;
+    size_t n = (size_t)(eo - so);
+    char* buf = (char*)malloc(n + 1);
+    if (!buf) { free(str); return 0; }
+    memcpy(buf, str + so, n); buf[n] = '\0';
+    __vyb_string_register(buf);
+    free(str);
+    *out = (vyb_file_str){ buf, (int64_t)n };
+    return 1;
+}
+
 // A tiny growable buffer builder shared by the replace helpers so a replaced
 // String can be assembled without a fixed-size guess.
 typedef struct { char* buf; size_t len, cap; } vyb_grow;

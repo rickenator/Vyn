@@ -1694,16 +1694,22 @@ The read-only `exec_status` probe is callable from ordinary code.
 Module page: [`regex.md`](regex.md). Extended-pattern matching over String bytes,
 with byte-offset find, group capture, and literal replacement. A pattern that
 does not match or compile yields the "no match" form of each helper
-(`0` / `-1` / `""` / unchanged input).
+(`0` / absent / `""` / unchanged input).
 
 ```vyb
 regex_match(pattern<String>, s<String>)<Int>            # substring match?
-regex_find(pattern<String>, s<String>)<Int>             # first match offset
-regex_capture_match(pattern<String>, s<String>)<String> # whole match text
-regex_capture(pattern<String>, s<String>)<String>       # first group
+regex_find(pattern<String>, s<String>)<Int?>            # offset (absent = no match)
+regex_capture_match(pattern<String>, s<String>)<String?> # whole match text
+regex_capture(pattern<String>, s<String>)<String?>      # first group
 regex_replace(pattern<String>, s<String>, replacement<String>)<String>
 regex_replace_all(pattern<String>, s<String>, replacement<String>)<String>
 ```
+
+`regex_find` returns `Int?` (present with the byte offset even when it is 0, absent
+when there is no match) and `regex_capture_match`/`regex_capture` return `String?`
+(present holding the text -- possibly empty -- on a match, absent when the pattern
+does not match). `regex_match` stays a `0`/`1` `Int` (a plain substring test with
+no sentinel).
 
 ### 4.21 `curses` — ncurses terminal UI
 
@@ -2104,6 +2110,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

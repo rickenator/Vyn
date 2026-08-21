@@ -152,7 +152,9 @@ extern "C" {
     int64_t __vyb_regex_match(const char* pat, int64_t plen, const char* s, int64_t slen);
     int64_t __vyb_regex_find(const char* pat, int64_t plen, const char* s, int64_t slen);
     vyb_file_str __vyb_regex_capture_match(const char* pat, int64_t plen, const char* s, int64_t slen);
+    int64_t __vyb_regex_capture_match_opt(const char* pat, int64_t plen, const char* s, int64_t slen, vyb_file_str* out);
     vyb_file_str __vyb_regex_capture(const char* pat, int64_t plen, const char* s, int64_t slen);
+    int64_t __vyb_regex_capture_opt(const char* pat, int64_t plen, const char* s, int64_t slen, vyb_file_str* out);
     vyb_file_str __vyb_regex_replace(const char* pat, int64_t plen, const char* s, int64_t slen,
                                      const char* repl, int64_t rlen);
     vyb_file_str __vyb_regex_replace_all(const char* pat, int64_t plen, const char* s, int64_t slen,
@@ -2125,8 +2127,12 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_regex_find), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_regex_capture_match")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_regex_capture_match), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_regex_capture_match_opt")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_regex_capture_match_opt), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_regex_capture")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_regex_capture), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_regex_capture_opt")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_regex_capture_opt), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_regex_replace")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_regex_replace), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_regex_replace_all")] = llvm::orc::ExecutorSymbolDef(

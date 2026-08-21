@@ -1,5 +1,7 @@
 // @test: regex stdlib module - POSIX extended patterns over String bytes
 // @description: match/find/capture/replace are deterministic on fixed inputs.
+//   find/capture follow the T? shape: absent = no match, and a match at byte 0 /
+//   an empty capture are distinct from "no match".
 // @category: regex, stdlib
 // @expect: pass
 // @expect-return: 0
@@ -9,22 +11,26 @@ import regex::{regex_find, regex_match, regex_capture, regex_capture_match,
                regex_replace, regex_replace_all}
 
 main()<Int> -> {
-    // find returns the byte offset of the first match.
-    if (regex_find("llo", "hello") != 2) { return 1 }
-    if (regex_find("xyz", "hello") != -1) { return 2 }
+    // find returns Int?: present with the byte offset, absent on no match.
+    if ((regex_find("llo", "hello") else -1) != 2) { return 1 }
+    if ((regex_find("xyz", "hello") else -1) != -1) { return 2 }
+    // A match at byte 0 is present (offset 0), not blurred into "no match".
+    if ((regex_find("he", "hello") else -1) != 0) { return 3 }
 
-    // match is a substring test.
-    if (regex_match("hello", "say hello world") != 1) { return 3 }
-    if (regex_match("skip", "hello world") != 0) { return 4 }
+    // match is a substring test (0/1 Int, no sentinel).
+    if (regex_match("hello", "say hello world") != 1) { return 4 }
+    if (regex_match("skip", "hello world") != 0) { return 5 }
 
-    // whole-match and first-group capture.
-    if (regex_capture_match("h(ell)o", "hello") != "hello") { return 5 }
-    if (regex_capture("([0-9]+)", "id=42 end") != "42") { return 6 }
-    if (regex_capture("([0-9]+)", "no digits") != "") { return 7 }
+    // whole-match and first-group capture: String?, absent when no match.
+    if ((regex_capture_match("h(ell)o", "hello") else "") != "hello") { return 6 }
+    if ((regex_capture("([0-9]+)", "id=42 end") else "") != "42") { return 7 }
+    if ((regex_capture("([0-9]+)", "no digits") else "absent") != "absent") { return 8 }
+    # An empty capture (a group that matches empty) is present -- NOT "no match".
+    if ((regex_capture("(x*)", "abc") else "absent") != "") { return 9 }
 
     // replace hits the first match; replace_all hits every match.
-    if (regex_replace("[0-9]+", "a1b22c", "#") != "a#b22c") { return 8 }
-    if (regex_replace_all("[0-9]+", "a1b22c", "#") != "a#b#c") { return 9 }
+    if (regex_replace("[0-9]+", "a1b22c", "#") != "a#b22c") { return 10 }
+    if (regex_replace_all("[0-9]+", "a1b22c", "#") != "a#b#c") { return 11 }
 
     println("regex ok")
     return 0

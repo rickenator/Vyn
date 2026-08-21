@@ -2159,6 +2159,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_exec_status" ||
             name == "vyb_regex_match" || name == "vyb_regex_find" ||
             name == "vyb_regex_capture_match" || name == "vyb_regex_capture" ||
+            name == "vyb_regex_capture_match_opt" || name == "vyb_regex_capture_opt" ||
             name == "vyb_regex_replace" || name == "vyb_regex_replace_all" ||
             name == "vyb_strchan_len" || name == "vyb_strchan_close" ||
             name == "vyb_strchan_free" ||
@@ -2995,6 +2996,20 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             // may legitimately be empty). This fixes env_get's "" sentinel, which
             // could not distinguish "unset" from "set to empty".
             if (name == "vyb_env_get_opt") {
+                auto* inner = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "String"));
+                auto* resTy = new ast::OptionalType(node->loc,
+                    std::unique_ptr<ast::TypeNode>(inner));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+            // Lossless regex capture: capture_match_opt / capture_opt return a
+            // native `String?` -- present holding the captured text (which may be
+            // empty) when the pattern matches, absent when it does not. This
+            // fixes regex_capture's "" sentinel, which conflated an empty capture
+            // with "no match".
+            if (name == "vyb_regex_capture_match_opt" || name == "vyb_regex_capture_opt") {
                 auto* inner = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "String"));
                 auto* resTy = new ast::OptionalType(node->loc,

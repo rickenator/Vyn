@@ -1,5 +1,5 @@
 {
-  "git_rev": "f2bfb26b9dd91c1cd7e93873140353ce9a40405b",
+  "git_rev": "0ed3ce7acdc6d3ceb6e65ad2f0cd61b6e02b24b2",
   "modules": [
     "agents",
     "asyncs",
@@ -4185,8 +4185,8 @@
         "module": "regex",
         "file": "stdlib/regex/mod.vyb",
         "kind": "fn",
-        "signature": "regex_capture(pattern<String>, s<String>)<String> ->",
-        "summary": "",
+        "signature": "regex_capture(pattern<String>, s<String>)<String?> ->",
+        "summary": "The first capture group's text (group 1) as `String?` -- present (possibly an",
         "fan_in": 0
       },
       {
@@ -4194,8 +4194,8 @@
         "module": "regex",
         "file": "stdlib/regex/mod.vyb",
         "kind": "fn",
-        "signature": "regex_capture_match(pattern<String>, s<String>)<String> ->",
-        "summary": "",
+        "signature": "regex_capture_match(pattern<String>, s<String>)<String?> ->",
+        "summary": "The whole-match string (group 0) as `String?` -- present holding the matched",
         "fan_in": 0
       },
       {
@@ -4203,8 +4203,8 @@
         "module": "regex",
         "file": "stdlib/regex/mod.vyb",
         "kind": "fn",
-        "signature": "regex_find(pattern<String>, s<String>)<Int> ->",
-        "summary": "",
+        "signature": "regex_find(pattern<String>, s<String>)<Int?> ->",
+        "summary": "Byte offset of the first match as `Int?` -- present holding the offset (which",
         "fan_in": 0
       },
       {
@@ -8329,13 +8329,13 @@
       "type": "runtimeRef",
       "from_module": "regex",
       "from_symbol": "regex_capture",
-      "to_symbol": "vyb_regex_capture"
+      "to_symbol": "vyb_regex_capture_opt"
     },
     {
       "type": "runtimeRef",
       "from_module": "regex",
       "from_symbol": "regex_capture_match",
-      "to_symbol": "vyb_regex_capture_match"
+      "to_symbol": "vyb_regex_capture_match_opt"
     },
     {
       "type": "runtimeRef",
