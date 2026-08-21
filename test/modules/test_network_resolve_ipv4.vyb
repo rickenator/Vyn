@@ -11,7 +11,7 @@
 import network::{socket_resolve}
 
 main()<Int> -> {
-    ip<String> = socket_resolve("example.com")
+    ip<String> = socket_resolve("example.com") else ""
     if (ip.len() == 0) {
         println("resolve skipped")
         return 0

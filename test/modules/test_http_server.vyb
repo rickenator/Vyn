@@ -21,9 +21,9 @@ main()<Int> -> {
             port<Int> = srv.local_port()
             if (port <= 0) { srv.close(); return 2 }
 
-            cli<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, 0)
+            cli<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, 0) else -1
             if (cli < 0) { srv.close(); return 3 }
-            if (socket_connect(cli, "127.0.0.1", port) < 0) { srv.close(); return 4 }
+            if (!(socket_connect(cli, "127.0.0.1", port) else false)) { srv.close(); return 4 }
 
             match (http_accept(srv)) {
                 conn -> {
@@ -39,7 +39,7 @@ main()<Int> -> {
                     // Raw client reads the whole response until the server closes.
                     data<String> = ""
                     while (data.len() < 300) {
-                        chunk<String> = socket_recv(cli, 256)
+                        chunk<String> = socket_recv(cli, 256) else ""
                         if (chunk.len() == 0) { break }
                         data = data.concat(chunk)
                     }

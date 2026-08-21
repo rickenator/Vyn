@@ -12,25 +12,28 @@
 #   import network::{socket_open, socket_bind, socket_listen, socket_accept,
 #                    socket_connect, socket_send, socket_recv, socket_local_port,
 #                    socket_close, Socket}
-#   srv = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, 0)
-#   socket_bind(srv, "127.0.0.1", 0)
-#   socket_listen(srv, 1)
-#   port = socket_local_port(srv)
-#   cli = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, 0)
-#   socket_connect(cli, "127.0.0.1", port)
-#   conn = socket_accept(srv)
+#   srv = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, 0) else -1
+#   if (!(socket_bind(srv, "127.0.0.1", 0) else false)) { return }
+#   if (!(socket_listen(srv, 1) else false)) { return }
+#   port = socket_local_port(srv) else -1
+#   cli = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, 0) else -1
+#   if (!(socket_connect(cli, "127.0.0.1", port) else false)) { return }
+#   conn = socket_accept(srv) else -1
 #   socket_send(cli, "hello")
-#   socket_recv(conn, 5)   // "hello"
+#   socket_recv(conn, 5) else ""   // "hello"
 #
 # Diagnostics: `socket_error_code()` (0 = no error) and `socket_error_message()`
-# report the result of the last low-level network operation. The high-level
-# wrappers (`tcp_connect`, `tcp_listen`, `tcp_accept`, `udp_bind`, `async_*`)
-# return a native optional: absence *is* the failed operation, so callers never
-# touch a sentinel `fd`. Unwrap with `else` for a default, or `match` to escalate
-# into the fail/trap framework via the shared `NetError`/`net_error(op, target)`.
-# The stream/datagram operations there also follow the `T?` shape: an absent
-# `write`/`send_to` means the send failed, and an absent `close` means the socket
-# could not be closed.
+# report the result of the last low-level network operation. Every `socket_*`
+# function follows the engine-wide `T?` shape (PROGRAMMERS_GUIDE §3.16):
+# `socket_open`/`socket_accept` return `Int?` (the descriptor), `socket_close`/
+# `socket_bind`/`socket_listen`/`socket_connect`/`socket_set_timeout` return
+# `Bool?`, `socket_send` returns `Int?` (bytes written), `socket_recv` returns
+# `String?`, `socket_local_port` returns `Int?`, and `socket_resolve` returns
+# `String?`. Absence *is* the failed operation, so callers never touch a
+# sentinel `fd`/`-1`/`""`. Unwrap with `else` for a default, or `match` to
+# escalate into the fail/trap framework via the shared `NetError`/
+# `net_error(op, target)`. The high-level wrappers (`tcp_connect`, `tcp_listen`,
+# `tcp_accept`, `udp_bind`, `async_*`) build on them.
 
 # Domain / socket-type constants. A constant enum: each member is a compile-time
 # Int (scoped under `Socket`), so they flow straight into the Int params of the
@@ -45,72 +48,103 @@ enum Socket {
     IPPROTO_UDP = 17
 }
 
-# Create a socket in the given domain/type/protocol; returns the descriptor
-# (>= 0) or -1 on failure (see socket_error_code()).
+# Create a socket in the given domain/type/protocol. Returns `Int?` -- present
+# holding the descriptor (>= 0), absent on failure (see socket_error_code()).
 share(all)
-socket_open(domain<Int>, st<Int>, pr<Int>)<Int> -> {
-    return vyb_net_open(domain, st, pr)
+socket_open(domain<Int>, st<Int>, pr<Int>)<Int?> -> {
+    fd<Int> = vyb_net_open(domain, st, pr)
+    if (fd < 0) { return Int?() }
+    return Int?(fd)
 }
 
+# Close a socket descriptor. Returns `Bool?` -- present on success, absent on
+# failure.
 share(all)
-socket_close(fd<Int>)<Int> -> {
-    return vyb_net_close(fd)
+socket_close(fd<Int>)<Bool?> -> {
+    r<Int> = vyb_net_close(fd)
+    if (r != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Bind `fd` to the given IP / port. Use "0.0.0.0" or "" to bind any interface.
+# Returns `Bool?` -- present on success, absent on failure.
 share(all)
-socket_bind(fd<Int>, ip<String>, port<Int>)<Int> -> {
-    return vyb_net_bind(fd, ip, port)
+socket_bind(fd<Int>, ip<String>, port<Int>)<Bool?> -> {
+    r<Int> = vyb_net_bind(fd, ip, port)
+    if (r != 0) { return Bool?() }
+    return Bool?(true)
 }
 
+# Mark `fd` as a listening socket. Returns `Bool?` -- present on success,
+# absent on failure.
 share(all)
-socket_listen(fd<Int>, backlog<Int>)<Int> -> {
-    return vyb_net_listen(fd, backlog)
+socket_listen(fd<Int>, backlog<Int>)<Bool?> -> {
+    r<Int> = vyb_net_listen(fd, backlog)
+    if (r != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Accept a pending connection on a listening socket; returns the connected
-# descriptor (>= 0) or -1.
+# Accept a pending connection on a listening socket. Returns `Int?` -- present
+# holding the connected descriptor (>= 0), absent on failure.
 share(all)
-socket_accept(fd<Int>)<Int> -> {
-    return vyb_net_accept(fd)
+socket_accept(fd<Int>)<Int?> -> {
+    c<Int> = vyb_net_accept(fd)
+    if (c < 0) { return Int?() }
+    return Int?(c)
 }
 
+# Connect `fd` to `ip:port`. Returns `Bool?` -- present on success, absent on
+# failure.
 share(all)
-socket_connect(fd<Int>, ip<String>, port<Int>)<Int> -> {
-    return vyb_net_connect(fd, ip, port)
+socket_connect(fd<Int>, ip<String>, port<Int>)<Bool?> -> {
+    r<Int> = vyb_net_connect(fd, ip, port)
+    if (r != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Put a read + write timeout on a socket so a hung peer can't block the process
-# forever; `ms` of 0 (or negative) disables the timeout. Returns 0 on success.
+# forever; `ms` of 0 (or negative) disables the timeout. Returns `Bool?` --
+# present on success, absent on failure.
 share(all)
-socket_set_timeout(fd<Int>, ms<Int>)<Int> -> {
-    return vyb_net_set_timeout(fd, ms)
+socket_set_timeout(fd<Int>, ms<Int>)<Bool?> -> {
+    r<Int> = vyb_net_set_timeout(fd, ms)
+    if (r != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Send the whole of `data` on `fd`; returns the number of bytes sent (or -1).
+# Send the whole of `data` on `fd`. Returns `Int?` -- present holding the number
+# of bytes sent, absent on failure.
 share(all)
-socket_send(fd<Int>, data<String>)<Int> -> {
-    return vyb_net_send(fd, data)
+socket_send(fd<Int>, data<String>)<Int?> -> {
+    n<Int> = vyb_net_send(fd, data)
+    if (n < 0) { return Int?() }
+    return Int?(n)
 }
 
-# Receive up to `maxlen` bytes from `fd` as a fresh String.
+# Receive up to `maxlen` bytes from `fd` as a fresh `String?` -- present holding
+# the bytes read (an empty read at end-of-stream is the present ""), absent on a
+# transport error. Callers stop reading when they see the absent `?`.
 share(all)
-socket_recv(fd<Int>, maxlen<Int>)<String> -> {
-    return vyb_net_recv(fd, maxlen)
+socket_recv(fd<Int>, maxlen<Int>)<String?> -> {
+    return vyb_net_recv_opt(fd, maxlen)
 }
 
-# The local port a socket is bound to (useful after binding port 0).
+# The local port a socket is bound to (useful after binding port 0). Returns
+# `Int?` -- present holding the port, absent on failure.
 share(all)
-socket_local_port(fd<Int>)<Int> -> {
-    return vyb_net_local_port(fd)
+socket_local_port(fd<Int>)<Int?> -> {
+    p<Int> = vyb_net_local_port(fd)
+    if (p < 0) { return Int?() }
+    return Int?(p)
 }
 
 # Resolve `host` (a hostname or IP literal) to a dotted-quad IPv4 address
 # string, for connecting by name while keeping the name for SNI / hostname
-# verification. Returns "" on failure (see socket_error_code()).
+# verification. Returns `String?` -- present holding the address, absent on
+# failure (see socket_error_code()).
 share(all)
-socket_resolve(host<String>)<String> -> {
-    return vyb_net_resolve(host)
+socket_resolve(host<String>)<String?> -> {
+    return vyb_net_resolve_opt(host)
 }
 
 share(all)
@@ -357,7 +391,7 @@ async_tcp_accept(listener<TcpListener>)<TcpStream?> -> {
 
 share(all)
 async_tcp_connect(ip<String>, port<Int>)<TcpStream?> -> {
-    fd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
+    fd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP) else -1
     if (fd < 0) { return TcpStream?() }
     if (vyb_async_connect(fd, ip, port) != 0) {
         socket_close(fd)

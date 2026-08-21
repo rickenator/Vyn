@@ -1,5 +1,5 @@
 {
-  "git_rev": "b5d83ee6ee1625a1efe4b5d5d43f7bbb757ca44e",
+  "git_rev": "23a60281f5555b347f8f0598854db23477cdf9cf",
   "modules": [
     "agents",
     "asyncs",
@@ -2073,7 +2073,7 @@
         "file": "stdlib/http/mod.vyb",
         "kind": "fn",
         "signature": "http_close(fd<Int>)<Int> ->",
-        "summary": "Close a socket or connection.",
+        "summary": "Close a socket or connection. Returns 0 on success, -1 on failure.",
         "fan_in": 0
       },
       {
@@ -2351,7 +2351,7 @@
         "module": "https",
         "file": "stdlib/https/mod.vyb",
         "kind": "fn",
-        "signature": "fd<Int> = socket_open(2, 1, 6)",
+        "signature": "fd<Int> = socket_open(2, 1, 6) else -1",
         "summary": "Full HTTPS/1.1 GET round-trip. Returns an HttpResponse with the parsed status,",
         "fan_in": 1
       },
@@ -2684,8 +2684,8 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "socket_accept(fd<Int>)<Int> ->",
-        "summary": "Accept a pending connection on a listening socket; returns the connected",
+        "signature": "socket_accept(fd<Int>)<Int?> ->",
+        "summary": "Accept a pending connection on a listening socket. Returns `Int?` -- present",
         "fan_in": 2
       },
       {
@@ -2693,7 +2693,7 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "socket_bind(fd<Int>, ip<String>, port<Int>)<Int> ->",
+        "signature": "socket_bind(fd<Int>, ip<String>, port<Int>)<Bool?> ->",
         "summary": "Bind `fd` to the given IP / port. Use \"0.0.0.0\" or \"\" to bind any interface.",
         "fan_in": 2
       },
@@ -2702,8 +2702,8 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "socket_close(fd<Int>)<Int> ->",
-        "summary": "",
+        "signature": "socket_close(fd<Int>)<Bool?> ->",
+        "summary": "Close a socket descriptor. Returns `Bool?` -- present on success, absent on",
         "fan_in": 2
       },
       {
@@ -2711,8 +2711,8 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "socket_connect(fd<Int>, ip<String>, port<Int>)<Int> ->",
-        "summary": "",
+        "signature": "socket_connect(fd<Int>, ip<String>, port<Int>)<Bool?> ->",
+        "summary": "Connect `fd` to `ip:port`. Returns `Bool?` -- present on success, absent on",
         "fan_in": 2
       },
       {
@@ -2738,8 +2738,8 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "socket_listen(fd<Int>, backlog<Int>)<Int> ->",
-        "summary": "",
+        "signature": "socket_listen(fd<Int>, backlog<Int>)<Bool?> ->",
+        "summary": "Mark `fd` as a listening socket. Returns `Bool?` -- present on success,",
         "fan_in": 2
       },
       {
@@ -2747,8 +2747,8 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "socket_local_port(fd<Int>)<Int> ->",
-        "summary": "The local port a socket is bound to (useful after binding port 0).",
+        "signature": "socket_local_port(fd<Int>)<Int?> ->",
+        "summary": "The local port a socket is bound to (useful after binding port 0). Returns",
         "fan_in": 2
       },
       {
@@ -2756,8 +2756,8 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "socket_open(domain<Int>, st<Int>, pr<Int>)<Int> ->",
-        "summary": "Create a socket in the given domain/type/protocol; returns the descriptor",
+        "signature": "socket_open(domain<Int>, st<Int>, pr<Int>)<Int?> ->",
+        "summary": "Create a socket in the given domain/type/protocol. Returns `Int?` -- present",
         "fan_in": 2
       },
       {
@@ -2765,8 +2765,8 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "socket_recv(fd<Int>, maxlen<Int>)<String> ->",
-        "summary": "Receive up to `maxlen` bytes from `fd` as a fresh String.",
+        "signature": "socket_recv(fd<Int>, maxlen<Int>)<String?> ->",
+        "summary": "Receive up to `maxlen` bytes from `fd` as a fresh `String?` -- present holding",
         "fan_in": 1
       },
       {
@@ -2774,7 +2774,7 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "socket_resolve(host<String>)<String> ->",
+        "signature": "socket_resolve(host<String>)<String?> ->",
         "summary": "Resolve `host` (a hostname or IP literal) to a dotted-quad IPv4 address",
         "fan_in": 2
       },
@@ -2783,8 +2783,8 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "socket_send(fd<Int>, data<String>)<Int> ->",
-        "summary": "Send the whole of `data` on `fd`; returns the number of bytes sent (or -1).",
+        "signature": "socket_send(fd<Int>, data<String>)<Int?> ->",
+        "summary": "Send the whole of `data` on `fd`. Returns `Int?` -- present holding the number",
         "fan_in": 1
       },
       {
@@ -2792,7 +2792,7 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "socket_set_timeout(fd<Int>, ms<Int>)<Int> ->",
+        "signature": "socket_set_timeout(fd<Int>, ms<Int>)<Bool?> ->",
         "summary": "Put a read + write timeout on a socket so a hung peer can't block the process",
         "fan_in": 0
       },
@@ -7387,13 +7387,13 @@
       "type": "runtimeRef",
       "from_module": "network",
       "from_symbol": "socket_recv",
-      "to_symbol": "vyb_net_recv"
+      "to_symbol": "vyb_net_recv_opt"
     },
     {
       "type": "runtimeRef",
       "from_module": "network",
       "from_symbol": "socket_resolve",
-      "to_symbol": "vyb_net_resolve"
+      "to_symbol": "vyb_net_resolve_opt"
     },
     {
       "type": "runtimeRef",

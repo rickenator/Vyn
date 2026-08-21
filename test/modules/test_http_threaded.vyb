@@ -21,11 +21,11 @@ main()<Int> -> {
             if (port <= 0) { return 2 }
 
             // Two concurrent clients connect while the accept thread is still looping.
-            c1<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, 0)
-            c2<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, 0)
+            c1<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, 0) else -1
+            c2<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, 0) else -1
             if (c1 < 0 || c2 < 0) { return 3 }
-            if (socket_connect(c1, "127.0.0.1", port) < 0) { return 4 }
-            if (socket_connect(c2, "127.0.0.1", port) < 0) { return 5 }
+            if (!(socket_connect(c1, "127.0.0.1", port) else false)) { return 4 }
+            if (!(socket_connect(c2, "127.0.0.1", port) else false)) { return 5 }
 
             socket_send(c1, "GET /one HTTP/1.1\r\nHost: t\r\n\r\n")
             socket_send(c2, "GET /two HTTP/1.1\r\nHost: t\r\n\r\n")
@@ -35,13 +35,13 @@ main()<Int> -> {
 
             r1<String> = ""
             while (r1.len() < 512) {
-                chunk<String> = socket_recv(c1, 256)
+                chunk<String> = socket_recv(c1, 256) else ""
                 if (chunk.len() == 0) { break }
                 r1 = r1.concat(chunk)
             }
             r2<String> = ""
             while (r2.len() < 512) {
-                chunk<String> = socket_recv(c2, 256)
+                chunk<String> = socket_recv(c2, 256) else ""
                 if (chunk.len() == 0) { break }
                 r2 = r2.concat(chunk)
             }

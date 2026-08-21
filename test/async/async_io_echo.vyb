@@ -15,10 +15,10 @@ import time::{time_mono_millis}
 MSG<String> = "ping from vyb async io"
 
 main()<Int> -> {
-    srv<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
-    if (socket_bind(srv, "127.0.0.1", 0) != 0) { return 1 }
-    if (socket_listen(srv, 1) != 0) { return 2 }
-    port<Int> = socket_local_port(srv)
+    srv<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP) else -1
+    if (!(socket_bind(srv, "127.0.0.1", 0) else false)) { return 1 }
+    if (!(socket_listen(srv, 1) else false)) { return 2 }
+    port<Int> = socket_local_port(srv) else -1
 
     # Server fiber: async-accept a connection, async-recv one message, echo it
     # back, then close.
@@ -35,7 +35,7 @@ main()<Int> -> {
     # async-connect and async-send a message, read the echo back.
     cli_task<Int> = async_spawn(|| -> {
         async_sleep_ms(10)
-        cli<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
+        cli<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP) else -1
         if (async_connect(cli, "127.0.0.1", port) != 0) {
             socket_close(cli)
             return socket_error_code()

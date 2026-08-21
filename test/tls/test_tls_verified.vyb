@@ -66,13 +66,12 @@ tNJ+gvTsNS/Y3DSoPu0E6tgr5EjK/FV0H/GIGWz9hAWYHV3dx2grL7GS2MOMu7n8
 QsM4qhE7CXh5EW4f/zlKqRoL
 -----END PRIVATE KEY-----"
 
-    srv<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
+    srv<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP) else -1
     if (srv < 0) { return 1 }
-    if (socket_bind(srv, "127.0.0.1", 0) < 0) { return 2 }
-    port<Int> = socket_local_port(srv)
+    if (!(socket_bind(srv, "127.0.0.1", 0) else false)) { return 2 }
+    port<Int> = socket_local_port(srv) else -1
     if (port <= 0) { return 3 }
-    if (socket_listen(srv, 2) < 0) { return 4 }
-
+    if (!(socket_listen(srv, 2) else false)) { return 4 }
     match (tls_server_context(cert, key)) {
         scx -> {
             // Server worker: serve two connections. Only the first completes a
@@ -81,7 +80,7 @@ QsM4qhE7CXh5EW4f/zlKqRoL
             th<Int> = thread_spawn(|| -> {
                 n<Int> = 0
                 while (n < 2) {
-                    c<Int> = socket_accept(srv)
+                    c<Int> = socket_accept(srv) else -1
                     if (c < 0) { continue }
                     match (tls_stream(scx, c, "")) {
                         s -> {
@@ -106,9 +105,9 @@ QsM4qhE7CXh5EW4f/zlKqRoL
             //    the name matches, so the handshake succeeds and echoes.
             match (tls_client_context_verified(cert)) {
                 vctx -> {
-                    c1<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
+                    c1<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP) else -1
                     if (c1 < 0) { return 8 }
-                    if (socket_connect(c1, "127.0.0.1", port) < 0) { return 9 }
+                    if (!(socket_connect(c1, "127.0.0.1", port) else false)) { return 9 }
                     match (tls_stream(vctx, c1, "localhost")) {
                         v1 -> {
                             match (v1.connect()) {
@@ -120,9 +119,9 @@ QsM4qhE7CXh5EW4f/zlKqRoL
 
                                     // 2) Wrong hostname against the same trusted
                                     //    cert: the handshake must fail (absent).
-                                    c2<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
+                                    c2<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP) else -1
                                     if (c2 < 0) { return 13 }
-                                    if (socket_connect(c2, "127.0.0.1", port) < 0) { return 14 }
+                                    if (!(socket_connect(c2, "127.0.0.1", port) else false)) { return 14 }
                                     match (tls_stream(vctx, c2, "wrong-host.invalid")) {
                                         v2 -> {
                                             match (v2.connect()) {

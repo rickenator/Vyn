@@ -4873,6 +4873,59 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "readall.h"), 1);
             m_currentLLVMValue = opt;
             return;
+        } else if (fname == "vyb_net_recv_opt") {
+            // Lossless stream read over a socket returning a native `String?`.
+            // Mirrors vyb_io_read_all_opt, with (fd, maxlen) integer arguments.
+            if (node->arguments.size() != 2) {
+                logError(node->loc, "vyb_net_recv_opt expects 2 arguments (fd, maxlen)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this); llvm::Value* fd = m_currentLLVMValue;
+            node->arguments[1]->accept(*this); llvm::Value* maxlen = m_currentLLVMValue;
+            if (!fd || !maxlen) return;
+            auto toRecvI64 = [&](llvm::Value* v) -> llvm::Value* {
+                if (!v->getType()->isIntegerTy(64)) return builder->CreateSExt(v, int64Type, "recv.toi64");
+                return v;
+            };
+            llvm::StructType* strTy = llvm::StructType::get(*context, {int8PtrType, int64Type}, false);
+            llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
+            llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "recv.slot");
+            llvm::FunctionType* ft = llvm::FunctionType::get(
+                int64Type, {int64Type, int64Type, llvm::PointerType::get(*context, 0)}, false);
+            llvm::Function* f = module->getFunction("__vyb_net_recv_opt");
+            if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_net_recv_opt", module.get());
+            llvm::Value* has = builder->CreateCall(f, {toRecvI64(fd), toRecvI64(maxlen), slot}, "recv.has");
+            llvm::Value* val = builder->CreateLoad(strTy, slot, "recv.val");
+            llvm::Value* opt = llvm::UndefValue::get(optTy);
+            opt = builder->CreateInsertValue(opt, val, 0, "recv.v");
+            opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "recv.h"), 1);
+            m_currentLLVMValue = opt;
+            return;
+        } else if (fname == "vyb_net_resolve_opt") {
+            // Lossless hostname->IPv4 resolution returning a native `String?`.
+            if (node->arguments.size() != 1) {
+                logError(node->loc, "vyb_net_resolve_opt expects 1 argument (host)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this); llvm::Value* host = m_currentLLVMValue;
+            if (!host) return;
+            llvm::Value* hostPtr = host;
+            if (hostPtr->getType()->isStructTy())
+                hostPtr = builder->CreateExtractValue(hostPtr, 0, "resolve.host");
+            llvm::StructType* strTy = llvm::StructType::get(*context, {int8PtrType, int64Type}, false);
+            llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
+            llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "resolve.slot");
+            llvm::FunctionType* ft = llvm::FunctionType::get(
+                int64Type, {int8PtrType, llvm::PointerType::get(*context, 0)}, false);
+            llvm::Function* f = module->getFunction("__vyb_net_resolve_opt");
+            if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_net_resolve_opt", module.get());
+            llvm::Value* has = builder->CreateCall(f, {hostPtr, slot}, "resolve.has");
+            llvm::Value* val = builder->CreateLoad(strTy, slot, "resolve.val");
+            llvm::Value* opt = llvm::UndefValue::get(optTy);
+            opt = builder->CreateInsertValue(opt, val, 0, "resolve.v");
+            opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "resolve.h"), 1);
+            m_currentLLVMValue = opt;
+            return;
         } else if (fname == "vyb_strchan_recv") {
             // Blocking recv returning a String { ptr, len } that the caller owns.
             if (node->arguments.size() != 1) {

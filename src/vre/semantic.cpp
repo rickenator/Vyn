@@ -2076,11 +2076,12 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_io_error_message" ||
             name == "vyb_net_open" || name == "vyb_net_close" || name == "vyb_net_bind" ||
             name == "vyb_net_listen" || name == "vyb_net_accept" || name == "vyb_net_connect" ||
-            name == "vyb_net_send" || name == "vyb_net_recv" || name == "vyb_net_local_port" ||
+            name == "vyb_net_send" || name == "vyb_net_recv" || name == "vyb_net_recv_opt" ||
+            name == "vyb_net_local_port" ||
             name == "vyb_net_error_code" || name == "vyb_net_error_message" ||
             name == "vyb_net_sendto" || name == "vyb_net_recvfrom" ||
             name == "vyb_net_last_peer_ip" || name == "vyb_net_last_peer_port" ||
-            name == "vyb_net_resolve" ||
+            name == "vyb_net_resolve" || name == "vyb_net_resolve_opt" ||
             name == "vyb_tls_client_context" || name == "vyb_tls_client_context_verified" ||
             name == "vyb_tls_server_context" ||
             name == "vyb_tls_ctx_free" || name == "vyb_tls_stream" ||
@@ -3048,6 +3049,18 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             // may legitimately be empty). This fixes read_all's "" sentinel, which
             // conflated an empty file with a failed read.
             if (name == "vyb_io_read_all_opt") {
+                auto* inner = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "String"));
+                auto* resTy = new ast::OptionalType(node->loc,
+                    std::unique_ptr<ast::TypeNode>(inner));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+            // Lossless stream read: net_recv_opt returns a native `String?` --
+            // absent on error, present holding the bytes read (an empty EOF read
+            // is the present "", distinct from an error).
+            if (name == "vyb_net_recv_opt" || name == "vyb_net_resolve_opt") {
                 auto* inner = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "String"));
                 auto* resTy = new ast::OptionalType(node->loc,

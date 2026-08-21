@@ -54,13 +54,13 @@ import threads::{thread_spawn, thread_detach}
 # `TcpListener?` -- present on success, absent on failure.
 share(all)
 http_listen(port<Int>, backlog<Int>)<TcpListener?> -> {
-    fd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
+    fd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP) else -1
     if (fd < 0) { return TcpListener?() }
-    if (socket_bind(fd, "0.0.0.0", port) < 0 || socket_listen(fd, backlog) < 0) {
+    if (!(socket_bind(fd, "0.0.0.0", port) else false) || !(socket_listen(fd, backlog) else false)) {
         socket_close(fd)
         return TcpListener?()
     }
-    lp<Int> = socket_local_port(fd)
+    lp<Int> = socket_local_port(fd) else -1
     return TcpListener?(TcpListener { fd = fd, local_ip = "0.0.0.0", local_port = lp })
 }
 
@@ -74,7 +74,7 @@ http_local_port(listener<TcpListener>)<Int> -> {
 # `TcpStream?` -- present on success, absent on failure.
 share(all)
 http_accept(listener<TcpListener>)<TcpStream?> -> {
-    c<Int> = socket_accept(listener.fd)
+    c<Int> = socket_accept(listener.fd) else -1
     if (c < 0) { return TcpStream?() }
     return TcpStream?(TcpStream { fd = c, peer_ip = "", peer_port = -1 })
 }
@@ -86,7 +86,7 @@ http_read_head(conn<Int>, max<Int>)<String> -> {
     buf<String> = ""
     marker<String> = "\r\n\r\n"
     while (buf.len() < max) {
-        chunk<String> = socket_recv(conn, 256)
+        chunk<String> = socket_recv(conn, 256) else ""
         if (chunk.len() == 0) { break }
         buf = buf.concat(chunk)
         idx<Int> = buf.index_of(marker)
@@ -114,17 +114,19 @@ http_send_all(fd<Int>, data<String>)<Int> -> {
     total<Int> = 0
     n<Int> = data.len()
     while (total < n) {
-        sent<Int> = socket_send(fd, data.substring(total))
+        sent<Int> = socket_send(fd, data.substring(total)) else 0
         if (sent <= 0) { return total }
         total = total + sent
     }
     return total
 }
 
-# Close a socket or connection.
+# Close a socket or connection. Returns 0 on success, -1 on failure.
 share(all)
 http_close(fd<Int>)<Int> -> {
-    return socket_close(fd)
+    ok<Bool> = socket_close(fd) else false
+    if (ok) { return 0 }
+    return -1
 }
 
 # A well-formed HTTP/1.1 text/plain response with a Content-Length. A handful of
@@ -154,7 +156,7 @@ share(all)
 http_read_rest(conn<Int>, max<Int>)<String> -> {
     buf<String> = ""
     while (buf.len() < max) {
-        chunk<String> = socket_recv(conn, 1024)
+        chunk<String> = socket_recv(conn, 1024) else ""
         if (chunk.len() == 0) { break }
         buf = buf.concat(chunk)
     }
@@ -166,9 +168,9 @@ http_read_rest(conn<Int>, max<Int>)<String> -> {
 # present value). Blocks until the peer responds.
 share(all)
 http_get(host<String>, port<Int>, path<String>)<String?> -> {
-    fd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
+    fd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP) else -1
     if (fd < 0) { return String?() }
-    if (socket_connect(fd, host, port) < 0) {
+    if (!(socket_connect(fd, host, port) else false)) {
         socket_close(fd)
         return String?()
     }
@@ -342,7 +344,7 @@ http_read_line(fd<Int>)<String> -> {
     buf<String> = ""
     crlf<String> = "\r\n"
     while (true) {
-        chunk<String> = socket_recv(fd, 1)
+        chunk<String> = socket_recv(fd, 1) else ""
         if (chunk.len() == 0) { break }
         buf = buf.concat(chunk)
         idx<Int> = buf.index_of(crlf)
@@ -356,7 +358,7 @@ share(all)
 http_read_exact(fd<Int>, length<Int>)<String> -> {
     buf<String> = ""
     while (buf.len() < length) {
-        chunk<String> = socket_recv(fd, length - buf.len())
+        chunk<String> = socket_recv(fd, length - buf.len()) else ""
         if (chunk.len() == 0) { break }
         buf = buf.concat(chunk)
     }
@@ -368,7 +370,7 @@ share(all)
 http_read_all(fd<Int>, max<Int>)<String> -> {
     buf<String> = ""
     while (buf.len() < max) {
-        chunk<String> = socket_recv(fd, 1024)
+        chunk<String> = socket_recv(fd, 1024) else ""
         if (chunk.len() == 0) { break }
         buf = buf.concat(chunk)
     }
@@ -425,11 +427,11 @@ http_get_full(host<String>, port<Int>, path<String>)<HttpResponse?> -> {
     # then connect by IP. The sockets are AF_INET only, and a bare hostname can
     # resolve to an IPv6 address first, which would make the connect fail - even
     # when the host serves IPv4 too. The hostname is kept for the Host header.
-    connect_ip<String> = socket_resolve(host)
+    connect_ip<String> = socket_resolve(host) else ""
     if (connect_ip.len() == 0) { return HttpResponse?() }
-    fd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
+    fd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP) else -1
     if (fd < 0) { return HttpResponse?() }
-    if (socket_connect(fd, connect_ip, port) < 0) {
+    if (!(socket_connect(fd, connect_ip, port) else false)) {
         socket_close(fd)
         return HttpResponse?()
     }

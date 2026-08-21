@@ -9,16 +9,16 @@
 import network::{socket_open, socket_close, socket_set_timeout, Socket}
 
 main()<Int> -> {
-    fd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, 0)
+    fd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, 0) else -1
     if (fd < 0) { return 1 }
 
     // A valid descriptor accepts both arming and disarming the timeout.
-    if (socket_set_timeout(fd, 100) != 0) { return 2 }
-    if (socket_set_timeout(fd, 0) != 0) { return 3 }
-    if (socket_close(fd) != 0) { return 4 }
+    if (!(socket_set_timeout(fd, 100) else false)) { return 2 }
+    if (!(socket_set_timeout(fd, 0) else false)) { return 3 }
+    if (!(socket_close(fd) else false)) { return 4 }
 
     // An invalid descriptor is reported as a failure, not silently ignored.
-    if (socket_set_timeout(-1, 100) == 0) { return 5 }
+    if ((socket_set_timeout(-1, 100) else false)) { return 5 }
 
     println("timeout ok")
     return 0

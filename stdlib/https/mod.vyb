@@ -102,9 +102,9 @@ share(all)
 # socket_open(AF_INET=2, SOCK_STREAM=1, IPPROTO_TCP=6).
 https_fetch(verify_host<String>, connect_ip<String>, port<Int>, path<String>,
             ctx<TlsContext>)<HttpResponse?> -> {
-    fd<Int> = socket_open(2, 1, 6)
+    fd<Int> = socket_open(2, 1, 6) else -1
     if (fd < 0) { return HttpResponse?() }
-    if (socket_connect(fd, connect_ip, port) < 0) {
+    if (!(socket_connect(fd, connect_ip, port) else false)) {
         socket_close(fd)
         return HttpResponse?()
     }
@@ -192,7 +192,7 @@ https_get_full(host<String>, port<Int>, path<String>)<HttpResponse?> -> {
 # the system default CA paths.
 share(all)
 https_get_full_verified(host<String>, port<Int>, path<String>, ca_pem<String>)<HttpResponse?> -> {
-    ip<String> = socket_resolve(host)
+    ip<String> = socket_resolve(host) else ""
     if (ip.len() == 0) { return HttpResponse?() }
     match (tls_client_context_verified(ca_pem)) {
         ctx -> { return https_fetch(host, ip, port, path, ctx) }
@@ -227,16 +227,16 @@ https_get_verified(host<String>, port<Int>, path<String>, ca_pem<String>)<String
 # self-test of the tls+http wiring without standing up an external server.
 share(all)
 https_selfhost(cert_pem<String>, key_pem<String>)<Int> -> {
-    srv<Int> = socket_open(2, 1, 6)
+    srv<Int> = socket_open(2, 1, 6) else -1
     if (srv < 0) { return -1 }
-    if (socket_bind(srv, "127.0.0.1", 0) < 0) { socket_close(srv); return -1 }
-    port<Int> = socket_local_port(srv)
+    if (!(socket_bind(srv, "127.0.0.1", 0) else false)) { socket_close(srv); return -1 }
+    port<Int> = socket_local_port(srv) else -1
     if (port <= 0) { socket_close(srv); return -1 }
-    if (socket_listen(srv, 1) < 0) { socket_close(srv); return -1 }
+    if (!(socket_listen(srv, 1) else false)) { socket_close(srv); return -1 }
     match (tls_server_context(cert_pem, key_pem)) {
         scx -> {
             th<Int> = thread_spawn(|| -> {
-                c<Int> = socket_accept(srv)
+                c<Int> = socket_accept(srv) else -1
                 if (c < 0) { return 1 }
                 match (tls_stream(scx, c, "")) {
                     s -> {
@@ -284,16 +284,16 @@ https_selfhost(cert_pem<String>, key_pem<String>)<Int> -> {
 # to the server's own cert and connects by name so the hostname is checked.
 share(all)
 https_selfhost_verified(cert_pem<String>, key_pem<String>)<Int> -> {
-    srv<Int> = socket_open(2, 1, 6)
+    srv<Int> = socket_open(2, 1, 6) else -1
     if (srv < 0) { return -1 }
-    if (socket_bind(srv, "127.0.0.1", 0) < 0) { socket_close(srv); return -1 }
-    port<Int> = socket_local_port(srv)
+    if (!(socket_bind(srv, "127.0.0.1", 0) else false)) { socket_close(srv); return -1 }
+    port<Int> = socket_local_port(srv) else -1
     if (port <= 0) { socket_close(srv); return -1 }
-    if (socket_listen(srv, 1) < 0) { socket_close(srv); return -1 }
+    if (!(socket_listen(srv, 1) else false)) { socket_close(srv); return -1 }
     match (tls_server_context(cert_pem, key_pem)) {
         scx -> {
             th<Int> = thread_spawn(|| -> {
-                c<Int> = socket_accept(srv)
+                c<Int> = socket_accept(srv) else -1
                 if (c < 0) { return 1 }
                 match (tls_stream(scx, c, "")) {
                     s -> {

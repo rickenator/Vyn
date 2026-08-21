@@ -11,29 +11,29 @@ import network::{socket_open, socket_close, socket_bind, socket_listen,
                  socket_local_port, socket_error_code, Socket}
 
 main()<Int> -> {
-    srv<Int> = socket_open(Socket::AF_INET6, Socket::SOCK_STREAM, 0)
+    srv<Int> = socket_open(Socket::AF_INET6, Socket::SOCK_STREAM, 0) else -1
     if (srv < 0) {
         // Environment without IPv6: nothing to exercise, skip cleanly.
         println("ipv6 skipped")
         return 0
     }
-    if (socket_bind(srv, "::1", 0) < 0) {
+    if (!(socket_bind(srv, "::1", 0) else false)) {
         println("ipv6 skipped")
         socket_close(srv)
         return 0
     }
-    if (socket_listen(srv, 1) < 0) { return 3 }
-    port<Int> = socket_local_port(srv)
+    if (!(socket_listen(srv, 1) else false)) { return 3 }
+    port<Int> = socket_local_port(srv) else -1
     if (port <= 0) { return 4 }
 
-    cli<Int> = socket_open(Socket::AF_INET6, Socket::SOCK_STREAM, 0)
+    cli<Int> = socket_open(Socket::AF_INET6, Socket::SOCK_STREAM, 0) else -1
     if (cli < 0) { socket_close(srv); return 5 }
-    if (socket_connect(cli, "::1", port) < 0) { socket_close(srv); return 6 }
-    conn<Int> = socket_accept(srv)
+    if (!(socket_connect(cli, "::1", port) else false)) { socket_close(srv); return 6 }
+    conn<Int> = socket_accept(srv) else -1
     if (conn < 0) { return 7 }
 
-    if (socket_send(cli, "v6") != 2) { return 8 }
-    rx<String> = socket_recv(conn, 16)
+    if ((socket_send(cli, "v6") else -1) != 2) { return 8 }
+    rx<String> = socket_recv(conn, 16) else ""
     if (rx != "v6") { return 9 }
 
     socket_close(conn)

@@ -1019,6 +1019,18 @@ VYB_WEAK int64_t __vyb_net_local_port(int64_t fd) {
     return (int64_t)ntohs(((struct sockaddr_in*)&addr)->sin_port);
 }
 
+// Lossless stream read: returns 1 and writes the received bytes' vyb_file_str to
+// *out when data (even an empty EOF read) was produced, or 0 on an error (NULL
+// buffer). __vyb_net_recv returns a NULL pointer only on error; a clean end of
+// stream still yields a present-but-empty value, so EOF is distinct from error.
+VYB_WEAK int64_t __vyb_net_recv_opt(int64_t fd, int64_t maxlen, vyb_file_str* out) {
+    if (!out) return 0;
+    vyb_file_str r = __vyb_net_recv(fd, maxlen);
+    if (!r.ptr) return 0;
+    *out = r;
+    return 1;
+}
+
 // Resolve `host` (a hostname or IP literal) to a dotted-quad IPv4 address
 // string. Returns an owned, registry-registered copy; { NULL, 0 } on failure
 // (see net_error_code). Uses getaddrinfo so Vyb code can turn a name into an
@@ -1051,6 +1063,16 @@ VYB_WEAK vyb_file_str __vyb_net_resolve(const char* host) {
     freeaddrinfo(res);
     if (r.ptr) vyb_net_err = 0;
     return r;
+}
+
+// Lossless hostname resolve: returns 1 and writes the resolved address's
+// vyb_file_str to *out when successful, or 0 on failure. Mirrors __vyb_net_recv_opt.
+VYB_WEAK int64_t __vyb_net_resolve_opt(const char* host, vyb_file_str* out) {
+    if (!out) return 0;
+    vyb_file_str r = __vyb_net_resolve(host);
+    if (!r.ptr) return 0;
+    *out = r;
+    return 1;
 }
 
 VYB_WEAK int64_t __vyb_net_error_code(void) {

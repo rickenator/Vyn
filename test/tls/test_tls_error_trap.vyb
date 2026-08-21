@@ -23,9 +23,9 @@ import tls::{tls_client_context_verified, tls_server_context, tls_stream,
 connect_verified(host<String>, port<Int>, cert<String>)<Void> -> {
     match (tls_client_context_verified(cert)) {
         vctx -> {
-            cfd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
+            cfd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP) else -1
             if (cfd < 0) { fail tls_error("connect", host) }
-            if (socket_connect(cfd, "127.0.0.1", port) < 0) { socket_close(cfd); fail tls_error("connect", host) }
+            if (!(socket_connect(cfd, "127.0.0.1", port) else false)) { socket_close(cfd); fail tls_error("connect", host) }
             match (tls_stream(vctx, cfd, host)) {
                 s -> {
                     match (s.connect()) {
@@ -88,19 +88,18 @@ Aq0cwymlPoxxCyl8hH7Kl0HEJuraLq0vLytwHddAymIenif5HZgSm2qAVVqblv38
 tNJ+gvTsNS/Y3DSoPu0E6tgr5EjK/FV0H/GIGWz9hAWYHV3dx2grL7GS2MOMu7n8
 QsM4qhE7CXh5EW4f/zlKqRoL
 -----END PRIVATE KEY-----"
-    srv<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
+    srv<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP) else -1
     if (srv < 0) { return 1 }
-    if (socket_bind(srv, "127.0.0.1", 0) < 0) { return 2 }
-    port<Int> = socket_local_port(srv)
-    if (socket_listen(srv, 2) < 0) { return 3 }
-
+    if (!(socket_bind(srv, "127.0.0.1", 0) else false)) { return 2 }
+    port<Int> = socket_local_port(srv) else -1
+    if (!(socket_listen(srv, 2) else false)) { return 3 }
     # The wrong hostname (against the pinned cert) must escalate via TlsError.
     match (tls_server_context(cert, key)) {
         scx -> {
             th<Int> = thread_spawn(|| -> {
                 n<Int> = 0
                 while (n < 2) {
-                    c<Int> = socket_accept(srv)
+                    c<Int> = socket_accept(srv) else -1
                     if (c < 0) { continue }
                     match (tls_stream(scx, c, "")) {
                         s -> {

@@ -115,10 +115,12 @@ extern "C" {
     int64_t __vyb_net_connect(int64_t fd, const char* ip, int64_t port);
     int64_t __vyb_net_send(int64_t fd, const char* data, int64_t len);
     vyb_file_str __vyb_net_recv(int64_t fd, int64_t maxlen);
+    int64_t __vyb_net_recv_opt(int64_t fd, int64_t maxlen, vyb_file_str* out);
     int64_t __vyb_net_local_port(int64_t fd);
     int64_t __vyb_net_error_code(void);
     const char* __vyb_net_error_message(void);
     vyb_file_str __vyb_net_resolve(const char* host);
+    int64_t __vyb_net_resolve_opt(const char* host, vyb_file_str* out);
     // UDP helpers (network stdlib module): sendto/recvfrom + last-peer probes.
     int64_t __vyb_net_sendto(int64_t fd, const char* data, int64_t len,
                              const char* ip, int64_t port);
@@ -2071,6 +2073,8 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_send), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_net_recv")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_recv), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_net_recv_opt")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_recv_opt), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_net_local_port")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_local_port), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_net_error_code")] = llvm::orc::ExecutorSymbolDef(
@@ -2079,6 +2083,8 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_error_message), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_net_resolve")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_resolve), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_net_resolve_opt")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_resolve_opt), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_net_sendto")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_sendto), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_net_recvfrom")] = llvm::orc::ExecutorSymbolDef(
