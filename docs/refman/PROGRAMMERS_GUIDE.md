@@ -907,7 +907,9 @@ helpers (`http_index_of`, `http_parse_int`, `http_parse_hex`,
 timeout). These keep the idiomatic `if (idx >= 0)` / `while ((ch = getch()) !=
 -1)` test and avoid conflating "no match" with "the call failed". The rule of
 thumb: **absence (`?`) means the operation failed; a sentinel value means the
-operation ran but found nothing.**
+operation ran but found nothing.** This carve-out is reserved for sentinels that
+are *in-domain* for the function (an index, a keycode, a computed result).
+Dimension/measurement getters -- `curses_rows`/`curses_cols`, `qt_window_width`/`qt_window_height`, `qt_screen_width`/`qt_screen_height`/`qt_screen_dpi` -- never meaningfully return `-1`, so they use `Int?` (absent on a bad handle, no screen, or an inactive screen) instead of a `-1` sentinel.
 
 **Which stdlib modules use which shape.** The 0.7.3 batch pushed every
 programmer-facing failure surface to native optionals:
@@ -919,11 +921,11 @@ programmer-facing failure surface to native optionals:
 | `network` (incl. oracle output) | acquisition -> `TcpStream?`/`TcpListener?`/`UdpSocket?`; `socket_*` (`Int?`/`Bool?`/`Int?`-bytes); `udp_recv_from`/`recv_from`/`async_tcp_read` -> `String?` |
 | `tls`, `https` | `tls_stream`/`tls_client_context` -> `TlsStream?`/`TlsContext?`; `https_get*` -> `HttpResponse?` |
 | `asyncs` | `async_sleep_ms`/`async_connect` -> `Bool?`; `async_recv` -> `String?`; `async_send` -> `Int?`; `async_spawn`/`async_poll`/`async_accept` -> `Int?` |
-| `curses` | `curses_init` -> `Int?`; draw/attr/window ops -> `Bool?`; getters + `curses_getch` stay `Int` |
+| `curses` | `curses_init` -> `Int?`; draw/attr/window ops -> `Bool?`; `curses_rows`/`curses_cols` -> `Int?`; `curses_getch` + color/attr probes stay `Int` |
 | `agents` | `agent_send*`/`agent_close`/`agent_free`/`agent_dead_letter` -> `Bool?`; `agent_start*` -> `Int` (0 sentinel, not yet migrated); probes stay `Int`/`String` |
 | `channels` | typed `chan<T>` speaks `T?`; raw `chan_close`/`chan_free`, `strchan_close`/`strchan_free` -> `Bool?`; raw `chan_new`/`chan_bounded`, `strchan_new`/`strchan_bounded` still return plain `Int` (0 sentinel, not yet migrated) |
 | `threads`, `tasks` | `mutex_new`/`cond_new`/`atomic_new` -> `Int?`; lock/cond/atomic/task ops -> `Bool?`; `thread_join` -> `Int?`; value probes stay `Int` |
-| `qt` | creators -> `Int?`; op-status -> `Bool?`; value getters stay `Int`/`String`/`Bool` |
+| `qt` | creators AND dimension/DPI getters -> `Int?`; op-status -> `Bool?`; value/probe getters stay `Int`/`String`/`Bool` |
 
 The canonical per-module detail lives in `doc/FEATURE_STATUS.md` ("Standard
 Module Error Handling").
@@ -2191,6 +2193,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

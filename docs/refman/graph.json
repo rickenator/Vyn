@@ -1,5 +1,5 @@
 {
-  "git_rev": "fb468e846c2030c6b73df7a9023f96553bfe34e1",
+  "git_rev": "06ee13bade142caf046e53f6e3b753acf0ed4c17",
   "modules": [
     "agents",
     "asyncs",
@@ -1874,8 +1874,8 @@
         "module": "curses",
         "file": "stdlib/curses/mod.vyb",
         "kind": "fn",
-        "signature": "curses_cols()<Int> ->",
-        "summary": "Current terminal column count, or -1 if the screen is not active.",
+        "signature": "curses_cols()<Int?> ->",
+        "summary": "Current terminal column count. Returns `Int?` -- present holding the dimension",
         "fan_in": 0
       },
       {
@@ -1982,8 +1982,8 @@
         "module": "curses",
         "file": "stdlib/curses/mod.vyb",
         "kind": "fn",
-        "signature": "curses_rows()<Int> ->",
-        "summary": "Current terminal row count (Int), or -1 if the screen is not active.",
+        "signature": "curses_rows()<Int?> ->",
+        "summary": "Current terminal row count. Returns `Int?` -- present holding the dimension",
         "fan_in": 0
       },
       {
@@ -3719,8 +3719,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_screen_dpi()<Int> ->",
-        "summary": "Primary screen device-pixel-ratio scaled to 96dpi (100 = 1.0x), or 100 if no screen.",
+        "signature": "qt_screen_dpi()<Int?> ->",
+        "summary": "Primary screen device-pixel-ratio scaled to 96dpi (100 = 1.0x). Returns `Int?` -- present holding the DPI, absent if no screen is available.",
         "fan_in": 0
       },
       {
@@ -3728,8 +3728,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_screen_height()<Int> ->",
-        "summary": "Primary screen height in logical pixels, or -1 if no screen.",
+        "signature": "qt_screen_height()<Int?> ->",
+        "summary": "Primary screen height in logical pixels. Returns `Int?` -- present holding the height, absent if no screen is available.",
         "fan_in": 0
       },
       {
@@ -3737,8 +3737,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_screen_width()<Int> ->",
-        "summary": "Primary screen width in logical pixels, or -1 if no screen.",
+        "signature": "qt_screen_width()<Int?> ->",
+        "summary": "Primary screen width in logical pixels. Returns `Int?` -- present holding the width, absent if no screen is available.",
         "fan_in": 0
       },
       {
@@ -4106,8 +4106,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_window_height(w<Int>)<Int> ->",
-        "summary": "Content height in pixels, or -1 on a bad handle.",
+        "signature": "qt_window_height(w<Int>)<Int?> ->",
+        "summary": "Content height in pixels. Returns `Int?` -- present holding the height, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -4169,8 +4169,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_window_width(w<Int>)<Int> ->",
-        "summary": "Content width in pixels, or -1 on a bad handle.",
+        "signature": "qt_window_width(w<Int>)<Int?> ->",
+        "summary": "Content width in pixels. Returns `Int?` -- present holding the width, absent on a bad handle.",
         "fan_in": 0
       },
       {

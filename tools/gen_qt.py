@@ -62,9 +62,9 @@ QT_FUNCS = [
          args=[("w", "Int"), ("width", "Int"), ("height", "Int")], ret="Int", shape="3int", stub="-1",
          doc="Resize to (width, height) pixels. Returns `Bool?` -- present on success, absent on a bad handle."),
     dict(mod="qt_window_width", vn="vyb_qt_window_width", cn="__vyb_qt_window_width", args=[("w", "Int")], ret="Int",
-         shape="int1", stub="-1", doc="Content width in pixels, or -1 on a bad handle."),
+         shape="int1", stub="-1", doc="Content width in pixels. Returns `Int?` -- present holding the width, absent on a bad handle."),
     dict(mod="qt_window_height", vn="vyb_qt_window_height", cn="__vyb_qt_window_height", args=[("w", "Int")], ret="Int",
-         shape="int1", stub="-1", doc="Content height in pixels, or -1 on a bad handle."),
+         shape="int1", stub="-1", doc="Content height in pixels. Returns `Int?` -- present holding the height, absent on a bad handle."),
     dict(mod="qt_window_show", vn="vyb_qt_window_show", cn="__vyb_qt_window_show", args=[("w", "Int")], ret="Int",
          shape="int1", stub="-1", doc="Show (map) the window. Returns `Bool?` -- present on success, absent on a bad handle."),
     dict(mod="qt_window_hide", vn="vyb_qt_window_hide", cn="__vyb_qt_window_hide", args=[("w", "Int")], ret="Int",
@@ -74,11 +74,11 @@ QT_FUNCS = [
 
     # Screen (QApplication::primaryScreen)
     dict(mod="qt_screen_width", vn="vyb_qt_screen_width", cn="__vyb_qt_screen_width", args=[], ret="Int",
-         shape="int0", stub="-1", doc="Primary screen width in logical pixels, or -1 if no screen."),
+         shape="int0", stub="-1", doc="Primary screen width in logical pixels. Returns `Int?` -- present holding the width, absent if no screen is available."),
     dict(mod="qt_screen_height", vn="vyb_qt_screen_height", cn="__vyb_qt_screen_height", args=[], ret="Int",
-         shape="int0", stub="-1", doc="Primary screen height in logical pixels, or -1 if no screen."),
+         shape="int0", stub="-1", doc="Primary screen height in logical pixels. Returns `Int?` -- present holding the height, absent if no screen is available."),
     dict(mod="qt_screen_dpi", vn="vyb_qt_screen_dpi", cn="__vyb_qt_screen_dpi", args=[], ret="Int",
-         shape="int0", stub="100", doc="Primary screen device-pixel-ratio scaled to 96dpi (100 = 1.0x), or 100 if no screen."),
+         shape="int0", stub="-1", doc="Primary screen device-pixel-ratio scaled to 96dpi (100 = 1.0x). Returns `Int?` -- present holding the DPI, absent if no screen is available."),
 
     # Label (QLabel)
     dict(mod="qt_label_create", vn="vyb_qt_label_create", cn="__vyb_qt_label_create",
@@ -534,6 +534,11 @@ MIGRATION = {
     "qt_widget_set_text_color": "Bool?",
     "qt_web_load": "Bool?", "qt_web_back": "Bool?", "qt_web_forward": "Bool?",
     "qt_web_reload": "Bool?", "qt_web_zoom_in": "Bool?", "qt_web_zoom_out": "Bool?",
+    # Value/dimension getters with no in-domain -1 -> Int? (present = value,
+    # absent = no screen / bad handle). "Int?@<sentinel>" means absent when the
+    # intrinsic returns that sentinel ("@0" for creators, "@-1" for dimensions).
+    "qt_screen_width": "Int?@-1", "qt_screen_height": "Int?@-1", "qt_screen_dpi": "Int?@-1",
+    "qt_window_width": "Int?@-1", "qt_window_height": "Int?@-1",
 }
 
 
@@ -550,10 +555,13 @@ def _qt_call(f, truthy):
 
 def migrate_body(f):
     want = MIGRATION[f["mod"]]
-    if want == "Int?":
-        return ("h = %s\n"
-                "    if (h == 0) { return Int?() }\n"
-                "    return Int?(h)") % _qt_call(f, False)
+    base, _, sentinel = want.partition("@")
+    if base == "Int?":
+        sentinel = sentinel or "0"
+        call = _qt_call(f, False)
+        return ("v = %s\n"
+                "    if (v == %s) { return Int?() }\n"
+                "    return Int?(v)") % (call, sentinel)
     elif want == "Bool?":
         bnames = [n for n, t in f["args"] if t == "Bool"]
         if not bnames:
@@ -880,7 +888,7 @@ def emit_mod_wrappers():
             sig = f["wrap_sig"]
         else:
             sig = ", ".join("%s<%s>" % (n, t) for n, t in f["args"])
-        ret = MIGRATION.get(f["mod"], f["ret"])
+        ret = MIGRATION.get(f["mod"], f["ret"]).split("@")[0] if f["mod"] in MIGRATION else f["ret"]
         out.append("%s(%s)<%s> -> {" % (f["mod"], sig, ret))
         if f["mod"] in MIGRATION:
             out.append("    " + migrate_body(f))

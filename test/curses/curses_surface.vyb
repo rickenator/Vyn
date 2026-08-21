@@ -16,7 +16,9 @@ main()<Int> -> {
         ? -> { }
     }
     if (curses_ok() != 0) { return 2 }
-    if (curses_rows() != -1 || curses_cols() != -1) { return 3 }
+    // Terminal size is absent (not -1) while the screen is inactive.
+    match (curses_rows()) { v -> { return 3 } ? -> { } }
+    match (curses_cols()) { v -> { return 3 } ? -> { } }
     if (curses_addstr("x") else false) { return 4 }
     if (curses_getch() != -1) { return 5 }
     if (!(curses_close() else false)) { return 6 }

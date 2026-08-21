@@ -45,19 +45,21 @@
 # -1, e.g. a bad/0/stale handle or no QApplication); present Bool?(true) means
 # it succeeded.
 #
-# Data/probe getters keep plain values: qt_init/qt_active/qt_window_visible/
-# qt_timer_fired are Bool; qt_window_title/width/height, qt_screen_*,
-# qt_*_text/url/count/value/current/index return their data with 0 or a -1
-# "found nothing" sentinel (they report a value, not op status). qt_run returns
-# the exit code; qt_wait_event/qt_msg_question are value/Bool/int results.
+# Data getters: qt_init/qt_active/qt_window_visible/qt_timer_fired are Bool, and
+# qt_window_title, qt_*_text/url/count/value/current/index return their data with
+# a "found nothing"/default value (they report data, not op status). The dimension
+# getters -- qt_window_width/qt_window_height, qt_screen_width/qt_screen_height,
+# qt_screen_dpi -- return Int?: present holding the measurement, absent on a bad
+# window handle or when no screen is available. qt_run returns the exit code;
+# qt_wait_event and qt_msg_question return value/Bool/Int results.
 
 # gen_qt[mod_wrappers]: begin
 # Create a QWebEngineView under `parent`. Returns `Int?` -- present with the live handle, absent if QtWebEngine is unavailable or creation failed.
 share(all)
 qt_web_create(parent<Int>)<Int?> -> {
-    h = vyb_qt_web_create(parent)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_web_create(parent)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Begin loading `url` in the web view (async). Returns `Bool?` -- present on success, absent on a bad handle.
@@ -162,9 +164,9 @@ qt_timer_fired()<Bool> -> {
 # Create a top-level window. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
 qt_window_create()<Int?> -> {
-    h = vyb_qt_window_create()
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_window_create()
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Destroy window `w` (children go with it). Returns `Bool?` -- present on success, absent on a bad handle.
@@ -194,16 +196,20 @@ qt_window_resize(w<Int>, width<Int>, height<Int>)<Bool?> -> {
     return Bool?(true)
 }
 
-# Content width in pixels, or -1 on a bad handle.
+# Content width in pixels. Returns `Int?` -- present holding the width, absent on a bad handle.
 share(all)
-qt_window_width(w<Int>)<Int> -> {
-    return vyb_qt_window_width(w)
+qt_window_width(w<Int>)<Int?> -> {
+    v = vyb_qt_window_width(w)
+    if (v == -1) { return Int?() }
+    return Int?(v)
 }
 
-# Content height in pixels, or -1 on a bad handle.
+# Content height in pixels. Returns `Int?` -- present holding the height, absent on a bad handle.
 share(all)
-qt_window_height(w<Int>)<Int> -> {
-    return vyb_qt_window_height(w)
+qt_window_height(w<Int>)<Int?> -> {
+    v = vyb_qt_window_height(w)
+    if (v == -1) { return Int?() }
+    return Int?(v)
 }
 
 # Show (map) the window. Returns `Bool?` -- present on success, absent on a bad handle.
@@ -226,30 +232,36 @@ qt_window_visible(w<Int>)<Bool> -> {
     return vyb_qt_window_visible(w) == 1
 }
 
-# Primary screen width in logical pixels, or -1 if no screen.
+# Primary screen width in logical pixels. Returns `Int?` -- present holding the width, absent if no screen is available.
 share(all)
-qt_screen_width()<Int> -> {
-    return vyb_qt_screen_width()
+qt_screen_width()<Int?> -> {
+    v = vyb_qt_screen_width()
+    if (v == -1) { return Int?() }
+    return Int?(v)
 }
 
-# Primary screen height in logical pixels, or -1 if no screen.
+# Primary screen height in logical pixels. Returns `Int?` -- present holding the height, absent if no screen is available.
 share(all)
-qt_screen_height()<Int> -> {
-    return vyb_qt_screen_height()
+qt_screen_height()<Int?> -> {
+    v = vyb_qt_screen_height()
+    if (v == -1) { return Int?() }
+    return Int?(v)
 }
 
-# Primary screen device-pixel-ratio scaled to 96dpi (100 = 1.0x), or 100 if no screen.
+# Primary screen device-pixel-ratio scaled to 96dpi (100 = 1.0x). Returns `Int?` -- present holding the DPI, absent if no screen is available.
 share(all)
-qt_screen_dpi()<Int> -> {
-    return vyb_qt_screen_dpi()
+qt_screen_dpi()<Int?> -> {
+    v = vyb_qt_screen_dpi()
+    if (v == -1) { return Int?() }
+    return Int?(v)
 }
 
 # Create a label with `text` under `parent` (0 = none). Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
 qt_label_create(parent<Int>, text<String>)<Int?> -> {
-    h = vyb_qt_label_create(parent, text)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_label_create(parent, text)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Replace label text. Returns `Bool?` -- present on success, absent on a non-label handle.
@@ -268,9 +280,9 @@ qt_label_text(label<Int>)<String> -> {
 # Create a push button under `parent`; a click enqueues QtEvent::Click. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
 qt_button_create(parent<Int>, text<String>)<Int?> -> {
-    h = vyb_qt_button_create(parent, text)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_button_create(parent, text)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Replace button label. Returns `Bool?` -- present on success, absent on a non-button handle.
@@ -300,9 +312,9 @@ qt_button_set_enabled(button<Int>, enabled<Bool>)<Bool?> -> {
 # Create a single-line text edit under `parent`; text changes enqueue QtEvent::TextChanged. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
 qt_edit_create(parent<Int>, text<String>)<Int?> -> {
-    h = vyb_qt_edit_create(parent, text)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_edit_create(parent, text)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Current edit text (String); "" on a non-edit handle.
@@ -328,9 +340,9 @@ qt_edit_set_placeholder(edit<Int>, text<String>)<Bool?> -> {
 # Create a checkbox under `parent`; toggles enqueue QtEvent::Toggled. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
 qt_checkbox_create(parent<Int>, text<String>)<Int?> -> {
-    h = vyb_qt_checkbox_create(parent, text)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_checkbox_create(parent, text)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # true if the checkbox is checked, else false.
@@ -353,9 +365,9 @@ qt_checkbox_set_checked(box<Int>, on<Bool>)<Bool?> -> {
 # Create a progress bar with range 0..max under `parent`. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
 qt_progress_create(parent<Int>, max<Int>)<Int?> -> {
-    h = vyb_qt_progress_create(parent, max)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_progress_create(parent, max)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Set the progress value (clamped). Returns `Bool?` -- present on success, absent on a bad handle.
@@ -368,17 +380,17 @@ qt_progress_set_value(bar<Int>, value<Int>)<Bool?> -> {
 # Create a vertical box layout on window `parent`. Returns `Int?` -- present with the live layout handle, absent if creation failed.
 share(all)
 qt_vbox(parent<Int>)<Int?> -> {
-    h = vyb_qt_vbox(parent)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_vbox(parent)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Create a horizontal box layout on window `parent`. Returns `Int?` -- present with the live layout handle, absent if creation failed.
 share(all)
 qt_hbox(parent<Int>)<Int?> -> {
-    h = vyb_qt_hbox(parent)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_hbox(parent)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Add widget `child` to box-layout `layout`. Returns `Bool?` -- present on success, absent on a bad handle.
@@ -467,9 +479,9 @@ qt_post_event(h<Int>, kind<Int>)<Bool?> -> {
 # Create a combo box under `parent`; index changes enqueue QtEvent::IndexChanged. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
 qt_combo_create(parent<Int>)<Int?> -> {
-    h = vyb_qt_combo_create(parent)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_combo_create(parent)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Append `text` as the last combo item. Returns `Bool?` -- present on success, absent on a bad handle.
@@ -507,9 +519,9 @@ qt_combo_item_text(combo<Int>, idx<Int>)<String> -> {
 # Create an integer spin box with range [min, max]; value changes enqueue QtEvent::ValueChanged. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
 qt_spin_create(parent<Int>, min<Int>, max<Int>)<Int?> -> {
-    h = vyb_qt_spin_create(parent, min, max)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_spin_create(parent, min, max)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Current spin box value, or 0 on a bad handle.
@@ -528,9 +540,9 @@ qt_spin_set_value(spin<Int>, value<Int>)<Bool?> -> {
 # Create a horizontal slider with range [min, max]; value changes enqueue QtEvent::ValueChanged. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
 qt_slider_create(parent<Int>, min<Int>, max<Int>)<Int?> -> {
-    h = vyb_qt_slider_create(parent, min, max)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_slider_create(parent, min, max)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Current slider value, or 0 on a bad handle.
@@ -549,9 +561,9 @@ qt_slider_set_value(slider<Int>, value<Int>)<Bool?> -> {
 # Create a dial with range [min, max]; value changes enqueue QtEvent::ValueChanged. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
 qt_dial_create(parent<Int>, min<Int>, max<Int>)<Int?> -> {
-    h = vyb_qt_dial_create(parent, min, max)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_dial_create(parent, min, max)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Current dial value, or 0 on a bad handle.
@@ -570,17 +582,17 @@ qt_dial_set_value(dial<Int>, value<Int>)<Bool?> -> {
 # Create a titled group-box container under `parent`; put a layout on it. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
 qt_group_create(parent<Int>, title<String>)<Int?> -> {
-    h = vyb_qt_group_create(parent, title)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_group_create(parent, title)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Create a multi-line plain-text editor under `parent`; edits enqueue QtEvent::TextChanged. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
 qt_text_edit_create(parent<Int>)<Int?> -> {
-    h = vyb_qt_text_edit_create(parent)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_text_edit_create(parent)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Current editor text (String); "" on a bad handle.
@@ -599,9 +611,9 @@ qt_text_edit_set_text(ed<Int>, text<String>)<Bool?> -> {
 # Create a radio button under `parent`; toggles enqueue QtEvent::Toggled. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
 qt_radio_create(parent<Int>, text<String>)<Int?> -> {
-    h = vyb_qt_radio_create(parent, text)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_radio_create(parent, text)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # true if the radio button is checked, else false.
@@ -641,9 +653,9 @@ qt_widget_enabled(h<Int>)<Bool> -> {
 # Create a grid layout on window `parent`. Returns `Int?` -- present with the live layout handle, absent if creation failed.
 share(all)
 qt_grid(parent<Int>)<Int?> -> {
-    h = vyb_qt_grid(parent)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_grid(parent)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Add widget `child` to grid-layout `layout` at (row, col). Returns `Bool?` -- present on success, absent on a bad handle.
@@ -673,17 +685,17 @@ qt_widget_visible(h<Int>)<Bool> -> {
 # Create a tab container under `parent`. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
 qt_tabs_create(parent<Int>)<Int?> -> {
-    h = vyb_qt_tabs_create(parent)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_tabs_create(parent)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Append a tab titled `text`. Returns `Int?` -- present with the page's widget handle (put a layout on it), absent if the tab could not be added.
 share(all)
 qt_tabs_add(tabs<Int>, text<String>)<Int?> -> {
-    h = vyb_qt_tabs_add(tabs, text)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_tabs_add(tabs, text)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Tab count, or -1 on a bad handle.
@@ -708,9 +720,9 @@ qt_tabs_set_current(tabs<Int>, idx<Int>)<Bool?> -> {
 # Create an item list under `parent`; selection changes enqueue QtEvent::CurrentChanged. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
 qt_list_create(parent<Int>)<Int?> -> {
-    h = vyb_qt_list_create(parent)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_list_create(parent)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Append `text` as the last list item. Returns `Bool?` -- present on success, absent on a bad handle.
@@ -748,33 +760,33 @@ qt_list_item_text(list<Int>, idx<Int>)<String> -> {
 # Create a top-level QMainWindow (kind Window) with menubar/statusbar/toolbar support. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
 qt_main_window_create()<Int?> -> {
-    h = vyb_qt_main_window_create()
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_main_window_create()
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Obtain the main window's menu bar handle (created on demand). Returns `Int?` -- present with the live handle, absent if unavailable.
 share(all)
 qt_menubar(mw<Int>)<Int?> -> {
-    h = vyb_qt_menubar(mw)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_menubar(mw)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Add a top-level menu titled `title` to the menu bar. Returns `Int?` -- present with the live menu handle, absent if creation failed.
 share(all)
 qt_menu_add(mw<Int>, title<String>)<Int?> -> {
-    h = vyb_qt_menu_add(mw, title)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_menu_add(mw, title)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Add an action to `menu`; its trigger enqueues QtEvent::Click. Returns `Int?` -- present with the live action handle, absent if creation failed.
 share(all)
 qt_action_add(menu<Int>, text<String>)<Int?> -> {
-    h = vyb_qt_action_add(menu, text)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_action_add(menu, text)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Number of actions in `menu`, or -1 on a bad handle.
@@ -799,9 +811,9 @@ qt_statusbar_text(mw<Int>)<String> -> {
 # Add a toolbar titled `title` to the main window. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
 qt_toolbar_create(mw<Int>, title<String>)<Int?> -> {
-    h = vyb_qt_toolbar_create(mw, title)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_toolbar_create(mw, title)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Show a modal informational message box (blocks until dismissed). Returns `Bool?` -- present once the box was shown and dismissed.
@@ -859,65 +871,65 @@ qt_dir_select(parent<Int>, title<String>)<String> -> {
 # Open a non-blocking information box. Returns `Int?` -- present with the dialog handle, absent if creation failed.
 share(all)
 qt_dlg_info(parent<Int>, title<String>, text<String>)<Int?> -> {
-    h = vyb_qt_dlg_info(parent, title, text)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_dlg_info(parent, title, text)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Open a non-blocking warning box. Returns `Int?` -- present with the dialog handle, absent if creation failed.
 share(all)
 qt_dlg_warn(parent<Int>, title<String>, text<String>)<Int?> -> {
-    h = vyb_qt_dlg_warn(parent, title, text)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_dlg_warn(parent, title, text)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Open a non-blocking error box. Returns `Int?` -- present with the dialog handle, absent if creation failed.
 share(all)
 qt_dlg_error(parent<Int>, title<String>, text<String>)<Int?> -> {
-    h = vyb_qt_dlg_error(parent, title, text)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_dlg_error(parent, title, text)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Open a non-blocking about box. Returns `Int?` -- present with the dialog handle, absent if creation failed.
 share(all)
 qt_dlg_about(parent<Int>, title<String>, text<String>)<Int?> -> {
-    h = vyb_qt_dlg_about(parent, title, text)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_dlg_about(parent, title, text)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Open a non-blocking Yes/No box; finishes with result 1 for Yes, 0 otherwise. Returns `Int?` -- present with the dialog handle, absent if creation failed.
 share(all)
 qt_dlg_question(parent<Int>, title<String>, text<String>)<Int?> -> {
-    h = vyb_qt_dlg_question(parent, title, text)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_dlg_question(parent, title, text)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Open a non-blocking file-open picker; finishes with result 1 (Accepted) + qt_dlg_selected. Returns `Int?` -- present with the dialog handle, absent if creation failed.
 share(all)
 qt_dlg_open(parent<Int>, title<String>, filter<String>)<Int?> -> {
-    h = vyb_qt_dlg_open(parent, title, filter)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_dlg_open(parent, title, filter)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Open a non-blocking file-save picker; finishes with result 1 (Accepted) + qt_dlg_selected. Returns `Int?` -- present with the dialog handle, absent if creation failed.
 share(all)
 qt_dlg_save(parent<Int>, title<String>, filter<String>)<Int?> -> {
-    h = vyb_qt_dlg_save(parent, title, filter)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_dlg_save(parent, title, filter)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Open a non-blocking directory picker; finishes with result 1 (Accepted) + qt_dlg_selected. Returns `Int?` -- present with the dialog handle, absent if creation failed.
 share(all)
 qt_dlg_dir(parent<Int>, title<String>)<Int?> -> {
-    h = vyb_qt_dlg_dir(parent, title)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_dlg_dir(parent, title)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Finish dialog `h` as rejected (enqueues QtEvent::dialog with result 0). Returns `Bool?` -- present on success, absent on a non-dialog or bad handle.
@@ -942,9 +954,9 @@ qt_event_result()<Int> -> {
 # Create a rich-text editor (QTextEdit) under `parent`; edits enqueue QtEvent::TextChanged. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
 qt_rich_create(parent<Int>)<Int?> -> {
-    h = vyb_qt_rich_create(parent)
-    if (h == 0) { return Int?() }
-    return Int?(h)
+    v = vyb_qt_rich_create(parent)
+    if (v == 0) { return Int?() }
+    return Int?(v)
 }
 
 # Set the rich-text editor body from `html` (supports <b>/<i>/<font color> etc). Returns `Bool?` -- present on success, absent on a non-editor handle.

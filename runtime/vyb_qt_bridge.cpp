@@ -457,7 +457,7 @@ extern "C" VYB_WEAK int64_t __vyb_qt_screen_height(void) {
 // screen is available. Qt 5.15 removed logicalDpi/physicalDpi; devicePixelRatio
 // is the remaining DPI surface (1.0 on a standard display, 2.0 on a 2x HiDPI).
 extern "C" VYB_WEAK int64_t __vyb_qt_screen_dpi(void) {
-    QScreen* s = QApplication::primaryScreen(); if (!s) return 100;
+    QScreen* s = QApplication::primaryScreen(); if (!s) return -1;
     return static_cast<int64_t>(std::lround(s->devicePixelRatio() * 100.0));
 }
 

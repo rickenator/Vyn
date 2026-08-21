@@ -49,7 +49,7 @@ VYB_WEAK int64_t __vyb_qt_window_hide(int64_t w) { (void)w; return -1; }
 VYB_WEAK int64_t __vyb_qt_window_visible(int64_t w) { (void)w; return 0; }
 VYB_WEAK int64_t __vyb_qt_screen_width() { return -1; }
 VYB_WEAK int64_t __vyb_qt_screen_height() { return -1; }
-VYB_WEAK int64_t __vyb_qt_screen_dpi() { return 100; }
+VYB_WEAK int64_t __vyb_qt_screen_dpi() { return -1; }
 VYB_WEAK int64_t __vyb_qt_label_create(int64_t parent, const char* text, int64_t len)
     { (void)parent; (void)text; return 0; }
 VYB_WEAK int64_t __vyb_qt_label_set_text(int64_t label, const char* text, int64_t len)

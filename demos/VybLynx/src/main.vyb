@@ -166,7 +166,7 @@ char_str(k<Int>)<String> -> {
 # destructured here and in the event loop), and nested control flow is exercised
 # by `ensure`, the `if` clamp, and the loop-local reads.
 tty_dims()<Int, Int> -> {
-    return curses_rows(), curses_cols()
+    return curses_rows() else -1, curses_cols() else -1
 }
 
 content_width()<Int> -> {

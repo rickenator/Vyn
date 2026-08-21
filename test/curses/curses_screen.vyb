@@ -14,7 +14,7 @@ main()<Int> -> {
     match (curses_init()) {
         v -> {
             // Real terminal: draw a frame, flush, poll a key briefly, tear down.
-            if (curses_rows() < 1 || curses_cols() < 1) { return 1 }
+            if ((curses_rows() else 0) < 1 || (curses_cols() else 0) < 1) { return 1 }
             if (!(curses_move_addstr(0, 0, "curses") else false)) { return 2 }
             if (!(curses_refresh() else false)) { return 3 }
             if (!(curses_timeout(100) else false)) { return 4 }

@@ -11,10 +11,11 @@
 # optionals: curses_init() returns `Int?` (present once the screen is active),
 # and the draw/attr/window helpers (curses_refresh, clear, move, addstr,
 # move_addstr, start_color, init_pair, attr_on/off, nodelay, timeout, keypad,
-# show_cursor, hide_cursor, close) return `Bool?`. Value getters stay Int:
+# show_cursor, hide_cursor, close) return `Bool?`. The terminal-size getters
+# curses_rows/curses_cols return `Int?` -- present holding the dimension when the
+# screen is active, absent otherwise. Value getters stay Int:
 #   * curses_ok()              1 while the screen is initialized, else 0
 #   * curses_has_color()       1 if the terminal supports color, else 0
-#   * curses_rows/cols         the current terminal size
 #   * curses_color_pair(n)     an attribute value for curses_attr_on/off
 #   * curses_getch()           the pressed key/KEY_* code, or -1 when a
 #                              timeout/no-delay read finds no input
@@ -48,16 +49,22 @@ curses_ok()<Int> -> {
     return vyb_curses_ok()
 }
 
-# Current terminal row count (Int), or -1 if the screen is not active.
+# Current terminal row count. Returns `Int?` -- present holding the dimension
+# while the screen is active, absent if it is not.
 share(all)
-curses_rows()<Int> -> {
-    return vyb_curses_rows()
+curses_rows()<Int?> -> {
+    v = vyb_curses_rows()
+    if (v == -1) { return Int?() }
+    return Int?(v)
 }
 
-# Current terminal column count, or -1 if the screen is not active.
+# Current terminal column count. Returns `Int?` -- present holding the dimension
+# while the screen is active, absent if it is not.
 share(all)
-curses_cols()<Int> -> {
-    return vyb_curses_cols()
+curses_cols()<Int?> -> {
+    v = vyb_curses_cols()
+    if (v == -1) { return Int?() }
+    return Int?(v)
 }
 
 # Flush pending screen changes to the terminal. Call after drawing a frame.

@@ -195,7 +195,7 @@ handle_event(b<Browser>, h<Int>, k<Int>)<Void> -> {
 # queried for awareness; QWebEngineView handles HiDPI rendering automatically.
 share(all)
 window_width()<Int> -> {
-    sw<Int> = qt_screen_width()
+    sw<Int> = qt_screen_width() else 0
     if (sw <= 0) { return 1100 }
     w<Int> = (sw * 4) / 5   # 80% of the screen width
     if (w < 1024) { w = 1024 }
@@ -204,7 +204,7 @@ window_width()<Int> -> {
 
 share(all)
 window_height()<Int> -> {
-    sh<Int> = qt_screen_height()
+    sh<Int> = qt_screen_height() else 0
     if (sh <= 0) { return 720 }
     h<Int> = (sh * 4) / 5   # 80% of the screen height
     if (h < 768) { h = 768 }
@@ -220,8 +220,8 @@ main()<Int> -> {
     // Size the window from the screen dimensions + DPI (reasonably large).
     winW<Int> = window_width()
     winH<Int> = window_height()
-    dpi<Int> = qt_screen_dpi()
-    println("VybWeb: screen " + qt_screen_width().to_string() + "x" + qt_screen_height().to_string() + " @ " + dpi.to_string() + "%, window " + winW.to_string() + "x" + winH.to_string())
+    dpi<Int> = qt_screen_dpi() else 100
+    println("VybWeb: screen " + (qt_screen_width() else 0).to_string() + "x" + (qt_screen_height() else 0).to_string() + " @ " + dpi.to_string() + "%, window " + winW.to_string() + "x" + winH.to_string())
 
     w<Int> = qt_window_create() else 0
     if (w == 0) { return 1 }

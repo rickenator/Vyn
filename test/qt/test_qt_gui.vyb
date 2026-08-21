@@ -26,8 +26,8 @@ main()<Int> -> {
     if (!(qt_window_set_title(w, "Test Window") else false)) { return 3 }
     if (qt_window_title(w) != "Test Window") { return 4 }
     if (!(qt_window_resize(w, 320, 200) else false)) { return 5 }
-    if (qt_window_width(w) != 320) { return 6 }
-    if (qt_window_height(w) != 200) { return 7 }
+    if ((qt_window_width(w) else -1) != 320) { return 6 }
+    if ((qt_window_height(w) else -1) != 200) { return 7 }
 
     l<Int> = qt_label_create(w, "Hello, Qt") else 0
     if (l == 0) { return 8 }
