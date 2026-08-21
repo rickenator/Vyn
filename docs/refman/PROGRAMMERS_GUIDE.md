@@ -1703,8 +1703,8 @@ https_get(host, port, path)<String?>
 https_get_verified(host, port, path, ca_pem)<String?>
 
 # diagnostics: throwaway TLS server answering one request
-https_selfhost(cert_pem, key_pem)<Int>
-https_selfhost_verified(cert_pem, key_pem)<Int>
+https_selfhost(cert_pem, key_pem)<Bool?>
+https_selfhost_verified(cert_pem, key_pem)<Bool?>
 ```
 
 `https_get_full_verified` pins a CA and verifies the hostname; the
