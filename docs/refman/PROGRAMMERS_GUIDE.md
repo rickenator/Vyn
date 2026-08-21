@@ -881,12 +881,11 @@ applies to the plain-`Int` handles with no dedicated wrapper struct: mutexes
 (`mutex_new`), condvars (`cond_new`), atomics (`atomic_new`), the curses
 driver (`curses_init`), and Qt widget handles (`qt_*_create`).
 
-A few handle-creators have **not** been migrated yet and still return a plain
-`Int` with `0` on failure (tracked follow-ups): the raw channel constructors
+The raw channel constructors
 (`chan_new`/`chan_bounded`, `strchan_new`/`strchan_bounded`) and the agent
-`agent_start*` family. The compiler-native typed `chan<T>` constructor already
-speaks `T?`, so typed channels are the recommended path where a typed payload
-fits.
+`agent_start*` family now return `Int?` too (absent on allocation/spawn
+failure). The compiler-native typed `chan<T>` constructor already speaks `T?`,
+so typed channels are the recommended path where a typed payload fits.
 
 ```vyb
 m = mutex_new() else fail …            # pool exhausted → absent
@@ -922,8 +921,8 @@ programmer-facing failure surface to native optionals:
 | `tls`, `https` | `tls_stream`/`tls_client_context` -> `TlsStream?`/`TlsContext?`; `https_get*` -> `HttpResponse?`; diagnostics `https_selfhost`/`https_selfhost_verified` -> `Bool?` |
 | `asyncs` | `async_sleep_ms`/`async_connect` -> `Bool?`; `async_recv` -> `String?`; `async_send` -> `Int?`; `async_spawn`/`async_poll`/`async_accept` -> `Int?` |
 | `curses` | `curses_init` -> `Int?`; draw/attr/window ops -> `Bool?`; `curses_rows`/`curses_cols` -> `Int?`; `curses_getch` + color/attr probes stay `Int` |
-| `agents` | `agent_send*`/`agent_close`/`agent_free`/`agent_dead_letter` -> `Bool?`; `agent_start*` -> `Int` (0 sentinel, not yet migrated); probes stay `Int`/`String` |
-| `channels` | typed `chan<T>` speaks `T?`; raw `chan_close`/`chan_free`, `strchan_close`/`strchan_free` -> `Bool?`; raw `chan_new`/`chan_bounded`, `strchan_new`/`strchan_bounded` still return plain `Int` (0 sentinel, not yet migrated) |
+| `agents` | `agent_start*` -> `Int?` (absent on spawn failure); `agent_send*`/`agent_close`/`agent_free`/`agent_dead_letter` -> `Bool?`; probes stay `Int`/`String` |
+| `channels` | typed `chan<T>` speaks `T?`; raw `chan_new`/`chan_bounded`, `strchan_new`/`strchan_bounded` -> `Int?` (absent on allocation failure); `chan_close`/`chan_free`, `strchan_close`/`strchan_free` -> `Bool?` |
 | `threads`, `tasks` | `mutex_new`/`cond_new`/`atomic_new` -> `Int?`; lock/cond/atomic/task ops -> `Bool?`; `thread_join` -> `Int?`; value probes stay `Int` |
 | `time` | `time_epoch_secs`/`time_epoch_millis`/`time_nanos` -> `Int?` (absent on a clock error); `time_mono_millis` stays `Int` |
 | `qt` | creators AND dimension/DPI getters -> `Int?`; op-status -> `Bool?`; `qt_msg_question` -> `Int?` (absent when the GUI is not running); modal pickers `qt_file_open`/`qt_file_save`/`qt_dir_select` and `qt_dlg_selected` -> `String?` (present-empty/user-cancel, absent on no-GUI / no-result); value/probe getters stay `Int`/`String`/`Bool` |
@@ -2210,6 +2209,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

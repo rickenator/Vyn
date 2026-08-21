@@ -40,16 +40,23 @@
 # pipeline, or an event queue). Typed `chan<T>` channels are a separate,
 # compiler-native generic that already speaks `T?` (see PROGRAMMERS_GUIDE).
 
-# A fresh unbounded channel; returns a handle (0 on allocation failure).
+# A fresh unbounded channel; returns an `Int?` handle -- present on a live
+# channel, absent on allocation failure. Recover the old 0 sentinel with
+# `chan_new() else 0`.
 share(all)
-chan_new()<Int> -> {
-    return vyb_chan_new(0)
+chan_new()<Int?> -> {
+    h<Int> = vyb_chan_new(0)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# A fresh bounded channel holding at most `cap` values (0 on failure).
+# A fresh bounded channel holding at most `cap` values; returns an `Int?`
+# handle -- present on success, absent on allocation failure.
 share(all)
-chan_bounded(cap<Int>)<Int> -> {
-    return vyb_chan_new(cap)
+chan_bounded(cap<Int>)<Int?> -> {
+    h<Int> = vyb_chan_new(cap)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
 # Enqueue `v` (non-blocking). Returns true on success, or false if the channel
@@ -122,16 +129,22 @@ chan_select(handles<Vec<Int>>)<Int> -> {
 # the string API (do not mix with the Int chan ops), and strchan_free should be
 # called after the channel is drained.
 
-# A fresh unbounded String channel (0 on allocation failure).
+# A fresh unbounded String channel; returns an `Int?` handle -- present on
+# success, absent on allocation failure.
 share(all)
-strchan_new()<Int> -> {
-    return vyb_strchan_new(0)
+strchan_new()<Int?> -> {
+    h<Int> = vyb_strchan_new(0)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# A bounded String channel holding at most `cap` strings (0 on failure).
+# A bounded String channel holding at most `cap` strings; returns an `Int?`
+# handle -- present on success, absent on allocation failure.
 share(all)
-strchan_bounded(cap<Int>)<Int> -> {
-    return vyb_strchan_new(cap)
+strchan_bounded(cap<Int>)<Int?> -> {
+    h<Int> = vyb_strchan_new(cap)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
 # Enqueue `s` (non-blocking); retains it under the hood. Returns true on

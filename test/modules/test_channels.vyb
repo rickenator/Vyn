@@ -20,7 +20,7 @@ import channels
 import threads
 
 main()<Int> -> {
-    ch<Int> = chan_new()
+    ch<Int> = chan_new() else 0
     if (ch == 0) { return 1 }
     if (chan_len(ch) != 0) { return 2 }
     # Empty channel: try reports absence; `else -1` recovers the old sentinel.
@@ -39,7 +39,7 @@ main()<Int> -> {
     if ((thread_join(p1) else -2) != 0 || (thread_join(p2) else -2) != 0) { return 6 }
 
     # Bounded channel: fixed capacity, full send returns 0, order preserved.
-    bc<Int> = chan_bounded(2)
+    bc<Int> = chan_bounded(2) else 0
     if (bc == 0) { return 7 }
     if (!chan_send(bc, 1)) { return 8 }
     if (!chan_send(bc, 2)) { return 9 }
@@ -52,7 +52,7 @@ main()<Int> -> {
     if (chan_len(bc) != 0) { return 16 }
 
     # Lossless payloads: a genuine -1 Int is data, not "empty".
-    nc<Int> = chan_new()
+    nc<Int> = chan_new() else 0
     if (nc == 0) { return 17 }
     if (!chan_send(nc, -1)) { return 18 }
     if ((chan_recv(nc) else 999) != -1) { return 19 }   # -1 read back intact

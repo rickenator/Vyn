@@ -3,6 +3,21 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-21: **Close the remaining T? sentinels (creators / raw handle paths)**. The
+  last-standing `0`-on-failure sentinels were migrated to native optionals:
+  - `chan_new` / `chan_bounded` / `strchan_new` / `strchan_bounded` -> `Int?`
+    (absent on allocation failure, was `0`).
+  - `agent_start` / `agent_start_bool` / `agent_start_float` / `agent_start_string`
+    -> `Int?` (absent on spawn failure, was `0`); the compiler-native handle-return
+    is now wrapped in an `Int?` by codegen, with a semantic `OptionalType<Int>`.
+  - The bare `vyb_async_recvfrom` Vyb surface was removed (kept only as the runtime
+    primitive backing `_opt`); the lossless `async_udp_recv_from` (`String?`) is the
+    only programmer-facing shape.
+  Kept as `Int` per the documented in-domain carve-out (they mean "ran but found
+  nothing", like `String::index_of`): `curses_getch`, `utf8_index`, `utf8_at`.
+  Call sites across unit/module/agent tests and the VybLynx demo updated. Docs
+  (PROGRAMMERS_GUIDE / FEATURE_STATUS / refman) synced. Full regression passes.
+
 - 2026-08-21: **T? migration epic — follow-ups from review (issues #137-#144)**. The
   engine-wide migration of bare `Int`/`String` return signals to native optionals
   (issues #118-#136) was reviewed and knotted out:

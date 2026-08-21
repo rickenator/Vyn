@@ -19,7 +19,7 @@ import time::{sleep_ms}
 
 main()<Int> -> {
     # Blocking recv of a String delivered by a worker thread.
-    sc<Int> = strchan_new()
+    sc<Int> = strchan_new() else 0
     if (sc == 0) { return 1 }
     if (strchan_len(sc) != 0) { return 2 }
     # Empty channel: try reports absence; `else ""` recovers the old sentinel.
@@ -31,7 +31,7 @@ main()<Int> -> {
     if ((thread_join(w) else -2) != 0) { return 6 }
 
     # Bounded String channel: full send returns 0, order preserved.
-    bs<Int> = strchan_bounded(2)
+    bs<Int> = strchan_bounded(2) else 0
     if (bs == 0) { return 7 }
     if (!strchan_send(bs, "one")) { return 8 }
     if (!strchan_send(bs, "two")) { return 9 }
@@ -42,7 +42,7 @@ main()<Int> -> {
     if (strchan_len(bs) != 0) { return 14 }
 
     # Lossless payloads: a genuine "" String is data, not "empty".
-    es<Int> = strchan_new()
+    es<Int> = strchan_new() else 0
     if (es == 0) { return 15 }
     if (!strchan_send(es, "")) { return 16 }
     if ((strchan_recv(es) else "missing") != "") { return 17 }   # "" read back

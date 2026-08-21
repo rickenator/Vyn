@@ -16,8 +16,8 @@ import threads
 import time::{sleep_ms}
 
 main()<Int> -> {
-    a<Int> = chan_new()
-    b<Int> = chan_new()
+    a<Int> = chan_new() else 0
+    b<Int> = chan_new() else 0
     if (a == 0 || b == 0) { return 1 }
 
     # b arrives ~5ms, a ~40ms, so select must report index 1 first.

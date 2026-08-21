@@ -983,7 +983,7 @@ start_download(urlStr<String>)<Void> -> {
         } else {
             strchan_send(dl_progress, "download failed: HTTP " + resp.status.to_string())
         }
-    })
+    }) else 0
     if (do == 0) {
         strchan_send(dl_progress, "download could not be started")
         return
@@ -1233,7 +1233,7 @@ main()<Int> -> {
     curses_hide_cursor()
     curses_timeout(80)
     init_colors()
-    dl_progress = strchan_new()
+    dl_progress = strchan_new() else 0
 
     # A background probe fiber is started and awaited before the loop begins;
     # `select` turns its result into the initial status line for the browser.

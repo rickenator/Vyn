@@ -12,7 +12,7 @@ import time::{sleep_ms}
 
 main()<Int> -> {
     // --- Int channel, including a -1 payload (lossless) ---
-    ch<Int> = chan_new()
+    ch<Int> = chan_new() else 0
     w<Int> = thread_spawn(|| -> {
         sleep_ms(5)
         chan_send(ch, 1)
@@ -35,7 +35,7 @@ main()<Int> -> {
     if (saw_minus_one != 1) { return 3 }
 
     // --- String channel ---
-    sch<Int> = strchan_new()
+    sch<Int> = strchan_new() else 0
     ws<Int> = thread_spawn(|| -> {
         sleep_ms(5)
         strchan_send(sch, "a")

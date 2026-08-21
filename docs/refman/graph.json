@@ -1,5 +1,5 @@
 {
-  "git_rev": "2f15030713d1a22a0b52a3ca1f6be40147b5f899",
+  "git_rev": "a766b78aab04603d78c75447ab59d9cd60fcbed6",
   "modules": [
     "agents",
     "asyncs",
@@ -1055,8 +1055,8 @@
         "module": "channels",
         "file": "stdlib/channels/mod.vyb",
         "kind": "fn",
-        "signature": "chan_bounded(cap<Int>)<Int> ->",
-        "summary": "A fresh bounded channel holding at most `cap` values (0 on failure).",
+        "signature": "chan_bounded(cap<Int>)<Int?> ->",
+        "summary": "A fresh bounded channel holding at most `cap` values; returns an `Int?`",
         "fan_in": 0
       },
       {
@@ -1091,8 +1091,8 @@
         "module": "channels",
         "file": "stdlib/channels/mod.vyb",
         "kind": "fn",
-        "signature": "chan_new()<Int> ->",
-        "summary": "A fresh unbounded channel; returns a handle (0 on allocation failure).",
+        "signature": "chan_new()<Int?> ->",
+        "summary": "A fresh unbounded channel; returns an `Int?` handle -- present on a live",
         "fan_in": 0
       },
       {
@@ -1145,8 +1145,8 @@
         "module": "channels",
         "file": "stdlib/channels/mod.vyb",
         "kind": "fn",
-        "signature": "strchan_bounded(cap<Int>)<Int> ->",
-        "summary": "A bounded String channel holding at most `cap` strings (0 on failure).",
+        "signature": "strchan_bounded(cap<Int>)<Int?> ->",
+        "summary": "A bounded String channel holding at most `cap` strings; returns an `Int?`",
         "fan_in": 0
       },
       {
@@ -1181,8 +1181,8 @@
         "module": "channels",
         "file": "stdlib/channels/mod.vyb",
         "kind": "fn",
-        "signature": "strchan_new()<Int> ->",
-        "summary": "A fresh unbounded String channel (0 on allocation failure).",
+        "signature": "strchan_new()<Int?> ->",
+        "summary": "A fresh unbounded String channel; returns an `Int?` handle -- present on",
         "fan_in": 0
       },
       {

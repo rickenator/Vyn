@@ -11,11 +11,11 @@ import agents
 import channels
 
 main()<Int> -> {
-    replies<Int> = chan_new()
+    replies<Int> = chan_new() else 0
     # The behavior doubles each message back into a reply channel.
     a<Int> = agent_start(|v<Int>| -> {
         chan_send(replies, v * 2)
-    })
+    }) else 0
     println("started alive=" + agent_alive(a).to_string())
 
     ok<Bool> = agent_send(a, 21) else false

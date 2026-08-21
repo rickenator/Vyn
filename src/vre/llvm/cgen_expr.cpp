@@ -4131,7 +4131,6 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_async_recv_opt") rtAsync = "__vyb_async_recv_opt";
         else if (fname == "vyb_async_recvfrom_opt") rtAsync = "__vyb_async_recvfrom_opt";
         else if (fname == "vyb_async_sendto") rtAsync = "__vyb_async_sendto";
-        else if (fname == "vyb_async_recvfrom") rtAsync = "__vyb_async_recvfrom";
         if (!rtAsync.empty()) {
             auto asyncFn = [&](llvm::FunctionType* ft) -> llvm::Function* {
                 llvm::Function* f = module->getFunction(rtAsync);
@@ -4199,13 +4198,13 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int8PtrType, int64Type}, false);
                 m_currentLLVMValue = builder->CreateCall(asyncFn(ft), {aToI64(fd), dp, dl}, "aio.sent");
                 return;
-            } else if (fname == "vyb_async_recvfrom" || fname == "vyb_async_recv") {
+            } else if (fname == "vyb_async_recv") {
                 if (!aArity(2)) return;
                 llvm::Value* fd = aNeed(0); llvm::Value* maxlen = aNeed(1);
                 if (!fd || !maxlen) return;
                 llvm::FunctionType* ft = llvm::FunctionType::get(aStrType(), {int64Type, int64Type}, false);
                 m_currentLLVMValue = builder->CreateCall(asyncFn(ft), {aToI64(fd), aToI64(maxlen)},
-                    fname == "vyb_async_recvfrom" ? "aio.udprecved" : "aio.recved");
+                    "aio.recved");
                 return;
             } else if (fname == "vyb_async_recv_opt" || fname == "vyb_async_recvfrom_opt") {
                 // Lossless async receive -> native `String?` ({ String, has });
@@ -4387,7 +4386,17 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 }
             }
             llvm::Value* failableV = llvm::ConstantInt::get(int64Type, failable);
-            m_currentLLVMValue = builder->CreateCall(f, {envPtr, fnPtr, failableV, capV}, "agent.handle");
+            llvm::Value* handle = builder->CreateCall(f, {envPtr, fnPtr, failableV, capV}, "agent.handle");
+            // Return a native `Int?`: present holding the live agent handle,
+            // absent when the runtime failed to spawn (the old 0 sentinel).
+            llvm::StructType* optTy = llvm::StructType::get(*context,
+                {int64Type, llvm::Type::getInt1Ty(*context)}, false);
+            llvm::Value* present = builder->CreateICmpNE(handle,
+                llvm::ConstantInt::get(int64Type, 0), "agent.has");
+            llvm::Value* optVal = llvm::UndefValue::get(optTy);
+            optVal = builder->CreateInsertValue(optVal, handle, 0, "agent.v");
+            optVal = builder->CreateInsertValue(optVal, present, 1, "agent.h");
+            m_currentLLVMValue = optVal;
             return;
         } else if (fname == "vyb_task_spawn") {
             // Tasks (tasks stdlib module): same closure { env, fn } unpack as

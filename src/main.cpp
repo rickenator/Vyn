@@ -486,7 +486,6 @@ extern "C" {
     int64_t __vyb_async_connect(int64_t fd, const char* ip, int64_t port);
     int64_t __vyb_async_sendto(int64_t fd, const char* data, int64_t len,
                                const char* ip, int64_t port);
-    vyb_file_str __vyb_async_recvfrom(int64_t fd, int64_t maxlen);
 
     // JSON serialization for complex types
     char* __vyb_complex_to_json(void* instance, const char* type_name);
@@ -2338,8 +2337,6 @@ runtimeSymbols[mangle("__vyb_strchan_free")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_connect), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_async_sendto")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_sendto), llvm::JITSymbolFlags::Exported);
-        runtimeSymbols[mangle("__vyb_async_recvfrom")] = llvm::orc::ExecutorSymbolDef(
-            llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_recvfrom), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_task_free")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_task_free), llvm::JITSymbolFlags::Exported);
 

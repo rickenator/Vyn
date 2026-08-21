@@ -22,10 +22,10 @@ main()<Int> -> {
     # deterministic function of the request token, so correlation is verifiable.
     pinger<Int> = agent_start(|ch<Int>| -> {
         chan_send(ch, (ch * 9) % 100)
-    })
+    }) else 0
 
-    ca<Int> = chan_new()
-    cb<Int> = chan_new()
+    ca<Int> = chan_new() else 0
+    cb<Int> = chan_new() else 0
     if (ca == 0 || cb == 0 || pinger == 0) { return 1 }
 
     agent_send(pinger, ca)
@@ -42,10 +42,10 @@ main()<Int> -> {
     chan_free(cb)
 
     # --- fan-in composition: select over the workers' reply channels ---------
-    resA<Int> = chan_new()
-    resB<Int> = chan_new()
-    wa<Int> = agent_start(|v<Int>| -> { chan_send(resA, v) })
-    wb<Int> = agent_start(|v<Int>| -> { chan_send(resB, v) })
+    resA<Int> = chan_new() else 0
+    resB<Int> = chan_new() else 0
+    wa<Int> = agent_start(|v<Int>| -> { chan_send(resA, v) }) else 0
+    wb<Int> = agent_start(|v<Int>| -> { chan_send(resB, v) }) else 0
     agent_send(wa, 1111)
     agent_send(wb, 2222)
 
@@ -70,15 +70,15 @@ main()<Int> -> {
 
     # --- agent_mailbox: scalar mailboxes join the channel surface -------------
     # String agents use a separate mailbox type: agent_mailbox reports -1.
-    sa<Int> = agent_start_string(|s<String>| -> { })
+    sa<Int> = agent_start_string(|s<String>| -> { }) else 0
     if (agent_mailbox(sa) != -1) { return 6 }
     agent_close(sa)
     agent_free(sa)
 
     # Scalar agent: expose its mailbox handle and verify it is a live channel
     # handle: it mirrors chan_len and is accepted inside a chan_select set.
-    drain<Int> = chan_new()
-    da<Int> = agent_start(|v<Int>| -> { chan_send(drain, v) })
+    drain<Int> = chan_new() else 0
+    da<Int> = agent_start(|v<Int>| -> { chan_send(drain, v) }) else 0
     mb<Int> = agent_mailbox(da)
     if (mb <= 0) { return 7 }
     agent_send(da, 5)
@@ -88,7 +88,7 @@ main()<Int> -> {
 
     # A guaranteed-ready channel next to the (empty) mailbox must be selected:
     # proves the mailbox handle is a valid, order-respecting member of a set.
-    resG<Int> = chan_new()
+    resG<Int> = chan_new() else 0
     chan_send(resG, 77)
     hs2<Vec<Int>> = Vec<Int>()
     hs2.push(mb)
