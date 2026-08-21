@@ -48,11 +48,11 @@ main()<Int> -> {
     if (d3 == 0) { return 8 }
     if (!(qt_dlg_close(d3) else false)) { return 9 }
     if (drain_dialog(d3) != 0) { return 10 }
-    if (qt_dlg_selected(d3) != "") { return 11 }
+    if ((qt_dlg_selected(d3) else "") != "") { return 11 }
 
     // Bad-handle paths.
     if (qt_dlg_close(0) else false) { return 12 }
-    if (qt_dlg_selected(0) != "") { return 13 }
+    if ((qt_dlg_selected(0) else "") != "") { return 13 }
 
     qt_window_close(w)
     println("qt-dlgs-close-ok")

@@ -51,7 +51,13 @@
 # getters -- qt_window_width/qt_window_height, qt_screen_width/qt_screen_height,
 # qt_screen_dpi -- return Int?: present holding the measurement, absent on a bad
 # window handle or when no screen is available. qt_run returns the exit code;
-# qt_wait_event and qt_msg_question return value/Bool/Int results.
+# qt_wait_event returns a Bool.
+#
+# Modal dialog results are native optionals too: qt_msg_question returns Int?
+# (present holding 1 for Yes / 0 for No, absent when the GUI is not running), and
+# the modal pickers qt_file_open/qt_file_save/qt_dir_select plus qt_dlg_selected
+# return String? via lossless opt intrinsics (present-empty on user cancel, absent
+# on no-GUI / no-result-yet) -- so a user cancel is never conflated with failure.
 
 # gen_qt[mod_wrappers]: begin
 # Create a QWebEngineView under `parent`. Returns `Int?` -- present with the live handle, absent if QtWebEngine is unavailable or creation failed.
@@ -844,28 +850,30 @@ qt_msg_about(parent<Int>, title<String>, text<String>)<Bool?> -> {
     return Bool?(true)
 }
 
-# Show a modal Yes/No question. Returns 1 for Yes, 0 for No/dismiss.
+# Show a modal Yes/No question. Returns `Int?` -- present holding 1 for Yes / 0 for No, absent when the GUI is not running.
 share(all)
-qt_msg_question(parent<Int>, title<String>, text<String>)<Int> -> {
-    return vyb_qt_msg_question(parent, title, text)
+qt_msg_question(parent<Int>, title<String>, text<String>)<Int?> -> {
+    v = vyb_qt_msg_question(parent, title, text)
+    if (v == -1) { return Int?() }
+    return Int?(v)
 }
 
-# Modal 'open file' picker; returns the chosen path (String) or "" on cancel.
+# Modal 'open file' picker. Returns `String?` -- present holding the chosen path (or the present "" on user cancel), absent when the GUI is not running.
 share(all)
-qt_file_open(parent<Int>, title<String>, filter<String>)<String> -> {
-    return vyb_qt_file_open(parent, title, filter)
+qt_file_open(parent<Int>, title<String>, filter<String>)<String?> -> {
+    return vyb_qt_file_open_opt(parent, title, filter)
 }
 
-# Modal 'save file' picker; returns the chosen path (String) or "" on cancel.
+# Modal 'save file' picker. Returns `String?` -- present holding the chosen path (or the present "" on user cancel), absent when the GUI is not running.
 share(all)
-qt_file_save(parent<Int>, title<String>, filter<String>)<String> -> {
-    return vyb_qt_file_save(parent, title, filter)
+qt_file_save(parent<Int>, title<String>, filter<String>)<String?> -> {
+    return vyb_qt_file_save_opt(parent, title, filter)
 }
 
-# Modal directory picker; returns the chosen path (String) or "" on cancel.
+# Modal directory picker. Returns `String?` -- present holding the chosen path (or the present "" on user cancel), absent when the GUI is not running.
 share(all)
-qt_dir_select(parent<Int>, title<String>)<String> -> {
-    return vyb_qt_dir_select(parent, title)
+qt_dir_select(parent<Int>, title<String>)<String?> -> {
+    return vyb_qt_dir_select_opt(parent, title)
 }
 
 # Open a non-blocking information box. Returns `Int?` -- present with the dialog handle, absent if creation failed.
@@ -939,10 +947,10 @@ qt_dlg_close(h<Int>)<Bool?> -> {
     return Bool?(true)
 }
 
-# Path chosen by file/dir dialog `h` (String); "" on a non-picker handle.
+# Path chosen by a finished file/dir dialog `h`. Returns `String?` -- present holding the recorded path, absent when no result is available yet (bad / non-picker / unfinished dialog).
 share(all)
-qt_dlg_selected(h<Int>)<String> -> {
-    return vyb_qt_dlg_selected(h)
+qt_dlg_selected(h<Int>)<String?> -> {
+    return vyb_qt_dlg_selected_opt(h)
 }
 
 # Result payload of the oldest queued dialog event, or of the event being dispatched by qt_run (1 = Yes/Accepted, else 0).

@@ -62,7 +62,7 @@ main()<Int> -> {
     if (d3 == 0) { return 8 }
     if (pump_until_event() != 1) { return 9 }
     if (drain_dialog(d3) != 1) { return 10 }
-    if (qt_dlg_selected(d3) == "sentinel-unreachable") { return 11 }
+    if ((qt_dlg_selected(d3) else "sentinel-unreachable") == "sentinel-unreachable") { return 11 }
 
     qt_window_close(w)
     println("qt-dlgs-ok")

@@ -15,22 +15,31 @@
 # source (time_mono_millis) ignores system clock changes and is the right choice
 # for measuring intervals / timeouts.
 
-# Current Unix epoch as whole seconds (>= 0; -1 on clock error).
+# Current Unix epoch as whole seconds. Returns `Int?` -- present holding the
+# seconds, absent on a clock error.
 share(all)
-time_epoch_secs()<Int> -> {
-    return vyb_time_epoch_secs()
+time_epoch_secs()<Int?> -> {
+    v = vyb_time_epoch_secs()
+    if (v == -1) { return Int?() }
+    return Int?(v)
 }
 
-# Current Unix epoch as milliseconds since 1970-01-01.
+# Current Unix epoch as milliseconds since 1970-01-01. Returns `Int?` -- present
+# holding the millis, absent on a clock error.
 share(all)
-time_epoch_millis()<Int> -> {
-    return vyb_time_epoch_millis()
+time_epoch_millis()<Int?> -> {
+    v = vyb_time_epoch_millis()
+    if (v == -1) { return Int?() }
+    return Int?(v)
 }
 
-# Current Unix epoch as nanoseconds since 1970-01-01.
+# Current Unix epoch as nanoseconds since 1970-01-01. Returns `Int?` -- present
+# holding the nanos, absent on a clock error.
 share(all)
-time_nanos()<Int> -> {
-    return vyb_time_nanos()
+time_nanos()<Int?> -> {
+    v = vyb_time_nanos()
+    if (v == -1) { return Int?() }
+    return Int?(v)
 }
 
 # Monotonic wall time in milliseconds — the stable source for measuring elapsed

@@ -3435,6 +3435,10 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_qt_widget_set_font_size") rtName = "__vyb_qt_widget_set_font_size";
         else if (fname == "vyb_qt_widget_set_font_bold") rtName = "__vyb_qt_widget_set_font_bold";
         else if (fname == "vyb_qt_widget_set_text_color") rtName = "__vyb_qt_widget_set_text_color";
+        else if (fname == "vyb_qt_file_open_opt") rtName = "__vyb_qt_file_open_opt";
+        else if (fname == "vyb_qt_file_save_opt") rtName = "__vyb_qt_file_save_opt";
+        else if (fname == "vyb_qt_dir_select_opt") rtName = "__vyb_qt_dir_select_opt";
+        else if (fname == "vyb_qt_dlg_selected_opt") rtName = "__vyb_qt_dlg_selected_opt";
         if (!rtName.empty()) {
             auto getQtFn = [&](llvm::FunctionType* ft) -> llvm::Function* {
                 llvm::Function* f2 = module->getFunction(rtName);
@@ -3682,6 +3686,51 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 }
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int8PtrType, int8PtrType}, false);
                 m_currentLLVMValue = builder->CreateCall(getQtFn(ft), {envPtr, fnPtr}, "qt.cb");
+                return;
+            }
+            if (fname == "vyb_qt_file_open_opt" || fname == "vyb_qt_file_save_opt") {
+                if (!checkArity(3)) return;
+                llvm::Value* a = needArg(0); llvm::Value* s = needArg(1); llvm::Value* t = needArg(2);
+                if (!a || !s || !t) return;
+                llvm::StructType* strTy = qtStrRet();
+                llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
+                llvm::Value* slotA = builder->CreateAlloca(strTy, nullptr, "qt.opt.slot");
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int8PtrType, int64Type, int8PtrType, int64Type, llvm::PointerType::get(*context, 0)}, false);
+                llvm::Value* has = builder->CreateCall(getQtFn(ft), {toI64(a), toStrPtr(s), strLenOf(s), toStrPtr(t), strLenOf(t), slotA}, "qt.opt.has");
+                llvm::Value* val = builder->CreateLoad(strTy, slotA, "qt.opt.val");
+                llvm::Value* opts = llvm::UndefValue::get(optTy);
+                opts = builder->CreateInsertValue(opts, val, 0, "qt.opt.v");
+                opts = builder->CreateInsertValue(opts, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "qt.opt.h"), 1);
+                m_currentLLVMValue = opts;
+                return;
+            } else if (fname == "vyb_qt_dir_select_opt") {
+                if (!checkArity(2)) return;
+                llvm::Value* a = needArg(0); llvm::Value* s = needArg(1);
+                if (!a || !s) return;
+                llvm::StructType* strTy = qtStrRet();
+                llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
+                llvm::Value* slotA = builder->CreateAlloca(strTy, nullptr, "qt.opt.slot");
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int8PtrType, int64Type, llvm::PointerType::get(*context, 0)}, false);
+                llvm::Value* has = builder->CreateCall(getQtFn(ft), {toI64(a), toStrPtr(s), strLenOf(s), slotA}, "qt.opt.has");
+                llvm::Value* val = builder->CreateLoad(strTy, slotA, "qt.opt.val");
+                llvm::Value* opts = llvm::UndefValue::get(optTy);
+                opts = builder->CreateInsertValue(opts, val, 0, "qt.opt.v");
+                opts = builder->CreateInsertValue(opts, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "qt.opt.h"), 1);
+                m_currentLLVMValue = opts;
+                return;
+            } else if (fname == "vyb_qt_dlg_selected_opt") {
+                if (!checkArity(1)) return;
+                llvm::Value* a = needArg(0); if (!a) return;
+                llvm::StructType* strTy = qtStrRet();
+                llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
+                llvm::Value* slotA = builder->CreateAlloca(strTy, nullptr, "qt.opt.slot");
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, llvm::PointerType::get(*context, 0)}, false);
+                llvm::Value* has = builder->CreateCall(getQtFn(ft), {toI64(a), slotA}, "qt.opt.has");
+                llvm::Value* val = builder->CreateLoad(strTy, slotA, "qt.opt.val");
+                llvm::Value* opts = llvm::UndefValue::get(optTy);
+                opts = builder->CreateInsertValue(opts, val, 0, "qt.opt.v");
+                opts = builder->CreateInsertValue(opts, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "qt.opt.h"), 1);
+                m_currentLLVMValue = opts;
                 return;
             }
         }

@@ -26,12 +26,13 @@ main()<Int> -> {
     if (!(qt_msg_warn(w, "Warn", "careful") else false)) { return 11 }
     if (!(qt_msg_error(w, "Error", "boom") else false)) { return 12 }
     if (!(qt_msg_about(w, "About", "tiny") else false)) { return 13 }
-    if (qt_msg_question(w, "Ask", "yes?") != 1) { return 14 }   // auto answers Yes
+    mq<Int> = qt_msg_question(w, "Ask", "yes?") else 0
+    if (mq != 1) { return 14 }   // auto answers Yes
     // File/dir pickers are auto-accepted; their returned path is platform/
     // mode dependent (Save may pre-fill a name), so we only exercise them.
-    o<String> = qt_file_open(w, "Open", "All files (*)")
-    s<String> = qt_file_save(w, "Save", "All files (*)")
-    d<String> = qt_dir_select(w, "Pick")
+    o<String> = qt_file_open(w, "Open", "All files (*)") else "sentinel-unreachable"
+    s<String> = qt_file_save(w, "Save", "All files (*)") else "sentinel-unreachable"
+    d<String> = qt_dir_select(w, "Pick") else "sentinel-unreachable"
     if (o == "sentinel-unreachable") { return 15 }
     if (s == "sentinel-unreachable") { return 16 }
     if (d == "sentinel-unreachable") { return 17 }

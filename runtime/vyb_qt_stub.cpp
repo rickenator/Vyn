@@ -232,6 +232,19 @@ VYB_WEAK int64_t __vyb_qt_widget_set_font_bold(int64_t h, int64_t on)
 VYB_WEAK int64_t __vyb_qt_widget_set_text_color(int64_t h, int64_t r, int64_t g, int64_t b)
     { (void)h; (void)r; (void)g; (void)b; return -1; }
 // gen_qt[stub]: end
+
+// Lossless opt intrinsics for the modal pickers + qt_dlg_selected: without a
+// real GUI they return 0 (absent) with no output, so Vyb sees a clean String?.
+// gen_qt[opt_stub]: begin
+VYB_WEAK int64_t __vyb_qt_file_open_opt(int64_t parent, const char* title, int64_t len, const char* filter, int64_t len2, vyb_qt_str* out)
+    { (void)parent; (void)title; (void)filter; (void)out; return 0; }
+VYB_WEAK int64_t __vyb_qt_file_save_opt(int64_t parent, const char* title, int64_t len, const char* filter, int64_t len2, vyb_qt_str* out)
+    { (void)parent; (void)title; (void)filter; (void)out; return 0; }
+VYB_WEAK int64_t __vyb_qt_dir_select_opt(int64_t parent, const char* title, int64_t len, vyb_qt_str* out)
+    { (void)parent; (void)title; (void)out; return 0; }
+VYB_WEAK int64_t __vyb_qt_dlg_selected_opt(int64_t h, vyb_qt_str* out)
+    { (void)h; (void)out; return 0; }
+// gen_qt[opt_stub]: end
 } // extern "C"
 #endif // !VYB_HAVE_QT5
 

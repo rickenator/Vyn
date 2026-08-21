@@ -213,7 +213,7 @@ struct UdpSocket {
 share(all)
 aspect TcpStreamOps {
     write(self<Self>, data<String>)<Int?> -> { }
-    read(self<Self>, max<Int>)<String> -> { }
+    read(self<Self>, max<Int>)<String?> -> { }
     close(self<Self>)<Bool?> -> { }
     peer_ip(self<Self>)<String> -> { }
     peer_port(self<Self>)<Int> -> { }
@@ -226,8 +226,8 @@ bind TcpStreamOps -> TcpStream {
         if (n < 0) { return Int?() }
         return Int?(n)
     }
-    read(self<Self>, max<Int>)<String> -> {
-        return vyb_net_recv(self.fd, max)
+    read(self<Self>, max<Int>)<String?> -> {
+        return vyb_net_recv_opt(self.fd, max)
     }
     close(self<Self>)<Bool?> -> {
         r<Int> = vyb_net_close(self.fd)

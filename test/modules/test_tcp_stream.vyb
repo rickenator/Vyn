@@ -23,11 +23,15 @@ main()<Int> -> {
             srv<Int> = thread_spawn(|| -> {
                 match (tcp_accept(TcpListener { fd = lfd, local_ip = "", local_port = 0 })) {
                     c -> {
-                        data<String> = c.read(4096)
-                        c.write(data)
-                        c.close()
-                        if (data == MSG) { return 0 }
-                        return 2
+                        match (c.read(4096)) {
+                            data -> {
+                                c.write(data)
+                                c.close()
+                                if (data == MSG) { return 0 }
+                                return 2
+                            }
+                            ? -> { return 1 }
+                        }
                     }
                     ? -> { return 1 }
                 }
@@ -35,14 +39,18 @@ main()<Int> -> {
             match (tcp_connect("127.0.0.1", port)) {
                 s -> {
                     s.write(MSG)
-                    back<String> = s.read(4096)
-                    s.close()
-                    l.close()
-                    r<Int> = thread_join(srv) else -2
-                    if (r != 0) { return 4 }
-                    if (back != MSG) { return 5 }
-                    println("ok")
-                    return 0
+                    match (s.read(4096)) {
+                        back -> {
+                            s.close()
+                            l.close()
+                            r<Int> = thread_join(srv) else -2
+                            if (r != 0) { return 4 }
+                            if (back != MSG) { return 5 }
+                            println("ok")
+                            return 0
+                        }
+                        ? -> { return 3 }
+                    }
                 }
                 ? -> { return 3 }
             }

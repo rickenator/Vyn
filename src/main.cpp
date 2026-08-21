@@ -359,6 +359,10 @@ extern "C" {
     int64_t __vyb_qt_widget_set_font_size(int64_t h, int64_t pt);
     int64_t __vyb_qt_widget_set_font_bold(int64_t h, int64_t on);
     int64_t __vyb_qt_widget_set_text_color(int64_t h, int64_t r, int64_t g, int64_t b);
+    int64_t __vyb_qt_file_open_opt(int64_t parent, const char* title, int64_t len, const char* filter, int64_t len2, vyb_file_str* out);
+    int64_t __vyb_qt_file_save_opt(int64_t parent, const char* title, int64_t len, const char* filter, int64_t len2, vyb_file_str* out);
+    int64_t __vyb_qt_dir_select_opt(int64_t parent, const char* title, int64_t len, vyb_file_str* out);
+    int64_t __vyb_qt_dlg_selected_opt(int64_t h, vyb_file_str* out);
 // gen_qt[main_decl]: end
 
 #ifdef VYB_HAVE_OPENSSL
@@ -2060,6 +2064,14 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_widget_set_font_bold), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_qt_widget_set_text_color")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_widget_set_text_color), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_file_open_opt")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_file_open_opt), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_file_save_opt")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_file_save_opt), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_dir_select_opt")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_dir_select_opt), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_qt_dlg_selected_opt")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_qt_dlg_selected_opt), llvm::JITSymbolFlags::Exported);
 // gen_qt[main_reg]: end
         runtimeSymbols[mangle("__vyb_net_open")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_open), llvm::JITSymbolFlags::Exported);

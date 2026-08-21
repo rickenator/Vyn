@@ -24,11 +24,11 @@ main()<Int> -> {
     // terminal size: real size or the 80x24 fallback, always >= 1.
     if (term_cols() < 1 || term_rows() < 1) { return 4 }
 
-    // ANSI control helpers return 0 in most contexts.
-    if (term_move_cursor(3, 5) != 0) { return 5 }
-    if (term_show_cursor() != 0) { return 6 }
-    if (term_hide_cursor() != 0) { return 7 }
-    if (term_clear() != 0) { return 8 }
+    // ANSI control helpers succeed as Bool? (present on success, absent on failure).
+    if (!(term_move_cursor(3, 5) else false)) { return 5 }
+    if (!(term_show_cursor() else false)) { return 6 }
+    if (!(term_hide_cursor() else false)) { return 7 }
+    if (!(term_clear() else false)) { return 8 }
 
     // module surface probe.
     if (!term_status_message().starts_with("term:")) { return 9 }

@@ -2243,7 +2243,9 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_qt_rich_plain" || name == "vyb_qt_rich_append" ||
             name == "vyb_qt_rich_clear" || name == "vyb_qt_rich_set_text_color" ||
             name == "vyb_qt_widget_set_font_size" || name == "vyb_qt_widget_set_font_bold" ||
-            name == "vyb_qt_widget_set_text_color") {
+            name == "vyb_qt_widget_set_text_color" || name == "vyb_qt_file_open_opt" ||
+            name == "vyb_qt_file_save_opt" || name == "vyb_qt_dir_select_opt" ||
+            name == "vyb_qt_dlg_selected_opt") {
 // gen_qt[sem_allow]: end
             isIntrinsic = true;
         }
@@ -3061,6 +3063,20 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             // absent on error, present holding the bytes read (an empty EOF read
             // is the present "", distinct from an error).
             if (name == "vyb_net_recv_opt" || name == "vyb_net_resolve_opt") {
+                auto* inner = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "String"));
+                auto* resTy = new ast::OptionalType(node->loc,
+                    std::unique_ptr<ast::TypeNode>(inner));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+            // Lossless qt modal pickers + dlg_selected: the opt intrinsics return
+            // a native `String?` -- absent on no-GUI / no-result-yet, present
+            // holding the chosen path (a present "" on user cancel), so cancel is
+            // distinct from failure.
+            if (name == "vyb_qt_file_open_opt" || name == "vyb_qt_file_save_opt" ||
+                name == "vyb_qt_dir_select_opt" || name == "vyb_qt_dlg_selected_opt") {
                 auto* inner = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "String"));
                 auto* resTy = new ast::OptionalType(node->loc,

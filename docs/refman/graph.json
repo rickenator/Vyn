@@ -1,5 +1,5 @@
 {
-  "git_rev": "06ee13bade142caf046e53f6e3b753acf0ed4c17",
+  "git_rev": "ae2b213461dbabf3595d04e0265681e1b43434a5",
   "modules": [
     "agents",
     "asyncs",
@@ -3116,8 +3116,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_dir_select(parent<Int>, title<String>)<String> ->",
-        "summary": "Modal directory picker; returns the chosen path (String) or \"\" on cancel.",
+        "signature": "qt_dir_select(parent<Int>, title<String>)<String?> ->",
+        "summary": "Modal directory picker. Returns `String?` -- present holding the chosen path (or the present \"\" on user cancel), absent when the GUI is not running.",
         "fan_in": 0
       },
       {
@@ -3197,8 +3197,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_dlg_selected(h<Int>)<String> ->",
-        "summary": "Path chosen by file/dir dialog `h` (String); \"\" on a non-picker handle.",
+        "signature": "qt_dlg_selected(h<Int>)<String?> ->",
+        "summary": "Path chosen by a finished file/dir dialog `h`. Returns `String?` -- present holding the recorded path, absent when no result is available yet (bad / non-picker / unfinished dialog).",
         "fan_in": 0
       },
       {
@@ -3296,8 +3296,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_file_open(parent<Int>, title<String>, filter<String>)<String> ->",
-        "summary": "Modal 'open file' picker; returns the chosen path (String) or \"\" on cancel.",
+        "signature": "qt_file_open(parent<Int>, title<String>, filter<String>)<String?> ->",
+        "summary": "Modal 'open file' picker. Returns `String?` -- present holding the chosen path (or the present \"\" on user cancel), absent when the GUI is not running.",
         "fan_in": 0
       },
       {
@@ -3305,8 +3305,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_file_save(parent<Int>, title<String>, filter<String>)<String> ->",
-        "summary": "Modal 'save file' picker; returns the chosen path (String) or \"\" on cancel.",
+        "signature": "qt_file_save(parent<Int>, title<String>, filter<String>)<String?> ->",
+        "summary": "Modal 'save file' picker. Returns `String?` -- present holding the chosen path (or the present \"\" on user cancel), absent when the GUI is not running.",
         "fan_in": 0
       },
       {
@@ -3530,8 +3530,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_msg_question(parent<Int>, title<String>, text<String>)<Int> ->",
-        "summary": "Show a modal Yes/No question. Returns 1 for Yes, 0 for No/dismiss.",
+        "signature": "qt_msg_question(parent<Int>, title<String>, text<String>)<Int?> ->",
+        "summary": "Show a modal Yes/No question. Returns `Int?` -- present holding 1 for Yes / 0 for No, absent when the GUI is not running.",
         "fan_in": 0
       },
       {
@@ -4376,8 +4376,8 @@
         "module": "term",
         "file": "stdlib/term/mod.vyb",
         "kind": "fn",
-        "signature": "term_clear()<Int> ->",
-        "summary": "Clear the screen and home the cursor. Returns 0 on success.",
+        "signature": "term_clear()<Bool?> ->",
+        "summary": "Clear the screen and home the cursor. Returns `Bool?` -- present on success, absent on failure.",
         "fan_in": 0
       },
       {
@@ -4394,8 +4394,8 @@
         "module": "term",
         "file": "stdlib/term/mod.vyb",
         "kind": "fn",
-        "signature": "term_hide_cursor()<Int> ->",
-        "summary": "Hide the cursor while drawing. Returns 0 on success.",
+        "signature": "term_hide_cursor()<Bool?> ->",
+        "summary": "Hide the cursor while drawing. Returns `Bool?` -- present on success, absent on failure.",
         "fan_in": 0
       },
       {
@@ -4403,8 +4403,8 @@
         "module": "term",
         "file": "stdlib/term/mod.vyb",
         "kind": "fn",
-        "signature": "term_move_cursor(row<Int>, col<Int>)<Int> ->",
-        "summary": "Move the cursor to 1-based (row, column). Returns 0 on success.",
+        "signature": "term_move_cursor(row<Int>, col<Int>)<Bool?> ->",
+        "summary": "Move the cursor to 1-based (row, column). Returns `Bool?` -- present on success, absent on failure.",
         "fan_in": 0
       },
       {
@@ -4421,8 +4421,8 @@
         "module": "term",
         "file": "stdlib/term/mod.vyb",
         "kind": "fn",
-        "signature": "term_show_cursor()<Int> ->",
-        "summary": "Show the cursor when drawing is done. Returns 0 on success.",
+        "signature": "term_show_cursor()<Bool?> ->",
+        "summary": "Show the cursor when drawing is done. Returns `Bool?` -- present on success, absent on failure.",
         "fan_in": 0
       },
       {
@@ -4610,8 +4610,8 @@
         "module": "time",
         "file": "stdlib/time/mod.vyb",
         "kind": "fn",
-        "signature": "time_epoch_millis()<Int> ->",
-        "summary": "Current Unix epoch as milliseconds since 1970-01-01.",
+        "signature": "time_epoch_millis()<Int?> ->",
+        "summary": "Current Unix epoch as milliseconds since 1970-01-01. Returns `Int?` -- present",
         "fan_in": 0
       },
       {
@@ -4619,8 +4619,8 @@
         "module": "time",
         "file": "stdlib/time/mod.vyb",
         "kind": "fn",
-        "signature": "time_epoch_secs()<Int> ->",
-        "summary": "Current Unix epoch as whole seconds (>= 0; -1 on clock error).",
+        "signature": "time_epoch_secs()<Int?> ->",
+        "summary": "Current Unix epoch as whole seconds. Returns `Int?` -- present holding the",
         "fan_in": 0
       },
       {
@@ -4637,8 +4637,8 @@
         "module": "time",
         "file": "stdlib/time/mod.vyb",
         "kind": "fn",
-        "signature": "time_nanos()<Int> ->",
-        "summary": "Current Unix epoch as nanoseconds since 1970-01-01.",
+        "signature": "time_nanos()<Int?> ->",
+        "summary": "Current Unix epoch as nanoseconds since 1970-01-01. Returns `Int?` -- present",
         "fan_in": 0
       },
       {
@@ -7651,7 +7651,7 @@
       "type": "runtimeRef",
       "from_module": "qt",
       "from_symbol": "qt_dir_select",
-      "to_symbol": "vyb_qt_dir_select"
+      "to_symbol": "vyb_qt_dir_select_opt"
     },
     {
       "type": "runtimeRef",
@@ -7705,7 +7705,7 @@
       "type": "runtimeRef",
       "from_module": "qt",
       "from_symbol": "qt_dlg_selected",
-      "to_symbol": "vyb_qt_dlg_selected"
+      "to_symbol": "vyb_qt_dlg_selected_opt"
     },
     {
       "type": "runtimeRef",
@@ -7771,13 +7771,13 @@
       "type": "runtimeRef",
       "from_module": "qt",
       "from_symbol": "qt_file_open",
-      "to_symbol": "vyb_qt_file_open"
+      "to_symbol": "vyb_qt_file_open_opt"
     },
     {
       "type": "runtimeRef",
       "from_module": "qt",
       "from_symbol": "qt_file_save",
-      "to_symbol": "vyb_qt_file_save"
+      "to_symbol": "vyb_qt_file_save_opt"
     },
     {
       "type": "runtimeRef",

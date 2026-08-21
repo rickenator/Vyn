@@ -1264,6 +1264,33 @@ extern "C" VYB_WEAK vyb_qt_str __vyb_qt_dir_select(int64_t parent, const char* t
     return vyb_qt_file_dialog(parent, title, tlen, nullptr, 0, 2);
 }
 
+// Lossless modal pickers: these return 1 and write the chosen path (or a
+// present-empty string on user cancel) to *out when the GUI is running, or 0
+// (absent) when it is not -- so user cancel is distinct from failure.
+extern "C" VYB_WEAK int64_t __vyb_qt_file_open_opt(int64_t parent, const char* title, int64_t tlen,
+                                                   const char* filter, int64_t flen, vyb_qt_str* out) {
+    if (!out) return 0;
+    if (!g_app) return 0;
+    *out = vyb_qt_file_dialog(parent, title, tlen, filter, flen, 0);
+    return 1;
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_file_save_opt(int64_t parent, const char* title, int64_t tlen,
+                                                   const char* filter, int64_t flen, vyb_qt_str* out) {
+    if (!out) return 0;
+    if (!g_app) return 0;
+    *out = vyb_qt_file_dialog(parent, title, tlen, filter, flen, 1);
+    return 1;
+}
+
+extern "C" VYB_WEAK int64_t __vyb_qt_dir_select_opt(int64_t parent, const char* title, int64_t tlen,
+                                                    vyb_qt_str* out) {
+    if (!out) return 0;
+    if (!g_app) return 0;
+    *out = vyb_qt_file_dialog(parent, title, tlen, nullptr, 0, 2);
+    return 1;
+}
+
 // ----------------------------------------------------------------------------
 // Async (non-blocking) dialogs
 // ----------------------------------------------------------------------------
@@ -1401,6 +1428,20 @@ extern "C" VYB_WEAK vyb_qt_str __vyb_qt_dlg_selected(int64_t h) {
     auto it = g_dlg_paths.find(h);
     if (it == g_dlg_paths.end()) return { nullptr, 0 };
     return qt_to_owned(it->second);
+}
+
+// Lossless reading of a finished picker's chosen path: returns 1 and writes it
+// when the dialog handle has a recorded result (the callback records a path only
+// on Accepted), or 0 when no result is available yet (bad / non-picker /
+// unfinished dialog). qt_dlg_selected is normally consulted after the dialog
+// event fires, so absent = "no result yet".
+extern "C" VYB_WEAK int64_t __vyb_qt_dlg_selected_opt(int64_t h, vyb_qt_str* out) {
+    if (!out) return 0;
+    std::lock_guard<std::mutex> lk(g_dlg_paths_mtx);
+    auto it = g_dlg_paths.find(h);
+    if (it == g_dlg_paths.end()) return 0;
+    *out = qt_to_owned(it->second);
+    return 1;
 }
 
 // ----------------------------------------------------------------------------

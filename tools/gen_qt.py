@@ -358,18 +358,19 @@ QT_FUNCS = [
          doc="Show a modal 'about' box (blocks until dismissed). Returns `Bool?` -- present once the box was shown and dismissed."),
     dict(mod="qt_msg_question", vn="vyb_qt_msg_question", cn="__vyb_qt_msg_question",
          args=[("parent", "Int"), ("title", "String"), ("text", "String")], ret="Int", shape="text2", stub="-1",
-         doc="Show a modal Yes/No question. Returns 1 for Yes, 0 for No/dismiss."),
+         doc="Show a modal Yes/No question. Returns `Int?` -- present holding 1 for Yes / 0 for No, absent when the GUI is not running."),
     dict(mod="qt_file_open", vn="vyb_qt_file_open", cn="__vyb_qt_file_open",
          args=[("parent", "Int"), ("title", "String"), ("filter", "String")], ret="String", shape="str3",
-         stub="qt_stub_str()",
-         doc="Modal 'open file' picker; returns the chosen path (String) or \"\" on cancel."),
+         stub="qt_stub_str()", opt_vn="vyb_qt_file_open_opt", opt_cn="__vyb_qt_file_open_opt", opt_shape="optstr3",
+         doc="Modal 'open file' picker. Returns `String?` -- present holding the chosen path (or the present \"\" on user cancel), absent when the GUI is not running."),
     dict(mod="qt_file_save", vn="vyb_qt_file_save", cn="__vyb_qt_file_save",
          args=[("parent", "Int"), ("title", "String"), ("filter", "String")], ret="String", shape="str3",
-         stub="qt_stub_str()",
-         doc="Modal 'save file' picker; returns the chosen path (String) or \"\" on cancel."),
+         stub="qt_stub_str()", opt_vn="vyb_qt_file_save_opt", opt_cn="__vyb_qt_file_save_opt", opt_shape="optstr3",
+         doc="Modal 'save file' picker. Returns `String?` -- present holding the chosen path (or the present \"\" on user cancel), absent when the GUI is not running."),
     dict(mod="qt_dir_select", vn="vyb_qt_dir_select", cn="__vyb_qt_dir_select",
          args=[("parent", "Int"), ("title", "String")], ret="String", shape="strtext", stub="qt_stub_str()",
-         doc="Modal directory picker; returns the chosen path (String) or \"\" on cancel."),
+         opt_vn="vyb_qt_dir_select_opt", opt_cn="__vyb_qt_dir_select_opt", opt_shape="optstr2",
+         doc="Modal directory picker. Returns `String?` -- present holding the chosen path (or the present \"\" on user cancel), absent when the GUI is not running."),
 
     # Async (non-blocking) dialogs. These pair with the event loop: create +
     # show the dialog, return its Int handle immediately, and when the user
@@ -405,8 +406,9 @@ QT_FUNCS = [
          ret="Int", shape="int1", stub="-1",
          doc="Finish dialog `h` as rejected (enqueues QtEvent::dialog with result 0). Returns `Bool?` -- present on success, absent on a non-dialog or bad handle."),
     dict(mod="qt_dlg_selected", vn="vyb_qt_dlg_selected", cn="__vyb_qt_dlg_selected", args=[("h", "Int")],
-         ret="String", shape="str1", stub="qt_stub_str()",
-         doc="Path chosen by file/dir dialog `h` (String); \"\" on a non-picker handle."),
+         ret="String", shape="str1", stub="qt_stub_str()", opt_vn="vyb_qt_dlg_selected_opt",
+         opt_cn="__vyb_qt_dlg_selected_opt", opt_shape="optstr1",
+         doc="Path chosen by a finished file/dir dialog `h`. Returns `String?` -- present holding the recorded path, absent when no result is available yet (bad / non-picker / unfinished dialog)."),
     dict(mod="qt_event_result", vn="vyb_qt_event_result", cn="__vyb_qt_event_result", args=[], ret="Int",
          shape="int0", stub="0",
          doc="Result payload of the oldest queued dialog event, or of the event being dispatched by qt_run (1 = Yes/Accepted, else 0)."),
@@ -475,6 +477,16 @@ QT_WEB_FUNCS = [
 
 QT_ALL = QT_WEB_FUNCS + QT_FUNCS
 
+# Lossless opt intrinsics for the modal pickers + qt_dlg_selected. The C shim
+# takes a `vyb_qt_str*` out-param and returns 1 (present) or 0 (absent),
+# mirroring __vyb_net_recv_opt, so user-cancel (present-empty/present-path) is
+# distinct from failure (absent). opt_shape picks the cgen arity handle:
+#   optstr3: (parent, title, filter)   optstr2: (parent, title)   optstr1: (h)
+QT_OPT = [
+    {"vn": f["opt_vn"], "cn": f["opt_cn"], "shape": f["opt_shape"], "args": f["args"]}
+    for f in QT_ALL if "opt_vn" in f
+]
+
 # ---------------------------------------------------------------------------
 # T? migration for the public Vyb wrappers (issue #134).
 #
@@ -490,11 +502,13 @@ QT_ALL = QT_WEB_FUNCS + QT_FUNCS
 #               failed (the intrinsic returned != 0); a present Bool?(true)
 #               means it succeeded.
 #
-# Value/probe getters (qt_*_text/url/count/value/current/..., qt_screen_*,
-# qt_init/qt_active/qt_timer_fired, qt_run, qt_wait_event, qt_msg_question,
-# qt_file_*/qt_dir_select/qt_dlg_selected, qt_event_*, qt_rich_html/plain)
-# are intentionally NOT listed: they return meaningful data or a -1 "found
-# nothing" sentinel rather than op status, and stay as-is.
+# Value/probe getters with an in-domain -1 "found nothing" sentinel
+# (qt_*_text/url/count/value/current/index, qt_init/qt_active/qt_timer_fired,
+# qt_run, qt_wait_event, qt_event_*, qt_rich_html/plain) stay as-is.
+#
+# qt_file_open/qt_file_save/qt_dir_select (modal pickers) and qt_dlg_selected
+# are instead handled via lossless opt intrinsics (present-empty on user cancel,
+# absent on no-GUI / no-result) so cancel is not conflated with failure.
 # ---------------------------------------------------------------------------
 MIGRATION = {
     # Creators / handle-returning -> Int?
@@ -539,6 +553,8 @@ MIGRATION = {
     # intrinsic returns that sentinel ("@0" for creators, "@-1" for dimensions).
     "qt_screen_width": "Int?@-1", "qt_screen_height": "Int?@-1", "qt_screen_dpi": "Int?@-1",
     "qt_window_width": "Int?@-1", "qt_window_height": "Int?@-1",
+    # Modal button result: present = the Yes/No answer, absent = GUI not running.
+    "qt_msg_question": "Int?@-1",
 }
 
 
@@ -628,6 +644,20 @@ def write(path, text):
         f.write(text)
 
 
+def cpp_opt_args(o, out_type="vyb_qt_str"):
+    parts = []
+    lens = 0
+    for name, typ in o["args"]:
+        if typ == "String":
+            ln = "len" if lens == 0 else "len%d" % (lens + 1)
+            lens += 1
+            parts.append("const char* %s, int64_t %s" % (name, ln))
+        else:
+            parts.append("int64_t %s" % name)
+    parts.append("%s* out" % out_type)
+    return ", ".join(parts)
+
+
 def cpp_args(f):
     parts = []
     lens = 0
@@ -666,6 +696,62 @@ def stub_body(f):
 
 
 # -- cgen -------------------------------------------------------------------
+
+# Lossless String? opt-intrinsic cgen bodies: mirror __vyb_net_recv_opt (i64
+# present flag + out-param slot) over the qt {ptr,len} string type.
+OPT_BRANCH = {
+    "optstr3": ('if (!checkArity(3)) return;\n'
+     'llvm::Value* a = needArg(0); llvm::Value* s = needArg(1); llvm::Value* t = needArg(2);\n'
+     'if (!a || !s || !t) return;\n'
+     'llvm::StructType* strTy = qtStrRet();\n'
+     'llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);\n'
+     'llvm::Value* slotA = builder->CreateAlloca(strTy, nullptr, "qt.opt.slot");\n'
+     'llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int8PtrType, int64Type, int8PtrType, int64Type, llvm::PointerType::get(*context, 0)}, false);\n'
+     'llvm::Value* has = builder->CreateCall(getQtFn(ft), {toI64(a), toStrPtr(s), strLenOf(s), toStrPtr(t), strLenOf(t), slotA}, "qt.opt.has");\n'
+     'llvm::Value* val = builder->CreateLoad(strTy, slotA, "qt.opt.val");\n'
+     'llvm::Value* opts = llvm::UndefValue::get(optTy);\n'
+     'opts = builder->CreateInsertValue(opts, val, 0, "qt.opt.v");\n'
+     'opts = builder->CreateInsertValue(opts, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "qt.opt.h"), 1);\n'
+     'm_currentLLVMValue = opts;\n'),
+    "optstr2": ('if (!checkArity(2)) return;\n'
+     'llvm::Value* a = needArg(0); llvm::Value* s = needArg(1);\n'
+     'if (!a || !s) return;\n'
+     'llvm::StructType* strTy = qtStrRet();\n'
+     'llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);\n'
+     'llvm::Value* slotA = builder->CreateAlloca(strTy, nullptr, "qt.opt.slot");\n'
+     'llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int8PtrType, int64Type, llvm::PointerType::get(*context, 0)}, false);\n'
+     'llvm::Value* has = builder->CreateCall(getQtFn(ft), {toI64(a), toStrPtr(s), strLenOf(s), slotA}, "qt.opt.has");\n'
+     'llvm::Value* val = builder->CreateLoad(strTy, slotA, "qt.opt.val");\n'
+     'llvm::Value* opts = llvm::UndefValue::get(optTy);\n'
+     'opts = builder->CreateInsertValue(opts, val, 0, "qt.opt.v");\n'
+     'opts = builder->CreateInsertValue(opts, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "qt.opt.h"), 1);\n'
+     'm_currentLLVMValue = opts;\n'),
+    "optstr1": ('if (!checkArity(1)) return;\n'
+     'llvm::Value* a = needArg(0); if (!a) return;\n'
+     'llvm::StructType* strTy = qtStrRet();\n'
+     'llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);\n'
+     'llvm::Value* slotA = builder->CreateAlloca(strTy, nullptr, "qt.opt.slot");\n'
+     'llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, llvm::PointerType::get(*context, 0)}, false);\n'
+     'llvm::Value* has = builder->CreateCall(getQtFn(ft), {toI64(a), slotA}, "qt.opt.has");\n'
+     'llvm::Value* val = builder->CreateLoad(strTy, slotA, "qt.opt.val");\n'
+     'llvm::Value* opts = llvm::UndefValue::get(optTy);\n'
+     'opts = builder->CreateInsertValue(opts, val, 0, "qt.opt.v");\n'
+     'opts = builder->CreateInsertValue(opts, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "qt.opt.h"), 1);\n'
+     'm_currentLLVMValue = opts;\n'),
+}
+
+
+def emit_opt_stub_funcs():
+    return "\n".join(stub_opt_body(o) for o in QT_OPT)
+
+
+def stub_opt_body(o):
+    argnames = [name for name, _ in o["args"]] + ["out"]
+    casts = " ".join("(void)%s;" % nm for nm in argnames) + " "
+    sig = "VYB_WEAK int64_t %s(%s)" % (o["cn"], cpp_opt_args(o))
+    return "%s\n    { %sreturn 0; }" % (sig, casts)
+
+
 def cond_lines(names, indent="                "):
     if not names:
         return ""
@@ -770,6 +856,9 @@ def emit_cgen():
     for i, f in enumerate(QT_ALL):
         kw = "if" if i == 0 else "else if"
         out.append('        %s (fname == "%s") rtName = "%s";' % (kw, f["vn"], f["cn"]))
+    for i, o in enumerate(QT_OPT):
+        kw = "else if" if (QT_ALL or i) else "if"
+        out.append('        %s (fname == "%s") rtName = "%s";' % (kw, o["vn"], o["cn"]))
     out.append("        if (!rtName.empty()) {")
     out.append("            auto getQtFn = [&](llvm::FunctionType* ft) -> llvm::Function* {")
     out.append("                llvm::Function* f2 = module->getFunction(rtName);")
@@ -824,12 +913,27 @@ def emit_cgen():
     if frags:
         frags.append("            }")
         out.extend(frags)
+    ogroups = OrderedDict()
+    for o in QT_OPT:
+        ogroups.setdefault(o["shape"], []).append(o["vn"])
+    optfrags = []
+    first = True
+    for oshape, names in ogroups.items():
+        opener = "            if (%s) {" if first else "            } else if (%s) {"
+        optfrags.append(opener % cond_lines(names))
+        for ln in OPT_BRANCH[oshape].splitlines():
+            optfrags.append("                " + ln)
+        optfrags.append("                return;")
+        first = False
+    if optfrags:
+        optfrags.append("            }")
+        out.extend(optfrags)
     out.append("        }")
     return "\n".join(out)
 
 
 def emit_sem_allow():
-    names = [f["vn"] for f in QT_ALL]
+    names = [f["vn"] for f in QT_ALL] + [o["vn"] for o in QT_OPT]
     lines = []
     for i in range(0, len(names), 2):
         pair = names[i:i + 2]
@@ -854,6 +958,8 @@ def emit_main_decl():
     for f in QT_ALL:
         ret = "vyb_file_str" if f["ret"] == "String" else "int64_t"
         out.append("    %s %s(%s);" % (ret, f["cn"], cpp_args(f)))
+    for o in QT_OPT:
+        out.append("    int64_t %s(%s);" % (o["cn"], cpp_opt_args(o, "vyb_file_str")))
     return "\n".join(out)
 
 
@@ -862,6 +968,9 @@ def emit_main_reg():
     for f in QT_ALL:
         out.append('        runtimeSymbols[mangle("%s")] = llvm::orc::ExecutorSymbolDef(' % f["cn"])
         out.append("            llvm::orc::ExecutorAddr::fromPtr(&%s), llvm::JITSymbolFlags::Exported);" % f["cn"])
+    for o in QT_OPT:
+        out.append('        runtimeSymbols[mangle("%s")] = llvm::orc::ExecutorSymbolDef(' % o["cn"])
+        out.append("            llvm::orc::ExecutorAddr::fromPtr(&%s), llvm::JITSymbolFlags::Exported);" % o["cn"])
     return "\n".join(out)
 
 
@@ -888,9 +997,14 @@ def emit_mod_wrappers():
             sig = f["wrap_sig"]
         else:
             sig = ", ".join("%s<%s>" % (n, t) for n, t in f["args"])
-        ret = MIGRATION.get(f["mod"], f["ret"]).split("@")[0] if f["mod"] in MIGRATION else f["ret"]
+        if "opt_vn" in f:
+            ret = "String?"
+        else:
+            ret = MIGRATION.get(f["mod"], f["ret"]).split("@")[0] if f["mod"] in MIGRATION else f["ret"]
         out.append("%s(%s)<%s> -> {" % (f["mod"], sig, ret))
-        if f["mod"] in MIGRATION:
+        if "opt_vn" in f:
+            out.append("    return %s(%s)" % (f["opt_vn"], ", ".join(n for n, _ in f["args"])))
+        elif f["mod"] in MIGRATION:
             out.append("    " + migrate_body(f))
         elif "wrap_body" in f:
             out.append("    " + f["wrap_body"])
@@ -907,6 +1021,7 @@ def emit_mod_wrappers():
 FILES = [
     ("runtime/vyb_qt_stub.cpp", "cpp", "stub", emit_stub_funcs),
     ("runtime/vyb_qt_stub.cpp", "cpp", "web_stub", emit_web_stub_funcs),
+    ("runtime/vyb_qt_stub.cpp", "cpp", "opt_stub", emit_opt_stub_funcs),
     ("src/vre/llvm/cgen_expr.cpp", "cpp", "cgen", emit_cgen),
     ("src/vre/semantic.cpp", "cpp", "sem_allow", emit_sem_allow),
     ("src/vre/semantic.cpp", "cpp", "sem_int", emit_sem_int),

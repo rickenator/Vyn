@@ -11,11 +11,11 @@
 import time::{time_epoch_secs, time_epoch_millis, time_nanos, time_mono_millis, sleep_ms}
 
 main()<Int> -> {
-    s<Int> = time_epoch_secs()
+    s<Int> = time_epoch_secs() else 0
     if (s <= 0) { return 1 }
-    ms<Int> = time_epoch_millis()
+    ms<Int> = time_epoch_millis() else 0
     if (ms < s * 1000) { return 2 }
-    ns<Int> = time_nanos()
+    ns<Int> = time_nanos() else 0
     if (ns < ms * 1000) { return 3 }
 
     start<Int> = time_mono_millis()

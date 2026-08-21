@@ -917,15 +917,16 @@ programmer-facing failure surface to native optionals:
 | Module | Shapes |
 |--------|--------|
 | `io` | `open*` -> `File?`; `read_all` -> `String?`; `write_str` -> `Int?`; `close` -> `Bool?` |
-| `term`, `env` | enabling/`set` ops -> `Bool?`; stderr writers -> `Int?` |
-| `network` (incl. oracle output) | acquisition -> `TcpStream?`/`TcpListener?`/`UdpSocket?`; `socket_*` (`Int?`/`Bool?`/`Int?`-bytes); `udp_recv_from`/`recv_from`/`async_tcp_read` -> `String?` |
+| `term`, `env` | enabling/`set` ops -> `Bool?`; stderr writers -> `Int?`; ANSI emitters `term_clear`/`term_move_cursor`/`term_hide_cursor`/`term_show_cursor` -> `Bool?` |
+| `network` (incl. oracle output) | acquisition -> `TcpStream?`/`TcpListener?`/`UdpSocket?`; `socket_*` (`Int?`/`Bool?`/`Int?`-bytes); `udp_recv_from`/`recv_from`/`async_tcp_read` and wrapper `TcpStreamOps::read` -> `String?` |
 | `tls`, `https` | `tls_stream`/`tls_client_context` -> `TlsStream?`/`TlsContext?`; `https_get*` -> `HttpResponse?` |
 | `asyncs` | `async_sleep_ms`/`async_connect` -> `Bool?`; `async_recv` -> `String?`; `async_send` -> `Int?`; `async_spawn`/`async_poll`/`async_accept` -> `Int?` |
 | `curses` | `curses_init` -> `Int?`; draw/attr/window ops -> `Bool?`; `curses_rows`/`curses_cols` -> `Int?`; `curses_getch` + color/attr probes stay `Int` |
 | `agents` | `agent_send*`/`agent_close`/`agent_free`/`agent_dead_letter` -> `Bool?`; `agent_start*` -> `Int` (0 sentinel, not yet migrated); probes stay `Int`/`String` |
 | `channels` | typed `chan<T>` speaks `T?`; raw `chan_close`/`chan_free`, `strchan_close`/`strchan_free` -> `Bool?`; raw `chan_new`/`chan_bounded`, `strchan_new`/`strchan_bounded` still return plain `Int` (0 sentinel, not yet migrated) |
 | `threads`, `tasks` | `mutex_new`/`cond_new`/`atomic_new` -> `Int?`; lock/cond/atomic/task ops -> `Bool?`; `thread_join` -> `Int?`; value probes stay `Int` |
-| `qt` | creators AND dimension/DPI getters -> `Int?`; op-status -> `Bool?`; value/probe getters stay `Int`/`String`/`Bool` |
+| `time` | `time_epoch_secs`/`time_epoch_millis`/`time_nanos` -> `Int?` (absent on a clock error); `time_mono_millis` stays `Int` |
+| `qt` | creators AND dimension/DPI getters -> `Int?`; op-status -> `Bool?`; `qt_msg_question` -> `Int?` (absent when the GUI is not running); modal pickers `qt_file_open`/`qt_file_save`/`qt_dir_select` and `qt_dlg_selected` -> `String?` (present-empty/user-cancel, absent on no-GUI / no-result); value/probe getters stay `Int`/`String`/`Bool` |
 
 The canonical per-module detail lives in `doc/FEATURE_STATUS.md` ("Standard
 Module Error Handling").
@@ -1293,33 +1294,38 @@ the Vyb surface stays allocation/pointer-free.
 stdin_read(maxlen<Int>)<String>       # up to maxlen bytes (EOF-able "")
 stdin_read_line()<String>             # one line, newline stripped
 stdin_isatty()<Bool>                  # true when stdin is a TTY
-stdin_raw_enable()<Int>               # raw mode: single keys, no echo
-stdin_raw_disable()<Int>              # restore the saved termios
-eprint(s<String>)<Int>                # write to stderr (no newline)
-eprintln(s<String>)<Int>              # write to stderr + newline
-flush()<Int>                          # flush stdout before reading input
-stderr_flush()<Int>
+stdin_raw_enable()<Bool?>             # raw mode: present on success, absent on failure
+stdin_raw_disable()<Bool?>            # restore the saved termios
+eprint(s<String>)<Int?>               # bytes written, absent on error
+eprintln(s<String>)<Int?>
+flush()<Bool?>                        # present on success, absent on failure
+stderr_flush()<Bool?>
 term_cols()<Int>                      # width, 80 fallback
 term_rows()<Int>                      # height, 24 fallback
-term_clear()<Int>                     # clear screen + home
-term_move_cursor(row<Int>, col<Int>)<Int>
-term_hide_cursor()<Int>               term_show_cursor()<Int>
+term_clear()<Bool?>                   # clear screen + home (absent on failure)
+term_move_cursor(row<Int>, col<Int>)<Bool?>
+term_hide_cursor()<Bool?>             term_show_cursor()<Bool?>
 ```
 
-The stdin readers return a `String` (empty on EOF); errors are reported by
-returning `-1` from the status helpers (e.g. `stdin_raw_enable()` when stdin is
-not a TTY). `print`/`println` writes go to `stdout`; keep prompts and
-diagnostics on `stderr` (via `eprint`/`eprintln`) so they never corrupt a
-rendered page. `term_status_message()` is the import-surface probe. See `examples/term_input.vyb` for a cooked-line and raw-mode walkthrough.
+The stdin readers return a `String` (empty on EOF); errors on the
+enabling/emitter ops are reported as an absent `Bool?` (e.g.
+`stdin_raw_enable()` when stdin is not a TTY). `print`/`println` writes go to
+`stdout`; keep prompts and diagnostics on `stderr` (via `eprint`/`eprintln`) so
+they never corrupt a rendered page. `term_status_message()` is the
+import-surface probe. See `examples/term_input.vyb` for a cooked-line and
+raw-mode walkthrough.
 
 ### 4.4 `time` — clocks and sleep
 
 Module page: [`time.md`](time.md). Thin, allocation-free wrappers over
-`clock_gettime` / `nanosleep`; all values are `Int`.
+`clock_gettime` / `nanosleep`. The wall-clock epoch getters can fail on a clock
+error (`-1` from the runtime), so they return `Int?` -- absent on a clock error,
+present holding the value otherwise; `time_mono_millis` has no failure path and
+stays `Int`.
 
 ```vyb
-time_epoch_secs()<Int>        time_epoch_millis()<Int>   time_nanos()<Int>
-time_mono_millis()<Int>       sleep_ms(millis<Int>)<Int>
+time_epoch_secs()<Int?>        time_epoch_millis()<Int?>   time_nanos()<Int?>
+time_mono_millis()<Int>        sleep_ms(millis<Int>)<Int>
 ```
 
 ### 4.5 `collections` — Vec, Map, Set, BTree
@@ -1886,15 +1892,15 @@ qt_menu_add(mw<Int>, title<String>)<Int>  qt_action_add(menu<Int>, text<String>)
 qt_action_count(menu<Int>)<Int>
 qt_statusbar_message(mw<Int>, text<String>)<Int>  qt_statusbar_text(mw<Int>)<String>
 qt_toolbar_create(mw<Int>, title<String>)<Int>
-qt_msg_info/warn/error/about(parent<Int>, title<String>, text<String>)<Int>
-qt_msg_question(parent<Int>, title<String>, text<String>)<Int>
-qt_file_open/save(parent<Int>, title<String>, filter<String>)<String>
-qt_dir_select(parent<Int>, title<String>)<String>
+qt_msg_info/warn/error/about(parent<Int>, title<String>, text<String>)<Bool?>
+qt_msg_question(parent<Int>, title<String>, text<String>)<Int?>
+qt_file_open/save(parent<Int>, title<String>, filter<String>)<String?>
+qt_dir_select(parent<Int>, title<String>)<String?>
 qt_dlg_info/warn/error/about(parent<Int>, title<String>, text<String>)<Int>
 qt_dlg_question(parent<Int>, title<String>, text<String>)<Int>
 qt_dlg_open/save(parent<Int>, title<String>, filter<String>)<Int>
 qt_dlg_dir(parent<Int>, title<String>)<Int>
-qt_dlg_close(h<Int>)<Int>     qt_dlg_selected(h<Int>)<String>
+qt_dlg_close(h<Int>)<Bool?>   qt_dlg_selected(h<Int>)<String?>
 qt_event_result()<Int>
 qt_rich_create(parent<Int>)<Int>   qt_rich_set_html/set_plain/append(e<Int>, text<String>)<Int>
 qt_rich_html/plain(e<Int>)<String> qt_rich_clear(e<Int>)<Int>
@@ -1944,8 +1950,11 @@ with back/forward/reload, a live address bar, Go, and Quit.
 The modal dialog tier adds native `QMessageBox`/`QFileDialog` pickers
 (`qt_msg_info`/`qt_msg_warn`/`qt_msg_error`/`qt_msg_about`/`qt_msg_question` and
 `qt_file_open`/`qt_file_save`/`qt_dir_select`) that block the main thread for
-user input and return the chosen result — a standard-button code (1 for Yes on a
-question) or a selected path (`""` on cancel). A `QTextEdit` rich-text editor
+user input. Their results follow the native-optional idiom: the info/warn/error/
+about boxes and `qt_msg_question` (`Int?`: present holding 1 for Yes / 0 for No)
+are absent when the GUI is not running; the file/dir pickers return `String?` —
+present holding the chosen path (or the present `""` on user cancel), absent
+when the GUI is not running — so a cancel is never conflated with failure. A `QTextEdit` rich-text editor
 (`qt_rich_*`, kind `rich`) carries HTML (`qt_rich_set_html`/`qt_rich_html`, with
 `<b>`/`<i>`/`<font color>` etc.), plain text (`qt_rich_set_plain`/`qt_rich_plain`),
 appending/clearing, and a whole-body text color (`qt_rich_set_text_color(r,g,b)`);
@@ -1958,9 +1967,10 @@ until the user responds. A non-blocking *async* tier (`qt_dlg_*`) pairs with the
 event loop instead: create + show the dialog and return its `Int` handle at
 once, and when the user finishes it a `QtEvent::dialog` record is enqueued whose
 result (`qt_event_result()`: 1 for Yes/Accepted, else 0) a `qt_on_event` handler
-or the `qt_event_*` poll reads. File/dir pickers also record the chosen path,
-readable any time via `qt_dlg_selected(handle)`; `qt_dlg_close(handle)` finishes a
-dialog as rejected. This is the friendly path for a `qt_run`-driven app — dialogs
+or the `qt_event_*` poll reads. File/dir pickers also record the chosen path, readable via
+`qt_dlg_selected(handle)` — `String?`, present once a result is recorded (on
+Accepted), absent when there is no result yet (another kind of dialog or a
+dialog not yet finished); `qt_dlg_close(handle)` finishes a dialog as rejected. This is the friendly path for a `qt_run`-driven app — dialogs
 no longer block the handler with a nested `exec()`.
 
 Call `qt_init()` once. `QApplication` must live on the main thread (a Vyb
@@ -2193,6 +2203,8 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
+
 
 
 

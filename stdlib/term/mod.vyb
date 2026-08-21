@@ -109,28 +109,36 @@ term_rows()<Int> -> {
     return vyb_term_rows()
 }
 
-# Clear the screen and home the cursor. Returns 0 on success.
+# Clear the screen and home the cursor. Returns `Bool?` -- present on success, absent on failure.
 share(all)
-term_clear()<Int> -> {
-    return vyb_term_clear()
+term_clear()<Bool?> -> {
+    r<Int> = vyb_term_clear()
+    if (r != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Move the cursor to 1-based (row, column). Returns 0 on success.
+# Move the cursor to 1-based (row, column). Returns `Bool?` -- present on success, absent on failure.
 share(all)
-term_move_cursor(row<Int>, col<Int>)<Int> -> {
-    return vyb_term_move_cursor(row, col)
+term_move_cursor(row<Int>, col<Int>)<Bool?> -> {
+    r<Int> = vyb_term_move_cursor(row, col)
+    if (r != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Hide the cursor while drawing. Returns 0 on success.
+# Hide the cursor while drawing. Returns `Bool?` -- present on success, absent on failure.
 share(all)
-term_hide_cursor()<Int> -> {
-    return vyb_term_hide_cursor()
+term_hide_cursor()<Bool?> -> {
+    r<Int> = vyb_term_hide_cursor()
+    if (r != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Show the cursor when drawing is done. Returns 0 on success.
+# Show the cursor when drawing is done. Returns `Bool?` -- present on success, absent on failure.
 share(all)
-term_show_cursor()<Int> -> {
-    return vyb_term_show_cursor()
+term_show_cursor()<Bool?> -> {
+    r<Int> = vyb_term_show_cursor()
+    if (r != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Compatibility status probe (kept for the module-surface import test).
