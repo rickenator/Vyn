@@ -707,6 +707,7 @@ private:
                           const ast::BindDeclaration* bindDecl);
     bool traitMethodSignatureMatches(const TraitMethod& traitMethod,
                                     ast::FunctionDeclaration* implMethod,
+                                    const std::string& traitName,
                                     const std::unordered_map<std::string, std::string>& associatedTypeBindings);
     std::string resolveAssociatedTypeReference(const std::string& typeName,
                                               const std::string& traitName,

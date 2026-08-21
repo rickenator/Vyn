@@ -9842,7 +9842,7 @@ bool SemanticAnalyzer::validateTraitImpl(const std::string& typeName,
                 implMethod->id->name == traitMethod.name) {
 
                 // Validate signature matches
-                if (!traitMethodSignatureMatches(traitMethod, implMethod.get(), associatedTypeBindingNames)) {
+                if (!traitMethodSignatureMatches(traitMethod, implMethod.get(), traitName, associatedTypeBindingNames)) {
                     VYB_CDBG << "DEBUG: Method signature mismatch for: " << traitMethod.name << std::endl;
                     return false;
                 }
@@ -9863,6 +9863,7 @@ bool SemanticAnalyzer::validateTraitImpl(const std::string& typeName,
 
 bool SemanticAnalyzer::traitMethodSignatureMatches(const TraitMethod& traitMethod,
                                                    ast::FunctionDeclaration* implMethod,
+                                                   const std::string& traitName,
                                                    const std::unordered_map<std::string, std::string>& associatedTypeBindings) {
     if (!implMethod || !implMethod->id) {
         return false;
@@ -9894,9 +9895,22 @@ bool SemanticAnalyzer::traitMethodSignatureMatches(const TraitMethod& traitMetho
         std::string implReturnType = implMethod->returnTypeNode->toString();
         std::string traitReturnType = traitMethod.returnType->toString();
 
-        auto resolveAssocRef = [&associatedTypeBindings](std::string type) -> std::string {
+        // Resolve associated-type references spelled as either Self::Item or
+        // <Trait>::Item so the two equivalent forms interoperate. Exact
+        // string-prefix matching is brittle for whitespace, qualified paths,
+        // or nested generics -- prefer a type-system driven resolution (cf.
+        // the analogous handle at the generic-impl call site) long term.
+        auto resolveAssocRef = [&associatedTypeBindings, &traitName](std::string type) -> std::string {
+            std::string assocName;
             if (type.rfind("Self::", 0) == 0) {
-                std::string assocName = type.substr(6);
+                assocName = type.substr(6);
+            } else {
+                const std::string traitPrefix = traitName + "::";
+                if (type.rfind(traitPrefix, 0) == 0) {
+                    assocName = type.substr(traitPrefix.length());
+                }
+            }
+            if (!assocName.empty()) {
                 auto assocIt = associatedTypeBindings.find(assocName);
                 if (assocIt != associatedTypeBindings.end()) {
                     return assocIt->second;

@@ -1,0 +1,27 @@
+// @test: aspect-qualified associated-type return interoperates with Self::Item impl
+// @description: An aspect declared with a <Aspect>::Item return type matches a bind returning Self::Item for the same associated type
+// @category: aspect, associated types, monomorphization
+// @expect: pass
+// @expect-return: 5
+
+aspect Iterator {
+    type Item
+    next(self)<Iterator::Item>
+}
+
+struct CounterIter {
+    value<Int>
+}
+
+bind Iterator -> CounterIter {
+    type Item = Int
+    next(self)<Self::Item> -> {
+        return self.value
+    }
+}
+
+main()<Int> -> {
+    c<CounterIter> = CounterIter { value = 5 }
+    r<Int> = c.next()
+    return r
+}
