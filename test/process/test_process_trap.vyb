@@ -1,0 +1,36 @@
+// @test: process module ProcError shared across modules via fail/trap
+// @description: a failed process launch is escalated from a failable helper with
+//   process::proc_error -> a ProcError caught by main's trap; the fields carry
+//   op/command. (Launch failure surfaces as an absent exec_run/exec_output; here
+//   we exercise the escalation + typed-trap path directly.)
+// @category: process, modules, stdlib, error_handling, fail, trap
+// @expect: pass
+// @expect-output: proc-trap: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import process::{proc_error, ProcError}
+
+# Failable helper: escalate into a ProcError so the caller can trap the real
+# typed value (the fail is in this callee, so main's own return serialization
+# stays intact).
+try_launch(cmd<String>)<Int> -> {
+    fail proc_error("run", cmd)
+    return 0
+}
+
+main()<Int> -> {
+    op = ""
+    co = ""
+    caught<Bool> = false
+    { try_launch("some-command") } trap (e<ProcError>) -> {
+        caught = true
+        op = e.operation
+        co = e.command
+    }
+    if (!caught) { println("proc-trap: failed"); return 1 }
+    if (op != "run") { println("proc-trap: failed"); return 1 }
+    if (co != "some-command") { println("proc-trap: failed"); return 1 }
+    println("proc-trap: ok")
+    return 0
+}

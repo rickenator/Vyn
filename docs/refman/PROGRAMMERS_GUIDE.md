@@ -1680,14 +1680,19 @@ Module page: [`process.md`](process.md). Run a trusted command line through the
 shell and read its exit status or captured stdout.
 
 ```vyb
-exec_run(cmd<String>)<Int>          # freedom-gated: child exit code / -1
-exec_output(cmd<String>)<String>    # freedom-gated: captured stdout
+exec_run(cmd<String>)<Int?>         # freedom-gated: child exit code (absent = launch failure)
+exec_output(cmd<String>)<String?>   # freedom-gated: stdout (absent = launch failure)
 exec_status()<Int>                  # exit status of the last exec_output
 ```
 
 Running a shell command reaches outside the managed model, so `exec_run` and
 `exec_output` are **gated behind a `freedom` block** (`freedom { exec_run(...) }`).
-The read-only `exec_status` probe is callable from ordinary code.
+The read-only `exec_status` probe is callable from ordinary code. Following the
+engine-wide `T?` shape, `exec_run` returns `Int?` (absent when the command could
+not be launched) and `exec_output` returns `String?` (absent on launch failure,
+present -- possibly empty -- when the run succeeded), so a real empty stdout is
+never mistaken for a failed capture. The shared `ProcError` + `proc_error(op, cmd)`
+builder lets a caller `match` the absent form and `fail` it into a typed `trap`.
 
 ### 4.20 `regex` — POSIX extended patterns
 
@@ -2110,6 +2115,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

@@ -1,5 +1,5 @@
 {
-  "git_rev": "0ed3ce7acdc6d3ceb6e65ad2f0cd61b6e02b24b2",
+  "git_rev": "ebbb715899eb507d03e7a61e879f5038c5bff12b",
   "modules": [
     "agents",
     "asyncs",
@@ -143,7 +143,7 @@
         "files": [
           "stdlib/process/mod.vyb"
         ],
-        "exported": 3,
+        "exported": 5,
         "fan_in": 0,
         "fan_out": 0
       },
@@ -558,7 +558,9 @@
         "symbols": [
           "exec_run",
           "exec_output",
-          "exec_status"
+          "exec_status",
+          "ProcError",
+          "proc_error"
         ]
       },
       {
@@ -2876,12 +2878,21 @@
         "fan_in": 0
       },
       {
+        "name": "ProcError",
+        "module": "process",
+        "file": "stdlib/process/mod.vyb",
+        "kind": "struct",
+        "signature": "struct ProcError {",
+        "summary": "A shared error value for escalating a failed process launch into the fail/trap",
+        "fan_in": 0
+      },
+      {
         "name": "exec_output",
         "module": "process",
         "file": "stdlib/process/mod.vyb",
         "kind": "fn",
-        "signature": "exec_output(cmd<String>)<String> ->",
-        "summary": "",
+        "signature": "exec_output(cmd<String>)<String?> ->",
+        "summary": "Capture `cmd`'s stdout; returns `String?` -- present holding the output (which",
         "fan_in": 0
       },
       {
@@ -2889,8 +2900,8 @@
         "module": "process",
         "file": "stdlib/process/mod.vyb",
         "kind": "fn",
-        "signature": "exec_run(cmd<String>)<Int> ->",
-        "summary": "",
+        "signature": "exec_run(cmd<String>)<Int?> ->",
+        "summary": "Run `cmd`; returns `Int?` -- present holding the child's exit status (0..255)",
         "fan_in": 0
       },
       {
@@ -2899,7 +2910,16 @@
         "file": "stdlib/process/mod.vyb",
         "kind": "fn",
         "signature": "exec_status()<Int> ->",
-        "summary": "",
+        "summary": "The last child's exit status (read-only probe; 0..255, or -1 if none yet or a",
+        "fan_in": 0
+      },
+      {
+        "name": "proc_error",
+        "module": "process",
+        "file": "stdlib/process/mod.vyb",
+        "kind": "fn",
+        "signature": "proc_error(operation<String>, command<String>)<ProcError> ->",
+        "summary": "Build a `ProcError` for the named `operation` on `command`. Typical use is",
         "fan_in": 0
       },
       {
@@ -6745,6 +6765,34 @@
     },
     {
       "type": "proseRef",
+      "from_module": "process",
+      "from_symbol": "exec_output",
+      "to_module": "process",
+      "to_symbol": "exec_status"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "process",
+      "from_symbol": "proc_error",
+      "to_module": "process",
+      "to_symbol": "ProcError"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "process",
+      "from_symbol": "proc_error",
+      "to_module": "process",
+      "to_symbol": "exec_output"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "process",
+      "from_symbol": "proc_error",
+      "to_module": "process",
+      "to_symbol": "exec_run"
+    },
+    {
+      "type": "proseRef",
       "from_module": "tls",
       "from_symbol": "TlsError",
       "to_module": "tls",
@@ -7471,7 +7519,7 @@
       "type": "runtimeRef",
       "from_module": "process",
       "from_symbol": "exec_output",
-      "to_symbol": "vyb_exec_output"
+      "to_symbol": "vyb_exec_output_opt"
     },
     {
       "type": "runtimeRef",
@@ -8981,6 +9029,13 @@
       "from_symbol": "udp_send_to",
       "to_module": "network",
       "to_symbol": "UdpSocket"
+    },
+    {
+      "type": "usesType",
+      "from_module": "process",
+      "from_symbol": "proc_error",
+      "to_module": "process",
+      "to_symbol": "ProcError"
     },
     {
       "type": "usesType",

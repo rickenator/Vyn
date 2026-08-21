@@ -4760,6 +4760,34 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "capopt.h"), 1);
             m_currentLLVMValue = opt;
             return;
+        } else if (fname == "vyb_exec_output_opt") {
+            // Lossless stdout capture returning a native `String?` (`{ String, has }`);
+            // absent only when the command could not be launched. Mirrors the
+            // env_get_opt / regex capture_opt handlers.
+            if (node->arguments.size() != 1) {
+                logError(node->loc, "vyb_exec_output_opt expects 1 argument (cmd)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this);
+            llvm::Value* cmd = m_currentLLVMValue;
+            if (!cmd) return;
+            llvm::Value* cmdPtr = cmd;
+            if (cmdPtr->getType()->isStructTy())
+                cmdPtr = builder->CreateExtractValue(cmdPtr, 0, "execopt.cmd");
+            llvm::StructType* strTy = llvm::StructType::get(*context, {int8PtrType, int64Type}, false);
+            llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
+            llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "execopt.slot");
+            llvm::FunctionType* ft = llvm::FunctionType::get(
+                int64Type, {int8PtrType, llvm::PointerType::get(*context, 0)}, false);
+            llvm::Function* f = module->getFunction("__vyb_exec_output_opt");
+            if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_exec_output_opt", module.get());
+            llvm::Value* has = builder->CreateCall(f, {cmdPtr, slot}, "execopt.has");
+            llvm::Value* val = builder->CreateLoad(strTy, slot, "execopt.val");
+            llvm::Value* opt = llvm::UndefValue::get(optTy);
+            opt = builder->CreateInsertValue(opt, val, 0, "execopt.v");
+            opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "execopt.h"), 1);
+            m_currentLLVMValue = opt;
+            return;
         } else if (fname == "vyb_strchan_recv") {
             // Blocking recv returning a String { ptr, len } that the caller owns.
             if (node->arguments.size() != 1) {

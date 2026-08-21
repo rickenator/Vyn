@@ -2156,6 +2156,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_rand" || name == "vyb_rand_range" ||
             name == "vyb_rand_seed" ||
             name == "vyb_exec_run" || name == "vyb_exec_output" ||
+            name == "vyb_exec_output_opt" ||
             name == "vyb_exec_status" ||
             name == "vyb_regex_match" || name == "vyb_regex_find" ||
             name == "vyb_regex_capture_match" || name == "vyb_regex_capture" ||
@@ -3010,6 +3011,20 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             // fixes regex_capture's "" sentinel, which conflated an empty capture
             // with "no match".
             if (name == "vyb_regex_capture_match_opt" || name == "vyb_regex_capture_opt") {
+                auto* inner = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "String"));
+                auto* resTy = new ast::OptionalType(node->loc,
+                    std::unique_ptr<ast::TypeNode>(inner));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+            // Lossless stdout capture: exec_output_opt returns a native `String?`
+            // -- absent only when the command could not be launched, present
+            // holding its stdout (which may legitimately be empty). This fixes
+            // exec_output's "" sentinel, which conflated launch failure with a
+            // genuinely empty output.
+            if (name == "vyb_exec_output_opt") {
                 auto* inner = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "String"));
                 auto* resTy = new ast::OptionalType(node->loc,

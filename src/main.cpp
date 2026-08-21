@@ -146,6 +146,7 @@ extern "C" {
     // Process helpers (process stdlib module)
     int64_t __vyb_exec_run(const char* cmd);
     vyb_file_str __vyb_exec_output(const char* cmd);
+    int64_t __vyb_exec_output_opt(const char* cmd, vyb_file_str* out);
     int64_t __vyb_exec_status(void);
 
     // Regex helpers (regex stdlib module)
@@ -2117,6 +2118,8 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_exec_run), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_exec_output")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_exec_output), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_exec_output_opt")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_exec_output_opt), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_exec_status")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_exec_status), llvm::JITSymbolFlags::Exported);
 

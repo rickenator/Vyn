@@ -3,26 +3,60 @@
 # Thin wrappers over the runtime's `__vyb_exec_*` functions in
 # `runtime/vyb_runtime.c`. A full command line (with shell metacharacters,
 # pipelines, and redirection) is passed through `sh -c`, so callers supply
-# trusted command strings. `exec_run` returns the child's exit code (0..255) or
-# -1 if it could not be launched; `exec_output` captures stdout as a String and
-# records the exit status for `exec_status`.
+# trusted command strings.
+#
+# Fallible execution follows the engine-wide `T?` shape (PROGRAMMERS_GUIDE
+# §3.16): `exec_run` returns `Int?` -- absent when the command could not be
+# launched, present holding its exit status otherwise -- and `exec_output`
+# returns `String?` -- absent only on launch failure, present holding stdout
+# (which may legitimately be empty). The old `-1`/`""` sentinels could not
+# distinguish launch failure from a real exit status / empty output. `exec_status`
+# (the read-only probe) still reports the last child's exit status as a plain Int.
 #
 # Running a shell command reaches outside the managed model, so Vyb gates the
 # two executing helpers behind an explicit `freedom` block: a caller must write
 # `freedom { exec_run("...") }` (or `freedom { exec_output("...") }`). The
 # read-only `exec_status` probe stays ungated and is callable from any code.
 
+# Run `cmd`; returns `Int?` -- present holding the child's exit status (0..255)
+# when it launched, absent when it could not be launched.
 share(all)
-exec_run(cmd<String>)<Int> -> {
-    return vyb_exec_run(cmd)
+exec_run(cmd<String>)<Int?> -> {
+    code<Int> = vyb_exec_run(cmd)
+    if (code == -1) { return Int?() }
+    return Int?(code)
 }
 
+# Capture `cmd`'s stdout; returns `String?` -- present holding the output (which
+# may be empty) when it launched, absent when it could not be launched. The exit
+# status is available from `exec_status()`.
 share(all)
-exec_output(cmd<String>)<String> -> {
-    return vyb_exec_output(cmd)
+exec_output(cmd<String>)<String?> -> {
+    return vyb_exec_output_opt(cmd)
 }
 
+# The last child's exit status (read-only probe; 0..255, or -1 if none yet or a
+# launch failure). Works from ordinary code.
 share(all)
 exec_status()<Int> -> {
     return vyb_exec_status()
+}
+
+# A shared error value for escalating a failed process launch into the fail/trap
+# framework. `operation` names the failing call ("run" / "output"); `command` is
+# the command that failed; `message` carries a diagnostic (empty when the runtime
+# recorded none).
+share(all)
+struct ProcError {
+    operation<String>,
+    command<String>,
+    message<String>
+}
+
+# Build a `ProcError` for the named `operation` on `command`. Typical use is
+# shaping an absent `exec_run`/`exec_output` into a fail:
+#   match (exec_output(cmd)) { s -> ..., ? -> { fail proc_error("output", cmd) } }
+share(all)
+proc_error(operation<String>, command<String>)<ProcError> -> {
+    return ProcError { operation = operation, command = command, message = "" }
 }

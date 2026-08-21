@@ -1329,6 +1329,43 @@ VYB_WEAK vyb_file_str __vyb_exec_output(const char* cmd) {
     return r;
 }
 
+// Lossless stdout capture: returns 1 and writes the captured stdout to *out when
+// the command launched (even if it produced no output), or 0 when it could not be
+// launched. Unlike __vyb_exec_output (which returns "" for both launch failure
+// and genuinely empty stdout), a successful empty-output run is distinct from a
+// launch failure. The child's exit status is still recorded for __vyb_exec_status.
+VYB_WEAK int64_t __vyb_exec_output_opt(const char* cmd, vyb_file_str* out) {
+    if (!out) return 0;
+    vyb_file_str r = { NULL, 0 };
+    if (!cmd) { vyb_process_last_status = -1; return 0; }
+    FILE* f = popen(cmd, "r");
+    if (!f) { vyb_process_last_status = -1; return 0; }
+    size_t cap = 4096, len = 0;
+    char* buf = (char*)malloc(cap);
+    if (!buf) { pclose(f); vyb_process_last_status = -1; return 0; }
+    for (;;) {
+        if (len + 4096 + 1 > cap) {
+            size_t nc = cap * 2;
+            char* nb = (char*)realloc(buf, nc);
+            if (!nb) { free(buf); pclose(f); vyb_process_last_status = -1; return 0; }
+            buf = nb; cap = nc;
+        }
+        size_t n = fread(buf + len, 1, 4096, f);
+        len += n;
+        if (n < 4096) break;
+    }
+    int st = pclose(f);
+    if (WIFEXITED(st)) vyb_process_last_status = WEXITSTATUS(st);
+    else if (WIFSIGNALED(st)) vyb_process_last_status = 128 + WTERMSIG(st);
+    else vyb_process_last_status = -1;
+    buf[len] = '\0';
+    __vyb_string_register(buf);
+    r.ptr = buf;
+    r.len = (int64_t)len;
+    *out = r;
+    return 1;
+}
+
 VYB_WEAK int64_t __vyb_exec_status(void) {
     return (int64_t)vyb_process_last_status;
 }
