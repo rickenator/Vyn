@@ -1274,7 +1274,7 @@ v.first()                          # first element (optional)
 v.last()                           # last element (optional)
 v.reversed()                       # fresh copy, reversed
 v.sorted()                         # fresh copy, sorted
-v.find(x)                          # index of first match, -1 when absent
+v.find(x)                          # index of first match as Int? (absent = not found)
 v.min()
 v.max()
 v.sort_in_place()                  # in-place sort
@@ -2121,6 +2121,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

@@ -39,8 +39,8 @@ main()<Int> -> {
     if (check(v.last() == 1, 2)) { return 2 }
 
     # find: first matching index, or -1
-    if (check(v.find(9) == 1, 3)) { return 3 }
-    if (check(v.find(7) == -1, 4)) { return 4 }
+    if (check((v.find(9) else -1) == 1, 3)) { return 3 }
+    if (check((v.find(7) else -1) == -1, 4)) { return 4 }
 
     # reversed: fresh vector, original untouched
     r<Vec<Int>> = v.reversed()
@@ -53,8 +53,8 @@ main()<Int> -> {
     s.push("green")
     s.push("blue")
     if (check(s.first() == "red", 7)) { return 7 }
-    if (check(s.find("green") == 1, 8)) { return 8 }
-    if (check(s.find("violet") == -1, 9)) { return 9 }
+    if (check((s.find("green") else -1) == 1, 8)) { return 8 }
+    if (check((s.find("violet") else -1) == -1, 9)) { return 9 }
     sr<Vec<String>> = s.reversed()
     if (check(sr.get(0) == "blue" && sr.get(2) == "red", 10)) { return 10 }
 
