@@ -28,10 +28,14 @@
 # §3.16): async_spawn and async_accept return `Int?` and are absent on failure
 # (no more `0`/`-1` sentinels); async_poll is a native `Int?` -- absent while the
 # fiber is still running, present holding its result (which may legitimately be
-# -1). async_await stays a plain Int: on a valid handle it always blocks until a
-# result arrives, so it has no absence to report. async_connect/async_send keep
-# their documented Int status/byte counts, and async_connect's failure diagnostic
-# lives in network::socket_error_code()/socket_error_message().
+# -1). async_connect returns `Bool?` (present on success), async_send `Int?`
+# (bytes written), async_recv `String?` (lossless; absent on error/EOF), and
+# async_sleep_ms `Bool?` (always present). async_await stays a plain Int: on a
+# valid handle it always blocks until a result arrives, so it has no absence to
+# report. async_detach keeps its documented status code (0 ok / -1 already
+# detached / -3 waiter attached) rather than collapsing those distinct outcomes
+# to a presence bit; the async I/O failure diagnostics live in
+# network::socket_error_code()/socket_error_message().
 
 # Enqueue `work` (a fn() -> Int) on the worker pool. Returns `Int?` -- present
 # holding the task handle (>= 1) on success, absent when pool setup fails. The
@@ -72,8 +76,9 @@ async_poll(t<Int>)<Int?> -> {
 # longer be awaited; the handle must not be used afterwards. If the fiber is
 # already finished the task is freed immediately; a still-running task is marked
 # and reclaimed by its worker as soon as it completes, so a slow fetch still
-# self-reaps. Returns 0 on success, -1 if already detached, -3 if a waiter is
-# still attached.
+# self-reaps. Returns a status code (not a presence bit) so callers can
+# distinguish the outcomes: 0 on success, -1 if already detached, -3 if a waiter
+# is still attached, -2 on an invalid handle.
 share(all)
 async_detach(t<Int>)<Int> -> {
     return vyb_async_detach(t)
@@ -87,10 +92,12 @@ async_yield()<Int> -> {
 }
 
 # Cooperative sleep: suspend the current fiber for `ms` on a timer so other loop
-# work proceeds. Outside a fiber this sleeps the calling thread.
+# work proceeds. Outside a fiber this sleeps the calling thread. Returns `Bool?`
+# -- always present (a sleep cannot fail).
 share(all)
-async_sleep_ms(ms<Int>)<Int> -> {
-    return vyb_async_sleep_ms(ms)
+async_sleep_ms(ms<Int>)<Bool?> -> {
+    vyb_async_sleep_ms(ms)
+    return Bool?(true)
 }
 
 # --- Async I/O: suspendable, non-blocking socket operations -----------------
@@ -121,23 +128,29 @@ async_accept(fd<Int>)<Int?> -> {
     return Int?(c)
 }
 
-# Non-blocking connect, suspending until established or refused. Returns 0 on
-# success, -1 on failure (see network::socket_error_code()).
+# Non-blocking connect, suspending until established or refused. Returns `Bool?`
+# -- present on success, absent on failure (see
+# network::socket_error_code()/socket_error_message()).
 share(all)
-async_connect(fd<Int>, ip<String>, port<Int>)<Int> -> {
-    return vyb_async_connect(fd, ip, port)
+async_connect(fd<Int>, ip<String>, port<Int>)<Bool?> -> {
+    if (vyb_async_connect(fd, ip, port) == 0) { return Bool?(true) }
+    return Bool?()
 }
 
 # Send all of `data` on `fd`, suspending until the socket accepts it. Returns
-# the number of bytes sent (or -1).
+# `Int?` -- present holding the number of bytes sent, absent on failure.
 share(all)
-async_send(fd<Int>, data<String>)<Int> -> {
-    return vyb_async_send(fd, data)
+async_send(fd<Int>, data<String>)<Int?> -> {
+    n<Int> = vyb_async_send(fd, data)
+    if (n < 0) { return Int?() }
+    return Int?(n)
 }
 
-# Receive up to `maxlen` bytes from `fd` as a fresh String, suspending until
-# data is readable. Empty on error or EOF.
+# Receive up to `maxlen` bytes from `fd`, suspending until data is readable.
+# Returns a lossless `String?` -- present holding the bytes read (which may
+# legitimately be empty), absent on error/EOF, so an empty read is never
+# conflated with a failed read.
 share(all)
-async_recv(fd<Int>, maxlen<Int>)<String> -> {
-    return vyb_async_recv(fd, maxlen)
+async_recv(fd<Int>, maxlen<Int>)<String?> -> {
+    return vyb_async_recv_opt(fd, maxlen)
 }

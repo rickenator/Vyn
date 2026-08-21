@@ -22,18 +22,18 @@ main()<Int> -> {
 
     # One echo-server fiber: sequentially async-accept + echo each connection.
     st<Int> = async_spawn(|| -> {
-        c0<Int> = async_accept(srv) else -1; e0<String> = async_recv(c0, 4096); async_send(c0, e0); socket_close(c0)
-        c1<Int> = async_accept(srv) else -1; e1<String> = async_recv(c1, 4096); async_send(c1, e1); socket_close(c1)
-        c2<Int> = async_accept(srv) else -1; e2<String> = async_recv(c2, 4096); async_send(c2, e2); socket_close(c2)
+        c0<Int> = async_accept(srv) else -1; e0<String> = async_recv(c0, 4096) else ""; async_send(c0, e0); socket_close(c0)
+        c1<Int> = async_accept(srv) else -1; e1<String> = async_recv(c1, 4096) else ""; async_send(c1, e1); socket_close(c1)
+        c2<Int> = async_accept(srv) else -1; e2<String> = async_recv(c2, 4096) else ""; async_send(c2, e2); socket_close(c2)
         return 0
 }) else 0
 
     ca<Int> = async_spawn(|| -> {
         async_sleep_ms(5)
         cli<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP) else -1
-        if (async_connect(cli, "127.0.0.1", port) != 0) { return 10 }
+        if (!(async_connect(cli, "127.0.0.1", port) else false)) { return 10 }
         async_send(cli, MSG0)
-        b<String> = async_recv(cli, 4096)
+        b<String> = async_recv(cli, 4096) else ""
         socket_close(cli)
         if (b == MSG0) { return 0 }
         return 20
@@ -41,9 +41,9 @@ main()<Int> -> {
     cb<Int> = async_spawn(|| -> {
         async_sleep_ms(8)
         cli<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP) else -1
-        if (async_connect(cli, "127.0.0.1", port) != 0) { return 11 }
+        if (!(async_connect(cli, "127.0.0.1", port) else false)) { return 11 }
         async_send(cli, MSG1)
-        b<String> = async_recv(cli, 4096)
+        b<String> = async_recv(cli, 4096) else ""
         socket_close(cli)
         if (b == MSG1) { return 0 }
         return 21
@@ -51,9 +51,9 @@ main()<Int> -> {
     cc<Int> = async_spawn(|| -> {
         async_sleep_ms(11)
         cli<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP) else -1
-        if (async_connect(cli, "127.0.0.1", port) != 0) { return 12 }
+        if (!(async_connect(cli, "127.0.0.1", port) else false)) { return 12 }
         async_send(cli, MSG2)
-        b<String> = async_recv(cli, 4096)
+        b<String> = async_recv(cli, 4096) else ""
         socket_close(cli)
         if (b == MSG2) { return 0 }
         return 22

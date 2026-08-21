@@ -410,8 +410,8 @@ async_tcp_write(s<TcpStream>, data<String>)<Int?> -> {
 }
 
 share(all)
-async_tcp_read(s<TcpStream>, max<Int>)<String> -> {
-    return vyb_async_recv(s.fd, max)
+async_tcp_read(s<TcpStream>, max<Int>)<String?> -> {
+    return vyb_async_recv_opt(s.fd, max)
 }
 
 # Send one datagram from the event loop, suspending the calling fiber. Returns

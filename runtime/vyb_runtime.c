@@ -3605,6 +3605,18 @@ VYB_WEAK vyb_file_str __vyb_async_recv(int64_t fd, int64_t maxlen) {
     }
 }
 
+// Lossless async recv: writes the received bytes' vyb_file_str to *out and
+// returns 1 when data was produced, or 0 on error/EOF (see socket_error_code).
+// Mirrors __vyb_net_recv_opt but stays suspendable: it suspends the calling
+// fiber until the fd is readable, exactly like __vyb_async_recv.
+VYB_WEAK int64_t __vyb_async_recv_opt(int64_t fd, int64_t maxlen, vyb_file_str* out) {
+    if (!out) return 0;
+    vyb_file_str r = __vyb_async_recv(fd, maxlen);
+    if (!r.ptr) return 0;
+    *out = r;
+    return 1;
+}
+
 // Non-blocking send of `len` bytes, suspending until the socket accepts them.
 // Returns the number of bytes sent (or -1).
 VYB_WEAK int64_t __vyb_async_send(int64_t fd, const char* data, int64_t len) {

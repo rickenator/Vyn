@@ -22,7 +22,7 @@ main()<Int> -> {
             srv<Int> = async_spawn(|| -> {
                 match (async_tcp_accept(TcpListener { fd = lfd, local_ip = "", local_port = 0 })) {
                     c -> {
-                        data<String> = async_tcp_read(c, 4096)
+                        data<String> = async_tcp_read(c, 4096) else ""
                         # async_tcp_write returns Int? -- present holding the
                         # bytes sent, absent on failure; `else -1` gives a count.
                         nt<Int> = async_tcp_write(c, data) else -1
@@ -37,7 +37,7 @@ main()<Int> -> {
                 match (async_tcp_connect("127.0.0.1", port)) {
                     s -> {
                         async_tcp_write(s, MSG)
-                        back<String> = async_tcp_read(s, 4096)
+                        back<String> = async_tcp_read(s, 4096) else ""
                         s.close()
                         if (back == MSG) { return 0 }
                         return 2

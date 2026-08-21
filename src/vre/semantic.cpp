@@ -2128,7 +2128,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_async_detach" ||
             name == "vyb_async_yield" || name == "vyb_async_sleep_ms" ||
             name == "vyb_async_io_wait" || name == "vyb_async_accept" ||
-            name == "vyb_async_recv" || name == "vyb_async_send" ||
+            name == "vyb_async_recv" || name == "vyb_async_recv_opt" || name == "vyb_async_send" ||
             name == "vyb_async_connect" ||
             name == "vyb_async_sendto" || name == "vyb_async_recvfrom" ||
             name == "vyb_strchan_new" || name == "vyb_strchan_send" ||
@@ -3144,6 +3144,19 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             if (name == "vyb_async_recv" || name == "vyb_async_recvfrom") {
                 auto* resTy = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "String"));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+            // Lossless async recv: async_recv_opt returns a native `String?` --
+            // absent on error/EOF, present holding the bytes read. Its sibling
+            // async_recv returns plain String ("" on error/EOF); the _opt form
+            // keeps a clean read distinct from a failed one.
+            if (name == "vyb_async_recv_opt") {
+                auto* inner = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "String"));
+                auto* resTy = new ast::OptionalType(node->loc,
+                    std::unique_ptr<ast::TypeNode>(inner));
                 expressionTypes[node] = retainType(resTy);
                 node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
                 return;

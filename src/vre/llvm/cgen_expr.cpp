@@ -4042,6 +4042,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_async_connect") rtAsync = "__vyb_async_connect";
         else if (fname == "vyb_async_send") rtAsync = "__vyb_async_send";
         else if (fname == "vyb_async_recv") rtAsync = "__vyb_async_recv";
+        else if (fname == "vyb_async_recv_opt") rtAsync = "__vyb_async_recv_opt";
         else if (fname == "vyb_async_sendto") rtAsync = "__vyb_async_sendto";
         else if (fname == "vyb_async_recvfrom") rtAsync = "__vyb_async_recvfrom";
         if (!rtAsync.empty()) {
@@ -4118,6 +4119,26 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 llvm::FunctionType* ft = llvm::FunctionType::get(aStrType(), {int64Type, int64Type}, false);
                 m_currentLLVMValue = builder->CreateCall(asyncFn(ft), {aToI64(fd), aToI64(maxlen)},
                     fname == "vyb_async_recvfrom" ? "aio.udprecved" : "aio.recved");
+                return;
+            } else if (fname == "vyb_async_recv_opt") {
+                // Lossless async recv -> native `String?` ({ String, has });
+                // absent on error/EOF, present holding the bytes read. Only the
+                // return shape differs from vyb_async_recv; the underlying
+                // __vyb_async_recv still suspends the calling fiber.
+                if (!aArity(2)) return;
+                llvm::Value* fd = aNeed(0); llvm::Value* maxlen = aNeed(1);
+                if (!fd || !maxlen) return;
+                llvm::StructType* strTy = aStrType();
+                llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
+                llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "aio.slot");
+                llvm::FunctionType* ft = llvm::FunctionType::get(
+                    int64Type, {int64Type, int64Type, llvm::PointerType::get(*context, 0)}, false);
+                llvm::Value* has = builder->CreateCall(asyncFn(ft), {aToI64(fd), aToI64(maxlen), slot}, "aio.has");
+                llvm::Value* val = builder->CreateLoad(strTy, slot, "aio.val");
+                llvm::Value* opt = llvm::UndefValue::get(optTy);
+                opt = builder->CreateInsertValue(opt, val, 0, "aio.v");
+                opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "aio.h"), 1);
+                m_currentLLVMValue = opt;
                 return;
             } else { // vyb_async_sendto
                 if (!aArity(4)) return;

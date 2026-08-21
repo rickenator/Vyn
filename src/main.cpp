@@ -472,6 +472,7 @@ extern "C" {
     int64_t __vyb_async_io_wait(int64_t fd, int64_t write);
     int64_t __vyb_async_accept(int64_t fd);
     vyb_file_str __vyb_async_recv(int64_t fd, int64_t maxlen);
+    int64_t __vyb_async_recv_opt(int64_t fd, int64_t maxlen, vyb_file_str* out);
     int64_t __vyb_async_send(int64_t fd, const char* data, int64_t len);
     int64_t __vyb_async_connect(int64_t fd, const char* ip, int64_t port);
     int64_t __vyb_async_sendto(int64_t fd, const char* data, int64_t len,
@@ -2302,6 +2303,8 @@ runtimeSymbols[mangle("__vyb_strchan_free")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_accept), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_async_recv")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_recv), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_async_recv_opt")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_recv_opt), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_async_send")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_send), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_async_connect")] = llvm::orc::ExecutorSymbolDef(

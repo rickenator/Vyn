@@ -25,8 +25,8 @@ main()<Int> -> {
     srv_task<Int> = async_spawn(|| -> {
         conn<Int> = async_accept(srv) else -1
         if (conn < 0) { return 1 }
-        msg<String> = async_recv(conn, 4096)
-        n<Int> = async_send(conn, msg)
+        msg<String> = async_recv(conn, 4096) else ""
+        n<Int> = async_send(conn, msg) else -1
         socket_close(conn)
         return n
 }) else 0
@@ -36,12 +36,12 @@ main()<Int> -> {
     cli_task<Int> = async_spawn(|| -> {
         async_sleep_ms(10)
         cli<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP) else -1
-        if (async_connect(cli, "127.0.0.1", port) != 0) {
+        if (!(async_connect(cli, "127.0.0.1", port) else false)) {
             socket_close(cli)
             return socket_error_code()
         }
         async_send(cli, MSG)
-        back<String> = async_recv(cli, 4096)
+        back<String> = async_recv(cli, 4096) else ""
         socket_close(cli)
         if (back == MSG) { return 0 }
         return 2
