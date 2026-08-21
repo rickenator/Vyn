@@ -2079,7 +2079,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_net_send" || name == "vyb_net_recv" || name == "vyb_net_recv_opt" ||
             name == "vyb_net_local_port" ||
             name == "vyb_net_error_code" || name == "vyb_net_error_message" ||
-            name == "vyb_net_sendto" || name == "vyb_net_recvfrom" ||
+            name == "vyb_net_sendto" || name == "vyb_net_recvfrom" || name == "vyb_net_recvfrom_opt" ||
             name == "vyb_net_last_peer_ip" || name == "vyb_net_last_peer_port" ||
             name == "vyb_net_resolve" || name == "vyb_net_resolve_opt" ||
             name == "vyb_tls_client_context" || name == "vyb_tls_client_context_verified" ||
@@ -3074,6 +3074,19 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             // the durability fix for tls_read's "" sentinel, which conflated an
             // empty read with a failed read.
             if (name == "vyb_tls_read_opt") {
+                auto* inner = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "String"));
+                auto* resTy = new ast::OptionalType(node->loc,
+                    std::unique_ptr<ast::TypeNode>(inner));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+            // Lossless datagram receive: net_recvfrom_opt returns a native
+            // `String?` -- absent on error, present holding the datagram bytes.
+            // Fixes udp_recv_from/recv_from's "" sentinel, which conflated an
+            // empty datagram with a failed receive.
+            if (name == "vyb_net_recvfrom_opt") {
                 auto* inner = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "String"));
                 auto* resTy = new ast::OptionalType(node->loc,

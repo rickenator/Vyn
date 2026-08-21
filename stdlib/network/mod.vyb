@@ -265,7 +265,7 @@ aspect UdpSocketOps {
     local_ip(self<Self>)<String> -> { }
     local_port(self<Self>)<Int> -> { }
     send_to(self<Self>, ip<String>, port<Int>, data<String>)<Int?> -> { }
-    recv_from(self<Self>, max<Int>)<String> -> { }
+    recv_from(self<Self>, max<Int>)<String?> -> { }
     close(self<Self>)<Bool?> -> { }
 }
 
@@ -278,8 +278,8 @@ bind UdpSocketOps -> UdpSocket {
         if (n < 0) { return Int?() }
         return Int?(n)
     }
-    recv_from(self<Self>, max<Int>)<String> -> {
-        return vyb_net_recvfrom(self.fd, max)
+    recv_from(self<Self>, max<Int>)<String?> -> {
+        return vyb_net_recvfrom_opt(self.fd, max)
     }
     close(self<Self>)<Bool?> -> {
         r<Int> = vyb_net_close(self.fd)
@@ -352,11 +352,13 @@ udp_send_to(s<UdpSocket>, ip<String>, port<Int>, data<String>)<Int?> -> {
     return Int?(n)
 }
 
-# Receive one datagram as a String. Records the sender, read with
-# udp_last_peer_ip() / udp_last_peer_port(). Empty on error/EOF.
+# Receive one datagram as a lossless `String?`. Records the sender, read with
+# udp_last_peer_ip() / udp_last_peer_port(). Present holding the datagram bytes
+# (which may legitimately be empty), absent on error, so an empty datagram is
+# never conflated with a failed receive.
 share(all)
-udp_recv_from(s<UdpSocket>, max<Int>)<String> -> {
-    return vyb_net_recvfrom(s.fd, max)
+udp_recv_from(s<UdpSocket>, max<Int>)<String?> -> {
+    return vyb_net_recvfrom_opt(s.fd, max)
 }
 
 # The peer that sent the last received datagram.

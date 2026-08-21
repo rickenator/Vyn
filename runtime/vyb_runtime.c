@@ -1138,6 +1138,17 @@ VYB_WEAK vyb_file_str __vyb_net_recvfrom(int64_t fd, int64_t maxlen) {
     return r;
 }
 
+// Lossless datagram receive: returns 1 and writes the received datagram's
+// vyb_file_str to *out when a datagram was produced, or 0 on error. Mirrors
+// __vyb_net_recv_opt, so a clean read stays distinct from a failed one.
+VYB_WEAK int64_t __vyb_net_recvfrom_opt(int64_t fd, int64_t maxlen, vyb_file_str* out) {
+    if (!out) return 0;
+    vyb_file_str r = __vyb_net_recvfrom(fd, maxlen);
+    if (!r.ptr) return 0;
+    *out = r;
+    return 1;
+}
+
 // The peer ip/port of the last recvfrom, as an owned, registry-registered copy.
 VYB_WEAK char* __vyb_net_last_peer_ip(void) {
     char* copy = strdup(vyb_net_from_ip[0] ? vyb_net_from_ip : "");

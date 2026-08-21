@@ -125,6 +125,7 @@ extern "C" {
     int64_t __vyb_net_sendto(int64_t fd, const char* data, int64_t len,
                              const char* ip, int64_t port);
     vyb_file_str __vyb_net_recvfrom(int64_t fd, int64_t maxlen);
+    int64_t __vyb_net_recvfrom_opt(int64_t fd, int64_t maxlen, vyb_file_str* out);
     const char* __vyb_net_last_peer_ip(void);
     int64_t __vyb_net_last_peer_port(void);
     int64_t __vyb_net_set_timeout(int64_t fd, int64_t ms);
@@ -2091,6 +2092,8 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_sendto), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_net_recvfrom")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_recvfrom), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_net_recvfrom_opt")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_recvfrom_opt), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_net_last_peer_ip")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_net_last_peer_ip), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_net_last_peer_port")] = llvm::orc::ExecutorSymbolDef(

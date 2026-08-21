@@ -21,7 +21,7 @@ main()<Int> -> {
                     n<Int> = a.send_to("127.0.0.1", bp, "ping udp") else -1
                     if (n < 0) { return 3 }
 
-                    msg<String> = b.recv_from(4096)
+                    msg<String> = b.recv_from(4096) else ""
                     if (msg != "ping udp") { return 4 }
                     pip<String> = udp_last_peer_ip()
                     pport<Int> = udp_last_peer_port()
