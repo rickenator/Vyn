@@ -18,8 +18,9 @@
 #   flush()                                   # make stdout visible before input
 #   cols<Int> = term_cols(); rows<Int> = term_rows()
 #
-# Stdin readers return a String (empty on EOF). The raw-mode and status helpers
-# return an Int: 0 on success, -1 on failure (e.g. stdin is not a TTY).
+# Stdin readers return a String (empty on EOF). The raw-mode toggles and flush
+# helpers return `Bool?` (absent on failure, e.g. stdin is not a TTY); the
+# stderr writers return `Int?` holding the bytes written, absent on error.
 
 # Blocking read up to `maxlen` bytes from stdin. In canonical (cooked) terminal
 # mode this typically returns one line; in raw mode it returns up to `maxlen`
@@ -43,40 +44,57 @@ stdin_isatty()<Bool> -> {
 }
 
 # Put stdin in raw mode: read single keypresses without waiting for Enter, no
-# echo. Returns 0 on success, -1 if stdin is not a TTY or termios fails.
+# echo. Returns `Bool?` -- present on success, absent if stdin is not a TTY or
+# termios fails.
 share(all)
-stdin_raw_enable()<Int> -> {
-    return vyb_stdin_raw_enable()
+stdin_raw_enable()<Bool?> -> {
+    r<Int> = vyb_stdin_raw_enable()
+    if (r != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Restore the terminal mode saved by the last raw_enable. Returns 0 on success.
+# Restore the terminal mode saved by the last raw_enable. `Bool?` -- present on
+# success.
 share(all)
-stdin_raw_disable()<Int> -> {
-    return vyb_stdin_raw_disable()
+stdin_raw_disable()<Bool?> -> {
+    r<Int> = vyb_stdin_raw_disable()
+    if (r != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Write `s` to stderr (no newline). Returns bytes written, or -1 on error.
+# Write `s` to stderr (no newline). `Int?` -- present holding the bytes
+# written, absent on error.
 share(all)
-eprint(s<String>)<Int> -> {
-    return vyb_eprint(s)
+eprint(s<String>)<Int?> -> {
+    n<Int> = vyb_eprint(s)
+    if (n < 0) { return Int?() }
+    return Int?(n)
 }
 
-# Write `s` followed by a newline to stderr. Returns bytes written, or -1.
+# Write `s` followed by a newline to stderr. `Int?` -- present holding the bytes
+# written, absent on error.
 share(all)
-eprintln(s<String>)<Int> -> {
-    return vyb_eprintln(s)
+eprintln(s<String>)<Int?> -> {
+    n<Int> = vyb_eprintln(s)
+    if (n < 0) { return Int?() }
+    return Int?(n)
 }
 
 # Flush stdout so pending TUI updates are visible (call before reading input).
+# `Bool?` -- present on success.
 share(all)
-flush()<Int> -> {
-    return vyb_stdout_flush()
+flush()<Bool?> -> {
+    r<Int> = vyb_stdout_flush()
+    if (r != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Flush stderr.
+# Flush stderr. `Bool?` -- present on success.
 share(all)
-stderr_flush()<Int> -> {
-    return vyb_stderr_flush()
+stderr_flush()<Bool?> -> {
+    r<Int> = vyb_stderr_flush()
+    if (r != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Terminal width in columns (typewriter units), falling back to 80.

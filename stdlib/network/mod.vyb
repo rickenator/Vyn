@@ -28,6 +28,9 @@
 # return a native optional: absence *is* the failed operation, so callers never
 # touch a sentinel `fd`. Unwrap with `else` for a default, or `match` to escalate
 # into the fail/trap framework via the shared `NetError`/`net_error(op, target)`.
+# The stream/datagram operations there also follow the `T?` shape: an absent
+# `write`/`send_to` means the send failed, and an absent `close` means the socket
+# could not be closed.
 
 # Domain / socket-type constants. A constant enum: each member is a compile-time
 # Int (scoped under `Socket`), so they flow straight into the Int params of the
@@ -175,23 +178,27 @@ struct UdpSocket {
 # `stream.write("hi")`, `listener.local_port()` and `sock.send_to(...)` resolve.
 share(all)
 aspect TcpStreamOps {
-    write(self<Self>, data<String>)<Int> -> { }
+    write(self<Self>, data<String>)<Int?> -> { }
     read(self<Self>, max<Int>)<String> -> { }
-    close(self<Self>)<Int> -> { }
+    close(self<Self>)<Bool?> -> { }
     peer_ip(self<Self>)<String> -> { }
     peer_port(self<Self>)<Int> -> { }
 }
 
 share(all)
 bind TcpStreamOps -> TcpStream {
-    write(self<Self>, data<String>)<Int> -> {
-        return vyb_net_send(self.fd, data)
+    write(self<Self>, data<String>)<Int?> -> {
+        n<Int> = vyb_net_send(self.fd, data)
+        if (n < 0) { return Int?() }
+        return Int?(n)
     }
     read(self<Self>, max<Int>)<String> -> {
         return vyb_net_recv(self.fd, max)
     }
-    close(self<Self>)<Int> -> {
-        return vyb_net_close(self.fd)
+    close(self<Self>)<Bool?> -> {
+        r<Int> = vyb_net_close(self.fd)
+        if (r != 0) { return Bool?() }
+        return Bool?(true)
     }
     peer_ip(self<Self>)<String> -> {
         return self.peer_ip
@@ -205,36 +212,46 @@ share(all)
 aspect TcpListenerOps {
     local_ip(self<Self>)<String> -> { }
     local_port(self<Self>)<Int> -> { }
-    close(self<Self>)<Int> -> { }
+    close(self<Self>)<Bool?> -> { }
 }
 
 share(all)
 bind TcpListenerOps -> TcpListener {
     local_ip(self<Self>)<String> -> { return self.local_ip }
     local_port(self<Self>)<Int> -> { return self.local_port }
-    close(self<Self>)<Int> -> { return vyb_net_close(self.fd) }
+    close(self<Self>)<Bool?> -> {
+        r<Int> = vyb_net_close(self.fd)
+        if (r != 0) { return Bool?() }
+        return Bool?(true)
+    }
 }
 
 share(all)
 aspect UdpSocketOps {
     local_ip(self<Self>)<String> -> { }
     local_port(self<Self>)<Int> -> { }
-    send_to(self<Self>, ip<String>, port<Int>, data<String>)<Int> -> { }
+    send_to(self<Self>, ip<String>, port<Int>, data<String>)<Int?> -> { }
     recv_from(self<Self>, max<Int>)<String> -> { }
-    close(self<Self>)<Int> -> { }
+    close(self<Self>)<Bool?> -> { }
 }
 
 share(all)
 bind UdpSocketOps -> UdpSocket {
     local_ip(self<Self>)<String> -> { return self.local_ip }
     local_port(self<Self>)<Int> -> { return self.local_port }
-    send_to(self<Self>, ip<String>, port<Int>, data<String>)<Int> -> {
-        return vyb_net_sendto(self.fd, data, ip, port)
+    send_to(self<Self>, ip<String>, port<Int>, data<String>)<Int?> -> {
+        n<Int> = vyb_net_sendto(self.fd, data, ip, port)
+        if (n < 0) { return Int?() }
+        return Int?(n)
     }
     recv_from(self<Self>, max<Int>)<String> -> {
         return vyb_net_recvfrom(self.fd, max)
     }
-    close(self<Self>)<Int> -> { return vyb_net_close(self.fd) }
+    close(self<Self>)<Bool?> -> {
+        r<Int> = vyb_net_close(self.fd)
+        if (r != 0) { return Bool?() }
+        return Bool?(true)
+    }
 }
 
 # Connect to `ip:port`. Returns the established stream as `TcpStream?` -- present
@@ -292,11 +309,13 @@ udp_bind(ip<String>, port<Int>)<UdpSocket?> -> {
     return UdpSocket?(UdpSocket { fd = fd, local_ip = ip, local_port = lp })
 }
 
-# Send one datagram to `ip:port` (the socket need not be connected). Returns the
-# number of bytes sent, or -1 on failure.
+# Send one datagram to `ip:port` (the socket need not be connected). Returns
+# `Int?` -- present holding the number of bytes sent, absent on failure.
 share(all)
-udp_send_to(s<UdpSocket>, ip<String>, port<Int>, data<String>)<Int> -> {
-    return vyb_net_sendto(s.fd, data, ip, port)
+udp_send_to(s<UdpSocket>, ip<String>, port<Int>, data<String>)<Int?> -> {
+    n<Int> = vyb_net_sendto(s.fd, data, ip, port)
+    if (n < 0) { return Int?() }
+    return Int?(n)
 }
 
 # Receive one datagram as a String. Records the sender, read with
@@ -316,10 +335,13 @@ udp_last_peer_port()<Int> -> {
     return vyb_net_last_peer_port()
 }
 
-# Close a socket (stream, listener, or datagram). Returns 0 on success.
+# Close a socket (stream, listener, or datagram). Returns `Bool?` -- present on
+# success, absent on failure.
 share(all)
-udp_close(s<UdpSocket>)<Int> -> {
-    return vyb_net_close(s.fd)
+udp_close(s<UdpSocket>)<Bool?> -> {
+    r<Int> = vyb_net_close(s.fd)
+    if (r != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # --- Async variants (event-loop executor) -----------------------------------
@@ -344,9 +366,13 @@ async_tcp_connect(ip<String>, port<Int>)<TcpStream?> -> {
     return TcpStream?(TcpStream { fd = fd, peer_ip = ip, peer_port = port })
 }
 
+# Send `data` on the stream from the event loop, suspending the calling fiber.
+# Returns `Int?` -- present holding the bytes sent, absent on failure.
 share(all)
-async_tcp_write(s<TcpStream>, data<String>)<Int> -> {
-    return vyb_async_send(s.fd, data)
+async_tcp_write(s<TcpStream>, data<String>)<Int?> -> {
+    n<Int> = vyb_async_send(s.fd, data)
+    if (n < 0) { return Int?() }
+    return Int?(n)
 }
 
 share(all)
@@ -354,9 +380,13 @@ async_tcp_read(s<TcpStream>, max<Int>)<String> -> {
     return vyb_async_recv(s.fd, max)
 }
 
+# Send one datagram from the event loop, suspending the calling fiber. Returns
+# `Int?` -- present holding the bytes sent, absent on failure.
 share(all)
-async_udp_send_to(s<UdpSocket>, ip<String>, port<Int>, data<String>)<Int> -> {
-    return vyb_async_sendto(s.fd, data, ip, port)
+async_udp_send_to(s<UdpSocket>, ip<String>, port<Int>, data<String>)<Int?> -> {
+    n<Int> = vyb_async_sendto(s.fd, data, ip, port)
+    if (n < 0) { return Int?() }
+    return Int?(n)
 }
 
 share(all)

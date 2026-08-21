@@ -1,5 +1,5 @@
 {
-  "git_rev": "4e02c25494e8ece34f9eb8613995e783995f6046",
+  "git_rev": "b5d83ee6ee1625a1efe4b5d5d43f7bbb757ca44e",
   "modules": [
     "agents",
     "asyncs",
@@ -2027,8 +2027,8 @@
         "module": "env",
         "file": "stdlib/env/mod.vyb",
         "kind": "fn",
-        "signature": "env_set(name<String>, value<String>)<Int> ->",
-        "summary": "",
+        "signature": "env_set(name<String>, value<String>)<Bool?> ->",
+        "summary": "Set `name` in the process environment. Returns `Bool?` -- present on success,",
         "fan_in": 0
       },
       {
@@ -2036,8 +2036,8 @@
         "module": "env",
         "file": "stdlib/env/mod.vyb",
         "kind": "fn",
-        "signature": "env_unset(name<String>)<Int> ->",
-        "summary": "",
+        "signature": "env_unset(name<String>)<Bool?> ->",
+        "summary": "Remove `name` from the process environment. Returns `Bool?` -- present on",
         "fan_in": 0
       },
       {
@@ -2423,8 +2423,8 @@
         "module": "io",
         "file": "stdlib/io/mod.vyb",
         "kind": "fn",
-        "signature": "close(f<File>)<Int> ->",
-        "summary": "Close an open file. Returns 0 on success, -1 on failure.",
+        "signature": "close(f<File>)<Bool?> ->",
+        "summary": "Close an open file. Returns `Bool?` -- present on success, absent on failure.",
         "fan_in": 0
       },
       {
@@ -2504,8 +2504,8 @@
         "module": "io",
         "file": "stdlib/io/mod.vyb",
         "kind": "fn",
-        "signature": "read_all(f<File>)<String> ->",
-        "summary": "Read the whole file into a `String`. Returns an empty String on failure (check",
+        "signature": "read_all(f<File>)<String?> ->",
+        "summary": "Read the whole file into a `String?` -- present holding the full content",
         "fan_in": 0
       },
       {
@@ -2513,8 +2513,8 @@
         "module": "io",
         "file": "stdlib/io/mod.vyb",
         "kind": "fn",
-        "signature": "write_str(f<File>, s<String>)<Int> ->",
-        "summary": "Write `s` to the file. Returns the number of bytes written, or -1 on failure.",
+        "signature": "write_str(f<File>, s<String>)<Int?> ->",
+        "summary": "Write `s` to the file. Returns `Int?` -- present holding the number of bytes",
         "fan_in": 0
       },
       {
@@ -2648,8 +2648,8 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "async_tcp_write(s<TcpStream>, data<String>)<Int> ->",
-        "summary": "",
+        "signature": "async_tcp_write(s<TcpStream>, data<String>)<Int?> ->",
+        "summary": "Send `data` on the stream from the event loop, suspending the calling fiber.",
         "fan_in": 0
       },
       {
@@ -2666,8 +2666,8 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "async_udp_send_to(s<UdpSocket>, ip<String>, port<Int>, data<String>)<Int> ->",
-        "summary": "",
+        "signature": "async_udp_send_to(s<UdpSocket>, ip<String>, port<Int>, data<String>)<Int?> ->",
+        "summary": "Send one datagram from the event loop, suspending the calling fiber. Returns",
         "fan_in": 0
       },
       {
@@ -2837,8 +2837,8 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "udp_close(s<UdpSocket>)<Int> ->",
-        "summary": "Close a socket (stream, listener, or datagram). Returns 0 on success.",
+        "signature": "udp_close(s<UdpSocket>)<Bool?> ->",
+        "summary": "Close a socket (stream, listener, or datagram). Returns `Bool?` -- present on",
         "fan_in": 0
       },
       {
@@ -2873,8 +2873,8 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "udp_send_to(s<UdpSocket>, ip<String>, port<Int>, data<String>)<Int> ->",
-        "summary": "Send one datagram to `ip:port` (the socket need not be connected). Returns the",
+        "signature": "udp_send_to(s<UdpSocket>, ip<String>, port<Int>, data<String>)<Int?> ->",
+        "summary": "Send one datagram to `ip:port` (the socket need not be connected). Returns",
         "fan_in": 0
       },
       {
@@ -4295,8 +4295,8 @@
         "module": "term",
         "file": "stdlib/term/mod.vyb",
         "kind": "fn",
-        "signature": "eprint(s<String>)<Int> ->",
-        "summary": "Write `s` to stderr (no newline). Returns bytes written, or -1 on error.",
+        "signature": "eprint(s<String>)<Int?> ->",
+        "summary": "Write `s` to stderr (no newline). `Int?` -- present holding the bytes",
         "fan_in": 0
       },
       {
@@ -4304,8 +4304,8 @@
         "module": "term",
         "file": "stdlib/term/mod.vyb",
         "kind": "fn",
-        "signature": "eprintln(s<String>)<Int> ->",
-        "summary": "Write `s` followed by a newline to stderr. Returns bytes written, or -1.",
+        "signature": "eprintln(s<String>)<Int?> ->",
+        "summary": "Write `s` followed by a newline to stderr. `Int?` -- present holding the bytes",
         "fan_in": 0
       },
       {
@@ -4313,7 +4313,7 @@
         "module": "term",
         "file": "stdlib/term/mod.vyb",
         "kind": "fn",
-        "signature": "flush()<Int> ->",
+        "signature": "flush()<Bool?> ->",
         "summary": "Flush stdout so pending TUI updates are visible (call before reading input).",
         "fan_in": 0
       },
@@ -4322,8 +4322,8 @@
         "module": "term",
         "file": "stdlib/term/mod.vyb",
         "kind": "fn",
-        "signature": "stderr_flush()<Int> ->",
-        "summary": "Flush stderr.",
+        "signature": "stderr_flush()<Bool?> ->",
+        "summary": "Flush stderr. `Bool?` -- present on success.",
         "fan_in": 0
       },
       {
@@ -4340,8 +4340,8 @@
         "module": "term",
         "file": "stdlib/term/mod.vyb",
         "kind": "fn",
-        "signature": "stdin_raw_disable()<Int> ->",
-        "summary": "Restore the terminal mode saved by the last raw_enable. Returns 0 on success.",
+        "signature": "stdin_raw_disable()<Bool?> ->",
+        "summary": "Restore the terminal mode saved by the last raw_enable. `Bool?` -- present on",
         "fan_in": 0
       },
       {
@@ -4349,7 +4349,7 @@
         "module": "term",
         "file": "stdlib/term/mod.vyb",
         "kind": "fn",
-        "signature": "stdin_raw_enable()<Int> ->",
+        "signature": "stdin_raw_enable()<Bool?> ->",
         "summary": "Put stdin in raw mode: read single keypresses without waiting for Enter, no",
         "fan_in": 0
       },
@@ -6730,13 +6730,6 @@
     },
     {
       "type": "proseRef",
-      "from_module": "io",
-      "from_symbol": "read_all",
-      "to_module": "io",
-      "to_symbol": "error_code"
-    },
-    {
-      "type": "proseRef",
       "from_module": "network",
       "from_symbol": "NetError",
       "to_module": "network",
@@ -7292,7 +7285,7 @@
       "type": "runtimeRef",
       "from_module": "io",
       "from_symbol": "read_all",
-      "to_symbol": "vyb_io_read_all"
+      "to_symbol": "vyb_io_read_all_opt"
     },
     {
       "type": "runtimeRef",

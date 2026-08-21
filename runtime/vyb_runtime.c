@@ -512,6 +512,18 @@ VYB_WEAK char* __vyb_file_error_message(void) {
     return copy;
 }
 
+// Lossless whole-file read: returns 1 and writes the content's vyb_file_str to
+// *out when the read succeeded (even for an empty file), or 0 when it failed.
+// Unlike __vyb_file_read_all (which returns "" for both failure and a genuinely
+// empty file), a successful empty read is distinct from failure.
+VYB_WEAK int64_t __vyb_io_read_all_opt(int64_t fd, vyb_file_str* out) {
+    if (!out) return 0;
+    vyb_file_str r = __vyb_file_read_all(fd);
+    if (!r.ptr) return 0;
+    *out = r;
+    return 1;
+}
+
 // ============================================================================
 // TERMINAL + STDIN (term stdlib module) - interactive console I/O.
 // ============================================================================

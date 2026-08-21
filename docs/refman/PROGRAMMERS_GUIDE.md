@@ -820,6 +820,9 @@ Fallible openers (e.g. `stdlib/io`'s `open_read`) return a native optional
 `fd == -1` to test — a `File` is only ever constructed valid, so failure flows
 from taking the `?` seriously rather than comparing descriptors. Unwrap with
 `else` for a local default, or `match` the absent arm to escalate.
+The operations on the opened value follow the same shape: `read_all` returns
+`String?`, `write_str` returns `Int?` (bytes written), and `close` returns
+`Bool?` -- absence *is* the failed call, never a `-1` to compare.
 
 ```vyb
 import io::{open_read, read_all, close, io_error, IoError}
@@ -836,7 +839,7 @@ r<Int> = a else mk_default()     # present -> r = 7, mk_default NOT called
 open_data(path<String>)<String> -> {
     match (open_read(path)) {
         f -> {
-            s<String> = read_all(f)
+            s<String> = read_all(f) else ""
             close(f)
             return s
         }
@@ -1194,9 +1197,9 @@ open(path<String>, flags<Int>)<File?>           # flags from FileFlag
 open_read(path<String>)<File?>                  # convenience: read
 open_write(path<String>)<File?>                 # create/truncate, write
 open_append(path<String>)<File?>                # append/create
-read_all(f<File>)<String>                       # whole file ("" on failure)
-write_str(f<File>, s<String>)<Int>              # bytes written or -1
-close(f<File>)<Int>
+read_all(f<File>)<String?>                      # whole file; absent on failure
+write_str(f<File>, s<String>)<Int?>             # bytes written, absent on failure
+close(f<File>)<Bool?>                            # present on success
 ```
 
 `enum FileFlag` constant members (`READ`, `WRITE`, `RDWR`, `CREATE`, `TRUNC`,
@@ -2128,6 +2131,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

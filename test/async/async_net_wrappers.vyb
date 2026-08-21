@@ -23,7 +23,9 @@ main()<Int> -> {
                 match (async_tcp_accept(TcpListener { fd = lfd, local_ip = "", local_port = 0 })) {
                     c -> {
                         data<String> = async_tcp_read(c, 4096)
-                        nt<Int> = async_tcp_write(c, data)
+                        # async_tcp_write returns Int? -- present holding the
+                        # bytes sent, absent on failure; `else -1` gives a count.
+                        nt<Int> = async_tcp_write(c, data) else -1
                         c.close()
                         if (data == MSG && nt == MSG.len()) { return 0 }
                         return 2

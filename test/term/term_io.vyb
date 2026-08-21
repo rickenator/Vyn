@@ -10,13 +10,16 @@
 import term
 
 main()<Int> -> {
-    // stderr: diagnostics must not corrupt the rendered stdout page.
-    if (eprint("E") < 0) { return 1 }
-    if (eprintln("K") < 0) { return 2 }
+    // stderr: diagnostics must not corrupt the rendered stdout page. eprint/
+    // eprintln return Int? -- present holding bytes written, absent on error;
+    // `else -1` recovers the old sentinel view.
+    if ((eprint("E") else -1) < 0) { return 1 }
+    if ((eprintln("K") else -1) < 0) { return 2 }
     stderr_flush()
 
-    // flush stdout (succeeds even when stdout is a pipe).
-    if (flush() != 0) { return 3 }
+    // flush stdout (succeeds even when stdout is a pipe). Bool? -- absent on
+    // failure.
+    if (!(flush() else false)) { return 3 }
 
     // terminal size: real size or the 80x24 fallback, always >= 1.
     if (term_cols() < 1 || term_rows() < 1) { return 4 }

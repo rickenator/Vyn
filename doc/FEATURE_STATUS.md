@@ -141,8 +141,11 @@ Legend: ✅ Implemented | 🚧 Partial / Stubbed | 📋 Planned
 
 | Module | Shape | Notes |
 |--------|-------|-------|
-| `io`, `network`, `tls`, `https` | Native `T?` | Fallible ops return a `T?` (absence = failure), with a shared error struct (`IoError`, `NetError`, `TlsError`, `HttpError`) + `<mod>_error(op, target)` builder so callers `match`/`else` then `fail` the typed value into the fail/trap framework. No `-1`/`""`/`status == -1` sentinels. See PROGRAMMERS_GUIDE §3.16. |
+| `io` | Native `T?` (lossless) | `open`/`open_read`/`open_write`/`open_append` -> `File?`; `write_str` -> `Int?` (bytes, absent on failure); `read_all` -> `String?` (a successful empty read is the present `""`); `close` -> `Bool?`. Diagnostics via `error_code()`/`error_message()` and escalation via the shared `IoError`/`io_error(op, path)`. No sentinels. |
+| `network` | Native `T?` | Acquisition returns `TcpStream?`/`TcpListener?`/`UdpSocket?` (absent = failed). Operations also follow the `T?` shape: `write`/`send_to`/`udp_send_to`/`async_*` -> `Int?` (bytes, absent on failure), `close` -> `Bool?`. The low-level `socket_*` surface still exposes raw `Int` descriptors. Escalate via `NetError`/`net_error(op, target)`. |
+| `tls`, `https` | Native `T?` | `tls_stream`/`tls_client_context`/`https_get`/`https_get_full` (and verified variants) return a `T?`/`HttpResponse?` (absence = failure), with `TlsError`/`HttpError` + `<mod>_error(op, target)` builders; `https_selfhost*` remain `Int` self-tests. |
+| `term`, `env` | `Bool?` / `Int?` | `stdin_raw_enable`/`stdin_raw_disable`/`flush`/`stderr_flush` and `env_set`/`env_unset` return `Bool?` (present = ok, absent = failure); the stderr writers `eprint`/`eprintln` return `Int?` (bytes written, absent on error). |
 
 **Note (reviewbot):** the default `https_get_full`/`tls_client_context` are intentionally *unverified* (self-signed loopback / demo convenience), and the module header documents this; there is **no runtime guard** warning against using the unverified context against real hosts. Verified variants (`https_get_full_verified`, `tls_client_context_verified`) exist. Acceptable for now per the docs; a build-time `--require-tls-verify` flag or runtime warning is a future improvement.
 
-*Last updated: v0.7.3 (2026-08-19)*
+*Last updated: v0.7.3 (2026-08-20)*

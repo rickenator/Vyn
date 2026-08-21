@@ -16,7 +16,9 @@ main()<Int> -> {
                 b -> {
                     ap<Int> = a.local_port()
                     bp<Int> = b.local_port()
-                    n<Int> = a.send_to("127.0.0.1", bp, "ping udp")
+                    # send_to returns Int? -- present holding bytes sent, absent
+                    # on failure; `else -1` keeps the "failure" signal visible.
+                    n<Int> = a.send_to("127.0.0.1", bp, "ping udp") else -1
                     if (n < 0) { return 3 }
 
                     msg<String> = b.recv_from(4096)

@@ -5,8 +5,8 @@
 # here instead of hard-coding them. `env_get` follows the engine-wide `T?` shape
 # (PROGRAMMERS_GUIDE §3.16): it returns `String?` -- absent when the variable is
 # unset, present holding its value (which may legitimately be empty). `env_set` /
-# `env_unset` return 0 on success (the change applies to this process and any
-# children it spawns).
+# `env_unset` return `Bool?` -- absent on failure (the change applies to this
+# process and any children it spawns).
 #
 # Usage:
 #   import env
@@ -18,12 +18,20 @@ env_get(name<String>)<String?> -> {
     return vyb_env_get_opt(name)
 }
 
+# Set `name` in the process environment. Returns `Bool?` -- present on success,
+# absent on failure.
 share(all)
-env_set(name<String>, value<String>)<Int> -> {
-    return vyb_env_set(name, value)
+env_set(name<String>, value<String>)<Bool?> -> {
+    r<Int> = vyb_env_set(name, value)
+    if (r != 0) { return Bool?() }
+    return Bool?(true)
 }
 
+# Remove `name` from the process environment. Returns `Bool?` -- present on
+# success, absent on failure.
 share(all)
-env_unset(name<String>)<Int> -> {
-    return vyb_env_unset(name)
+env_unset(name<String>)<Bool?> -> {
+    r<Int> = vyb_env_unset(name)
+    if (r != 0) { return Bool?() }
+    return Bool?(true)
 }

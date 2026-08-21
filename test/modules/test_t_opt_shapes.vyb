@@ -1,0 +1,66 @@
+// @test: non-sentinel `T?` shapes for fallible operations
+// @description: write_str returns Int? (present holding bytes), close and
+//   env_set/env_unset return Bool? (present on success), and read_all returns
+//   String? -- an empty file is the present "" not the absent `?`. Absence is
+//   the failed operation (no -1/"" sentinel cheats).
+// @category: io, env, stdlib
+// @expect: pass
+// @expect-output: t-opt-ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import io
+import env
+
+main()<Int> -> {
+    path<String> = "/tmp/vyb_t_opt_shapes.txt"
+    match (open_write(path)) {
+        w -> {
+            match (write_str(w, "hello")) {
+                nw -> { if (nw != 5) { return 1 } }
+                ? -> { return 2 }
+            }
+            match (close(w)) {
+                cok -> { }
+                ? -> { return 3 }
+            }
+        }
+        ? -> { return 9 }
+    }
+
+    # An empty file reads back as present "" -- the `_opt` path distinguishes a
+    # successful empty read from a failed one.
+    match (open_write("/tmp/vyb_t_opt_empty.txt")) {
+        w0 -> {
+            match (write_str(w0, "")) {
+                n0 -> { if (n0 != 0) { return 4 } }
+                ? -> { return 5 }
+            }
+            close(w0)
+        }
+        ? -> { return 10 }
+    }
+    match (open_read("/tmp/vyb_t_opt_empty.txt")) {
+        r0 -> {
+            match (read_all(r0)) {
+                s0 -> { if (s0 != "") { return 6 } }
+                ? -> { return 7 }
+            }
+            close(r0)
+        }
+        ? -> { return 11 }
+    }
+
+    # env_set/env_unset are Bool? -- present on success.
+    match (env_set("VYB_TSHAPE", "x")) {
+        e1 -> { }
+        ? -> { return 8 }
+    }
+    match (env_unset("VYB_TSHAPE")) {
+        e2 -> { }
+        ? -> { return 12 }
+    }
+
+    println("t-opt-ok")
+    return 0
+}

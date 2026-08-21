@@ -15,19 +15,20 @@ main()<Int> -> {
     // A real variable (HOME or PATH) is present and never empty.
     if ((env_get("PATH") else "") == "") { return 2 }
 
-    // Set then read back the same value.
-    if (env_set("VYB_TEST_PROBE_ASDF", "hello") != 0) { return 3 }
+    // Set then read back the same value. env_set returns Bool? -- present on
+    // success, absent on failure; `else false` recovers a boolean view.
+    if (!(env_set("VYB_TEST_PROBE_ASDF", "hello") else false)) { return 3 }
     if ((env_get("VYB_TEST_PROBE_ASDF") else "") != "hello") { return 4 }
 
     // A variable set to an empty string is present -- NOT indistinguishable from
     // unset.
-    if (env_set("VYB_TEST_PROBE_EMPTY", "") != 0) { return 5 }
+    if (!(env_set("VYB_TEST_PROBE_EMPTY", "") else false)) { return 5 }
     if ((env_get("VYB_TEST_PROBE_EMPTY") else "absent") != "") { return 6 }
 
     // Overwrite, then unset.
-    if (env_set("VYB_TEST_PROBE_ASDF", "world") != 0) { return 7 }
+    if (!(env_set("VYB_TEST_PROBE_ASDF", "world") else false)) { return 7 }
     if ((env_get("VYB_TEST_PROBE_ASDF") else "") != "world") { return 8 }
-    if (env_unset("VYB_TEST_PROBE_ASDF") != 0) { return 9 }
+    if (!(env_unset("VYB_TEST_PROBE_ASDF") else false)) { return 9 }
     if ((env_get("VYB_TEST_PROBE_ASDF") else "") != "") { return 10 }
 
     println("env ok")

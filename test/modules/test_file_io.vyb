@@ -16,13 +16,16 @@ main()<Int> -> {
 
     match (open_write(path)) {
         w -> {
-            n<Int> = write_str(w, "hello vyb")
+            # write_str returns Int? -- present holding bytes written, absent on
+            # failure; `else -1` recovers the old sentinel view.
+            n<Int> = write_str(w, "hello vyb") else -1
             if (n != 9) {
                 println("io-fail-write:" + error_message())
                 close(w)
                 return 2
             }
-            if (close(w) != 0) {
+            # close returns Bool? -- absent on failure.
+            if (!(close(w) else false)) {
                 println("io-fail-close:" + error_message())
                 return 3
             }
@@ -35,7 +38,9 @@ main()<Int> -> {
 
     match (open_read(path)) {
         r -> {
-            content = read_all(r)
+            # read_all returns String? -- present holding the content (possibly
+            # empty), absent on failure.
+            content = read_all(r) else ""
             close(r)
         }
         ? -> {

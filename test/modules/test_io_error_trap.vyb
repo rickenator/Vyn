@@ -12,7 +12,7 @@ import io::{open_read, read_all, open_write, write_str, close, io_error, IoError
 open_data(path<String>)<String> -> {
     match (open_read(path)) {
         f -> {
-            s<String> = read_all(f)
+            s<String> = read_all(f) else ""
             close(f)
             return s
         }

@@ -9,11 +9,23 @@
 # Usage:
 #   import io::{open_write, write_str, close, open_read, read_all}
 #   match (open_write("data.txt")) {
-#       f -> { write_str(f, "hello"); close(f) }
+#       f -> {
+#           match (write_str(f, "hello")) {
+#               n -> { println("wrote " + n.to_string() + " bytes") }
+#               ? -> { println("write failed: " + error_message()) }
+#           }
+#           close(f)
+#       }
 #       ? -> { println("open failed: " + error_message()) }
 #   }
 #   match (open_read("data.txt")) {
-#       r -> { println(read_all(r)) }
+#       r -> {
+#           match (read_all(r)) {
+#               s -> { println(s) }
+#               ? -> { println("read failed: " + error_message()) }
+#           }
+#           close(r)
+#       }
 #       ? -> { println("open failed: " + error_message()) }
 #   }
 #   # Or escalate the absent File? into the fail/trap framework:
@@ -88,23 +100,29 @@ open_append(path<String>)<File?> -> {
     return open(path, FileFlag::APPEND | FileFlag::CREATE)
 }
 
-# Close an open file. Returns 0 on success, -1 on failure.
+# Close an open file. Returns `Bool?` -- present on success, absent on failure.
 share(all)
-close(f<File>)<Int> -> {
-    return vyb_io_close(f.fd)
+close(f<File>)<Bool?> -> {
+    r<Int> = vyb_io_close(f.fd)
+    if (r != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Write `s` to the file. Returns the number of bytes written, or -1 on failure.
+# Write `s` to the file. Returns `Int?` -- present holding the number of bytes
+# written, absent on failure.
 share(all)
-write_str(f<File>, s<String>)<Int> -> {
-    return vyb_io_write(f.fd, s)
+write_str(f<File>, s<String>)<Int?> -> {
+    n<Int> = vyb_io_write(f.fd, s)
+    if (n < 0) { return Int?() }
+    return Int?(n)
 }
 
-# Read the whole file into a `String`. Returns an empty String on failure (check
-# `error_code()` to distinguish an empty file from an error).
+# Read the whole file into a `String?` -- present holding the full content
+# (which may legitimately be empty) when the read succeeds, absent when it
+# fails.
 share(all)
-read_all(f<File>)<String> -> {
-    return vyb_io_read_all(f.fd)
+read_all(f<File>)<String?> -> {
+    return vyb_io_read_all_opt(f.fd)
 }
 
 # Numeric error code of the last file operation (0 = no error).

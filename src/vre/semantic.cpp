@@ -2072,7 +2072,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "tan" || name == "exp" || name == "log" || name == "log2" || name == "log10" ||
             name == "floor" || name == "ceil" || name == "round" || name == "min" || name == "max" ||
             name == "vyb_io_open" || name == "vyb_io_close" || name == "vyb_io_write" ||
-            name == "vyb_io_read_all" || name == "vyb_io_error_code" ||
+            name == "vyb_io_read_all" || name == "vyb_io_read_all_opt" || name == "vyb_io_error_code" ||
             name == "vyb_io_error_message" ||
             name == "vyb_net_open" || name == "vyb_net_close" || name == "vyb_net_bind" ||
             name == "vyb_net_listen" || name == "vyb_net_accept" || name == "vyb_net_connect" ||
@@ -3035,6 +3035,19 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             // exec_output's "" sentinel, which conflated launch failure with a
             // genuinely empty output.
             if (name == "vyb_exec_output_opt") {
+                auto* inner = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "String"));
+                auto* resTy = new ast::OptionalType(node->loc,
+                    std::unique_ptr<ast::TypeNode>(inner));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+            // Lossless whole-file read: io_read_all_opt returns a native `String?`
+            // -- absent on read failure, present holding the whole content (which
+            // may legitimately be empty). This fixes read_all's "" sentinel, which
+            // conflated an empty file with a failed read.
+            if (name == "vyb_io_read_all_opt") {
                 auto* inner = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "String"));
                 auto* resTy = new ast::OptionalType(node->loc,

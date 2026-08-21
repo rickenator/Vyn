@@ -972,7 +972,7 @@ start_download(urlStr<String>)<Void> -> {
         if (resp.status >= 200 && resp.status < 300) {
             match (open_write(outPath)) {
                 f -> {
-                    nb<Int> = write_str(f, resp.body)
+                    nb<Int> = write_str(f, resp.body) else 0
                     close(f)
                     strchan_send(dl_progress, "saved " + outPath + " (" + nb.to_string() + " bytes)")
                 }

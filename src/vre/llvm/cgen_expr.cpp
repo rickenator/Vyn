@@ -4842,6 +4842,37 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "execopt.h"), 1);
             m_currentLLVMValue = opt;
             return;
+        } else if (fname == "vyb_io_read_all_opt") {
+            // Lossless whole-file read returning a native `String?` (`{ String,
+            // has }`); absent only when the read failed. Same shape as the
+            // env_get_opt / exec_output_opt handlers, but the argument is an fd.
+            if (node->arguments.size() != 1) {
+                logError(node->loc, "vyb_io_read_all_opt expects 1 argument (fd)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this);
+            llvm::Value* fd = m_currentLLVMValue;
+            if (!fd) return;
+            llvm::Value* fdi64 = fd;
+            if (fdi64->getType()->isIntegerTy(64)) {
+                // already i64
+            } else if (fdi64->getType()->isIntegerTy()) {
+                fdi64 = builder->CreateSExt(fdi64, int64Type, "readall.toi64");
+            }
+            llvm::StructType* strTy = llvm::StructType::get(*context, {int8PtrType, int64Type}, false);
+            llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
+            llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "readall.slot");
+            llvm::FunctionType* ft = llvm::FunctionType::get(
+                int64Type, {int64Type, llvm::PointerType::get(*context, 0)}, false);
+            llvm::Function* f = module->getFunction("__vyb_io_read_all_opt");
+            if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_io_read_all_opt", module.get());
+            llvm::Value* has = builder->CreateCall(f, {fdi64, slot}, "readall.has");
+            llvm::Value* val = builder->CreateLoad(strTy, slot, "readall.val");
+            llvm::Value* opt = llvm::UndefValue::get(optTy);
+            opt = builder->CreateInsertValue(opt, val, 0, "readall.v");
+            opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "readall.h"), 1);
+            m_currentLLVMValue = opt;
+            return;
         } else if (fname == "vyb_strchan_recv") {
             // Blocking recv returning a String { ptr, len } that the caller owns.
             if (node->arguments.size() != 1) {
