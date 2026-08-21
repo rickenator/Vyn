@@ -60,8 +60,7 @@ Aq0cwymlPoxxCyl8hH7Kl0HEJuraLq0vLytwHddAymIenif5HZgSm2qAVVqblv38
 tNJ+gvTsNS/Y3DSoPu0E6tgr5EjK/FV0H/GIGWz9hAWYHV3dx2grL7GS2MOMu7n8
 QsM4qhE7CXh5EW4f/zlKqRoL
 -----END PRIVATE KEY-----"
-    r<Int> = https_selfhost(cert, key)
-    if (r != 0) { return 1 }
+    if (!(https_selfhost(cert, key) else false)) { return 1 }
     println("ok")
     return 0
 }

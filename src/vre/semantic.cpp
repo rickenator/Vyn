@@ -2081,6 +2081,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_net_error_code" || name == "vyb_net_error_message" ||
             name == "vyb_net_sendto" || name == "vyb_net_recvfrom" || name == "vyb_net_recvfrom_opt" ||
             name == "vyb_net_last_peer_ip" || name == "vyb_net_last_peer_port" ||
+            name == "vyb_net_last_peer_ip_opt" || name == "vyb_net_last_peer_port_opt" ||
             name == "vyb_net_resolve" || name == "vyb_net_resolve_opt" ||
             name == "vyb_tls_client_context" || name == "vyb_tls_client_context_verified" ||
             name == "vyb_tls_server_context" ||
@@ -2130,7 +2131,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_async_io_wait" || name == "vyb_async_accept" ||
             name == "vyb_async_recv" || name == "vyb_async_recv_opt" || name == "vyb_async_send" ||
             name == "vyb_async_connect" ||
-            name == "vyb_async_sendto" || name == "vyb_async_recvfrom" ||
+            name == "vyb_async_sendto" || name == "vyb_async_recvfrom" || name == "vyb_async_recvfrom_opt" ||
             name == "vyb_strchan_new" || name == "vyb_strchan_send" ||
             name == "vyb_strchan_recv" || name == "vyb_strchan_try" ||
             name == "vyb_strchan_recv_opt" ||
@@ -3062,7 +3063,8 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             // Lossless stream read: net_recv_opt returns a native `String?` --
             // absent on error, present holding the bytes read (an empty EOF read
             // is the present "", distinct from an error).
-            if (name == "vyb_net_recv_opt" || name == "vyb_net_resolve_opt") {
+            if (name == "vyb_net_recv_opt" || name == "vyb_net_resolve_opt" ||
+                name == "vyb_net_last_peer_ip_opt") {
                 auto* inner = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "String"));
                 auto* resTy = new ast::OptionalType(node->loc,
@@ -3172,6 +3174,15 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             // present holding the joined thread's result (which may legitimately
             // be -2), absent when the handle is unknown/already-joined/detached.
             // Disambiguates from the plain thread_join's -2 sentinel.
+            if (name == "vyb_net_last_peer_port_opt") {
+                auto* inner = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "Int"));
+                auto* resTy = new ast::OptionalType(node->loc,
+                    std::unique_ptr<ast::TypeNode>(inner));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
             if (name == "vyb_thread_join_opt") {
                 auto* inner = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "Int"));
@@ -3195,7 +3206,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             // absent on error/EOF, present holding the bytes read. Its sibling
             // async_recv returns plain String ("" on error/EOF); the _opt form
             // keeps a clean read distinct from a failed one.
-            if (name == "vyb_async_recv_opt") {
+            if (name == "vyb_async_recv_opt" || name == "vyb_async_recvfrom_opt") {
                 auto* inner = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "String"));
                 auto* resTy = new ast::OptionalType(node->loc,

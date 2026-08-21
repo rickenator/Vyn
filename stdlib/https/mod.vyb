@@ -223,16 +223,16 @@ https_get_verified(host<String>, port<Int>, path<String>, ca_pem<String>)<String
 
 # Diagnostics: stand up a throwaway TLS server that answers one request with a
 # well-formed response, fetch it over TLS, and report whether the round-trip
-# parsed as expected. Returns 0 on success, -1 on any failure. Useful as a
+# parsed as expected. Returns `Bool?` -- present on a successful round-trip, absent on any failure. Useful as a
 # self-test of the tls+http wiring without standing up an external server.
 share(all)
-https_selfhost(cert_pem<String>, key_pem<String>)<Int> -> {
+https_selfhost(cert_pem<String>, key_pem<String>)<Bool?> -> {
     srv<Int> = socket_open(2, 1, 6) else -1
-    if (srv < 0) { return -1 }
-    if (!(socket_bind(srv, "127.0.0.1", 0) else false)) { socket_close(srv); return -1 }
+    if (srv < 0) { return Bool?() }
+    if (!(socket_bind(srv, "127.0.0.1", 0) else false)) { socket_close(srv); return Bool?() }
     port<Int> = socket_local_port(srv) else -1
-    if (port <= 0) { socket_close(srv); return -1 }
-    if (!(socket_listen(srv, 1) else false)) { socket_close(srv); return -1 }
+    if (port <= 0) { socket_close(srv); return Bool?() }
+    if (!(socket_listen(srv, 1) else false)) { socket_close(srv); return Bool?() }
     match (tls_server_context(cert_pem, key_pem)) {
         scx -> {
             th<Int> = thread_spawn(|| -> {
@@ -259,7 +259,7 @@ https_selfhost(cert_pem<String>, key_pem<String>)<Int> -> {
                     ? -> { socket_close(c); return 2 }
                 }
 }) else -1
-            if (th < 0) { tls_free_context(scx); socket_close(srv); return -1 }
+            if (th < 0) { tls_free_context(scx); socket_close(srv); return Bool?() }
             code<Int> = 0
             got<String> = ""
             rs<String> = ""
@@ -270,26 +270,26 @@ https_selfhost(cert_pem<String>, key_pem<String>)<Int> -> {
             io<Int> = thread_join(th) else -2
             tls_free_context(scx)
             socket_close(srv)
-            if (io != 0) { return -1 }
-            if (code != 200) { return -1 }
-            if (got != "secure body") { return -1 }
-            if (rs != "OK") { return -1 }
-            return 0
+            if (io != 0) { return Bool?() }
+            if (code != 200) { return Bool?() }
+            if (got != "secure body") { return Bool?() }
+            if (rs != "OK") { return Bool?() }
+            return Bool?(true)
         }
-        ? -> { socket_close(srv); return -1 }
+        ? -> { socket_close(srv); return Bool?() }
     }
 }
 
 # Diagnostics like https_selfhost, but the client uses a verified context pinned
 # to the server's own cert and connects by name so the hostname is checked.
 share(all)
-https_selfhost_verified(cert_pem<String>, key_pem<String>)<Int> -> {
+https_selfhost_verified(cert_pem<String>, key_pem<String>)<Bool?> -> {
     srv<Int> = socket_open(2, 1, 6) else -1
-    if (srv < 0) { return -1 }
-    if (!(socket_bind(srv, "127.0.0.1", 0) else false)) { socket_close(srv); return -1 }
+    if (srv < 0) { return Bool?() }
+    if (!(socket_bind(srv, "127.0.0.1", 0) else false)) { socket_close(srv); return Bool?() }
     port<Int> = socket_local_port(srv) else -1
-    if (port <= 0) { socket_close(srv); return -1 }
-    if (!(socket_listen(srv, 1) else false)) { socket_close(srv); return -1 }
+    if (port <= 0) { socket_close(srv); return Bool?() }
+    if (!(socket_listen(srv, 1) else false)) { socket_close(srv); return Bool?() }
     match (tls_server_context(cert_pem, key_pem)) {
         scx -> {
             th<Int> = thread_spawn(|| -> {
@@ -316,7 +316,7 @@ https_selfhost_verified(cert_pem<String>, key_pem<String>)<Int> -> {
                     ? -> { socket_close(c); return 2 }
                 }
 }) else -1
-            if (th < 0) { tls_free_context(scx); socket_close(srv); return -1 }
+            if (th < 0) { tls_free_context(scx); socket_close(srv); return Bool?() }
             code<Int> = 0
             got<String> = ""
             rs<String> = ""
@@ -327,12 +327,12 @@ https_selfhost_verified(cert_pem<String>, key_pem<String>)<Int> -> {
             io<Int> = thread_join(th) else -2
             tls_free_context(scx)
             socket_close(srv)
-            if (io != 0) { return -1 }
-            if (code != 200) { return -1 }
-            if (got != "secure body") { return -1 }
-            if (rs != "OK") { return -1 }
-            return 0
+            if (io != 0) { return Bool?() }
+            if (code != 200) { return Bool?() }
+            if (got != "secure body") { return Bool?() }
+            if (rs != "OK") { return Bool?() }
+            return Bool?(true)
         }
-        ? -> { socket_close(srv); return -1 }
+        ? -> { socket_close(srv); return Bool?() }
     }
 }

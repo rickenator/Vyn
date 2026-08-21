@@ -3695,6 +3695,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 llvm::StructType* strTy = qtStrRet();
                 llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
                 llvm::Value* slotA = builder->CreateAlloca(strTy, nullptr, "qt.opt.slot");
+                builder->CreateStore(llvm::Constant::getNullValue(strTy), slotA, "qt.opt.zero");
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int8PtrType, int64Type, int8PtrType, int64Type, llvm::PointerType::get(*context, 0)}, false);
                 llvm::Value* has = builder->CreateCall(getQtFn(ft), {toI64(a), toStrPtr(s), strLenOf(s), toStrPtr(t), strLenOf(t), slotA}, "qt.opt.has");
                 llvm::Value* val = builder->CreateLoad(strTy, slotA, "qt.opt.val");
@@ -3710,6 +3711,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 llvm::StructType* strTy = qtStrRet();
                 llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
                 llvm::Value* slotA = builder->CreateAlloca(strTy, nullptr, "qt.opt.slot");
+                builder->CreateStore(llvm::Constant::getNullValue(strTy), slotA, "qt.opt.zero");
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int8PtrType, int64Type, llvm::PointerType::get(*context, 0)}, false);
                 llvm::Value* has = builder->CreateCall(getQtFn(ft), {toI64(a), toStrPtr(s), strLenOf(s), slotA}, "qt.opt.has");
                 llvm::Value* val = builder->CreateLoad(strTy, slotA, "qt.opt.val");
@@ -3724,6 +3726,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 llvm::StructType* strTy = qtStrRet();
                 llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
                 llvm::Value* slotA = builder->CreateAlloca(strTy, nullptr, "qt.opt.slot");
+                builder->CreateStore(llvm::Constant::getNullValue(strTy), slotA, "qt.opt.zero");
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, llvm::PointerType::get(*context, 0)}, false);
                 llvm::Value* has = builder->CreateCall(getQtFn(ft), {toI64(a), slotA}, "qt.opt.has");
                 llvm::Value* val = builder->CreateLoad(strTy, slotA, "qt.opt.val");
@@ -3762,6 +3765,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_net_recvfrom") rtName = "__vyb_net_recvfrom";
         else if (fname == "vyb_net_last_peer_ip") rtName = "__vyb_net_last_peer_ip";
         else if (fname == "vyb_net_last_peer_port") rtName = "__vyb_net_last_peer_port";
+        else if (fname == "vyb_net_last_peer_ip_opt") rtName = "__vyb_net_last_peer_ip_opt";
+        else if (fname == "vyb_net_last_peer_port_opt") rtName = "__vyb_net_last_peer_port_opt";
         else if (fname == "vyb_net_resolve") rtName = "__vyb_net_resolve";
         if (!rtName.empty()) {
             auto getNetFn = [&](llvm::FunctionType* ft) -> llvm::Function* {
@@ -3891,6 +3896,38 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 if (!checkArity(0)) return;
                 llvm::FunctionType* fpt = llvm::FunctionType::get(int64Type, {}, false);
                 m_currentLLVMValue = builder->CreateCall(getNetFn(fpt), {}, "net.peerport");
+                return;
+            } else if (fname == "vyb_net_last_peer_ip_opt") {
+                // Lossless peer IP -> native `String?` ({ String, has }); absent
+                // until a datagram is received. The out-slot is zero-initialized
+                // so the absent path leaves the payload defined (#137).
+                if (!checkArity(0)) return;
+                llvm::StructType* strTy = strStructType();
+                llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
+                llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "net.peerip.slot");
+                builder->CreateStore(llvm::Constant::getNullValue(strTy), slot, "net.peerip.zero");
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {llvm::PointerType::get(*context, 0)}, false);
+                llvm::Value* has = builder->CreateCall(getNetFn(ft), {slot}, "net.peerip.has");
+                llvm::Value* val = builder->CreateLoad(strTy, slot, "net.peerip.val");
+                llvm::Value* opt = llvm::UndefValue::get(optTy);
+                opt = builder->CreateInsertValue(opt, val, 0, "net.peerip.v");
+                opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "net.peerip.h"), 1);
+                m_currentLLVMValue = opt;
+                return;
+            } else if (fname == "vyb_net_last_peer_port_opt") {
+                // Lossless peer port -> native `Int?` ({ i64, has }); absent until
+                // a datagram is received. Zero-initialized out-slot (#137).
+                if (!checkArity(0)) return;
+                llvm::StructType* optTy = llvm::StructType::get(*context, {int64Type, llvm::Type::getInt1Ty(*context)}, false);
+                llvm::Value* slot = builder->CreateAlloca(int64Type, nullptr, "net.peerport.slot");
+                builder->CreateStore(llvm::ConstantInt::get(int64Type, 0), slot, "net.peerport.zero");
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {llvm::PointerType::get(*context, 0)}, false);
+                llvm::Value* has = builder->CreateCall(getNetFn(ft), {slot}, "net.peerport.has");
+                llvm::Value* val = builder->CreateLoad(int64Type, slot, "net.peerport.val");
+                llvm::Value* opt = llvm::UndefValue::get(optTy);
+                opt = builder->CreateInsertValue(opt, val, 0, "net.peerport.v");
+                opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "net.peerport.h"), 1);
+                m_currentLLVMValue = opt;
                 return;
             } else if (fname == "vyb_net_local_port") {
                 if (!checkArity(1)) return;
@@ -4092,6 +4129,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_async_send") rtAsync = "__vyb_async_send";
         else if (fname == "vyb_async_recv") rtAsync = "__vyb_async_recv";
         else if (fname == "vyb_async_recv_opt") rtAsync = "__vyb_async_recv_opt";
+        else if (fname == "vyb_async_recvfrom_opt") rtAsync = "__vyb_async_recvfrom_opt";
         else if (fname == "vyb_async_sendto") rtAsync = "__vyb_async_sendto";
         else if (fname == "vyb_async_recvfrom") rtAsync = "__vyb_async_recvfrom";
         if (!rtAsync.empty()) {
@@ -4169,17 +4207,19 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 m_currentLLVMValue = builder->CreateCall(asyncFn(ft), {aToI64(fd), aToI64(maxlen)},
                     fname == "vyb_async_recvfrom" ? "aio.udprecved" : "aio.recved");
                 return;
-            } else if (fname == "vyb_async_recv_opt") {
-                // Lossless async recv -> native `String?` ({ String, has });
-                // absent on error/EOF, present holding the bytes read. Only the
-                // return shape differs from vyb_async_recv; the underlying
-                // __vyb_async_recv still suspends the calling fiber.
+            } else if (fname == "vyb_async_recv_opt" || fname == "vyb_async_recvfrom_opt") {
+                // Lossless async receive -> native `String?` ({ String, has });
+                // absent on error, present holding the bytes read (a present-
+                // empty datagram/EOF is distinct from failure). Only the return
+                // shape differs from the bare forms; the underlying read still
+                // suspends the calling fiber.
                 if (!aArity(2)) return;
                 llvm::Value* fd = aNeed(0); llvm::Value* maxlen = aNeed(1);
                 if (!fd || !maxlen) return;
                 llvm::StructType* strTy = aStrType();
                 llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
                 llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "aio.slot");
+            builder->CreateStore(llvm::Constant::getNullValue(strTy), slot, "aio.zero");
                 llvm::FunctionType* ft = llvm::FunctionType::get(
                     int64Type, {int64Type, int64Type, llvm::PointerType::get(*context, 0)}, false);
                 llvm::Value* has = builder->CreateCall(asyncFn(ft), {aToI64(fd), aToI64(maxlen), slot}, "aio.has");
@@ -4650,6 +4690,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             llvm::StructType* optTy = llvm::StructType::get(*context,
                 {int64Type, llvm::Type::getInt1Ty(*context)}, false);
             llvm::Value* slot = builder->CreateAlloca(int64Type, nullptr, "chanopt.slot");
+            builder->CreateStore(llvm::Constant::getNullValue(int64Type), slot, "chanopt.zero");
             llvm::FunctionType* ft = llvm::FunctionType::get(
                 int64Type, {int64Type, llvm::PointerType::get(*context, 0)}, false);
             llvm::Function* f = module->getFunction("__vyb_chan_recv_opt");
@@ -4680,6 +4721,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             llvm::StructType* optTy = llvm::StructType::get(*context,
                 {int64Type, llvm::Type::getInt1Ty(*context)}, false);
             llvm::Value* slot = builder->CreateAlloca(int64Type, nullptr, "chantry.slot");
+            builder->CreateStore(llvm::Constant::getNullValue(int64Type), slot, "chantry.zero");
             llvm::FunctionType* ft = llvm::FunctionType::get(
                 int64Type, {int64Type, llvm::PointerType::get(*context, 0)}, false);
             llvm::Function* f = module->getFunction("__vyb_chan_try_opt");
@@ -4775,6 +4817,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             llvm::StructType* strTy = llvm::StructType::get(*context, {int8PtrType, int64Type}, false);
             llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
             llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "stropt.slot");
+            builder->CreateStore(llvm::Constant::getNullValue(strTy), slot, "stropt.zero");
             llvm::FunctionType* ft = llvm::FunctionType::get(
                 int64Type, {int64Type, llvm::PointerType::get(*context, 0)}, false);
             llvm::Function* f = module->getFunction("__vyb_strchan_recv_opt");
@@ -4802,6 +4845,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             llvm::StructType* strTy = llvm::StructType::get(*context, {int8PtrType, int64Type}, false);
             llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
             llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "strtry.slot");
+            builder->CreateStore(llvm::Constant::getNullValue(strTy), slot, "strtry.zero");
             llvm::FunctionType* ft = llvm::FunctionType::get(
                 int64Type, {int64Type, llvm::PointerType::get(*context, 0)}, false);
             llvm::Function* f = module->getFunction("__vyb_strchan_try_opt");
@@ -4830,6 +4874,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             llvm::StructType* strTy = llvm::StructType::get(*context, {int8PtrType, int64Type}, false);
             llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
             llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "envopt.slot");
+            builder->CreateStore(llvm::Constant::getNullValue(strTy), slot, "envopt.zero");
             llvm::FunctionType* ft = llvm::FunctionType::get(
                 int64Type, {int8PtrType, llvm::PointerType::get(*context, 0)}, false);
             llvm::Function* f = module->getFunction("__vyb_env_get_opt");
@@ -4872,6 +4917,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             llvm::StructType* strTy = llvm::StructType::get(*context, {int8PtrType, int64Type}, false);
             llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
             llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "capopt.slot");
+            builder->CreateStore(llvm::Constant::getNullValue(strTy), slot, "capopt.zero");
             llvm::FunctionType* ft = llvm::FunctionType::get(
                 int64Type, {int8PtrType, int64Type, int8PtrType, int64Type, llvm::PointerType::get(*context, 0)}, false);
             std::string rtN = (fname == "vyb_regex_capture_match_opt") ? "__vyb_regex_capture_match_opt" : "__vyb_regex_capture_opt";
@@ -4901,6 +4947,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             llvm::StructType* strTy = llvm::StructType::get(*context, {int8PtrType, int64Type}, false);
             llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
             llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "execopt.slot");
+            builder->CreateStore(llvm::Constant::getNullValue(strTy), slot, "execopt.zero");
             llvm::FunctionType* ft = llvm::FunctionType::get(
                 int64Type, {int8PtrType, llvm::PointerType::get(*context, 0)}, false);
             llvm::Function* f = module->getFunction("__vyb_exec_output_opt");
@@ -4932,6 +4979,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             llvm::StructType* strTy = llvm::StructType::get(*context, {int8PtrType, int64Type}, false);
             llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
             llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "readall.slot");
+            builder->CreateStore(llvm::Constant::getNullValue(strTy), slot, "readall.zero");
             llvm::FunctionType* ft = llvm::FunctionType::get(
                 int64Type, {int64Type, llvm::PointerType::get(*context, 0)}, false);
             llvm::Function* f = module->getFunction("__vyb_io_read_all_opt");
@@ -4960,6 +5008,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             llvm::StructType* strTy = llvm::StructType::get(*context, {int8PtrType, int64Type}, false);
             llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
             llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "recv.slot");
+            builder->CreateStore(llvm::Constant::getNullValue(strTy), slot, "recv.zero");
             llvm::FunctionType* ft = llvm::FunctionType::get(
                 int64Type, {int64Type, int64Type, llvm::PointerType::get(*context, 0)}, false);
             llvm::Function* f = module->getFunction("__vyb_net_recv_opt");
@@ -4988,6 +5037,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             llvm::StructType* strTy = llvm::StructType::get(*context, {int8PtrType, int64Type}, false);
             llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
             llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "udp.slot");
+            builder->CreateStore(llvm::Constant::getNullValue(strTy), slot, "udp.zero");
             llvm::FunctionType* ft = llvm::FunctionType::get(
                 int64Type, {int64Type, int64Type, llvm::PointerType::get(*context, 0)}, false);
             llvm::Function* f = module->getFunction("__vyb_net_recvfrom_opt");
@@ -5014,6 +5064,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 th64 = builder->CreateSExt(th64, int64Type, "tjoin.toi64");
             llvm::StructType* optTy = llvm::StructType::get(*context, {int64Type, llvm::Type::getInt1Ty(*context)}, false);
             llvm::Value* slot = builder->CreateAlloca(int64Type, nullptr, "tjoin.slot");
+            builder->CreateStore(llvm::Constant::getNullValue(int64Type), slot, "tjoin.zero");
             llvm::FunctionType* ft = llvm::FunctionType::get(
                 int64Type, {int64Type, llvm::PointerType::get(*context, 0)}, false);
             llvm::Function* f = module->getFunction("__vyb_thread_join_opt");
@@ -5039,6 +5090,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             llvm::StructType* strTy = llvm::StructType::get(*context, {int8PtrType, int64Type}, false);
             llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
             llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "resolve.slot");
+            builder->CreateStore(llvm::Constant::getNullValue(strTy), slot, "resolve.zero");
             llvm::FunctionType* ft = llvm::FunctionType::get(
                 int64Type, {int8PtrType, llvm::PointerType::get(*context, 0)}, false);
             llvm::Function* f = module->getFunction("__vyb_net_resolve_opt");
@@ -5069,6 +5121,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             llvm::StructType* strTy = llvm::StructType::get(*context, {int8PtrType, int64Type}, false);
             llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
             llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "tls.slot");
+            builder->CreateStore(llvm::Constant::getNullValue(strTy), slot, "tls.zero");
             llvm::FunctionType* ft = llvm::FunctionType::get(
                 int64Type, {int64Type, int64Type, llvm::PointerType::get(*context, 0)}, false);
             llvm::Function* f = module->getFunction("__vyb_tls_read_opt");
@@ -5146,6 +5199,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             llvm::StructType* optTy = llvm::StructType::get(*context,
                 {int64Type, llvm::Type::getInt1Ty(*context)}, false);
             llvm::Value* slot = builder->CreateAlloca(int64Type, nullptr, "taskopt.slot");
+            builder->CreateStore(llvm::Constant::getNullValue(int64Type), slot, "taskopt.zero");
             llvm::FunctionType* ft = llvm::FunctionType::get(
                 int64Type, {int64Type, llvm::PointerType::get(*context, 0)}, false);
             llvm::Function* f = module->getFunction("__vyb_task_poll_opt");
@@ -5185,6 +5239,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             llvm::StructType* optTy = llvm::StructType::get(*context,
                 {int64Type, llvm::Type::getInt1Ty(*context)}, false);
             llvm::Value* slot = builder->CreateAlloca(int64Type, nullptr, "asyncopt.slot");
+            builder->CreateStore(llvm::Constant::getNullValue(int64Type), slot, "asyncopt.zero");
             llvm::FunctionType* ft = llvm::FunctionType::get(
                 int64Type, {int64Type, llvm::PointerType::get(*context, 0)}, false);
             llvm::Function* f = module->getFunction("__vyb_async_poll_opt");

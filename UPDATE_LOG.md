@@ -3,6 +3,46 @@
 Tag: `implementation-audit-2026-05-23`
 Audit date: 2026-05-23
 
+- 2026-08-21: **T? migration epic — follow-ups from review (issues #137-#144)**. The
+  engine-wide migration of bare `Int`/`String` return signals to native optionals
+  (issues #118-#136) was reviewed and knotted out:
+  - #139 `tls_read_opt` now distinguishes a clean EOF (`SSL_ERROR_ZERO_RETURN`,
+    present-empty) from a real TLS error (absent) via `SSL_get_error`, so a peer
+    that closes cleanly is no longer reported as a failed read.
+  - #140 `__vyb_thread_join` / `__vyb_thread_join_opt` no longer race on a
+    double-join: a `joining` flag is taken under the lock before `pthread_join`,
+    and a concurrent joiner is rejected (absent / unknown-handle) instead of
+    calling `pthread_join` on an already-joined thread (POSIX UB).
+  - #138 `async_udp_recv_from` is migrated off the `""` sentinel to `String?` via a
+    new `__vyb_async_recvfrom_opt` intrinsic (present-empty datagram vs. absent
+    error), mirroring the other recv surfaces.
+  - #144 `udp_last_peer_ip`/`udp_last_peer_port` now return `String?`/`Int?` via
+    lossless `__vyb_net_last_peer_{ip,port}_opt` intrinsics (absent until a
+    datagram arrives), so stale/zero peer info is never mistaken for a real sender.
+  - #143 `https_selfhost`/`https_selfhost_verified` return `Bool?` (absent on any
+    failure) instead of a `-1` sentinel.
+  - #137 every `_opt` codegen handler now zero-initializes its out-slot, removing
+    the latent undefined-behavior load of an unwritten stack slot on the absent
+    path (qt pickers, network, io, env, tls, regex, channels, threads/tasks,
+    asyncs).
+  - #141 SIGPIPE: documented the process-global `SIGPIPE=SIG_IGN` install in
+    `PROGRAMMERS_GUIDE.md` and `FEATURE_STATUS.md` (restore with
+    `signal(SIGPIPE, SIG_DFL)` if you need default kill-semantics).
+  Full unit/module/qt/tls/async regression passes.
+
+- 2026-08-20: **T? migration epic (issues #118-#136)**. Across stdlib modules,
+  every programmer-facing bare-`Int`/`-1`/`""` return signal that could represent a
+  failed call was migrated to a native optional `T?` (absent = failed; an in-domain
+  sentinel like `-1` for index/keycode "found nothing" was kept as `Int`). Modules
+  migrated: curses (#130), agents (#131), channels (#132), threads/tasks (#133),
+  qt create-handles + op-status (#134), asyncs (#128), network (#129), tls (#127),
+  http/https, env, io, time, term, and utf8 docs. Lossless `_opt` intrinsics
+  (`net_recv_opt`, `net_*_opt`, `tls_read_opt`, `io_read_all_opt`, `env_get_opt`,
+  qt picker opts, etc.) carry owner-transferred results so EOF/cancel/empty are
+  distinct from failure. Companions: dimension/DPI and epoch getters -> `Int?`
+  (#135), and the compiler fixes for bind-owner (#126) and `Aspect::X` assoc-type
+  spelling (#105). Docs (PROGRAMMERS_GUIDE / FEATURE_STATUS / refman) synced (#136).
+
 - 2026-08-17: **Agents: backpressure + bounded mailboxes (Stage 5)**. Completing
   the agents design doc (all five stages shipped). `agent_start` and its
   Bool/Float/String siblings now take an optional mailbox capacity:

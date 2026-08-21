@@ -1,5 +1,5 @@
 {
-  "git_rev": "ae2b213461dbabf3595d04e0265681e1b43434a5",
+  "git_rev": "2f15030713d1a22a0b52a3ca1f6be40147b5f899",
   "modules": [
     "agents",
     "asyncs",
@@ -2333,7 +2333,7 @@
         "module": "https",
         "file": "stdlib/https/mod.vyb",
         "kind": "fn",
-        "signature": "https_selfhost(cert_pem<String>, key_pem<String>)<Int> ->",
+        "signature": "https_selfhost(cert_pem<String>, key_pem<String>)<Bool?> ->",
         "summary": "Diagnostics: stand up a throwaway TLS server that answers one request with a",
         "fan_in": 0
       },
@@ -2342,7 +2342,7 @@
         "module": "https",
         "file": "stdlib/https/mod.vyb",
         "kind": "fn",
-        "signature": "https_selfhost_verified(cert_pem<String>, key_pem<String>)<Int> ->",
+        "signature": "https_selfhost_verified(cert_pem<String>, key_pem<String>)<Bool?> ->",
         "summary": "Diagnostics like https_selfhost, but the client uses a verified context pinned",
         "fan_in": 0
       },
@@ -2657,8 +2657,8 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "async_udp_recv_from(s<UdpSocket>, max<Int>)<String> ->",
-        "summary": "",
+        "signature": "async_udp_recv_from(s<UdpSocket>, max<Int>)<String?> ->",
+        "summary": "Receive one datagram as a lossless `String?` from the event loop, suspending",
         "fan_in": 0
       },
       {
@@ -2846,8 +2846,8 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "udp_last_peer_ip()<String> ->",
-        "summary": "The peer that sent the last received datagram.",
+        "signature": "udp_last_peer_ip()<String?> ->",
+        "summary": "The peer that sent the last received datagram. Returns `String?` -- present",
         "fan_in": 0
       },
       {
@@ -2855,8 +2855,8 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "udp_last_peer_port()<Int> ->",
-        "summary": "",
+        "signature": "udp_last_peer_port()<Int?> ->",
+        "summary": "The port of the last received datagram's sender. Returns `Int?` -- present",
         "fan_in": 0
       },
       {
@@ -7321,7 +7321,7 @@
       "type": "runtimeRef",
       "from_module": "network",
       "from_symbol": "async_udp_recv_from",
-      "to_symbol": "vyb_async_recvfrom"
+      "to_symbol": "vyb_async_recvfrom_opt"
     },
     {
       "type": "runtimeRef",
@@ -7495,13 +7495,13 @@
       "type": "runtimeRef",
       "from_module": "network",
       "from_symbol": "udp_last_peer_ip",
-      "to_symbol": "vyb_net_last_peer_ip"
+      "to_symbol": "vyb_net_last_peer_ip_opt"
     },
     {
       "type": "runtimeRef",
       "from_module": "network",
       "from_symbol": "udp_last_peer_port",
-      "to_symbol": "vyb_net_last_peer_port"
+      "to_symbol": "vyb_net_last_peer_port_opt"
     },
     {
       "type": "runtimeRef",

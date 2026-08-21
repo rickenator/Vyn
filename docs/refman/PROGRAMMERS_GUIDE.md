@@ -918,8 +918,8 @@ programmer-facing failure surface to native optionals:
 |--------|--------|
 | `io` | `open*` -> `File?`; `read_all` -> `String?`; `write_str` -> `Int?`; `close` -> `Bool?` |
 | `term`, `env` | enabling/`set` ops -> `Bool?`; stderr writers -> `Int?`; ANSI emitters `term_clear`/`term_move_cursor`/`term_hide_cursor`/`term_show_cursor` -> `Bool?` |
-| `network` (incl. oracle output) | acquisition -> `TcpStream?`/`TcpListener?`/`UdpSocket?`; `socket_*` (`Int?`/`Bool?`/`Int?`-bytes); `udp_recv_from`/`recv_from`/`async_tcp_read` and wrapper `TcpStreamOps::read` -> `String?` |
-| `tls`, `https` | `tls_stream`/`tls_client_context` -> `TlsStream?`/`TlsContext?`; `https_get*` -> `HttpResponse?` |
+| `network` (incl. oracle output) | acquisition -> `TcpStream?`/`TcpListener?`/`UdpSocket?`; `socket_*` (`Int?`/`Bool?`/`Int?`-bytes); recv surfaces `udp_recv_from`/`recv_from`/`async_tcp_read`/`async_udp_recv_from` and wrapper `TcpStreamOps::read` -> `String?`; last-peer probes `udp_last_peer_ip`/`udp_last_peer_port` -> `String?`/`Int?` |
+| `tls`, `https` | `tls_stream`/`tls_client_context` -> `TlsStream?`/`TlsContext?`; `https_get*` -> `HttpResponse?`; diagnostics `https_selfhost`/`https_selfhost_verified` -> `Bool?` |
 | `asyncs` | `async_sleep_ms`/`async_connect` -> `Bool?`; `async_recv` -> `String?`; `async_send` -> `Int?`; `async_spawn`/`async_poll`/`async_accept` -> `Int?` |
 | `curses` | `curses_init` -> `Int?`; draw/attr/window ops -> `Bool?`; `curses_rows`/`curses_cols` -> `Int?`; `curses_getch` + color/attr probes stay `Int` |
 | `agents` | `agent_send*`/`agent_close`/`agent_free`/`agent_dead_letter` -> `Bool?`; `agent_start*` -> `Int` (0 sentinel, not yet migrated); probes stay `Int`/`String` |
@@ -1633,7 +1633,14 @@ can then match on it:
 `TlsStreamOps` and `TlsContextOps` bind the method surface (`write`, `read`,
 `connect`, `accept`, `close`, `dispose`) onto the structs. The
 `https_selfhost*` helpers ([§4.14](#414-https-https-client-over-tls-http))
-exercise the full wiring end-to-end.
+exercise the full wiring end-to-end, returning `Bool?` (absent on any failure).
+
+**SIGPIPE.** The runtime installs `signal(SIGPIPE, SIG_IGN)` process-wide (a
+constructor in `runtime/vyb_runtime.c`) so a `tls_write` after the peer has
+reset the connection returns an error instead of raising `SIGPIPE`. Because the
+install is global, any program linked against the runtime gets the non-default
+`SIGPIPE` behavior; restore the kernel default with `signal(SIGPIPE, SIG_DFL)`
+at startup if you need write-to-closed-pipe to terminate instead of erroring.
 
 ### 4.13 `http` — pure-Vyb HTTP/1.1 client and server
 
@@ -2203,6 +2210,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

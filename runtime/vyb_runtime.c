@@ -1159,6 +1159,28 @@ VYB_WEAK int64_t __vyb_net_last_peer_port(void) {
     return (int64_t)vyb_net_from_port;
 }
 
+// Lossless last-peer probes: return 1 and write an owned result to *out when a
+// datagram has actually been received, or 0 (absent) before any -- so a call
+// made with no peer in hand is never mistaken for a stale/zero value. The ip
+// variant hands off an owned, registry-registered copy (never a pointer into a
+// reused static buffer).
+VYB_WEAK int64_t __vyb_net_last_peer_ip_opt(vyb_file_str* out) {
+    if (!out) return 0;
+    if (!vyb_net_from_ip[0]) return 0;
+    char* copy = strdup(vyb_net_from_ip);
+    if (!copy) return 0;
+    __vyb_string_register(copy);
+    out->ptr = copy;
+    out->len = (int64_t)strlen(copy);
+    return 1;
+}
+VYB_WEAK int64_t __vyb_net_last_peer_port_opt(int64_t* out) {
+    if (!out) return 0;
+    if (!vyb_net_from_ip[0]) return 0;
+    *out = (int64_t)vyb_net_from_port;
+    return 1;
+}
+
 // ============================================================================
 // UTF-8 (utf8 stdlib module) - codepoint counting / indexing over the byte
 // buffers that Vyb Strings carry. Every offset in and out of these helpers is a
@@ -1884,15 +1906,37 @@ VYB_WEAK vyb_file_str __vyb_tls_read(int64_t sslp, int64_t maxlen) {
 }
 
 // Lossless TLS read: returns 1 and writes the received decrypted bytes'
-// vyb_file_str to *out when data was produced, or 0 on error/EOF (see
-// tls_error_code). Mirrors __vyb_net_recv_opt over the encrypted channel, so a
-// clean end of stream stays distinct from a failed read.
+// vyb_file_str to *out when data was produced, or 0 on a real TLS error.
+// Unlike __vyb_tls_read (which folds both into { NULL, 0 }), this distinguishes
+// a clean end of stream (SSL_ERROR_ZERO_RETURN -> present-empty, like recv()==0)
+// from a failed read -- mirroring __vyb_net_recv_opt.
 VYB_WEAK int64_t __vyb_tls_read_opt(int64_t sslp, int64_t maxlen, vyb_file_str* out) {
     if (!out) return 0;
-    vyb_file_str r = __vyb_tls_read(sslp, maxlen);
-    if (!r.ptr) return 0;
-    *out = r;
-    return 1;
+    if (maxlen <= 0) maxlen = 4096;
+    SSL* ssl = (SSL*)(intptr_t)sslp;
+    char* buf = (char*)malloc((size_t)maxlen);
+    if (!buf) { vyb_tls_err = ENOMEM; return 0; }
+    int n = SSL_read(ssl, buf, (int)maxlen);
+    if (n > 0) {
+        __vyb_string_register(buf);
+        out->ptr = buf;
+        out->len = (int64_t)n;
+        vyb_tls_err = 0;
+        return 1;
+    }
+    int err = SSL_get_error(ssl, n);
+    if (err == SSL_ERROR_ZERO_RETURN) {
+        // Clean EOF: register the empty buffer so the present-empty String is
+        // owned, and report present (distinct from a failed read).
+        __vyb_string_register(buf);
+        out->ptr = buf;
+        out->len = 0;
+        vyb_tls_err = 0;
+        return 1;
+    }
+    vyb_tls_capture_error();
+    free(buf);
+    return 0;
 }
 
 // Shut down and free the SSL, then close the underlying fd. Returns close()'s
@@ -1999,6 +2043,7 @@ typedef struct {
     int used;      // slot in use (set on spawn, cleared on join/reap)
     int done;      // thread body has returned (so detaching a finished thread reaps it)
     int detach;    // detached: the slot self-reaps when the body returns
+    int joining;   // a joiner holds the slot in pthread_join (rejects a 2nd joiner)
 } vyb_thread;
 static vyb_thread vyb_threads[VYB_THREAD_CAP];
 static pthread_mutex_t vyb_threads_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -2065,13 +2110,19 @@ VYB_WEAK int64_t __vyb_thread_join(int64_t handle) {
         pthread_mutex_unlock(&vyb_threads_lock);
         return -2;  // detached threads are not joinable
     }
+    if (t->joining) {
+        pthread_mutex_unlock(&vyb_threads_lock);
+        return -2;  // another joiner already holds this slot in pthread_join
+    }
+    t->joining = 1;
     pthread_mutex_unlock(&vyb_threads_lock);
 
     pthread_join(t->tid, NULL); // blocks until the thread completes
 
     pthread_mutex_lock(&vyb_threads_lock);
     int64_t result = t->result;
-    t->used = 0; // reclaim the slot
+    t->used = 0;      // reclaim the slot
+    t->joining = 0;
     pthread_mutex_unlock(&vyb_threads_lock);
     return result;
 }
@@ -2094,13 +2145,19 @@ VYB_WEAK int64_t __vyb_thread_join_opt(int64_t handle, int64_t* out) {
         pthread_mutex_unlock(&vyb_threads_lock);
         return 0;  // detached threads are not joinable
     }
+    if (t->joining) {
+        pthread_mutex_unlock(&vyb_threads_lock);
+        return 0;  // another joiner already holds this slot in pthread_join
+    }
+    t->joining = 1;
     pthread_mutex_unlock(&vyb_threads_lock);
 
     pthread_join(t->tid, NULL); // blocks until the thread completes
 
     pthread_mutex_lock(&vyb_threads_lock);
     int64_t result = t->result;
-    t->used = 0; // reclaim the slot
+    t->used = 0;      // reclaim the slot
+    t->joining = 0;
     pthread_mutex_unlock(&vyb_threads_lock);
     *out = result;
     return 1;
@@ -3768,6 +3825,17 @@ VYB_WEAK vyb_file_str __vyb_async_recvfrom(int64_t fd, int64_t maxlen) {
         free(buf);
         return r;
     }
+}
+// Lossless async UDP read: mirrors __vyb_async_recv_opt, keeping a clean read
+// (return 1, write the datagram to *out -- including a present-empty datagram)
+// distinct from a failed one (return 0). The bare __vyb_async_recvfrom cannot
+// express that because it returns { NULL, 0 } for both.
+VYB_WEAK int64_t __vyb_async_recvfrom_opt(int64_t fd, int64_t maxlen, vyb_file_str* out) {
+    if (!out) return 0;
+    vyb_file_str r = __vyb_async_recvfrom(fd, maxlen);
+    if (!r.ptr) return 0;
+    *out = r;
+    return 1;
 }
 
 // Stop + join the worker pool at process exit, then reclaim any leftover tasks

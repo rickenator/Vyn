@@ -361,14 +361,20 @@ udp_recv_from(s<UdpSocket>, max<Int>)<String?> -> {
     return vyb_net_recvfrom_opt(s.fd, max)
 }
 
-# The peer that sent the last received datagram.
+# The peer that sent the last received datagram. Returns `String?` -- present
+# holding the sender IP once a datagram has been received (a real IPv4/IPv6
+# address is never empty), absent before any datagram arrives, so stale/zero
+# peer info is never mistaken for a real sender.
 share(all)
-udp_last_peer_ip()<String> -> {
-    return vyb_net_last_peer_ip()
+udp_last_peer_ip()<String?> -> {
+    return vyb_net_last_peer_ip_opt()
 }
+# The port of the last received datagram's sender. Returns `Int?` -- present
+# holding the sender port once a datagram has been received, absent before any
+# datagram arrives.
 share(all)
-udp_last_peer_port()<Int> -> {
-    return vyb_net_last_peer_port()
+udp_last_peer_port()<Int?> -> {
+    return vyb_net_last_peer_port_opt()
 }
 
 # Close a socket (stream, listener, or datagram). Returns `Bool?` -- present on
@@ -425,7 +431,11 @@ async_udp_send_to(s<UdpSocket>, ip<String>, port<Int>, data<String>)<Int?> -> {
     return Int?(n)
 }
 
+# Receive one datagram as a lossless `String?` from the event loop, suspending
+# the calling fiber. Present holding the datagram bytes (which may legitimately
+# be empty), absent on error -- so an empty datagram is never conflated with a
+# failed receive.
 share(all)
-async_udp_recv_from(s<UdpSocket>, max<Int>)<String> -> {
-    return vyb_async_recvfrom(s.fd, max)
+async_udp_recv_from(s<UdpSocket>, max<Int>)<String?> -> {
+    return vyb_async_recvfrom_opt(s.fd, max)
 }

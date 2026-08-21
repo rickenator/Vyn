@@ -23,8 +23,8 @@ main()<Int> -> {
 
                     msg<String> = b.recv_from(4096) else ""
                     if (msg != "ping udp") { return 4 }
-                    pip<String> = udp_last_peer_ip()
-                    pport<Int> = udp_last_peer_port()
+                    pip<String> = udp_last_peer_ip() else ""
+                    pport<Int> = udp_last_peer_port() else 0
                     if (pip != "127.0.0.1") { return 5 }
                     if (pport != ap) { return 6 }
 
