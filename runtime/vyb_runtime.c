@@ -2054,7 +2054,10 @@ static void* vyb_thread_trampoline(void* arg) {
     t->result = ((int64_t (*)(void*))t->fn)(env);
     if (env) __vyb_closure_release(env);  // drop the thread's reference
     pthread_mutex_lock(&vyb_threads_lock);
-    if (t->detach) t->used = 0;  // fire-and-forget: reclaim the slot now
+    // Fire-and-forget: reclaim the slot now -- unless a joiner is mid-join on
+    // this slot, in which case the joiner's post-join cleanup owns reclaim (a
+    // slot with joining=1 set must never be handed back to a fresh spawn).
+    if (t->detach && !t->joining) t->used = 0;
     t->done = 1;
     pthread_mutex_unlock(&vyb_threads_lock);
     return NULL;
@@ -2081,6 +2084,7 @@ VYB_WEAK int64_t __vyb_thread_spawn(void* env, void* fn) {
     t->used = 1;
     t->done = 0;
     t->detach = 0;
+    t->joining = 0;  // defensive: a reused slot must never carry a stale joiner
     // The thread owns the closure for its whole lifetime (retained before the
     // worker can run, so it can never be reaped before spawn returns).
     if (t->env) __vyb_closure_retain(t->env);
@@ -2181,7 +2185,10 @@ VYB_WEAK int64_t __vyb_thread_detach(int64_t handle) {
         return -1;  // already detached
     }
     t->detach = 1;
-    if (t->done) t->used = 0;  // already finished: reclaim immediately
+    // Reclaim immediately if already finished -- unless a joiner holds the slot
+    // in pthread_join (joining=1): the joiner's post-join cleanup reclaims it, so
+    // a stale joining flag can never ride a reused slot into a fresh spawn.
+    if (t->done && !t->joining) t->used = 0;
     pthread_mutex_unlock(&vyb_threads_lock);
     return 0;
 }

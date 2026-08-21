@@ -13,6 +13,7 @@
 // @env: VYB_STDLIB=stdlib
 
 import threads
+import channels
 import time::{sleep_ms, time_mono_millis}
 
 main()<Int> -> {
@@ -50,6 +51,35 @@ main()<Int> -> {
         thread_detach(g)
         sleep_ms(1)
         k = k + 1
+    }
+
+
+    // Stress (issue #145): a concurrent detach-vs-join on one handle could let
+    // spawn reuse a slot carrying a stale joiner flag. Hammer that window, then
+    // probe that a freshly spawned thread still slots and rejoins its own result
+    // (slot-table integrity).
+    cnt<Int> = 0
+    while (cnt < 30) {
+        gth<Int> = thread_spawn(|| -> sleep_ms(1)) else -1
+        if (gth < 0) { return 24 }
+        ggate<Int> = chan_new() else 0
+        gd<Int> = chan_new() else 0
+        hh<Int> = thread_spawn(|| -> {
+            gh2<Int> = chan_recv(ggate) else -1
+            thread_detach(gh2)
+            chan_send(gd, 1)
+            return 0
+        }) else -1
+        chan_send(ggate, gth)
+        rv<Int> = thread_join(gth) else -2   # main joins while hh may detach
+        chan_recv(gd)                        # wait until the detacher is done
+        chan_free(ggate)
+        chan_free(gd)
+        # A brand-new thread must now slot and rejoin its own result.
+        probe<Int> = thread_spawn(|| -> (cnt * 7)) else -1
+        if (probe < 0) { return 25 }         # slot table corrupted or leaked
+        if ((thread_join(probe) else -1) != (cnt * 7)) { return 26 }
+        cnt = cnt + 1
     }
 
     // True parallelism: three ~60ms threads joined in reverse finish in far less
