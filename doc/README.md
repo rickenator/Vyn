@@ -75,6 +75,7 @@ Superseded documents are folded into the repository history.
 | Document | Purpose |
 |----------|---------|
 | [`../UPDATE_LOG.md`](../UPDATE_LOG.md) | Working implementation audit / backlog |
+| [`FUTURES_PROPOSALS.md`](FUTURES_PROPOSALS.md) | Non-committal post-milestone proposals (LSP, REPL, fmt/doc/test, registry, language features, debt) |
 | [`Development_Guide.md`](Development_Guide.md) | Development guide |
 | [`Test_Harness_Guide.md`](Test_Harness_Guide.md) | Test harness and analysis system |
 | [`TEST_PLAN.md`](TEST_PLAN.md) | Test plan and quality assurance |
