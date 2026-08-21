@@ -1,12 +1,13 @@
 // @test: tasks stdlib module - spawn/await/poll detached work
 // @description: `import tasks` gives a future-style unit of work on the external
 //   pthread runtime. task_spawn starts a `fn() -> Int` closure on a detached
-//   thread and returns a handle that is a private capacity-1 channel; the worker
-//   pushes its result then exits. task_await blocks for the result; task_poll is
-//   a non-blocking try (-1 until ready); task_free reclaims the handle. Verified:
-//   simple spawn/await returns 42, two concurrent tasks sum correctly, poll on a
-//   still-running task reports -1 then await delivers the value and a later poll
-//   reports -1 (value already dequeued), and handles free cleanly.
+//   thread and returns `Int?` -- absent only on spawn failure, so the caller can
+//   `else 0` for a default handle. task_await blocks for the result; task_poll is
+//   a native `Int?` (absent while still running, present holding the result,
+//   which may legitimately be -1); task_free reclaims the handle. Verified: a
+//   simple spawn/await returns 42, a genuine -1 result is NOT confused with "not
+//   ready", two concurrent tasks sum correctly, poll on a still-running task
+//   reports absent then await delivers, and handles free cleanly.
 // @category: modules, threads, tasks, concurrency, stdlib
 // @expect: pass
 // @expect-output: ok
@@ -18,26 +19,35 @@ import time::{sleep_ms}
 
 main()<Int> -> {
     # Simple spawn/await: detached worker computes 42.
-    t1<Int> = task_spawn(|| -> 40 + 2)
+    t1<Int> = task_spawn(|| -> 40 + 2) else 0
     if (t1 == 0) { return 1 }
     if (task_await(t1) != 42) { return 2 }
     if (task_free(t1) != 0) { return 3 }
 
-    # Two concurrent tasks; results arrive independently and sum.
-    a<Int> = task_spawn(|| -> 30)
-    b<Int> = task_spawn(|| -> 12)
-    if (a == 0 || b == 0) { return 4 }
-    if (task_await(a) + task_await(b) != 42) { return 5 }
-    if (task_free(a) != 0 || task_free(b) != 0) { return 6 }
+    # A genuine -1 result is not the same as "not ready": a worker that returns
+    # -1 must be surfaced as present by task_await, and a repeated poll after the
+    # single result is dequeued reports absent again.
+    neg<Int> = task_spawn(|| -> -1) else 0
+    if (neg == 0) { return 4 }
+    if (task_await(neg) != -1) { return 5 }
+    if ((task_poll(neg) else 999) != 999) { return 6 }
+    if (task_free(neg) != 0) { return 7 }
 
-    # Poll while the worker is sleeping: not ready (-1), then await delivers it,
-    # then poll after the value was dequeued reports -1 again.
-    slow<Int> = task_spawn(|| -> { sleep_ms(50); return 7 })
-    if (slow == 0) { return 7 }
-    if (task_poll(slow) != -1) { return 8 }
-    if (task_await(slow) != 7) { return 9 }
-    if (task_poll(slow) != -1) { return 10 }
-    if (task_free(slow) != 0) { return 11 }
+    # Two concurrent tasks; results arrive independently and sum.
+    a<Int> = task_spawn(|| -> 30) else 0
+    b<Int> = task_spawn(|| -> 12) else 0
+    if (a == 0 || b == 0) { return 8 }
+    if (task_await(a) + task_await(b) != 42) { return 9 }
+    if (task_free(a) != 0 || task_free(b) != 0) { return 10 }
+
+    # Poll while the worker is sleeping: not ready (absent), then await delivers
+    # it, then a value poll after the result was dequeued is absent again.
+    slow<Int> = task_spawn(|| -> { sleep_ms(50); return 7 }) else 0
+    if (slow == 0) { return 11 }
+    if ((task_poll(slow) else -1) != -1) { return 12 }
+    if (task_await(slow) != 7) { return 13 }
+    if ((task_poll(slow) else -1) != -1) { return 14 }
+    if (task_free(slow) != 0) { return 15 }
 
     println("ok")
     return 0

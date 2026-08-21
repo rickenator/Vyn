@@ -4739,6 +4739,33 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         } else if (fname == "vyb_task_poll") {
             emitHandleIntrinsic("__vyb_task_poll", 1);   // non-blocking try
             return;
+        } else if (fname == "vyb_task_poll_opt") {
+            // Lossless non-blocking task poll -> native `Int?` ({ value, has });
+            // absent while the task is still running, present holding the result
+            // (which may legitimately be -1). Mirrors vyb_chan_recv_opt.
+            if (node->arguments.size() != 1) {
+                logError(node->loc, "vyb_task_poll_opt expects 1 argument (task)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this);
+            llvm::Value* tk = m_currentLLVMValue;
+            if (!tk) return;
+            if (tk->getType()->isIntegerTy() && !tk->getType()->isIntegerTy(64))
+                tk = builder->CreateSExt(tk, int64Type, "taskopt.toi64");
+            llvm::StructType* optTy = llvm::StructType::get(*context,
+                {int64Type, llvm::Type::getInt1Ty(*context)}, false);
+            llvm::Value* slot = builder->CreateAlloca(int64Type, nullptr, "taskopt.slot");
+            llvm::FunctionType* ft = llvm::FunctionType::get(
+                int64Type, {int64Type, llvm::PointerType::get(*context, 0)}, false);
+            llvm::Function* f = module->getFunction("__vyb_task_poll_opt");
+            if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_task_poll_opt", module.get());
+            llvm::Value* has = builder->CreateCall(f, {tk, slot}, "taskopt.has");
+            llvm::Value* val = builder->CreateLoad(int64Type, slot, "taskopt.val");
+            llvm::Value* opt = llvm::UndefValue::get(optTy);
+            opt = builder->CreateInsertValue(opt, val, 0, "taskopt.v");
+            opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "taskopt.h"), 1);
+            m_currentLLVMValue = opt;
+            return;
         } else if (fname == "vyb_task_free") {
             emitHandleIntrinsic("__vyb_task_free", 1);
             return;
@@ -4750,6 +4777,33 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             return;
         } else if (fname == "vyb_async_poll") {
             emitHandleIntrinsic("__vyb_async_poll", 1);
+            return;
+        } else if (fname == "vyb_async_poll_opt") {
+            // Lossless non-blocking async poll -> native `Int?` ({ value, has });
+            // absent while the fiber is still running, present holding the result
+            // (which may legitimately be -1). Mirrors vyb_chan_recv_opt.
+            if (node->arguments.size() != 1) {
+                logError(node->loc, "vyb_async_poll_opt expects 1 argument (task)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this);
+            llvm::Value* tk = m_currentLLVMValue;
+            if (!tk) return;
+            if (tk->getType()->isIntegerTy() && !tk->getType()->isIntegerTy(64))
+                tk = builder->CreateSExt(tk, int64Type, "asyncopt.toi64");
+            llvm::StructType* optTy = llvm::StructType::get(*context,
+                {int64Type, llvm::Type::getInt1Ty(*context)}, false);
+            llvm::Value* slot = builder->CreateAlloca(int64Type, nullptr, "asyncopt.slot");
+            llvm::FunctionType* ft = llvm::FunctionType::get(
+                int64Type, {int64Type, llvm::PointerType::get(*context, 0)}, false);
+            llvm::Function* f = module->getFunction("__vyb_async_poll_opt");
+            if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_async_poll_opt", module.get());
+            llvm::Value* has = builder->CreateCall(f, {tk, slot}, "asyncopt.has");
+            llvm::Value* val = builder->CreateLoad(int64Type, slot, "asyncopt.val");
+            llvm::Value* opt = llvm::UndefValue::get(optTy);
+            opt = builder->CreateInsertValue(opt, val, 0, "asyncopt.v");
+            opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "asyncopt.h"), 1);
+            m_currentLLVMValue = opt;
             return;
         } else if (fname == "vyb_async_detach") {
             emitHandleIntrinsic("__vyb_async_detach", 1);

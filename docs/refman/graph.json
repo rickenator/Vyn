@@ -1,5 +1,5 @@
 {
-  "git_rev": "67b436480ee3bd729f1edb55a7304a2ebbae7824",
+  "git_rev": "1a68ba42c0166bf8ff8c70930cfff98162163db0",
   "modules": [
     "agents",
     "asyncs",
@@ -954,7 +954,7 @@
         "module": "asyncs",
         "file": "stdlib/asyncs/mod.vyb",
         "kind": "fn",
-        "signature": "async_accept(fd<Int>)<Int> ->",
+        "signature": "async_accept(fd<Int>)<Int?> ->",
         "summary": "Accept a pending connection on a listening socket, suspending until one",
         "fan_in": 0
       },
@@ -964,7 +964,7 @@
         "file": "stdlib/asyncs/mod.vyb",
         "kind": "fn",
         "signature": "async_await(t<Int>)<Int> ->",
-        "summary": "Block until task `t` completes and return its closure result. From the entry",
+        "summary": "Block until task `t` completes and return its closure result. On a valid handle",
         "fan_in": 0
       },
       {
@@ -990,8 +990,8 @@
         "module": "asyncs",
         "file": "stdlib/asyncs/mod.vyb",
         "kind": "fn",
-        "signature": "async_poll(t<Int>)<Int> ->",
-        "summary": "Non-blocking: the task's result if it is done, else -1.",
+        "signature": "async_poll(t<Int>)<Int?> ->",
+        "summary": "Non-blocking presence check: returns `Int?` -- present holding the task's",
         "fan_in": 0
       },
       {
@@ -1035,8 +1035,8 @@
         "module": "asyncs",
         "file": "stdlib/asyncs/mod.vyb",
         "kind": "fn",
-        "signature": "async_spawn(work<fn() -> Int>)<Int> ->",
-        "summary": "Enqueue `work` (a fn() -> Int) on the worker pool; returns a task handle (>= 1)",
+        "signature": "async_spawn(work<fn() -> Int>)<Int?> ->",
+        "summary": "Enqueue `work` (a fn() -> Int) on the worker pool. Returns `Int?` -- present",
         "fan_in": 0
       },
       {
@@ -4240,7 +4240,7 @@
         "file": "stdlib/tasks/mod.vyb",
         "kind": "fn",
         "signature": "task_await(h<Int>)<Int> ->",
-        "summary": "Block until `task` finishes; returns its closure result (-1 if invalid).",
+        "summary": "Block until `task` finishes; returns its closure result. On a valid handle the",
         "fan_in": 0
       },
       {
@@ -4257,8 +4257,8 @@
         "module": "tasks",
         "file": "stdlib/tasks/mod.vyb",
         "kind": "fn",
-        "signature": "task_poll(h<Int>)<Int> ->",
-        "summary": "Non-blocking check: returns the result if ready, else -1 (see header note).",
+        "signature": "task_poll(h<Int>)<Int?> ->",
+        "summary": "Non-blocking presence check: returns `Int?` -- present holding the result once",
         "fan_in": 0
       },
       {
@@ -4266,8 +4266,8 @@
         "module": "tasks",
         "file": "stdlib/tasks/mod.vyb",
         "kind": "fn",
-        "signature": "task_spawn(work<fn() -> Int>)<Int> ->",
-        "summary": "Start `work` on a detached task thread; returns a task handle (>= 1) or 0/ -1",
+        "signature": "task_spawn(work<fn() -> Int>)<Int?> ->",
+        "summary": "Start `work` on a detached task thread. Returns `Int?` -- present holding the",
         "fan_in": 0
       },
       {
@@ -6877,7 +6877,7 @@
       "type": "runtimeRef",
       "from_module": "asyncs",
       "from_symbol": "async_poll",
-      "to_symbol": "vyb_async_poll"
+      "to_symbol": "vyb_async_poll_opt"
     },
     {
       "type": "runtimeRef",
@@ -8377,7 +8377,7 @@
       "type": "runtimeRef",
       "from_module": "tasks",
       "from_symbol": "task_poll",
-      "to_symbol": "vyb_task_poll"
+      "to_symbol": "vyb_task_poll_opt"
     },
     {
       "type": "runtimeRef",

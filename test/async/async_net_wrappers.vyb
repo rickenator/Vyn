@@ -30,7 +30,7 @@ main()<Int> -> {
                     }
                     ? -> { return 1 }
                 }
-            })
+}) else 0
             cli<Int> = async_spawn(|| -> {
                 match (async_tcp_connect("127.0.0.1", port)) {
                     s -> {
@@ -42,7 +42,7 @@ main()<Int> -> {
                     }
                     ? -> { return 1 }
                 }
-            })
+}) else 0
             r0<Int> = async_await(srv)
             r1<Int> = async_await(cli)
             l.close()
@@ -60,14 +60,14 @@ main()<Int> -> {
                                 return async_udp_send_to(
                                     UdpSocket { fd = afd, local_ip = "", local_port = 0 },
                                     "127.0.0.1", bp, UDG)
-                            })
+}) else 0
                             ub<Int> = async_spawn(|| -> {
                                 async_sleep_ms(5)
                                 m<String> = async_udp_recv_from(
                                     UdpSocket { fd = bfd, local_ip = "", local_port = 0 }, 4096)
                                 if (m == UDG) { return 0 }
                                 return 7
-                            })
+}) else 0
                             ru0<Int> = async_await(ua)
                             ru1<Int> = async_await(ub)
                             a.close()

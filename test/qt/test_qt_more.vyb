@@ -92,7 +92,7 @@ main()<Int> -> {
         async_sleep_ms(30)
         if (qt_checkbox_set_checked(cb, true) != 0) { return 1 }
         return 0
-    })
+}) else 0
     if (worker == 0) { return 42 }
     got<Bool> = qt_wait_event(-1)
     if (got != true) { return 43 }
@@ -103,9 +103,9 @@ main()<Int> -> {
     if (qt_checkbox_checked(cb) != true) { return 48 }
 
     // --- Asyncs scheduling: concurrent fibers finish in ~elapsed, not the sum.
-    a<Int> = async_spawn(|| -> { async_sleep_ms(60); return 10 })
-    b<Int> = async_spawn(|| -> { async_sleep_ms(60); return 20 })
-    c<Int> = async_spawn(|| -> { async_sleep_ms(60); return 30 })
+    a<Int> = async_spawn(|| -> { async_sleep_ms(60); return 10}) else 0
+    b<Int> = async_spawn(|| -> { async_sleep_ms(60); return 20}) else 0
+    c<Int> = async_spawn(|| -> { async_sleep_ms(60); return 30}) else 0
     t2<Int> = time_mono_millis()
     if (async_await(a) != 10) { return 49 }
     if (async_await(b) != 20) { return 50 }

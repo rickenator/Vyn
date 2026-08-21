@@ -570,9 +570,9 @@ pthread runtime (no raw C ABI in user code):
   reference on recv.
 - **`threads`** — pthread-backed `thread_spawn`/`thread_join`/`thread_detach`,
   `mutex_*`, `cond_*`, and lock-free `atomic_*`.
-- **`tasks`** — fire-and-forget workers on a detached pthread: `task_spawn` runs a
-  `fn() -> Int`, `task_await` blocks on its result, `task_poll` checks
-  non-blockingly, `task_free` reclaims it.
+- **`tasks`** — fire-and-forget workers on a detached pthread: `task_spawn`
+  returns an `Int?` handle, `task_await` blocks on its result, `task_poll`
+  returns an `Int?` result (absent while still running), `task_free` reclaims it.
 - **`asyncs`** — a **multi-threaded executor**: a pool of worker threads (one
   scheduler per CPU core) running stackful fibers, each fiber pinned to its
   worker and load-balanced by round-robin spawn. Tasks suspend *mid-body* with
@@ -585,13 +585,17 @@ pthread runtime (no raw C ABI in user code):
 
 ```vyb
 import asyncs
-h1 = async_spawn(|| -> { async_sleep_ms(20); return 10 })
-h2 = async_spawn(|| -> { async_sleep_ms(20); return 32 })
+h1<Int> = async_spawn(|| -> { async_sleep_ms(20); return 10 }) else 0
+h2<Int> = async_spawn(|| -> { async_sleep_ms(20); return 32 }) else 0
 v1 = async_await(h1)   // 10, ~20ms total for both
 v2 = async_await(h2)   // 32
 async_detach(h1)       // reclaim the finished task early
 async_run_all()        // flush + reclaim
 ```
+
+`async_spawn`/`async_accept` return `Int?` and are absent on failure; `async_poll`
+returns `Int?` (absent while a fiber is still running, present holding its result,
+which may legitimately be `-1`) — no sentinel overloads.
 
 Replaces the old C++ `AsyncRuntime` executor that has been retired; concurrency
 now lives on the external pthread runtime and this cooperative executor.

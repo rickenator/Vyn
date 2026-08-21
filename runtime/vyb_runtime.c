@@ -2241,6 +2241,15 @@ VYB_WEAK int64_t __vyb_task_poll(int64_t task) {
     return __vyb_chan_try(task);
 }
 
+// Lossless non-blocking poll: returns 1 and stores the result in *out when the
+// task has delivered a value, or 0 while it is still running (or the handle is
+// invalid). Unlike __vyb_task_poll (which collapses "not ready" and a genuine -1
+// result together), every Int result -- including -1 -- survives the round trip.
+VYB_WEAK int64_t __vyb_task_poll_opt(int64_t task, int64_t* out) {
+    if (!task || !out) return 0;
+    return __vyb_chan_poll(task, out);
+}
+
 // Reclaim the task handle (its result channel). Call only after the worker has
 // delivered its result (await/poll), otherwise the worker may still touch it.
 VYB_WEAK int64_t __vyb_task_free(int64_t task) {
@@ -3133,6 +3142,19 @@ VYB_WEAK int64_t __vyb_async_poll(int64_t task) {
     int64_t v = (t->state == 2) ? t->result : -1;
     pthread_mutex_unlock(&g_async_lock);
     return v;
+}
+
+// Lossless non-blocking poll: returns 1 and stores the result in *out when the
+// fiber has finished, or 0 while it is still running (or the handle is invalid).
+// Unlike __vyb_async_poll, a genuine -1 result is not confused with "not ready".
+VYB_WEAK int64_t __vyb_async_poll_opt(int64_t task, int64_t* out) {
+    if (!task || !out) return 0;
+    vyb_async_task* t = (vyb_async_task*)(intptr_t)task;
+    pthread_mutex_lock(&g_async_lock);
+    if (t->state != 2) { pthread_mutex_unlock(&g_async_lock); return 0; }
+    *out = t->result;
+    pthread_mutex_unlock(&g_async_lock);
+    return 1;
 }
 
 // Reclaim an async task handle. The handle is handed to the runtime: if the

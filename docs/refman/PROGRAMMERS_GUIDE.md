@@ -1347,14 +1347,17 @@ Module page: [`tasks.md`](tasks.md). A lighter precursor to the async
 executor: each spawn is its own detached pthread returning a handle.
 
 ```vyb
-t  = task_spawn(|| -> 99)<Int>
+t<Int> = task_spawn(|| -> 99) else 0   # Int?: absent only on spawn failure
 task_await(t)<Int>      # block until done, return the closure result
-task_poll(t)<Int>       # non-blocking probe
+task_poll(t)<Int?>      # Int? -- present holding the result once ready, absent while running
 task_free(t)<Int>
 ```
 
 No captures/arguments in the `fn() -> Int` surface; use `asyncs` for
-real parallelism with cooperative scheduling.
+real parallelism with cooperative scheduling. `task_poll` is a native `Int?`
+rather than the old `-1` sentinel, so a legitimate result of `-1` is never
+collapsed into "not ready"; `task_await` stays a plain `Int` because on a valid
+handle it always blocks until a result arrives (which may be any `Int`).
 
 ### 4.9 `asyncs` — a real executor (fibers + thread pool)
 
@@ -1364,15 +1367,21 @@ cooperatively without blocking its worker:
 
 ```vyb
 import async
-a = async_spawn(|| -> { async_sleep_ms(40); return 10 })
-b = async_spawn(|| -> { async_sleep_ms(5);  return 32 })
+a<Int> = async_spawn(|| -> { async_sleep_ms(40); return 10 }) else 0
+b<Int> = async_spawn(|| -> { async_sleep_ms(5);  return 32 }) else 0
 async_run_all()<Int>              # drive the pool to completion
 async_await(b)<Int>               # await one handle, block the caller
-async_poll(t)<Int>                # non-blocking probe
+async_poll(t)<Int?>               # Int? -- present holding the result once done, absent while running
 async_detach(t)<Int>              # reclaim one finished task early
 async_sleep_ms(ms)<Int>           # cooperatively suspend (not thread sleep)
 async_yield()<Int>                # round-robin to other fibers
 ```
+
+`async_spawn` returns `Int?` (absent only when pool setup fails) and
+`async_poll` is a native `Int?` (absent while the fiber is still running,
+present holding its result, which may legitimately be `-1`) — no more
+`0`/`-1` sentinel overloads. `async_await` stays a plain `Int`: on a valid
+handle it always blocks until a result arrives.
 
 **Per-task reclamation.** Tasks stay valid across main-thread awaits, so you can
 spawn several and await them in any order. `async_detach(t)` reclaims a single
@@ -2090,6 +2099,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

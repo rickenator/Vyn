@@ -23,13 +23,13 @@ main()<Int> -> {
     # Server fiber: async-accept a connection, async-recv one message, echo it
     # back, then close.
     srv_task<Int> = async_spawn(|| -> {
-        conn<Int> = async_accept(srv)
+        conn<Int> = async_accept(srv) else -1
         if (conn < 0) { return 1 }
         msg<String> = async_recv(conn, 4096)
         n<Int> = async_send(conn, msg)
         socket_close(conn)
         return n
-    })
+}) else 0
 
     # Client fiber: sleep briefly so the server is async-accepting, then
     # async-connect and async-send a message, read the echo back.
@@ -45,7 +45,7 @@ main()<Int> -> {
         socket_close(cli)
         if (back == MSG) { return 0 }
         return 2
-    })
+}) else 0
 
     srv_n<Int> = async_await(srv_task)
     cli_n<Int> = async_await(cli_task)

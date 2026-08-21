@@ -22,11 +22,11 @@ main()<Int> -> {
 
     # One echo-server fiber: sequentially async-accept + echo each connection.
     st<Int> = async_spawn(|| -> {
-        c0<Int> = async_accept(srv); e0<String> = async_recv(c0, 4096); async_send(c0, e0); socket_close(c0)
-        c1<Int> = async_accept(srv); e1<String> = async_recv(c1, 4096); async_send(c1, e1); socket_close(c1)
-        c2<Int> = async_accept(srv); e2<String> = async_recv(c2, 4096); async_send(c2, e2); socket_close(c2)
+        c0<Int> = async_accept(srv) else -1; e0<String> = async_recv(c0, 4096); async_send(c0, e0); socket_close(c0)
+        c1<Int> = async_accept(srv) else -1; e1<String> = async_recv(c1, 4096); async_send(c1, e1); socket_close(c1)
+        c2<Int> = async_accept(srv) else -1; e2<String> = async_recv(c2, 4096); async_send(c2, e2); socket_close(c2)
         return 0
-    })
+}) else 0
 
     ca<Int> = async_spawn(|| -> {
         async_sleep_ms(5)
@@ -37,7 +37,7 @@ main()<Int> -> {
         socket_close(cli)
         if (b == MSG0) { return 0 }
         return 20
-    })
+}) else 0
     cb<Int> = async_spawn(|| -> {
         async_sleep_ms(8)
         cli<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
@@ -47,7 +47,7 @@ main()<Int> -> {
         socket_close(cli)
         if (b == MSG1) { return 0 }
         return 21
-    })
+}) else 0
     cc<Int> = async_spawn(|| -> {
         async_sleep_ms(11)
         cli<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
@@ -57,7 +57,7 @@ main()<Int> -> {
         socket_close(cli)
         if (b == MSG2) { return 0 }
         return 22
-    })
+}) else 0
 
     rca<Int> = async_await(ca)
     rcb<Int> = async_await(cb)

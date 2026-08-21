@@ -439,7 +439,7 @@ fetch_pub_page<Page> = blank_page()
 # Returns true when the screen changed.
 commit_fetch(st<their<BrowserState>>)<Bool> -> {
     if (!st.loading || st.task == 0) { return false }
-    res<Int> = async_poll(st.task)
+    res<Int> = async_poll(st.task) else -1
     if (res < 0) { return false }
     if (fetch_pub_done == 1 && fetch_pub_gen == st.gen) {
         h<Int> = st.task
@@ -857,7 +857,7 @@ load_url(st<their<BrowserState>>, target<String>)<Void> -> {
             fetch_pub_done = 1
         }
         return 0
-    })
+}) else 0
     if (h == 0) {
         # No worker could be scheduled: fetch synchronously on this thread so
         # navigation still works (and never hangs forever).

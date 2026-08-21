@@ -6,8 +6,8 @@
 //   completes). Because the fibers are stackful, a fn() can suspend mid-body
 //   without a state-machine transform. Verified: five simultaneous 20ms sleeps
 //   complete in ~20ms total (serial would be ~100ms), a task can spawn+await a
-//   child (nested await -> 42), poll reports -1 while a task is still sleeping
-//   then resolves, and async_run_all reclaims everything.
+//   child (nested await -> 42), poll reports absent while a task is still
+//   sleeping then resolves, and async_run_all reclaims everything.
 // @category: modules, asyncs, event-loop, concurrency, stdlib
 // @expect: pass
 // @expect-output: ok
@@ -20,28 +20,37 @@ import time::{time_mono_millis}
 main()<Int> -> {
     # Five 20ms timers must complete in ~20ms total (serial would be ~100ms).
     t0<Int> = time_mono_millis()
-    h1<Int> = async_spawn(|| -> { async_sleep_ms(20); return 10 })
-    h2<Int> = async_spawn(|| -> { async_sleep_ms(20); return 20 })
-    h3<Int> = async_spawn(|| -> { async_sleep_ms(20); return 30 })
-    h4<Int> = async_spawn(|| -> { async_sleep_ms(20); return 40 })
-    h5<Int> = async_spawn(|| -> { async_sleep_ms(20); return 50 })
+    h1<Int> = async_spawn(|| -> { async_sleep_ms(20); return 10 }) else 0
+    h2<Int> = async_spawn(|| -> { async_sleep_ms(20); return 20 }) else 0
+    h3<Int> = async_spawn(|| -> { async_sleep_ms(20); return 30 }) else 0
+    h4<Int> = async_spawn(|| -> { async_sleep_ms(20); return 40 }) else 0
+    h5<Int> = async_spawn(|| -> { async_sleep_ms(20); return 50 }) else 0
     if (h1 == 0 || h2 == 0 || h3 == 0 || h4 == 0 || h5 == 0) { return 1 }
     if (async_await(h1) + async_await(h2) + async_await(h3) + async_await(h4) + async_await(h5) != 150) { return 2 }
     elapsed<Int> = time_mono_millis() - t0
     if (elapsed >= 60) { return 3 }   # ~20ms parallel, far under 100ms serial
 
     # Nested await: a parent task spawns and awaits a child.
-    p<Int> = async_spawn(|| -> { c<Int> = async_spawn(|| -> 40 + 2); return async_await(c) })
+    p<Int> = async_spawn(|| -> { c<Int> = async_spawn(|| -> 40 + 2) else 0; return async_await(c) }) else 0
     if (p == 0) { return 5 }
     if (async_await(p) != 42) { return 6 }
 
-    # Poll: a sleeping task reports -1 until its timer fires, then resolves.
-    s<Int> = async_spawn(|| -> { async_sleep_ms(20); return 99 })
+    # Poll: a sleeping task reports absent until its timer fires, then resolves.
+    s<Int> = async_spawn(|| -> { async_sleep_ms(20); return 99 }) else 0
     if (s == 0) { return 7 }
-    if (async_poll(s) != -1) { return 8 }
+    if ((async_poll(s) else -1) != -1) { return 8 }
     if (async_await(s) != 99) { return 9 }
+    # After completion the result stays readable as present (unlike while running).
+    if ((async_poll(s) else 0) != 99) { return 10 }
 
-    if (async_run_all() != 0) { return 10 }
+    # A genuine -1 result is not "not ready": await surfaces it and a poll after
+    # completion reads the -1 payload as present.
+    neg<Int> = async_spawn(|| -> -1) else 0
+    if (neg == 0) { return 11 }
+    if (async_await(neg) != -1) { return 12 }
+    if ((async_poll(neg) else 0) != -1) { return 13 }
+
+    if (async_run_all() != 0) { return 14 }
     println("ok")
     return 0
 }

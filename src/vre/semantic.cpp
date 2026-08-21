@@ -2110,10 +2110,12 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_chan_len" || name == "vyb_chan_close" ||
             name == "vyb_chan_free" ||
             name == "vyb_task_spawn" || name == "vyb_task_await" ||
-            name == "vyb_task_poll" || name == "vyb_task_free" ||
+            name == "vyb_task_poll" || name == "vyb_task_poll_opt" ||
+            name == "vyb_task_free" ||
             name == "vyb_chan_select" ||
             name == "vyb_async_spawn" || name == "vyb_async_run_all" ||
             name == "vyb_async_await" || name == "vyb_async_poll" ||
+            name == "vyb_async_poll_opt" ||
             name == "vyb_async_detach" ||
             name == "vyb_async_yield" || name == "vyb_async_sleep_ms" ||
             name == "vyb_async_io_wait" || name == "vyb_async_accept" ||
@@ -2967,6 +2969,20 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             if (name == "vyb_strchan_recv_opt") {
                 auto* inner = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "String"));
+                auto* resTy = new ast::OptionalType(node->loc,
+                    std::unique_ptr<ast::TypeNode>(inner));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+            // Lossless task/async poll: task_poll_opt / async_poll_opt return a
+            // native `Int?` -- present (holding the result, which may legitimately
+            // be -1) when the task has delivered a value, absent while it is
+            // still running. This is the durability fix for the old poll's -1
+            // sentinel that doubled as "not ready".
+            if (name == "vyb_task_poll_opt" || name == "vyb_async_poll_opt") {
+                auto* inner = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "Int"));
                 auto* resTy = new ast::OptionalType(node->loc,
                     std::unique_ptr<ast::TypeNode>(inner));
                 expressionTypes[node] = retainType(resTy);

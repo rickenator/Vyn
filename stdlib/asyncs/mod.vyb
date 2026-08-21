@@ -5,9 +5,9 @@
 # fiber) pinned to one of the pool's worker threads (one scheduler per CPU core),
 # and a running fiber can suspend cooperatively without blocking its worker:
 #
-#   import async
-#   a = async_spawn(|| -> { async_sleep_ms(40); return 10 })
-#   b = async_spawn(|| -> { async_sleep_ms(5); return 32 })
+#   import asyncs
+#   a<Int> = async_spawn(|| -> { async_sleep_ms(40); return 10 }) else 0
+#   b<Int> = async_spawn(|| -> { async_sleep_ms(5); return 32 }) else 0
 #   v1 = async_await(a)   // drives the loop until a completes -> 10
 #   v2 = async_await(b)   // -> 32   (took ~40ms total, not ~45ms)
 #
@@ -23,12 +23,24 @@
 # afterwards), so a long-lived program can recycle fibers instead of one per
 # spawn. async_run_all() runs whatever is left and then reclaims every task; a
 # leftover-task atexit hook stops the worker pool and reclaims anything forgotten.
+#
+# Fallible operations follow the engine-wide `T?` shape (PROGRAMMERS_GUIDE
+# §3.16): async_spawn and async_accept return `Int?` and are absent on failure
+# (no more `0`/`-1` sentinels); async_poll is a native `Int?` -- absent while the
+# fiber is still running, present holding its result (which may legitimately be
+# -1). async_await stays a plain Int: on a valid handle it always blocks until a
+# result arrives, so it has no absence to report. async_connect/async_send keep
+# their documented Int status/byte counts, and async_connect's failure diagnostic
+# lives in network::socket_error_code()/socket_error_message().
 
-# Enqueue `work` (a fn() -> Int) on the worker pool; returns a task handle (>= 1)
-# or 0 on failure. The pool runs on the next async_await/async_run_all.
+# Enqueue `work` (a fn() -> Int) on the worker pool. Returns `Int?` -- present
+# holding the task handle (>= 1) on success, absent when pool setup fails. The
+# pool runs on the next async_await/async_run_all.
 share(all)
-async_spawn(work<fn() -> Int>)<Int> -> {
-    return vyb_async_spawn(work)
+async_spawn(work<fn() -> Int>)<Int?> -> {
+    h<Int> = vyb_async_spawn(work)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
 # Run the pool until no queued work or pending timer remain, then reclaim tasks.
@@ -37,18 +49,22 @@ async_run_all()<Int> -> {
     return vyb_async_run_all()
 }
 
-# Block until task `t` completes and return its closure result. From the entry
-# thread this parks until the worker delivers it; from inside a fiber it suspends
-# that fiber while the pool continues other work.
+# Block until task `t` completes and return its closure result. On a valid handle
+# the result is always delivered (it may be any Int, including -1); only an
+# invalid handle yields -1. From the entry thread this parks until the worker
+# delivers it; from inside a fiber it suspends that fiber while the pool
+# continues other work.
 share(all)
 async_await(t<Int>)<Int> -> {
     return vyb_async_await(t)
 }
 
-# Non-blocking: the task's result if it is done, else -1.
+# Non-blocking presence check: returns `Int?` -- present holding the task's
+# result once the fiber has finished (the result may legitimately be -1), absent
+# while it is still running. Unwrap with `else default` or `match`.
 share(all)
-async_poll(t<Int>)<Int> -> {
-    return vyb_async_poll(t)
+async_poll(t<Int>)<Int?> -> {
+    return vyb_async_poll_opt(t)
 }
 
 # Reclaim a completed task, freeing its fiber stack and captured environment so
@@ -82,21 +98,27 @@ async_sleep_ms(ms<Int>)<Int> -> {
 # socket isn't ready, the calling fiber suspends (via a background poll pump)
 # and the pool keeps running other tasks. The socket is switched to
 # non-blocking on the first async op, so each helper may be called repeatedly.
+# For the ergonomic `TcpStream?`/`TcpListener` surface use network's
+# async_tcp_accept/async_tcp_connect/async_tcp_read/async_tcp_write.
 #
 #   srv = network::socket_open(...); network::socket_bind(...); network::socket_listen(...)
 #   # server fiber:
-#   conn = async_accept(srv)            // suspends until a connection arrives
-#   echo  = async_recv(conn, 4096)      // suspends until data is readable
+#   conn<Int> = async_accept(srv) else 0     // suspends until a connection arrives
+#   echo  = async_recv(conn, 4096)           // suspends until data is readable
 #   async_send(conn, echo)
 #   # client fiber:
 #   async_connect(cli, "127.0.0.1", port)
 #   async_send(cli, "ping"); async_recv(cli, 4096)
 
 # Accept a pending connection on a listening socket, suspending until one
-# arrives. Returns the connected descriptor (>= 0) or -1.
+# arrives. Returns `Int?` -- present holding the connected descriptor (>= 0) on
+# success, absent on failure. The failure diagnostic lives in
+# network::socket_error_code()/socket_error_message().
 share(all)
-async_accept(fd<Int>)<Int> -> {
-    return vyb_async_accept(fd)
+async_accept(fd<Int>)<Int?> -> {
+    c<Int> = vyb_async_accept(fd)
+    if (c < 0) { return Int?() }
+    return Int?(c)
 }
 
 # Non-blocking connect, suspending until established or refused. Returns 0 on

@@ -12,7 +12,7 @@ import asyncs::{async_sleep_ms, async_spawn, async_poll, async_await, async_deta
 wait_for(t<Int>)<Int> -> {
     i<Int> = 0
     while (i < 1000) {
-        p<Int> = async_poll(t)
+        p<Int> = async_poll(t) else -1
         if (p >= 0) { return p }
         async_sleep_ms(1)
         i = i + 1
@@ -27,7 +27,7 @@ main()<Int> -> {
     i<Int> = 0
     while (i < n) {
         v<Int> = i
-        hs.push(async_spawn(|| -> { async_sleep_ms(2); return v }))
+        hs.push(async_spawn(|| -> { async_sleep_ms(2); return v }) else 0)
         i = i + 1
     }
     i = 0
@@ -41,15 +41,15 @@ main()<Int> -> {
 
     # 2) Deferred reclamation: detach fibers that are still running. The worker
     #    reaps them when they finish; a second detach reports already-detached.
-    a<Int> = async_spawn(|| -> { async_sleep_ms(30); return 77 })
-    b<Int> = async_spawn(|| -> { async_sleep_ms(40); return 88 })
+    a<Int> = async_spawn(|| -> { async_sleep_ms(30); return 77}) else 0
+    b<Int> = async_spawn(|| -> { async_sleep_ms(40); return 88}) else 0
     if (async_detach(a) != 0) { return 120 }
     if (async_detach(a) != -1) { return 121 }
     if (async_detach(b) != 0) { return 122 }
 
     # 3) A task with a waiter attached cannot be detached (refused with -3).
-    c<Int> = async_spawn(|| -> { async_sleep_ms(80); return 5 })
-    d<Int> = async_spawn(|| -> { return async_await(c) })
+    c<Int> = async_spawn(|| -> { async_sleep_ms(80); return 5}) else 0
+    d<Int> = async_spawn(|| -> { return async_await(c)}) else 0
     async_sleep_ms(10)             # let d become a waiter on c
     if (async_detach(c) != -3) { return 130 }
 

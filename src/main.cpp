@@ -442,6 +442,7 @@ extern "C" {
     int64_t __vyb_task_spawn(void* env, void* fn);
     int64_t __vyb_task_await(int64_t task);
     int64_t __vyb_task_poll(int64_t task);
+    int64_t __vyb_task_poll_opt(int64_t task, int64_t* out);
     int64_t __vyb_task_free(int64_t task);
     // Async event loop (async stdlib module): a cooperative, stackful-fiber
     // executor on this thread. spawn enqueues a closure as a fiber; await/poll
@@ -451,6 +452,7 @@ extern "C" {
     int64_t __vyb_async_run_all(void);
     int64_t __vyb_async_await(int64_t task);
     int64_t __vyb_async_poll(int64_t task);
+    int64_t __vyb_async_poll_opt(int64_t task, int64_t* out);
     int64_t __vyb_async_set_error(int64_t task, void* err);
     int64_t __vyb_async_take_error(int64_t task);
     int64_t __vyb_async_detach(int64_t task);
@@ -2242,6 +2244,8 @@ runtimeSymbols[mangle("__vyb_strchan_free")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_task_await), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_task_poll")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_task_poll), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_task_poll_opt")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_task_poll_opt), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_async_spawn")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_spawn), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_async_run_all")] = llvm::orc::ExecutorSymbolDef(
@@ -2250,6 +2254,8 @@ runtimeSymbols[mangle("__vyb_strchan_free")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_await), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_async_poll")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_poll), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_async_poll_opt")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_poll_opt), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_async_detach")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_async_detach), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_async_set_error")] = llvm::orc::ExecutorSymbolDef(
