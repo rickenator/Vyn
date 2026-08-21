@@ -4594,6 +4594,33 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         } else if (fname == "vyb_chan_try") {
             emitHandleIntrinsic("__vyb_chan_try", 1);   // non-blocking
             return;
+        } else if (fname == "vyb_chan_try_opt") {
+            // Lossless non-blocking try returning a native `Int?` (`{ value, has }`);
+            // absent when the channel is empty or closed. Mirrors vyb_chan_recv_opt.
+            if (node->arguments.size() != 1) {
+                logError(node->loc, "vyb_chan_try_opt expects 1 argument (ch)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this);
+            llvm::Value* ch = m_currentLLVMValue;
+            if (!ch) return;
+            llvm::Value* ch64 = ch;
+            if (ch64->getType()->isIntegerTy() && !ch64->getType()->isIntegerTy(64))
+                ch64 = builder->CreateSExt(ch64, int64Type, "chantry.toi64");
+            llvm::StructType* optTy = llvm::StructType::get(*context,
+                {int64Type, llvm::Type::getInt1Ty(*context)}, false);
+            llvm::Value* slot = builder->CreateAlloca(int64Type, nullptr, "chantry.slot");
+            llvm::FunctionType* ft = llvm::FunctionType::get(
+                int64Type, {int64Type, llvm::PointerType::get(*context, 0)}, false);
+            llvm::Function* f = module->getFunction("__vyb_chan_try_opt");
+            if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_chan_try_opt", module.get());
+            llvm::Value* has = builder->CreateCall(f, {ch64, slot}, "chantry.has");
+            llvm::Value* val = builder->CreateLoad(int64Type, slot, "chantry.val");
+            llvm::Value* opt = llvm::UndefValue::get(optTy);
+            opt = builder->CreateInsertValue(opt, val, 0, "chantry.v");
+            opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "chantry.h"), 1);
+            m_currentLLVMValue = opt;
+            return;
         } else if (fname == "vyb_chan_len") {
             emitHandleIntrinsic("__vyb_chan_len", 1);
             return;
@@ -4687,6 +4714,33 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             llvm::Value* opt = llvm::UndefValue::get(optTy);
             opt = builder->CreateInsertValue(opt, val, 0, "stropt.v");
             opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "stropt.h"), 1);
+            m_currentLLVMValue = opt;
+            return;
+        } else if (fname == "vyb_strchan_try_opt") {
+            // Lossless non-blocking try returning a native `String?` (`{ String, has }`);
+            // absent when the channel is empty or closed. Mirrors vyb_strchan_recv_opt.
+            if (node->arguments.size() != 1) {
+                logError(node->loc, "vyb_strchan_try_opt expects 1 argument (ch)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this);
+            llvm::Value* ch = m_currentLLVMValue;
+            if (!ch) return;
+            llvm::Value* ch64 = ch;
+            if (ch64->getType()->isIntegerTy() && !ch64->getType()->isIntegerTy(64))
+                ch64 = builder->CreateSExt(ch64, int64Type, "strtry.toi64");
+            llvm::StructType* strTy = llvm::StructType::get(*context, {int8PtrType, int64Type}, false);
+            llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
+            llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "strtry.slot");
+            llvm::FunctionType* ft = llvm::FunctionType::get(
+                int64Type, {int64Type, llvm::PointerType::get(*context, 0)}, false);
+            llvm::Function* f = module->getFunction("__vyb_strchan_try_opt");
+            if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_strchan_try_opt", module.get());
+            llvm::Value* has = builder->CreateCall(f, {ch64, slot}, "strtry.has");
+            llvm::Value* val = builder->CreateLoad(strTy, slot, "strtry.val");
+            llvm::Value* opt = llvm::UndefValue::get(optTy);
+            opt = builder->CreateInsertValue(opt, val, 0, "strtry.v");
+            opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "strtry.h"), 1);
             m_currentLLVMValue = opt;
             return;
         } else if (fname == "vyb_env_get_opt") {

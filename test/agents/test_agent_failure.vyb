@@ -31,15 +31,15 @@ main()<Int> -> {
     # Happy path first.
     agent_send(a, 1)
     agent_send(a, 2)
-    if (chan_recv(out) != 10) { return 3 }
-    if (chan_recv(out) != 20) { return 4 }
+    if ((chan_recv(out) else -1) != 10) { return 3 }
+    if ((chan_recv(out) else -1) != 20) { return 4 }
 
     # Trigger the failure. The accept returns 1 (mailbox open); the worker then
     # processes -5, fails, reports on the dead-letter, and closes the mailbox.
     if (agent_send(a, -5) != 1) { return 5 }
 
     # Dead-letter delivery guarantees the failure has been recorded.
-    fh<Int> = chan_recv(big)
+    fh<Int> = chan_recv(big) else -1
     if (fh != a) { return 6 }
 
     if (agent_status(a) != 2) { return 7 }

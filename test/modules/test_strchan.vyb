@@ -4,8 +4,9 @@
 //   pointer is retained so the string outlives the sender; recv/try transfer
 //   that reference to the caller. Verified: a producer thread enqueues a String
 //   the consumer blocks on recv for and reads back intact, strchan_try reports
-//   empty ("") when nothing is buffered, a bounded String channel respects its
-//   capacity, and the handle frees cleanly.
+//   absence (else "" recovers the old sentinel) when nothing is buffered, a
+//   bounded String channel respects its capacity, a genuine "" payload round-
+//   trips losslessly, and the handle frees cleanly. send returns Bool.
 // @category: modules, channels, strings, concurrency, stdlib
 // @expect: pass
 // @expect-output: ok
@@ -21,26 +22,36 @@ main()<Int> -> {
     sc<Int> = strchan_new()
     if (sc == 0) { return 1 }
     if (strchan_len(sc) != 0) { return 2 }
-    if (strchan_try(sc) != "") { return 3 }
+    # Empty channel: try reports absence; `else ""` recovers the old sentinel.
+    if ((strchan_try(sc) else "") != "") { return 3 }
 
     w<Int> = thread_spawn(|| -> { sleep_ms(5); strchan_send(sc, "hello from worker"); return 0 }) else -1
     if (w < 0) { return 4 }
-    if (strchan_recv(sc) != "hello from worker") { return 5 }
+    if ((strchan_recv(sc) else "") != "hello from worker") { return 5 }
     if (thread_join(w) != 0) { return 6 }
 
     # Bounded String channel: full send returns 0, order preserved.
     bs<Int> = strchan_bounded(2)
     if (bs == 0) { return 7 }
-    if (strchan_send(bs, "one") != 1) { return 8 }
-    if (strchan_send(bs, "two") != 1) { return 9 }
-    if (strchan_send(bs, "three") != 0) { return 10 }   # full
+    if (!strchan_send(bs, "one")) { return 8 }
+    if (!strchan_send(bs, "two")) { return 9 }
+    if (strchan_send(bs, "three")) { return 10 }   # full -> false
     if (strchan_len(bs) != 2) { return 11 }
-    if (strchan_recv(bs) != "one") { return 12 }
-    if (strchan_recv(bs) != "two") { return 13 }
+    if ((strchan_recv(bs) else "") != "one") { return 12 }
+    if ((strchan_recv(bs) else "") != "two") { return 13 }
     if (strchan_len(bs) != 0) { return 14 }
 
-    if (strchan_free(sc) != 0) { return 15 }
-    if (strchan_free(bs) != 0) { return 16 }
+    # Lossless payloads: a genuine "" String is data, not "empty".
+    es<Int> = strchan_new()
+    if (es == 0) { return 15 }
+    if (!strchan_send(es, "")) { return 16 }
+    if ((strchan_recv(es) else "missing") != "") { return 17 }   # "" read back
+    strchan_close(es)
+    if ((strchan_recv(es) else "") != "") { return 18 }          # drained -> absent
+    if (strchan_free(es) != 0) { return 19 }
+
+    if (strchan_free(sc) != 0) { return 20 }
+    if (strchan_free(bs) != 0) { return 21 }
 
     println("ok")
     return 0

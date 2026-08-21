@@ -24,8 +24,8 @@ main()<Int> -> {
     println("send2 ok=" + ok.to_string())
     println("len=" + agent_len(a).to_string())
 
-    r1<Int> = chan_recv(replies)   # 21 * 2
-    r2<Int> = chan_recv(replies)   # 50 * 2
+    r1<Int> = chan_recv(replies) else -1   # 21 * 2
+    r2<Int> = chan_recv(replies) else -1   # 50 * 2
     println("r1=" + r1.to_string())
     println("r2=" + r2.to_string())
 
@@ -33,7 +33,7 @@ main()<Int> -> {
     agent_send(a, 7)
     rc<Int> = agent_close(a)
     println("close rc=" + rc.to_string())
-    r3<Int> = chan_recv(replies)   # 7 * 2
+    r3<Int> = chan_recv(replies) else -1   # 7 * 2
     println("r3=" + r3.to_string())
 
     agent_free(a)

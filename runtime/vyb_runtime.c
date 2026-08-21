@@ -2265,6 +2265,15 @@ VYB_WEAK int64_t __vyb_chan_recv_opt(int64_t ch, int64_t* out) {
     return 1;
 }
 
+// Non-blocking dequeue that reports readiness explicitly (lossless): returns 1
+// and stores the popped value in *out, or 0 when the channel is empty (or
+// closed). This is the non-blocking face of `__vyb_chan_recv_opt`, so every Int
+// payload -- including -1 -- survives. It shares the exact semantics of
+// `__vyb_chan_poll`.
+VYB_WEAK int64_t __vyb_chan_try_opt(int64_t ch, int64_t* out) {
+    return __vyb_chan_poll(ch, out);
+}
+
 // Number of buffered values.
 VYB_WEAK int64_t __vyb_chan_len(int64_t ch) {
     if (!ch) return -1;
@@ -2851,6 +2860,23 @@ VYB_WEAK int64_t __vyb_strchan_recv_opt(int64_t ch, vyb_file_str* out) {
     vyb_strchan* c = (vyb_strchan*)(intptr_t)ch;
     pthread_mutex_lock(&c->mutex);
     while (c->size == 0 && !c->closed) pthread_cond_wait(&c->not_empty, &c->mutex);
+    if (c->size == 0) { pthread_mutex_unlock(&c->mutex); return 0; }
+    *out = c->buf[c->head];
+    c->head = (c->head + 1) % c->cap;
+    c->size--;
+    pthread_mutex_unlock(&c->mutex);
+    return 1;
+}
+
+// Non-blocking dequeue for a String channel that reports readiness explicitly
+// (lossless): returns 1 and writes the String to *out on success (transferring
+// the channel's retained reference to the caller), or 0 when the channel is
+// empty (or closed). This is the non-blocking face of `__vyb_strchan_recv_opt`:
+// no empty-string payload is reserved as a sentinel.
+VYB_WEAK int64_t __vyb_strchan_try_opt(int64_t ch, vyb_file_str* out) {
+    if (!ch || !out) return 0;
+    vyb_strchan* c = (vyb_strchan*)(intptr_t)ch;
+    pthread_mutex_lock(&c->mutex);
     if (c->size == 0) { pthread_mutex_unlock(&c->mutex); return 0; }
     *out = c->buf[c->head];
     c->head = (c->head + 1) % c->cap;

@@ -42,7 +42,7 @@ main()<Int> -> {
     i<Int> = 1
     while (i <= sends) {
         chan_send(gate, 1)
-        rv<Int> = chan_recv(out)
+        rv<Int> = chan_recv(out) else -1
         if (rv != i) { return 6 }
         i = i + 1
     }
@@ -50,7 +50,7 @@ main()<Int> -> {
     if (agent_send(a, 77) != 1) { return 8 }   # emptied -> accepts again
 
     chan_send(gate, 1)
-    if (chan_recv(out) != 77) { return 9 }
+    if ((chan_recv(out) else -1) != 77) { return 9 }
     agent_close(a)
     agent_free(a)
 

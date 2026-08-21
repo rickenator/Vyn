@@ -563,11 +563,11 @@ The standard library ships a layered concurrency story, all built on the externa
 pthread runtime (no raw C ABI in user code):
 
 - **`channels`** — thread-safe message passing. `chan_new`/`chan_bounded(n)` give
-  Int channels; `chan_send`/`chan_recv`/`chan_try`/`chan_len`/`chan_free` pass
-  values across threads. `chan_select(handles<Vec<Int>>)` waits on many channels
-  at once and returns the index of the first ready one. String-payload channels
-  (`strchan_new`/`send`/`recv`/`try`) retain the string on send and transfer the
-  reference on recv.
+  Int channels; `chan_send` (`Bool`) / `chan_recv` / `chan_try` (`Int?`, no `-1`
+  sentinel) / `chan_len` / `chan_free` pass values across threads.
+  `chan_select(handles<Vec<Int>>)` waits on many channels at once and returns
+  the index of the first ready one. String-payload channels (`strchan_*`) retain
+  the string on send and transfer the reference on recv/`try`.
 - **`threads`** — pthread-backed `thread_spawn` (returns an `Int?` handle, absent
   on spawn failure)/`thread_join`/`thread_detach`, `mutex_*`, `cond_*`, and
   lock-free `atomic_*`.

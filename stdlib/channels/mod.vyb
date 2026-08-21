@@ -3,23 +3,42 @@
 # A channel passes Int values between threads (a runtime heap ring-buffer under
 # a Mutex + CondVar). A default channel is unbounded: chan_send always succeeds
 # (the buffer grows as needed). chan_bounded(n) fixes the capacity, and a full
-# bounded send returns 0 immediately (non-blocking), so callers can apply their
-# own backpressure. chan_recv blocks until a value arrives (or the channel is
-# closed); chan_try is the non-blocking form for polling/select.
+# bounded send returns false immediately (non-blocking), so callers can apply
+# their own backpressure.
+#
+# The channel surface is non-sentinel: recv/try return a native `T?`, and send
+# returns `Bool`.
+#
+#   chan_try(ch)   <Int?>     non-blocking; absent when empty or closed
+#   chan_recv(ch)  <Int?>     blocking; absent when closed and drained
+#   chan_send(ch, v) <Bool>   true on success, false if closed/full
+#
+#   strchan_try(ch) <String?> / strchan_recv(ch) <String?> / strchan_send(ch, s) <Bool>
+#
+# The optional forms never reserve a payload as a sentinel: a `-1` Int value or
+# an empty "" String is just data and travels intact. Absence means "nothing to
+# read right now" (try) or "closed and drained" (recv). Recover the old
+# sentinel behaviour with `else`:
+#
+#   v  = chan_recv(ch) else -1     // -1 when closed & empty (was the sentinel)
+#   s  = strchan_try(ch) else ""   // "" when nothing buffered (was the sentinel)
+#
+# `chan_recv_opt` / `strchan_recv_opt` are kept as aliases of `chan_recv` /
+# `strchan_recv` (both already lossless `T?`).
 #
 # Usage:
 #   import channels
 #   ch = chan_new()            // unbounded
-#   ok = chan_send(ch, 42)     // 1 on success, 0 if closed/full
-#   v  = chan_recv(ch)         // blocks until 42 arrives
+#   ok = chan_send(ch, 42)     // true, or false if closed/full
+#   v  = chan_recv(ch)         // blocks until 42 arrives (Int?)
 #
 #   b = chan_bounded(2)        // fixed capacity
 #   chan_send(b, 1); chan_send(b, 2)
-#   chan_send(b, 3)            // 0: buffer is full
+#   chan_send(b, 3)            // false: buffer is full
 #
 # The channels compose with practical applications (e.g. a chunked HTTP body, a
-# pipeline, or an event queue). String payloads / a true `chan<T>` generic type
-# remain future work.
+# pipeline, or an event queue). Typed `chan<T>` channels are a separate,
+# compiler-native generic that already speaks `T?` (see PROGRAMMERS_GUIDE).
 
 # A fresh unbounded channel; returns a handle (0 on allocation failure).
 share(all)
@@ -33,34 +52,34 @@ chan_bounded(cap<Int>)<Int> -> {
     return vyb_chan_new(cap)
 }
 
-# Enqueue `v` (non-blocking). Returns 1 on success, or 0 if the channel is
-# closed or a bounded channel is full.
+# Enqueue `v` (non-blocking). Returns true on success, or false if the channel
+# is closed or a bounded channel is full.
 share(all)
-chan_send(ch<Int>, v<Int>)<Int> -> {
-    return vyb_chan_send(ch, v)
+chan_send(ch<Int>, v<Int>)<Bool> -> {
+    return vyb_chan_send(ch, v) == 1
 }
 
 # Dequeue a value, blocking until one is available (or the channel is closed).
-# Returns the value, or -1 if the channel is closed and empty.
+# Returns a native `Int?`: present holding the value (which may legitimately be
+# -1) when received, absent when the channel is closed and drained.
 share(all)
-chan_recv(ch<Int>)<Int> -> {
-    return vyb_chan_recv(ch)
+chan_recv(ch<Int>)<Int?> -> {
+    return vyb_chan_recv_opt(ch)
 }
 
-# Lossless blocking recv for `async for` / draining: returns the value wrapped
-# in a native `Int?` (present when a value arrives, absent when the channel is
-# closed and drained). Unlike `chan_recv`, no valid Int payload is reserved as a
-# sentinel.
+# Deprecated alias of `chan_recv`: lossless blocking recv returning a native
+# `Int?` (absent when the channel is closed and drained).
 share(all)
 chan_recv_opt(ch<Int>)<Int?> -> {
     return vyb_chan_recv_opt(ch)
 }
 
-# Non-blocking dequeue. Returns a buffered value, or -1 if the channel is empty
-# (or closed). Useful for polling a channel without blocking.
+# Non-blocking dequeue. Returns a native `Int?`: present holding a buffered
+# value (which may legitimately be -1), absent when the channel is empty (or
+# closed). Useful for polling a channel without blocking.
 share(all)
-chan_try(ch<Int>)<Int> -> {
-    return vyb_chan_try(ch)
+chan_try(ch<Int>)<Int?> -> {
+    return vyb_chan_try_opt(ch)
 }
 
 # Number of values currently buffered (-1 on an invalid handle).
@@ -70,7 +89,7 @@ chan_len(ch<Int>)<Int> -> {
 }
 
 # Mark `ch` closed and wake any blocked receivers. After close, receivers see
-# buffered values, then report absent/-1 once drained. Returns 1 or 0.
+# buffered values, then report absent once drained. Returns 1 or 0.
 share(all)
 chan_close(ch<Int>)<Int> -> {
     return vyb_chan_close(ch)
@@ -85,7 +104,7 @@ chan_free(ch<Int>)<Int> -> {
 # Block until at least one of the channels in `handles` has a value (or is
 # closed), then return its index without consuming it ("select"). Follow up with
 # chan_recv(handles[i]) to dequeue. A closed channel is reported as ready so you
-# can observe closure via a -1 recv. Returns -1 on an empty/bad handle Vec.
+# can observe closure via an absent recv. Returns -1 on an empty/bad handle Vec.
 share(all)
 chan_select(handles<Vec<Int>>)<Int> -> {
     return vyb_chan_select(handles)
@@ -97,8 +116,7 @@ chan_select(handles<Vec<Int>>)<Int> -> {
 # that outlives the sender's own string; on recv/try that reference transfers to
 # the caller (dropped on the usual String teardown). A String channel stays on
 # the string API (do not mix with the Int chan ops), and strchan_free should be
-# called after the channel is drained. strchan_try returns an empty string ""
-# when nothing is buffered.
+# called after the channel is drained.
 
 # A fresh unbounded String channel (0 on allocation failure).
 share(all)
@@ -112,31 +130,33 @@ strchan_bounded(cap<Int>)<Int> -> {
     return vyb_strchan_new(cap)
 }
 
-# Enqueue `s` (non-blocking); retains it under the hood. 1 on success, 0 if
-# closed or a bounded channel is full.
+# Enqueue `s` (non-blocking); retains it under the hood. Returns true on
+# success, or false if closed or a bounded channel is full.
 share(all)
-strchan_send(ch<Int>, s<String>)<Int> -> {
-    return vyb_strchan_send(ch, s)
+strchan_send(ch<Int>, s<String>)<Bool> -> {
+    return vyb_strchan_send(ch, s) == 1
 }
 
-# Dequeue a String, blocking until one is available (or closed -> "").
+# Dequeue a String, blocking until one is available (or closed). Returns a
+# native `String?`: present holding the string (which may legitimately be "")
+# when received, absent when the channel is closed and drained.
 share(all)
-strchan_recv(ch<Int>)<String> -> {
-    return vyb_strchan_recv(ch)
+strchan_recv(ch<Int>)<String?> -> {
+    return vyb_strchan_recv_opt(ch)
 }
 
-# Lossless blocking String recv for `async for` / draining, returning a native
-# `String?` (absent when the channel is closed and drained). No sentinel "" is
-# lost as real data.
+# Deprecated alias of `strchan_recv`: lossless blocking String recv returning a
+# native `String?` (absent when the channel is closed and drained).
 share(all)
 strchan_recv_opt(ch<Int>)<String?> -> {
     return vyb_strchan_recv_opt(ch)
 }
 
-# Non-blocking dequeue; returns a buffered String or "" if none is ready.
+# Non-blocking dequeue. Returns a native `String?`: present holding a buffered
+# String (which may legitimately be ""), absent when none is ready (or closed).
 share(all)
-strchan_try(ch<Int>)<String> -> {
-    return vyb_strchan_try(ch)
+strchan_try(ch<Int>)<String?> -> {
+    return vyb_strchan_try_opt(ch)
 }
 
 # Number of Strings currently buffered (-1 on an invalid handle).
@@ -145,8 +165,6 @@ strchan_len(ch<Int>)<Int> -> {
     return vyb_strchan_len(ch)
 }
 
-# Reclaim and free `ch` (call after draining so no reference leaks); 0 or -1.
-share(all)
 # Mark a String channel closed and wake any blocked receivers (drained receivers
 # then see `String?` absence). Returns 1 or 0.
 share(all)

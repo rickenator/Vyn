@@ -306,7 +306,7 @@ otherwise the final fallback.
 Optionals are what reads return when there may be no value: `v.pop()?` (absent
 when empty), `v.first()` / `v.last()` / `v.get(i)` (absent on a missing
 element), `grab()` on a released `mild` (absent), and channel receives
-(`chan_recv_opt` is absent when the channel is closed and drained).
+(`chan_recv` returns `Int?`, absent when the channel is closed and drained).
 
 ### 3.3 Variables, inference, mutability
 
@@ -1315,16 +1315,22 @@ Module page: [`channels.md`](channels.md). Two payload kinds today: `Int`
 ```vyb
 ch<Int>    = chan_new()            # unbounded
 cb<Int>    = chan_bounded(cap)     # bounded (cap elements)
-chan_send(ch, v) / chan_recv(ch)<Int>           # blocking
-chan_try(ch)<Int> / chan_recv_opt(ch)<Int?>     # non-blocking / maybe-empty
+chan_send(ch, v)<Bool>             # true on success, false if closed/full
+chan_recv(ch)<Int?>                # blocking; absent when closed & drained
+chan_try(ch)<Int?>                 # non-blocking; absent when empty/closed
 chan_len(ch) / chan_close(ch) / chan_free(ch)
 chan_select(handles<Vec<Int>>)<Int>             # wait on many channels
 ```
 
-`chan_recv_opt` returns `Int?` (present when a value arrives, absent when the
-channel is closed and drained). `strchan_*` mirror these over `String`
-payloads (`String?` for the empty case). `chan_select` returns which handle
-is ready; see [§5](#5-concurrency-and-async-model) for its role in the async model.
+The channel surface is non-sentinel (§3.16): `chan_recv` and `chan_try` return
+a native `Int?` (present holding the value — which may legitimately be `-1` —
+absent when there is nothing to read), and `chan_send` returns `Bool`. No
+payload is reserved as a sentinel; recover the old `-1`/`""` sentinel behaviour
+with `else` (`chan_recv(ch) else -1`, `strchan_try(ch) else ""`).
+`chan_recv_opt` / `strchan_recv_opt` are kept as aliases of the (now-lossless)
+`chan_recv` / `strchan_recv`. `strchan_*` mirror these over `String` payloads
+(`String?` for the maybe-empty cases). `chan_select` returns which handle is
+ready; see [§5](#5-concurrency-and-async-model) for its role in the async model.
 
 ### 4.7 `threads` — pthread, mutex, condvar, atomics
 
@@ -1944,9 +1950,10 @@ signal — the classic monitor pattern, 1:1 on pthreads.
 
 **Typed channels** so far carry `Int` and `String` payloads, unbounded or
 bounded (`chan_bounded(cap)`). Use `chan_select(handles<Vec<Int>>)` to await
-the first ready handle, then drain it with `chan_recv_opt` (absent when closed
-and drained). Non-`Int` payloads (Float/Bool/Char) are the next channel
-increments and will reuse the same async codegen.
+the first ready handle, then drain it with `chan_recv` (which returns `Int?`,
+absent when the channel is closed and drained). Non-`Int` payloads
+(Float/Bool/Char) are the next channel increments and will reuse the same async
+codegen.
 
 **The async executor** (`asyncs`) is not thread-per-task: a fiber suspends
 cooperatively (`async_sleep_ms`) without blocking its worker, so hundreds of
@@ -2121,6 +2128,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

@@ -2107,6 +2107,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_chan_new" || name == "vyb_chan_send" ||
             name == "vyb_chan_recv" || name == "vyb_chan_try" ||
             name == "vyb_chan_recv_opt" ||
+            name == "vyb_chan_try_opt" ||
             name == "vyb_chan_len" || name == "vyb_chan_close" ||
             name == "vyb_chan_free" ||
             name == "vyb_task_spawn" || name == "vyb_task_await" ||
@@ -2125,6 +2126,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_strchan_new" || name == "vyb_strchan_send" ||
             name == "vyb_strchan_recv" || name == "vyb_strchan_try" ||
             name == "vyb_strchan_recv_opt" ||
+            name == "vyb_strchan_try_opt" ||
             name == "vyb_stdin_read" || name == "vyb_stdin_read_line" ||
             name == "vyb_stdin_isatty" || name == "vyb_stdin_raw_enable" ||
             name == "vyb_stdin_raw_disable" ||
@@ -2957,10 +2959,11 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
                 return;
             }
-            // Lossless channel recv (`async for`): chan_recv_opt returns a native
-            // Int?, strchan_recv_opt a String? (absent when the channel is closed
-            // and drained).
-            if (name == "vyb_chan_recv_opt") {
+            // Lossless channel recv/try (`async for`, chan_recv, chan_try): each
+            // returns a native Int? (absent when the channel is closed and
+            // drained -- or, for try, when it is merely empty). The Int? form
+            // keeps every payload (including -1) representable.
+            if (name == "vyb_chan_recv_opt" || name == "vyb_chan_try_opt") {
                 auto* inner = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "Int"));
                 auto* resTy = new ast::OptionalType(node->loc,
@@ -2969,7 +2972,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                 node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
                 return;
             }
-            if (name == "vyb_strchan_recv_opt") {
+            if (name == "vyb_strchan_recv_opt" || name == "vyb_strchan_try_opt") {
                 auto* inner = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "String"));
                 auto* resTy = new ast::OptionalType(node->loc,

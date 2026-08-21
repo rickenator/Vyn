@@ -1,12 +1,15 @@
 // @test: channels stdlib module - thread-safe message passing
 // @description: `import channels` gives a runtime-backed, pthread/Mutex+CondVar
 //   channel for Int values. An unbounded channel grows as needed and send always
-//   succeeds; a bounded channel fixes capacity and a full send returns 0
-//   (non-blocking). chan_recv blocks until a value arrives; chan_try polls.
+//   succeeds; a bounded channel fixes capacity and a full send returns false
+//   (non-blocking). chan_recv blocks until a value arrives and chan_try polls
+//   without blocking. Both return a native `Int?` -- no -1 sentinel (a genuine
+//   -1 payload survives) -- and chan_send returns Bool.
 //   Verified: producer threads enqueue into a shared unbounded channel and the
 //   consumer blocks on recv until every value arrives (order-insensitive sum),
 //   bounded capacity returns false when full without losing order, chan_try on
-//   an empty channel reports -1, and handles free cleanly.
+//   an empty channel reports absence (recoverable with else -1), a -1 payload
+//   round-trips losslessly, and handles free cleanly.
 // @category: modules, threads, channels, concurrency, stdlib
 // @expect: pass
 // @expect-output: ok
@@ -20,35 +23,45 @@ main()<Int> -> {
     ch<Int> = chan_new()
     if (ch == 0) { return 1 }
     if (chan_len(ch) != 0) { return 2 }
-    if (chan_try(ch) != -1) { return 3 }
+    # Empty channel: try reports absence; `else -1` recovers the old sentinel.
+    if ((chan_try(ch) else -1) != -1) { return 3 }
 
     # Two producer threads share the unbounded channel; the consumer collects
     # all four values by blocking on recv. Sum is order-independent.
     p1<Int> = thread_spawn(|| -> { chan_send(ch, 10); chan_send(ch, 20); return 0 }) else -1
     p2<Int> = thread_spawn(|| -> { chan_send(ch, 30); chan_send(ch, 40); return 0 }) else -1
     if (p1 < 0 || p2 < 0) { return 4 }
-    s1<Int> = chan_recv(ch)
-    s2<Int> = chan_recv(ch)
-    s3<Int> = chan_recv(ch)
-    s4<Int> = chan_recv(ch)
+    s1<Int> = chan_recv(ch) else -1
+    s2<Int> = chan_recv(ch) else -1
+    s3<Int> = chan_recv(ch) else -1
+    s4<Int> = chan_recv(ch) else -1
     if (s1 + s2 + s3 + s4 != 100) { return 5 }
     if (thread_join(p1) != 0 || thread_join(p2) != 0) { return 6 }
 
     # Bounded channel: fixed capacity, full send returns 0, order preserved.
     bc<Int> = chan_bounded(2)
     if (bc == 0) { return 7 }
-    if (chan_send(bc, 1) != 1) { return 8 }
-    if (chan_send(bc, 2) != 1) { return 9 }
-    if (chan_send(bc, 3) != 0) { return 10 }      # full
+    if (!chan_send(bc, 1)) { return 8 }
+    if (!chan_send(bc, 2)) { return 9 }
+    if (chan_send(bc, 3)) { return 10 }      # full -> false
     if (chan_len(bc) != 2) { return 11 }
-    if (chan_recv(bc) != 1) { return 12 }
-    if (chan_try(bc) != 2) { return 13 }
-    if (chan_send(bc, 9) != 1) { return 14 }      # space freed by recv/try
-    if (chan_try(bc) != 9) { return 15 }
+    if ((chan_recv(bc) else -1) != 1) { return 12 }
+    if ((chan_try(bc) else -1) != 2) { return 13 }
+    if (!chan_send(bc, 9)) { return 14 }      # space freed by recv/try
+    if ((chan_try(bc) else -1) != 9) { return 15 }
     if (chan_len(bc) != 0) { return 16 }
 
-    if (chan_free(ch) != 0) { return 17 }
-    if (chan_free(bc) != 0) { return 18 }
+    # Lossless payloads: a genuine -1 Int is data, not "empty".
+    nc<Int> = chan_new()
+    if (nc == 0) { return 17 }
+    if (!chan_send(nc, -1)) { return 18 }
+    if ((chan_recv(nc) else 999) != -1) { return 19 }   # -1 read back intact
+    chan_close(nc)
+    if ((chan_recv(nc) else -1) != -1) { return 20 }     # drained -> absent
+    if (chan_free(nc) != 0) { return 21 }
+
+    if (chan_free(ch) != 0) { return 22 }
+    if (chan_free(bc) != 0) { return 23 }
 
     println("ok")
     return 0

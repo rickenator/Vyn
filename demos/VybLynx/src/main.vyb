@@ -1001,7 +1001,7 @@ start_download(urlStr<String>)<Void> -> {
 # Drain one download result (non-blocking) into the status bar and reclaim the
 # finished agent. Returns true when the status changed (caller redraws).
 poll_progress(st<their<BrowserState>>)<Bool> -> {
-    msg<String> = strchan_try(dl_progress)
+    msg<String> = strchan_try(dl_progress) else ""
     if (msg.len() == 0) { return false }
     st.status = msg
     if (dl_running != 0) {

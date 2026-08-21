@@ -18,8 +18,8 @@ main()<Int> -> {
     })
     agent_send_bool(ba, true)
     agent_send_bool(ba, false)
-    b1<Int> = chan_recv(bres)
-    b2<Int> = chan_recv(bres)
+    b1<Int> = chan_recv(bres) else -1
+    b2<Int> = chan_recv(bres) else -1
     println("bool1=" + b1.to_string() + " bool2=" + b2.to_string())
     agent_close(ba)
     agent_free(ba)
@@ -32,8 +32,8 @@ main()<Int> -> {
     })
     agent_send_float(fa, 1.25)
     agent_send_float(fa, -0.5)
-    f1<String> = strchan_recv(frep)
-    f2<String> = strchan_recv(frep)
+    f1<String> = strchan_recv(frep) else ""
+    f2<String> = strchan_recv(frep) else ""
     println("float1=" + f1 + " float2=" + f2)
     agent_close(fa)
     agent_free(fa)
@@ -46,8 +46,8 @@ main()<Int> -> {
     })
     agent_send_string(sa, "hello")
     agent_send_string(sa, "agent")
-    s1<String> = strchan_recv(srep)
-    s2<String> = strchan_recv(srep)
+    s1<String> = strchan_recv(srep) else ""
+    s2<String> = strchan_recv(srep) else ""
     println("str1=" + s1 + " str2=" + s2)
     agent_close(sa)
     agent_free(sa)

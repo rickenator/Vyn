@@ -32,11 +32,11 @@ main()<Int> -> {
 
     i1<Int> = chan_select(hs)
     if (i1 != 1) { return 4 }
-    if (chan_recv(b) != 200) { return 5 }
+    if ((chan_recv(b) else -1) != 200) { return 5 }
 
     i2<Int> = chan_select(hs)
     if (i2 != 0) { return 6 }
-    if (chan_recv(a) != 100) { return 7 }
+    if ((chan_recv(a) else -1) != 100) { return 7 }
 
     if (thread_join(w) != 0 || thread_join(w2) != 0) { return 8 }
 

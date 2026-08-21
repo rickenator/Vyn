@@ -1,5 +1,5 @@
 {
-  "git_rev": "ccb78f6468390545f83aaae8362f6e1ffe6843da",
+  "git_rev": "4e02c25494e8ece34f9eb8613995e783995f6046",
   "modules": [
     "agents",
     "asyncs",
@@ -1100,7 +1100,7 @@
         "module": "channels",
         "file": "stdlib/channels/mod.vyb",
         "kind": "fn",
-        "signature": "chan_recv(ch<Int>)<Int> ->",
+        "signature": "chan_recv(ch<Int>)<Int?> ->",
         "summary": "Dequeue a value, blocking until one is available (or the channel is closed).",
         "fan_in": 0
       },
@@ -1110,7 +1110,7 @@
         "file": "stdlib/channels/mod.vyb",
         "kind": "fn",
         "signature": "chan_recv_opt(ch<Int>)<Int?> ->",
-        "summary": "Lossless blocking recv for `async for` / draining: returns the value wrapped",
+        "summary": "Deprecated alias of `chan_recv`: lossless blocking recv returning a native",
         "fan_in": 0
       },
       {
@@ -1127,8 +1127,8 @@
         "module": "channels",
         "file": "stdlib/channels/mod.vyb",
         "kind": "fn",
-        "signature": "chan_send(ch<Int>, v<Int>)<Int> ->",
-        "summary": "Enqueue `v` (non-blocking). Returns 1 on success, or 0 if the channel is",
+        "signature": "chan_send(ch<Int>, v<Int>)<Bool> ->",
+        "summary": "Enqueue `v` (non-blocking). Returns true on success, or false if the channel",
         "fan_in": 0
       },
       {
@@ -1136,8 +1136,8 @@
         "module": "channels",
         "file": "stdlib/channels/mod.vyb",
         "kind": "fn",
-        "signature": "chan_try(ch<Int>)<Int> ->",
-        "summary": "Non-blocking dequeue. Returns a buffered value, or -1 if the channel is empty",
+        "signature": "chan_try(ch<Int>)<Int?> ->",
+        "summary": "Non-blocking dequeue. Returns a native `Int?`: present holding a buffered",
         "fan_in": 0
       },
       {
@@ -1155,7 +1155,7 @@
         "file": "stdlib/channels/mod.vyb",
         "kind": "fn",
         "signature": "strchan_close(ch<Int>)<Int> ->",
-        "summary": "Reclaim and free `ch` (call after draining so no reference leaks); 0 or -1.",
+        "summary": "Mark a String channel closed and wake any blocked receivers (drained receivers",
         "fan_in": 0
       },
       {
@@ -1190,8 +1190,8 @@
         "module": "channels",
         "file": "stdlib/channels/mod.vyb",
         "kind": "fn",
-        "signature": "strchan_recv(ch<Int>)<String> ->",
-        "summary": "Dequeue a String, blocking until one is available (or closed -> \"\").",
+        "signature": "strchan_recv(ch<Int>)<String?> ->",
+        "summary": "Dequeue a String, blocking until one is available (or closed). Returns a",
         "fan_in": 0
       },
       {
@@ -1200,7 +1200,7 @@
         "file": "stdlib/channels/mod.vyb",
         "kind": "fn",
         "signature": "strchan_recv_opt(ch<Int>)<String?> ->",
-        "summary": "Lossless blocking String recv for `async for` / draining, returning a native",
+        "summary": "Deprecated alias of `strchan_recv`: lossless blocking String recv returning a",
         "fan_in": 0
       },
       {
@@ -1208,8 +1208,8 @@
         "module": "channels",
         "file": "stdlib/channels/mod.vyb",
         "kind": "fn",
-        "signature": "strchan_send(ch<Int>, s<String>)<Int> ->",
-        "summary": "Enqueue `s` (non-blocking); retains it under the hood. 1 on success, 0 if",
+        "signature": "strchan_send(ch<Int>, s<String>)<Bool> ->",
+        "summary": "Enqueue `s` (non-blocking); retains it under the hood. Returns true on",
         "fan_in": 0
       },
       {
@@ -1217,8 +1217,8 @@
         "module": "channels",
         "file": "stdlib/channels/mod.vyb",
         "kind": "fn",
-        "signature": "strchan_try(ch<Int>)<String> ->",
-        "summary": "Non-blocking dequeue; returns a buffered String or \"\" if none is ready.",
+        "signature": "strchan_try(ch<Int>)<String?> ->",
+        "summary": "Non-blocking dequeue. Returns a native `String?`: present holding a buffered",
         "fan_in": 0
       },
       {
@@ -6604,6 +6604,13 @@
     },
     {
       "type": "proseRef",
+      "from_module": "channels",
+      "from_symbol": "strchan_recv_opt",
+      "to_module": "channels",
+      "to_symbol": "strchan_recv"
+    },
+    {
+      "type": "proseRef",
       "from_module": "collections",
       "from_symbol": "BTreeMap<K, V>",
       "to_module": "collections",
@@ -6997,7 +7004,7 @@
       "type": "runtimeRef",
       "from_module": "channels",
       "from_symbol": "chan_recv",
-      "to_symbol": "vyb_chan_recv"
+      "to_symbol": "vyb_chan_recv_opt"
     },
     {
       "type": "runtimeRef",
@@ -7021,7 +7028,7 @@
       "type": "runtimeRef",
       "from_module": "channels",
       "from_symbol": "chan_try",
-      "to_symbol": "vyb_chan_try"
+      "to_symbol": "vyb_chan_try_opt"
     },
     {
       "type": "runtimeRef",
@@ -7057,7 +7064,7 @@
       "type": "runtimeRef",
       "from_module": "channels",
       "from_symbol": "strchan_recv",
-      "to_symbol": "vyb_strchan_recv"
+      "to_symbol": "vyb_strchan_recv_opt"
     },
     {
       "type": "runtimeRef",
@@ -7075,7 +7082,7 @@
       "type": "runtimeRef",
       "from_module": "channels",
       "from_symbol": "strchan_try",
-      "to_symbol": "vyb_strchan_try"
+      "to_symbol": "vyb_strchan_try_opt"
     },
     {
       "type": "runtimeRef",
