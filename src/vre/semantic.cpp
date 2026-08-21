@@ -9975,10 +9975,13 @@ bool SemanticAnalyzer::traitMethodSignatureMatches(const TraitMethod& traitMetho
         std::string traitReturnType = traitMethod.returnType->toString();
 
         // Resolve associated-type references spelled as either Self::Item or
-        // <Trait>::Item so the two equivalent forms interoperate. Exact
-        // string-prefix matching is brittle for whitespace, qualified paths,
-        // or nested generics -- prefer a type-system driven resolution (cf.
-        // the analogous handle at the generic-impl call site) long term.
+        // <Trait>::Item so the two equivalent forms interoperate.
+        // TODO(issue #105): the string-prefix matching below (rfind("Self::") /
+        // rfind(Trait + "::") against TypeNode::toString()) is brittle around
+        // whitespace, qualified paths (Mod::Self::Item) and nested generics
+        // (Vec<Self::Item>) -- replace it with structural TypeNode matching,
+        // ideally by sharing a helper with resolveAssociatedTypeReference (cf.
+        // the analogous handle at the generic-impl call site).
         auto resolveAssocRef = [&associatedTypeBindings, &traitName](std::string type) -> std::string {
             std::string assocName;
             if (type.rfind("Self::", 0) == 0) {
