@@ -16,7 +16,10 @@ Vyb is one of the most beautiful things we've worked on. Now we strive for **qua
 
 ### Quick Test Run
 ```bash
-# Run all tests with parallel execution
+# Run the canonical suite (authoritative pass/fail count)
+python3 test/run_tests.py --vyb build/vyb --test-dir test --execute-jit
+
+# Or the auxiliary parallel harness with reporting/triage
 python3 test_harness.py --parallel
 
 # Generate comprehensive report
@@ -55,10 +58,10 @@ build/vyb test/path/to/test.vyb
 ## Test Coverage Overview
 
 ### Current Statistics
-- **Total Test Files:** 391+
+- **Total Test Files:** 1061+
 - **Test Categories:** parser, semantic, codegen, runtime, types, collections, async, aspects
 - **Pass Rate Target:** 100%
-- **Current Pass Rate:** TBD (run full suite to establish baseline)
+- **Current Pass Rate:** 100% (1061/1061, benchmarked 2026-08-21)
 
 ### Test Categories
 

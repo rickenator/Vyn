@@ -139,8 +139,8 @@ flags: `--compile <out.o>`, `--link <lib>`, `--static`, and `-O<0..3>`.
 ### Running the test suite
 
 ```bash
-# 900+ programs exercised through compile + run + output/return checks
-python3 test_harness.py --vyb ./build/vyb --workers 16
+# 1061 .vyb tests exercised through compile + run + output/return checks
+python3 test/run_tests.py --vyb ./build/vyb --test-dir test --execute-jit
 ```
 
 Key test knobs (see also [§8](#8-testing-and-tooling)): `--pattern`, `--category`, `--report`,
@@ -2144,14 +2144,15 @@ runtime points a single process at a list of tests if needed.
 ./build.sh --test-pattern '*.vyb' # filter by filename pattern
 ```
 
-### Test harness (`test_harness.py`)
+### Test harness
 
+Canonical suite runner (wired into CTest as `run-tests`):
 ```bash
-python3 test_harness.py --vyb ./build/vyb --workers 16          # run all
-python3 test_harness.py --vyb ./build/vyb --pattern 'async*'    # filter
-python3 test_harness.py --vyb ./build/vyb --report report.md    # report
-python3 test_harness.py --vyb ./build/vyb --triage              # triage plan
+python3 test/run_tests.py --vyb ./build/vyb --test-dir test --execute-jit   # full suite (1061 tests)
+python3 test/run_tests.py --vyb ./build/vyb --test-dir test --category async    # filter by category
 ```
+The auxiliary parallel harness (`test_harness.py`, `triage_tool.py`) adds HTML
+reporting and failure triage on top of that suite.
 
 Tests carry metadata headers (`@test:`, `@description:`, `@category:`,
 `@expect:`, `@expect-output:`, `@expect-return:`) that drive pass/fail

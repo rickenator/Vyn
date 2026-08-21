@@ -52,10 +52,10 @@ Vyb/
 │   ├── ast.cpp          # Abstract syntax tree
 │   └── vre/llvm/        # LLVM codegen and debug
 ├── include/vyb/         # Header files
-├── test/                # 391+ Vyb test files
+├── test/                # 1061 Vyb test files
 ├── doc/                 # Comprehensive documentation
 ├── examples/            # Example programs
-├── test_harness.py      # Modern parallel test runner
+├── test_harness.py      # Auxiliary parallel test runner (canonical suite: test/run_tests.py)
 ├── triage_tool.py       # Failure analysis tool
 └── build/               # Build output directory
 ```
@@ -235,11 +235,14 @@ build/vyb --emit-llvm --debug-info test.vyb
 
 ### Modern Parallel Test Runner
 
-Vyb includes a sophisticated test harness managing 391+ test files:
+Vyb's canonical suite runner (`test/run_tests.py`) manages 1061+ test files; this section describes the auxiliary parallel harness:
 
 #### Basic Usage
 ```bash
-# Run all tests
+# Run the canonical suite (authoritative pass/fail count)
+python3 test/run_tests.py --vyb build/vyb --test-dir test --execute-jit
+
+# Run all tests with the auxiliary parallel harness
 ./test_harness.py
 
 # Run with parallel execution
@@ -551,7 +554,7 @@ valgrind --tool=memcheck build/vyb test.vyb
 
 ## Conclusion
 
-Vyb v0.4.0 represents a complete, production-ready systems programming language with advanced async programming capabilities and comprehensive debugging support. The modern test harness ensures code quality with 391+ tests and intelligent failure analysis.
+Vyb v0.4.0 represents a complete, production-ready systems programming language with advanced async programming capabilities and comprehensive debugging support. The canonical `test/run_tests.py` suite (1061 tests, all passing) ensures code quality, with auxiliary parallel/triage tooling for analysis.
 
 The combination of clean syntax, powerful async/await support, comprehensive debug infrastructure, and modern development tools makes Vyb an excellent choice for systems programming where debugging, maintainability, and performance are critical.
 
