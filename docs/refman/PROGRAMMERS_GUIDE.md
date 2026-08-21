@@ -868,6 +868,42 @@ Notes:
   handler (the catch → report → refail shape), and `refail` re-raises the
   caught error untouched.
 
+#### Opaque handles and `-1` sentinel conventions
+
+Two conventions keep the stdlib's failure surfaces consistent once the `T?`
+migration is complete.
+
+**Opaque handle-creators return `Int?`.**
+
+Functions that allocate a lightweight, index-based handle (no structured value
+to carry) signal allocation/pool failure with absence, not a sentinel. This
+applies to the plain-`Int` handles with no dedicated wrapper struct: mutexes
+(`mutex_new`), condvars (`cond_new`), atomics (`atomic_new`), channels
+(`chan_new`/`chan_bounded`, `strchan_new`/`strchan_bounded`), agents
+(`agent_start` and its payload variants), the curses driver (`curses_init`),
+and Qt widget handles (`qt_*_create`).
+
+```vyb
+m = mutex_new() else fail …            # pool exhausted → absent
+```
+
+The numeric type stays `Int` because the handle *is* an index; absence is the
+failure. Structured, method-carrying resources are the exception — they get a
+`T?` wrapper value (`File?`, `TcpStream?`, `TlsStream?`, `TlsContext?`) instead
+of a bare `Int?`, because their operations attach to the value itself.
+
+**`-1` as a search/parse "not found" result is intentional, not an error.**
+
+Where `-1` means "no match" / "not a valid number" / "no key pressed" — a value
+result, not a failed call — it is kept as `Int` and does *not* become `T?`.
+Examples: `String::index_of`, `utf8_index`/`utf8_at`, the `http_*` parse
+helpers (`http_index_of`, `http_parse_int`, `http_parse_hex`,
+`http_status_code`), `regex_match` (`0`/`1`), and `curses_getch` (`-1` on
+timeout). These keep the idiomatic `if (idx >= 0)` / `while ((ch = getch()) !=
+-1)` test and avoid conflating "no match" with "the call failed". The rule of
+thumb: **absence (`?`) means the operation failed; a sentinel value means the
+operation ran but found nothing.**
+
 ### 3.17 Strings
 
 `String` is a fat pointer (data + length), immutable, with runtime bounds
