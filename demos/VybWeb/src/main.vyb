@@ -223,34 +223,34 @@ main()<Int> -> {
     dpi<Int> = qt_screen_dpi()
     println("VybWeb: screen " + qt_screen_width().to_string() + "x" + qt_screen_height().to_string() + " @ " + dpi.to_string() + "%, window " + winW.to_string() + "x" + winH.to_string())
 
-    w<Int> = qt_window_create()
+    w<Int> = qt_window_create() else 0
     if (w == 0) { return 1 }
-    if (qt_window_resize(w, winW, winH) != 0) { return 1 }
-    if (qt_window_set_title(w, "VybWeb") != 0) { return 1 }
+    if (!(qt_window_resize(w, winW, winH) else false)) { return 1 }
+    if (!(qt_window_set_title(w, "VybWeb") else false)) { return 1 }
 
     // Column layout + nested toolbar row.
-    col<Int> = qt_vbox(w)
+    col<Int> = qt_vbox(w) else 0
     if (col == 0) { return 1 }
-    bar<Int> = qt_hbox(0)
+    bar<Int> = qt_hbox(0) else 0
     if (bar == 0) { return 1 }
 
     // Toolbar controls (parented to the window, placed by the toolbar row).
     // Placed on the bottom of the window, because Vyb plays like that.
-    btnBack<Int> = qt_button_create(w, "< Back")
-    btnFwd<Int>  = qt_button_create(w, "Fwd >")
-    btnReload<Int> = qt_button_create(w, "Reload")
-    url<Int>     = qt_edit_create(w, "https://www.google.com/")
-    btnGo<Int>   = qt_button_create(w, "Go")
-    btnQuit<Int> = qt_button_create(w, "Quit")
+    btnBack<Int> = qt_button_create(w, "< Back") else 0
+    btnFwd<Int>  = qt_button_create(w, "Fwd >") else 0
+    btnReload<Int> = qt_button_create(w, "Reload") else 0
+    url<Int>     = qt_edit_create(w, "https://www.google.com/") else 0
+    btnGo<Int>   = qt_button_create(w, "Go") else 0
+    btnQuit<Int> = qt_button_create(w, "Quit") else 0
 
-    if (qt_layout_add(bar, btnBack) != 0) { return 1 }
-    if (qt_layout_add(bar, btnFwd) != 0) { return 1 }
-    if (qt_layout_add(bar, btnReload) != 0) { return 1 }
-    if (qt_layout_add(bar, url) != 0) { return 1 }
-    if (qt_layout_add(bar, btnGo) != 0) { return 1 }
-    if (qt_layout_add(bar, btnQuit) != 0) { return 1 }
+    if (!(qt_layout_add(bar, btnBack) else false)) { return 1 }
+    if (!(qt_layout_add(bar, btnFwd) else false)) { return 1 }
+    if (!(qt_layout_add(bar, btnReload) else false)) { return 1 }
+    if (!(qt_layout_add(bar, url) else false)) { return 1 }
+    if (!(qt_layout_add(bar, btnGo) else false)) { return 1 }
+    if (!(qt_layout_add(bar, btnQuit) else false)) { return 1 }
 
-    web<Int> = qt_web_create(w)
+    web<Int> = qt_web_create(w) else 0
     if (web == 0) {
         println("VybWeb: QtWebEngine unavailable in this build")
         qt_quit()
@@ -260,9 +260,9 @@ main()<Int> -> {
     // (Qt boxes lay out top-to-bottom, so the web goes in first, then the bar).
     // The page renders at 1:1 by default; Ctrl+/- zooms in and out; QWebEngineView shows scrollbars for
     // content that overflows its viewport.
-    if (qt_layout_add(col, web) != 0) { return 1 }
-    if (qt_layout_add_layout(col, bar) != 0) { return 1 }
-    if (qt_layout_set_stretch(col, 0, 1) != 0) { return 1 }
+    if (!(qt_layout_add(col, web) else false)) { return 1 }
+    if (!(qt_layout_add_layout(col, bar) else false)) { return 1 }
+    if (!(qt_layout_set_stretch(col, 0, 1) else false)) { return 1 }
 
     // Collect all handles into the Browser struct; behaviour hangs off it via
     // the BrowserOps bind above.
@@ -277,7 +277,7 @@ main()<Int> -> {
     }) != 0) { return 1 }
 
     // Build the tree before showing (offscreen visibility semantics).
-    if (qt_window_show(w) != 0) { return 1 }
+    if (!(qt_window_show(w) else false)) { return 1 }
 
     // Start on Google and hand control to Qt's native event loop. The handler
     // (above) drives everything; defer qt_quit() unwinds the GUI cleanly on

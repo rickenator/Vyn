@@ -35,24 +35,36 @@
 # is asynchronous; loadFinished/titleChanged/loadProgress enqueue the shared
 # QtEvent kinds and flow through the same qt_on_event / qt_event_* dispatch.
 #
-# Everything returns 0 on success and -1 on error (handle lookups fail on a 0/
-# stale or non-matching handle; operation with no QApplication returns -1),
-# except the documented deviations: qt_init/qt_active/qt_window_visible/
-# qt_timer_fired return 1/0 booleans, qt_window_create/qt_label_create return
-# a fresh Int handle (0 on failure), and qt_window_width/height return the
-# current size (or -1 on a bad handle).
+# Most operations are T?-shaped (see the docs/FEATURE_STATUS conventions). The
+# handle/creator functions (qt_*_create, qt_vbox/qt_hbox/qt_grid, qt_menubar,
+# qt_menu_add, qt_action_add, qt_toolbar_create, qt_tabs_add, qt_dlg_*) return
+# Int?: an absent value means the handle allocation failed (the bridge returned
+# 0); a present Int?(h) is the live handle. The op-status functions (qt_quit,
+# qt_process_events, qt_set_timer, the set_*/add/close/load/navigation helpers)
+# return Bool?: an absent value means the operation failed (the bridge returned
+# -1, e.g. a bad/0/stale handle or no QApplication); present Bool?(true) means
+# it succeeded.
+#
+# Data/probe getters keep plain values: qt_init/qt_active/qt_window_visible/
+# qt_timer_fired are Bool; qt_window_title/width/height, qt_screen_*,
+# qt_*_text/url/count/value/current/index return their data with 0 or a -1
+# "found nothing" sentinel (they report a value, not op status). qt_run returns
+# the exit code; qt_wait_event/qt_msg_question are value/Bool/int results.
 
 # gen_qt[mod_wrappers]: begin
-# Create a QWebEngineView under `parent`; returns its handle or 0 (needs QtWebEngine).
+# Create a QWebEngineView under `parent`. Returns `Int?` -- present with the live handle, absent if QtWebEngine is unavailable or creation failed.
 share(all)
-qt_web_create(parent<Int>)<Int> -> {
-    return vyb_qt_web_create(parent)
+qt_web_create(parent<Int>)<Int?> -> {
+    h = vyb_qt_web_create(parent)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Begin loading `url` in the web view (async). Returns 0, or -1 on a bad handle.
+# Begin loading `url` in the web view (async). Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_web_load(web<Int>, url<String>)<Int> -> {
-    return vyb_qt_web_load(web, url)
+qt_web_load(web<Int>, url<String>)<Bool?> -> {
+    if (vyb_qt_web_load(web, url) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Current page URL (String); "" on a bad handle.
@@ -73,34 +85,39 @@ qt_web_loading(web<Int>)<Bool> -> {
     return vyb_qt_web_loading(web) == 1
 }
 
-# Go back in history. Returns 0, or -1 on a bad handle.
+# Go back in history. Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_web_back(web<Int>)<Int> -> {
-    return vyb_qt_web_back(web)
+qt_web_back(web<Int>)<Bool?> -> {
+    if (vyb_qt_web_back(web) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Go forward in history. Returns 0, or -1 on a bad handle.
+# Go forward in history. Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_web_forward(web<Int>)<Int> -> {
-    return vyb_qt_web_forward(web)
+qt_web_forward(web<Int>)<Bool?> -> {
+    if (vyb_qt_web_forward(web) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Reload the page. Returns 0, or -1 on a bad handle.
+# Reload the page. Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_web_reload(web<Int>)<Int> -> {
-    return vyb_qt_web_reload(web)
+qt_web_reload(web<Int>)<Bool?> -> {
+    if (vyb_qt_web_reload(web) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Zoom the web view in (larger text). Returns 0, or -1 on a bad handle.
+# Zoom the web view in (larger text). Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_web_zoom_in(web<Int>)<Int> -> {
-    return vyb_qt_web_zoom_in(web)
+qt_web_zoom_in(web<Int>)<Bool?> -> {
+    if (vyb_qt_web_zoom_in(web) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Zoom the web view out (smaller text). Returns 0, or -1 on a bad handle.
+# Zoom the web view out (smaller text). Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_web_zoom_out(web<Int>)<Int> -> {
-    return vyb_qt_web_zoom_out(web)
+qt_web_zoom_out(web<Int>)<Bool?> -> {
+    if (vyb_qt_web_zoom_out(web) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Initialize the QApplication (once); true if the GUI is available.
@@ -109,10 +126,11 @@ qt_init()<Bool> -> {
     return vyb_qt_init() == 1
 }
 
-# Shut the GUI down (terminal - do not use Qt handles afterwards). Returns 0.
+# Shut the GUI down (terminal - do not use Qt handles afterwards). Returns `Bool?` -- present once the GUI has quit.
 share(all)
-qt_quit()<Int> -> {
-    return vyb_qt_quit()
+qt_quit()<Bool?> -> {
+    if (vyb_qt_quit() != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # true while the GUI is initialized.
@@ -121,16 +139,18 @@ qt_active()<Bool> -> {
     return vyb_qt_active() == 1
 }
 
-# Pump the Qt event loop once. Returns 0, or -1 if the GUI is not running.
+# Pump the Qt event loop once. Returns `Bool?` -- present on success, absent if the GUI is not running.
 share(all)
-qt_process_events()<Int> -> {
-    return vyb_qt_process_events()
+qt_process_events()<Bool?> -> {
+    if (vyb_qt_process_events() != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Arm a repeating timer every `ms` ms; poll qt_timer_fired(). Returns 0.
+# Arm a repeating timer every `ms` ms; poll qt_timer_fired(). Returns `Bool?` -- present on success, absent on failure.
 share(all)
-qt_set_timer(ms<Int>)<Int> -> {
-    return vyb_qt_set_timer(ms)
+qt_set_timer(ms<Int>)<Bool?> -> {
+    if (vyb_qt_set_timer(ms) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # true once the armed timer has fired since the last check (read clears).
@@ -139,22 +159,26 @@ qt_timer_fired()<Bool> -> {
     return vyb_qt_timer_fired() == 1
 }
 
-# Create a top-level window; returns its Int handle or 0 on failure.
+# Create a top-level window. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
-qt_window_create()<Int> -> {
-    return vyb_qt_window_create()
+qt_window_create()<Int?> -> {
+    h = vyb_qt_window_create()
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Destroy window `w` (children go with it). Returns 0.
+# Destroy window `w` (children go with it). Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_window_close(w<Int>)<Int> -> {
-    return vyb_qt_window_close(w)
+qt_window_close(w<Int>)<Bool?> -> {
+    if (vyb_qt_window_close(w) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Set titlebar text. Returns 0, or -1 on a bad handle.
+# Set titlebar text. Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_window_set_title(w<Int>, title<String>)<Int> -> {
-    return vyb_qt_window_set_title(w, title)
+qt_window_set_title(w<Int>, title<String>)<Bool?> -> {
+    if (vyb_qt_window_set_title(w, title) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Current titlebar text (String); "" on a bad handle.
@@ -163,10 +187,11 @@ qt_window_title(w<Int>)<String> -> {
     return vyb_qt_window_title(w)
 }
 
-# Resize to (width, height) pixels. Returns 0.
+# Resize to (width, height) pixels. Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_window_resize(w<Int>, width<Int>, height<Int>)<Int> -> {
-    return vyb_qt_window_resize(w, width, height)
+qt_window_resize(w<Int>, width<Int>, height<Int>)<Bool?> -> {
+    if (vyb_qt_window_resize(w, width, height) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Content width in pixels, or -1 on a bad handle.
@@ -181,16 +206,18 @@ qt_window_height(w<Int>)<Int> -> {
     return vyb_qt_window_height(w)
 }
 
-# Show (map) the window. Returns 0.
+# Show (map) the window. Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_window_show(w<Int>)<Int> -> {
-    return vyb_qt_window_show(w)
+qt_window_show(w<Int>)<Bool?> -> {
+    if (vyb_qt_window_show(w) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Hide (unmap) the window. Returns 0.
+# Hide (unmap) the window. Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_window_hide(w<Int>)<Int> -> {
-    return vyb_qt_window_hide(w)
+qt_window_hide(w<Int>)<Bool?> -> {
+    if (vyb_qt_window_hide(w) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # true while window `w` is visible, else false.
@@ -217,16 +244,19 @@ qt_screen_dpi()<Int> -> {
     return vyb_qt_screen_dpi()
 }
 
-# Create a label with `text` under `parent` (0 = none); returns its handle or 0.
+# Create a label with `text` under `parent` (0 = none). Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
-qt_label_create(parent<Int>, text<String>)<Int> -> {
-    return vyb_qt_label_create(parent, text)
+qt_label_create(parent<Int>, text<String>)<Int?> -> {
+    h = vyb_qt_label_create(parent, text)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Replace label text. Returns 0, or -1 on a non-label handle.
+# Replace label text. Returns `Bool?` -- present on success, absent on a non-label handle.
 share(all)
-qt_label_set_text(label<Int>, text<String>)<Int> -> {
-    return vyb_qt_label_set_text(label, text)
+qt_label_set_text(label<Int>, text<String>)<Bool?> -> {
+    if (vyb_qt_label_set_text(label, text) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Current label text (String); "" on a non-label handle.
@@ -235,16 +265,19 @@ qt_label_text(label<Int>)<String> -> {
     return vyb_qt_label_text(label)
 }
 
-# Create a push button under `parent`; a click enqueues QtEvent::Click. Returns its handle.
+# Create a push button under `parent`; a click enqueues QtEvent::Click. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
-qt_button_create(parent<Int>, text<String>)<Int> -> {
-    return vyb_qt_button_create(parent, text)
+qt_button_create(parent<Int>, text<String>)<Int?> -> {
+    h = vyb_qt_button_create(parent, text)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Replace button label. Returns 0, or -1 on a non-button handle.
+# Replace button label. Returns `Bool?` -- present on success, absent on a non-button handle.
 share(all)
-qt_button_set_text(button<Int>, text<String>)<Int> -> {
-    return vyb_qt_button_set_text(button, text)
+qt_button_set_text(button<Int>, text<String>)<Bool?> -> {
+    if (vyb_qt_button_set_text(button, text) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Current button label (String); "" on a non-button handle.
@@ -253,19 +286,23 @@ qt_button_text(button<Int>)<String> -> {
     return vyb_qt_button_text(button)
 }
 
-# Enable (true) / disable (false) the button. Returns 0.
+# Enable (true) / disable (false) the button. Returns `Bool?` -- present on success, absent on a non-button handle.
 share(all)
-qt_button_set_enabled(button<Int>, enabled<Bool>)<Int> -> {
+qt_button_set_enabled(button<Int>, enabled<Bool>)<Bool?> -> {
     if (enabled) {
-        return vyb_qt_button_set_enabled(button, 1)
+        if (vyb_qt_button_set_enabled(button, 1) != 0) { return Bool?() }
+        return Bool?(true)
     }
-    return vyb_qt_button_set_enabled(button, 0)
+    if (vyb_qt_button_set_enabled(button, 0) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Create a single-line text edit under `parent`; text changes enqueue QtEvent::TextChanged.
+# Create a single-line text edit under `parent`; text changes enqueue QtEvent::TextChanged. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
-qt_edit_create(parent<Int>, text<String>)<Int> -> {
-    return vyb_qt_edit_create(parent, text)
+qt_edit_create(parent<Int>, text<String>)<Int?> -> {
+    h = vyb_qt_edit_create(parent, text)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
 # Current edit text (String); "" on a non-edit handle.
@@ -274,22 +311,26 @@ qt_edit_text(edit<Int>)<String> -> {
     return vyb_qt_edit_text(edit)
 }
 
-# Replace edit text. Returns 0, or -1 on a non-edit handle.
+# Replace edit text. Returns `Bool?` -- present on success, absent on a non-edit handle.
 share(all)
-qt_edit_set_text(edit<Int>, text<String>)<Int> -> {
-    return vyb_qt_edit_set_text(edit, text)
+qt_edit_set_text(edit<Int>, text<String>)<Bool?> -> {
+    if (vyb_qt_edit_set_text(edit, text) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Set placeholder (ghost) text. Returns 0.
+# Set placeholder (ghost) text. Returns `Bool?` -- present on success, absent on a non-edit handle.
 share(all)
-qt_edit_set_placeholder(edit<Int>, text<String>)<Int> -> {
-    return vyb_qt_edit_set_placeholder(edit, text)
+qt_edit_set_placeholder(edit<Int>, text<String>)<Bool?> -> {
+    if (vyb_qt_edit_set_placeholder(edit, text) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Create a checkbox under `parent`; toggles enqueue QtEvent::Toggled. Returns its handle.
+# Create a checkbox under `parent`; toggles enqueue QtEvent::Toggled. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
-qt_checkbox_create(parent<Int>, text<String>)<Int> -> {
-    return vyb_qt_checkbox_create(parent, text)
+qt_checkbox_create(parent<Int>, text<String>)<Int?> -> {
+    h = vyb_qt_checkbox_create(parent, text)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
 # true if the checkbox is checked, else false.
@@ -298,55 +339,67 @@ qt_checkbox_checked(box<Int>)<Bool> -> {
     return vyb_qt_checkbox_checked(box) == 1
 }
 
-# Check (true) / uncheck (false) the box (enqueues QtEvent::Toggled). Returns 0.
+# Check (true) / uncheck (false) the box (enqueues QtEvent::Toggled). Returns `Bool?` -- present on success, absent on a non-checkbox handle.
 share(all)
-qt_checkbox_set_checked(box<Int>, on<Bool>)<Int> -> {
+qt_checkbox_set_checked(box<Int>, on<Bool>)<Bool?> -> {
     if (on) {
-        return vyb_qt_checkbox_set_checked(box, 1)
+        if (vyb_qt_checkbox_set_checked(box, 1) != 0) { return Bool?() }
+        return Bool?(true)
     }
-    return vyb_qt_checkbox_set_checked(box, 0)
+    if (vyb_qt_checkbox_set_checked(box, 0) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Create a progress bar with range 0..max under `parent`. Returns its handle or 0.
+# Create a progress bar with range 0..max under `parent`. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
-qt_progress_create(parent<Int>, max<Int>)<Int> -> {
-    return vyb_qt_progress_create(parent, max)
+qt_progress_create(parent<Int>, max<Int>)<Int?> -> {
+    h = vyb_qt_progress_create(parent, max)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Set the progress value (clamped). Returns 0.
+# Set the progress value (clamped). Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_progress_set_value(bar<Int>, value<Int>)<Int> -> {
-    return vyb_qt_progress_set_value(bar, value)
+qt_progress_set_value(bar<Int>, value<Int>)<Bool?> -> {
+    if (vyb_qt_progress_set_value(bar, value) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Create a vertical box layout on window `parent`. Returns a layout handle.
+# Create a vertical box layout on window `parent`. Returns `Int?` -- present with the live layout handle, absent if creation failed.
 share(all)
-qt_vbox(parent<Int>)<Int> -> {
-    return vyb_qt_vbox(parent)
+qt_vbox(parent<Int>)<Int?> -> {
+    h = vyb_qt_vbox(parent)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Create a horizontal box layout on window `parent`. Returns a layout handle.
+# Create a horizontal box layout on window `parent`. Returns `Int?` -- present with the live layout handle, absent if creation failed.
 share(all)
-qt_hbox(parent<Int>)<Int> -> {
-    return vyb_qt_hbox(parent)
+qt_hbox(parent<Int>)<Int?> -> {
+    h = vyb_qt_hbox(parent)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Add widget `child` to box-layout `layout`. Returns 0.
+# Add widget `child` to box-layout `layout`. Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_layout_add(layout<Int>, child<Int>)<Int> -> {
-    return vyb_qt_layout_add(layout, child)
+qt_layout_add(layout<Int>, child<Int>)<Bool?> -> {
+    if (vyb_qt_layout_add(layout, child) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Nest sub-layout `sub` inside box-layout `layout` (adds it as the next item). Returns 0.
+# Nest sub-layout `sub` inside box-layout `layout` (adds it as the next item). Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_layout_add_layout(layout<Int>, sub<Int>)<Int> -> {
-    return vyb_qt_layout_add_layout(layout, sub)
+qt_layout_add_layout(layout<Int>, sub<Int>)<Bool?> -> {
+    if (vyb_qt_layout_add_layout(layout, sub) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Set the stretch factor of the item at `index` (add order, 0-based) to `stretch`. Returns 0.
+# Set the stretch factor of the item at `index` (add order, 0-based) to `stretch`. Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_layout_set_stretch(layout<Int>, index<Int>, stretch<Int>)<Int> -> {
-    return vyb_qt_layout_set_stretch(layout, index, stretch)
+qt_layout_set_stretch(layout<Int>, index<Int>, stretch<Int>)<Bool?> -> {
+    if (vyb_qt_layout_set_stretch(layout, index, stretch) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Static widget kind (QtWidgetKind) of handle `h`, or 0 if not a widget.
@@ -391,10 +444,11 @@ qt_run()<Int> -> {
     return vyb_qt_run()
 }
 
-# Stop a running qt_run() loop (graceful; GUI stays up). Returns 0, or -1 if not running.
+# Stop a running qt_run() loop (graceful; GUI stays up). Returns `Bool?` -- present if a loop was stopped; absent if none was running.
 share(all)
-qt_run_stop()<Int> -> {
-    return vyb_qt_run_stop()
+qt_run_stop()<Bool?> -> {
+    if (vyb_qt_run_stop() != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Register fn(handle, kind) called for each control event queued while qt_run() runs. Returns 0.
@@ -403,22 +457,26 @@ qt_on_event(handler<fn(Int, Int) -> Void>)<Int> -> {
     return vyb_qt_on_event(handler)
 }
 
-# Enqueue a synthetic control event for handle `h` (thread-safe: a background async can signal the UI loop without touching widgets off-thread). Returns 0.
+# Enqueue a synthetic control event for handle `h` (thread-safe: a background async can signal the UI loop without touching widgets off-thread). Returns `Bool?` -- present on success, absent on failure.
 share(all)
-qt_post_event(h<Int>, kind<Int>)<Int> -> {
-    return vyb_qt_post_event(h, kind)
+qt_post_event(h<Int>, kind<Int>)<Bool?> -> {
+    if (vyb_qt_post_event(h, kind) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Create a combo box under `parent`; index changes enqueue QtEvent::IndexChanged.
+# Create a combo box under `parent`; index changes enqueue QtEvent::IndexChanged. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
-qt_combo_create(parent<Int>)<Int> -> {
-    return vyb_qt_combo_create(parent)
+qt_combo_create(parent<Int>)<Int?> -> {
+    h = vyb_qt_combo_create(parent)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Append `text` as the last combo item. Returns 0.
+# Append `text` as the last combo item. Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_combo_add_item(combo<Int>, text<String>)<Int> -> {
-    return vyb_qt_combo_add_item(combo, text)
+qt_combo_add_item(combo<Int>, text<String>)<Bool?> -> {
+    if (vyb_qt_combo_add_item(combo, text) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Combo item count, or -1 on a bad handle.
@@ -433,10 +491,11 @@ qt_combo_current_index(combo<Int>)<Int> -> {
     return vyb_qt_combo_current_index(combo)
 }
 
-# Select combo item `idx`. Returns 0.
+# Select combo item `idx`. Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_combo_set_current_index(combo<Int>, idx<Int>)<Int> -> {
-    return vyb_qt_combo_set_current_index(combo, idx)
+qt_combo_set_current_index(combo<Int>, idx<Int>)<Bool?> -> {
+    if (vyb_qt_combo_set_current_index(combo, idx) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Text of combo item `idx` (String); "" on a bad handle/index.
@@ -445,10 +504,12 @@ qt_combo_item_text(combo<Int>, idx<Int>)<String> -> {
     return vyb_qt_combo_item_text(combo, idx)
 }
 
-# Create an integer spin box with range [min, max]; value changes enqueue QtEvent::ValueChanged.
+# Create an integer spin box with range [min, max]; value changes enqueue QtEvent::ValueChanged. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
-qt_spin_create(parent<Int>, min<Int>, max<Int>)<Int> -> {
-    return vyb_qt_spin_create(parent, min, max)
+qt_spin_create(parent<Int>, min<Int>, max<Int>)<Int?> -> {
+    h = vyb_qt_spin_create(parent, min, max)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
 # Current spin box value, or 0 on a bad handle.
@@ -457,16 +518,19 @@ qt_spin_value(spin<Int>)<Int> -> {
     return vyb_qt_spin_value(spin)
 }
 
-# Set the spin box value (clamped). Returns 0.
+# Set the spin box value (clamped). Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_spin_set_value(spin<Int>, value<Int>)<Int> -> {
-    return vyb_qt_spin_set_value(spin, value)
+qt_spin_set_value(spin<Int>, value<Int>)<Bool?> -> {
+    if (vyb_qt_spin_set_value(spin, value) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Create a horizontal slider with range [min, max]; value changes enqueue QtEvent::ValueChanged.
+# Create a horizontal slider with range [min, max]; value changes enqueue QtEvent::ValueChanged. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
-qt_slider_create(parent<Int>, min<Int>, max<Int>)<Int> -> {
-    return vyb_qt_slider_create(parent, min, max)
+qt_slider_create(parent<Int>, min<Int>, max<Int>)<Int?> -> {
+    h = vyb_qt_slider_create(parent, min, max)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
 # Current slider value, or 0 on a bad handle.
@@ -475,16 +539,19 @@ qt_slider_value(slider<Int>)<Int> -> {
     return vyb_qt_slider_value(slider)
 }
 
-# Set the slider value (clamped). Returns 0.
+# Set the slider value (clamped). Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_slider_set_value(slider<Int>, value<Int>)<Int> -> {
-    return vyb_qt_slider_set_value(slider, value)
+qt_slider_set_value(slider<Int>, value<Int>)<Bool?> -> {
+    if (vyb_qt_slider_set_value(slider, value) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Create a dial with range [min, max]; value changes enqueue QtEvent::ValueChanged.
+# Create a dial with range [min, max]; value changes enqueue QtEvent::ValueChanged. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
-qt_dial_create(parent<Int>, min<Int>, max<Int>)<Int> -> {
-    return vyb_qt_dial_create(parent, min, max)
+qt_dial_create(parent<Int>, min<Int>, max<Int>)<Int?> -> {
+    h = vyb_qt_dial_create(parent, min, max)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
 # Current dial value, or 0 on a bad handle.
@@ -493,22 +560,27 @@ qt_dial_value(dial<Int>)<Int> -> {
     return vyb_qt_dial_value(dial)
 }
 
-# Set the dial value (clamped). Returns 0.
+# Set the dial value (clamped). Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_dial_set_value(dial<Int>, value<Int>)<Int> -> {
-    return vyb_qt_dial_set_value(dial, value)
+qt_dial_set_value(dial<Int>, value<Int>)<Bool?> -> {
+    if (vyb_qt_dial_set_value(dial, value) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Create a titled group-box container under `parent`; put a layout on it. Returns its handle or 0.
+# Create a titled group-box container under `parent`; put a layout on it. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
-qt_group_create(parent<Int>, title<String>)<Int> -> {
-    return vyb_qt_group_create(parent, title)
+qt_group_create(parent<Int>, title<String>)<Int?> -> {
+    h = vyb_qt_group_create(parent, title)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Create a multi-line plain-text editor under `parent`; edits enqueue QtEvent::TextChanged. Returns its handle.
+# Create a multi-line plain-text editor under `parent`; edits enqueue QtEvent::TextChanged. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
-qt_text_edit_create(parent<Int>)<Int> -> {
-    return vyb_qt_text_edit_create(parent)
+qt_text_edit_create(parent<Int>)<Int?> -> {
+    h = vyb_qt_text_edit_create(parent)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
 # Current editor text (String); "" on a bad handle.
@@ -517,16 +589,19 @@ qt_text_edit_text(ed<Int>)<String> -> {
     return vyb_qt_text_edit_text(ed)
 }
 
-# Replace editor text. Returns 0, or -1 on a non-editor handle.
+# Replace editor text. Returns `Bool?` -- present on success, absent on a non-editor handle.
 share(all)
-qt_text_edit_set_text(ed<Int>, text<String>)<Int> -> {
-    return vyb_qt_text_edit_set_text(ed, text)
+qt_text_edit_set_text(ed<Int>, text<String>)<Bool?> -> {
+    if (vyb_qt_text_edit_set_text(ed, text) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Create a radio button under `parent`; toggles enqueue QtEvent::Toggled. Returns its handle.
+# Create a radio button under `parent`; toggles enqueue QtEvent::Toggled. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
-qt_radio_create(parent<Int>, text<String>)<Int> -> {
-    return vyb_qt_radio_create(parent, text)
+qt_radio_create(parent<Int>, text<String>)<Int?> -> {
+    h = vyb_qt_radio_create(parent, text)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
 # true if the radio button is checked, else false.
@@ -535,22 +610,26 @@ qt_radio_checked(radio<Int>)<Bool> -> {
     return vyb_qt_radio_checked(radio) == 1
 }
 
-# Check (true) / uncheck (false) the radio (enqueues QtEvent::Toggled). Returns 0.
+# Check (true) / uncheck (false) the radio (enqueues QtEvent::Toggled). Returns `Bool?` -- present on success, absent on a non-radio handle.
 share(all)
-qt_radio_set_checked(radio<Int>, on<Bool>)<Int> -> {
+qt_radio_set_checked(radio<Int>, on<Bool>)<Bool?> -> {
     if (on) {
-        return vyb_qt_radio_set_checked(radio, 1)
+        if (vyb_qt_radio_set_checked(radio, 1) != 0) { return Bool?() }
+        return Bool?(true)
     }
-    return vyb_qt_radio_set_checked(radio, 0)
+    if (vyb_qt_radio_set_checked(radio, 0) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Enable (true) / disable (false) any widget. Returns 0, or -1 on a non-widget handle.
+# Enable (true) / disable (false) any widget. Returns `Bool?` -- present on success, absent on a non-widget handle.
 share(all)
-qt_widget_set_enabled(h<Int>, on<Bool>)<Int> -> {
+qt_widget_set_enabled(h<Int>, on<Bool>)<Bool?> -> {
     if (on) {
-        return vyb_qt_widget_set_enabled(h, 1)
+        if (vyb_qt_widget_set_enabled(h, 1) != 0) { return Bool?() }
+        return Bool?(true)
     }
-    return vyb_qt_widget_set_enabled(h, 0)
+    if (vyb_qt_widget_set_enabled(h, 0) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # true while widget `h` is enabled, else false.
@@ -559,25 +638,30 @@ qt_widget_enabled(h<Int>)<Bool> -> {
     return vyb_qt_widget_enabled(h) == 1
 }
 
-# Create a grid layout on window `parent`. Returns a layout handle.
+# Create a grid layout on window `parent`. Returns `Int?` -- present with the live layout handle, absent if creation failed.
 share(all)
-qt_grid(parent<Int>)<Int> -> {
-    return vyb_qt_grid(parent)
+qt_grid(parent<Int>)<Int?> -> {
+    h = vyb_qt_grid(parent)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Add widget `child` to grid-layout `layout` at (row, col). Returns 0.
+# Add widget `child` to grid-layout `layout` at (row, col). Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_grid_add(layout<Int>, child<Int>, row<Int>, col<Int>)<Int> -> {
-    return vyb_qt_grid_add(layout, child, row, col)
+qt_grid_add(layout<Int>, child<Int>, row<Int>, col<Int>)<Bool?> -> {
+    if (vyb_qt_grid_add(layout, child, row, col) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Show (true) / hide (false) any widget. Returns 0, or -1 on a non-widget handle.
+# Show (true) / hide (false) any widget. Returns `Bool?` -- present on success, absent on a non-widget handle.
 share(all)
-qt_widget_set_visible(h<Int>, on<Bool>)<Int> -> {
+qt_widget_set_visible(h<Int>, on<Bool>)<Bool?> -> {
     if (on) {
-        return vyb_qt_widget_set_visible(h, 1)
+        if (vyb_qt_widget_set_visible(h, 1) != 0) { return Bool?() }
+        return Bool?(true)
     }
-    return vyb_qt_widget_set_visible(h, 0)
+    if (vyb_qt_widget_set_visible(h, 0) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # true while widget `h` is visible, else false.
@@ -586,16 +670,20 @@ qt_widget_visible(h<Int>)<Bool> -> {
     return vyb_qt_widget_visible(h) == 1
 }
 
-# Create a tab container under `parent`; returns its handle or 0.
+# Create a tab container under `parent`. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
-qt_tabs_create(parent<Int>)<Int> -> {
-    return vyb_qt_tabs_create(parent)
+qt_tabs_create(parent<Int>)<Int?> -> {
+    h = vyb_qt_tabs_create(parent)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Append a tab titled `text`; returns the page's widget handle (put a layout on it).
+# Append a tab titled `text`. Returns `Int?` -- present with the page's widget handle (put a layout on it), absent if the tab could not be added.
 share(all)
-qt_tabs_add(tabs<Int>, text<String>)<Int> -> {
-    return vyb_qt_tabs_add(tabs, text)
+qt_tabs_add(tabs<Int>, text<String>)<Int?> -> {
+    h = vyb_qt_tabs_add(tabs, text)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
 # Tab count, or -1 on a bad handle.
@@ -610,22 +698,26 @@ qt_tabs_current(tabs<Int>)<Int> -> {
     return vyb_qt_tabs_current(tabs)
 }
 
-# Select tab `idx` (enqueues QtEvent::CurrentChanged). Returns 0.
+# Select tab `idx` (enqueues QtEvent::CurrentChanged). Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_tabs_set_current(tabs<Int>, idx<Int>)<Int> -> {
-    return vyb_qt_tabs_set_current(tabs, idx)
+qt_tabs_set_current(tabs<Int>, idx<Int>)<Bool?> -> {
+    if (vyb_qt_tabs_set_current(tabs, idx) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Create an item list under `parent`; selection changes enqueue QtEvent::CurrentChanged. Returns its handle.
+# Create an item list under `parent`; selection changes enqueue QtEvent::CurrentChanged. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
-qt_list_create(parent<Int>)<Int> -> {
-    return vyb_qt_list_create(parent)
+qt_list_create(parent<Int>)<Int?> -> {
+    h = vyb_qt_list_create(parent)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Append `text` as the last list item. Returns 0.
+# Append `text` as the last list item. Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_list_add(list<Int>, text<String>)<Int> -> {
-    return vyb_qt_list_add(list, text)
+qt_list_add(list<Int>, text<String>)<Bool?> -> {
+    if (vyb_qt_list_add(list, text) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # List item count, or -1 on a bad handle.
@@ -640,10 +732,11 @@ qt_list_current(list<Int>)<Int> -> {
     return vyb_qt_list_current(list)
 }
 
-# Select list item `idx`. Returns 0.
+# Select list item `idx`. Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_list_set_current(list<Int>, idx<Int>)<Int> -> {
-    return vyb_qt_list_set_current(list, idx)
+qt_list_set_current(list<Int>, idx<Int>)<Bool?> -> {
+    if (vyb_qt_list_set_current(list, idx) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Text of list item `idx` (String); "" on a bad handle/index.
@@ -652,28 +745,36 @@ qt_list_item_text(list<Int>, idx<Int>)<String> -> {
     return vyb_qt_list_item_text(list, idx)
 }
 
-# Create a top-level QMainWindow (kind Window) with menubar/statusbar/toolbar support; returns its handle or 0.
+# Create a top-level QMainWindow (kind Window) with menubar/statusbar/toolbar support. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
-qt_main_window_create()<Int> -> {
-    return vyb_qt_main_window_create()
+qt_main_window_create()<Int?> -> {
+    h = vyb_qt_main_window_create()
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# The main window's menu bar handle (created on demand).
+# Obtain the main window's menu bar handle (created on demand). Returns `Int?` -- present with the live handle, absent if unavailable.
 share(all)
-qt_menubar(mw<Int>)<Int> -> {
-    return vyb_qt_menubar(mw)
+qt_menubar(mw<Int>)<Int?> -> {
+    h = vyb_qt_menubar(mw)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Add a top-level menu titled `title` to the menu bar; returns its menu handle or 0.
+# Add a top-level menu titled `title` to the menu bar. Returns `Int?` -- present with the live menu handle, absent if creation failed.
 share(all)
-qt_menu_add(mw<Int>, title<String>)<Int> -> {
-    return vyb_qt_menu_add(mw, title)
+qt_menu_add(mw<Int>, title<String>)<Int?> -> {
+    h = vyb_qt_menu_add(mw, title)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Add an action to `menu`; its trigger enqueues QtEvent::Click. Returns the action handle.
+# Add an action to `menu`; its trigger enqueues QtEvent::Click. Returns `Int?` -- present with the live action handle, absent if creation failed.
 share(all)
-qt_action_add(menu<Int>, text<String>)<Int> -> {
-    return vyb_qt_action_add(menu, text)
+qt_action_add(menu<Int>, text<String>)<Int?> -> {
+    h = vyb_qt_action_add(menu, text)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
 # Number of actions in `menu`, or -1 on a bad handle.
@@ -682,10 +783,11 @@ qt_action_count(menu<Int>)<Int> -> {
     return vyb_qt_action_count(menu)
 }
 
-# Show `text` in the main window's status bar. Returns 0, or -1 on a bad handle.
+# Show `text` in the main window's status bar. Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_statusbar_message(mw<Int>, text<String>)<Int> -> {
-    return vyb_qt_statusbar_message(mw, text)
+qt_statusbar_message(mw<Int>, text<String>)<Bool?> -> {
+    if (vyb_qt_statusbar_message(mw, text) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Current status-bar message (String); "" on a bad handle.
@@ -694,34 +796,40 @@ qt_statusbar_text(mw<Int>)<String> -> {
     return vyb_qt_statusbar_text(mw)
 }
 
-# Add a toolbar titled `title` to the main window; returns its handle or 0.
+# Add a toolbar titled `title` to the main window. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
-qt_toolbar_create(mw<Int>, title<String>)<Int> -> {
-    return vyb_qt_toolbar_create(mw, title)
+qt_toolbar_create(mw<Int>, title<String>)<Int?> -> {
+    h = vyb_qt_toolbar_create(mw, title)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Show a modal informational message box (blocks until dismissed). Returns 0.
+# Show a modal informational message box (blocks until dismissed). Returns `Bool?` -- present once the box was shown and dismissed.
 share(all)
-qt_msg_info(parent<Int>, title<String>, text<String>)<Int> -> {
-    return vyb_qt_msg_info(parent, title, text)
+qt_msg_info(parent<Int>, title<String>, text<String>)<Bool?> -> {
+    if (vyb_qt_msg_info(parent, title, text) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Show a modal warning message box (blocks until dismissed). Returns 0.
+# Show a modal warning message box (blocks until dismissed). Returns `Bool?` -- present once the box was shown and dismissed.
 share(all)
-qt_msg_warn(parent<Int>, title<String>, text<String>)<Int> -> {
-    return vyb_qt_msg_warn(parent, title, text)
+qt_msg_warn(parent<Int>, title<String>, text<String>)<Bool?> -> {
+    if (vyb_qt_msg_warn(parent, title, text) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Show a modal critical-error message box (blocks until dismissed). Returns 0.
+# Show a modal critical-error message box (blocks until dismissed). Returns `Bool?` -- present once the box was shown and dismissed.
 share(all)
-qt_msg_error(parent<Int>, title<String>, text<String>)<Int> -> {
-    return vyb_qt_msg_error(parent, title, text)
+qt_msg_error(parent<Int>, title<String>, text<String>)<Bool?> -> {
+    if (vyb_qt_msg_error(parent, title, text) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Show a modal 'about' box (blocks until dismissed). Returns 0.
+# Show a modal 'about' box (blocks until dismissed). Returns `Bool?` -- present once the box was shown and dismissed.
 share(all)
-qt_msg_about(parent<Int>, title<String>, text<String>)<Int> -> {
-    return vyb_qt_msg_about(parent, title, text)
+qt_msg_about(parent<Int>, title<String>, text<String>)<Bool?> -> {
+    if (vyb_qt_msg_about(parent, title, text) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Show a modal Yes/No question. Returns 1 for Yes, 0 for No/dismiss.
@@ -748,58 +856,75 @@ qt_dir_select(parent<Int>, title<String>)<String> -> {
     return vyb_qt_dir_select(parent, title)
 }
 
-# Open a non-blocking information box; returns its handle, or 0 on failure.
+# Open a non-blocking information box. Returns `Int?` -- present with the dialog handle, absent if creation failed.
 share(all)
-qt_dlg_info(parent<Int>, title<String>, text<String>)<Int> -> {
-    return vyb_qt_dlg_info(parent, title, text)
+qt_dlg_info(parent<Int>, title<String>, text<String>)<Int?> -> {
+    h = vyb_qt_dlg_info(parent, title, text)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Open a non-blocking warning box; returns its handle, or 0 on failure.
+# Open a non-blocking warning box. Returns `Int?` -- present with the dialog handle, absent if creation failed.
 share(all)
-qt_dlg_warn(parent<Int>, title<String>, text<String>)<Int> -> {
-    return vyb_qt_dlg_warn(parent, title, text)
+qt_dlg_warn(parent<Int>, title<String>, text<String>)<Int?> -> {
+    h = vyb_qt_dlg_warn(parent, title, text)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Open a non-blocking error box; returns its handle, or 0 on failure.
+# Open a non-blocking error box. Returns `Int?` -- present with the dialog handle, absent if creation failed.
 share(all)
-qt_dlg_error(parent<Int>, title<String>, text<String>)<Int> -> {
-    return vyb_qt_dlg_error(parent, title, text)
+qt_dlg_error(parent<Int>, title<String>, text<String>)<Int?> -> {
+    h = vyb_qt_dlg_error(parent, title, text)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Open a non-blocking about box; returns its handle, or 0 on failure.
+# Open a non-blocking about box. Returns `Int?` -- present with the dialog handle, absent if creation failed.
 share(all)
-qt_dlg_about(parent<Int>, title<String>, text<String>)<Int> -> {
-    return vyb_qt_dlg_about(parent, title, text)
+qt_dlg_about(parent<Int>, title<String>, text<String>)<Int?> -> {
+    h = vyb_qt_dlg_about(parent, title, text)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Open a non-blocking Yes/No box; finishes with result 1 for Yes, 0 otherwise.
+# Open a non-blocking Yes/No box; finishes with result 1 for Yes, 0 otherwise. Returns `Int?` -- present with the dialog handle, absent if creation failed.
 share(all)
-qt_dlg_question(parent<Int>, title<String>, text<String>)<Int> -> {
-    return vyb_qt_dlg_question(parent, title, text)
+qt_dlg_question(parent<Int>, title<String>, text<String>)<Int?> -> {
+    h = vyb_qt_dlg_question(parent, title, text)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Open a non-blocking file-open picker; finishes with result 1 (Accepted) + qt_dlg_selected.
+# Open a non-blocking file-open picker; finishes with result 1 (Accepted) + qt_dlg_selected. Returns `Int?` -- present with the dialog handle, absent if creation failed.
 share(all)
-qt_dlg_open(parent<Int>, title<String>, filter<String>)<Int> -> {
-    return vyb_qt_dlg_open(parent, title, filter)
+qt_dlg_open(parent<Int>, title<String>, filter<String>)<Int?> -> {
+    h = vyb_qt_dlg_open(parent, title, filter)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Open a non-blocking file-save picker; finishes with result 1 (Accepted) + qt_dlg_selected.
+# Open a non-blocking file-save picker; finishes with result 1 (Accepted) + qt_dlg_selected. Returns `Int?` -- present with the dialog handle, absent if creation failed.
 share(all)
-qt_dlg_save(parent<Int>, title<String>, filter<String>)<Int> -> {
-    return vyb_qt_dlg_save(parent, title, filter)
+qt_dlg_save(parent<Int>, title<String>, filter<String>)<Int?> -> {
+    h = vyb_qt_dlg_save(parent, title, filter)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Open a non-blocking directory picker; finishes with result 1 (Accepted) + qt_dlg_selected.
+# Open a non-blocking directory picker; finishes with result 1 (Accepted) + qt_dlg_selected. Returns `Int?` -- present with the dialog handle, absent if creation failed.
 share(all)
-qt_dlg_dir(parent<Int>, title<String>)<Int> -> {
-    return vyb_qt_dlg_dir(parent, title)
+qt_dlg_dir(parent<Int>, title<String>)<Int?> -> {
+    h = vyb_qt_dlg_dir(parent, title)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Finish dialog `h` as rejected (enqueues QtEvent::dialog with result 0). Returns 0.
+# Finish dialog `h` as rejected (enqueues QtEvent::dialog with result 0). Returns `Bool?` -- present on success, absent on a non-dialog or bad handle.
 share(all)
-qt_dlg_close(h<Int>)<Int> -> {
-    return vyb_qt_dlg_close(h)
+qt_dlg_close(h<Int>)<Bool?> -> {
+    if (vyb_qt_dlg_close(h) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Path chosen by file/dir dialog `h` (String); "" on a non-picker handle.
@@ -814,16 +939,19 @@ qt_event_result()<Int> -> {
     return vyb_qt_event_result()
 }
 
-# Create a rich-text editor (QTextEdit) under `parent`; edits enqueue QtEvent::TextChanged.
+# Create a rich-text editor (QTextEdit) under `parent`; edits enqueue QtEvent::TextChanged. Returns `Int?` -- present with the live handle, absent if creation failed.
 share(all)
-qt_rich_create(parent<Int>)<Int> -> {
-    return vyb_qt_rich_create(parent)
+qt_rich_create(parent<Int>)<Int?> -> {
+    h = vyb_qt_rich_create(parent)
+    if (h == 0) { return Int?() }
+    return Int?(h)
 }
 
-# Set the rich-text editor body from `html` (supports <b>/<i>/<font color> etc). Returns 0.
+# Set the rich-text editor body from `html` (supports <b>/<i>/<font color> etc). Returns `Bool?` -- present on success, absent on a non-editor handle.
 share(all)
-qt_rich_set_html(ed<Int>, html<String>)<Int> -> {
-    return vyb_qt_rich_set_html(ed, html)
+qt_rich_set_html(ed<Int>, html<String>)<Bool?> -> {
+    if (vyb_qt_rich_set_html(ed, html) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Current rich-text body as HTML (String); "" on a bad handle.
@@ -832,10 +960,11 @@ qt_rich_html(ed<Int>)<String> -> {
     return vyb_qt_rich_html(ed)
 }
 
-# Set the rich-text editor's plain text (clears formatting). Returns 0.
+# Set the rich-text editor's plain text (clears formatting). Returns `Bool?` -- present on success, absent on a non-editor handle.
 share(all)
-qt_rich_set_plain(ed<Int>, text<String>)<Int> -> {
-    return vyb_qt_rich_set_plain(ed, text)
+qt_rich_set_plain(ed<Int>, text<String>)<Bool?> -> {
+    if (vyb_qt_rich_set_plain(ed, text) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Current plain text (String); "" on a bad handle.
@@ -844,40 +973,46 @@ qt_rich_plain(ed<Int>)<String> -> {
     return vyb_qt_rich_plain(ed)
 }
 
-# Append `text` at the end (keeps the current character format). Returns 0.
+# Append `text` at the end (keeps the current character format). Returns `Bool?` -- present on success, absent on a non-editor handle.
 share(all)
-qt_rich_append(ed<Int>, text<String>)<Int> -> {
-    return vyb_qt_rich_append(ed, text)
+qt_rich_append(ed<Int>, text<String>)<Bool?> -> {
+    if (vyb_qt_rich_append(ed, text) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Clear all rich-text content. Returns 0.
+# Clear all rich-text content. Returns `Bool?` -- present on success, absent on a non-editor handle.
 share(all)
-qt_rich_clear(ed<Int>)<Int> -> {
-    return vyb_qt_rich_clear(ed)
+qt_rich_clear(ed<Int>)<Bool?> -> {
+    if (vyb_qt_rich_clear(ed) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Set the editor's text color to (r,g,b) each 0-255. Returns 0.
+# Set the editor's text color to (r,g,b) each 0-255. Returns `Bool?` -- present on success, absent on a non-editor handle.
 share(all)
-qt_rich_set_text_color(ed<Int>, r<Int>, g<Int>, b<Int>)<Int> -> {
-    return vyb_qt_rich_set_text_color(ed, r, g, b)
+qt_rich_set_text_color(ed<Int>, r<Int>, g<Int>, b<Int>)<Bool?> -> {
+    if (vyb_qt_rich_set_text_color(ed, r, g, b) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Set a widget's font point size. Returns 0, or -1 on a bad handle.
+# Set a widget's font point size. Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_widget_set_font_size(h<Int>, pt<Int>)<Int> -> {
-    return vyb_qt_widget_set_font_size(h, pt)
+qt_widget_set_font_size(h<Int>, pt<Int>)<Bool?> -> {
+    if (vyb_qt_widget_set_font_size(h, pt) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Toggle a widget's font bold (on != 0). Returns 0, or -1 on a bad handle.
+# Toggle a widget's font bold (on != 0). Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_widget_set_font_bold(h<Int>, on<Int>)<Int> -> {
-    return vyb_qt_widget_set_font_bold(h, on)
+qt_widget_set_font_bold(h<Int>, on<Int>)<Bool?> -> {
+    if (vyb_qt_widget_set_font_bold(h, on) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Set a widget's foreground text color via palette (r,g,b each 0-255). Returns 0, or -1 on a bad handle.
+# Set a widget's foreground text color via palette (r,g,b each 0-255). Returns `Bool?` -- present on success, absent on a bad handle.
 share(all)
-qt_widget_set_text_color(h<Int>, r<Int>, g<Int>, b<Int>)<Int> -> {
-    return vyb_qt_widget_set_text_color(h, r, g, b)
+qt_widget_set_text_color(h<Int>, r<Int>, g<Int>, b<Int>)<Bool?> -> {
+    if (vyb_qt_widget_set_text_color(h, r, g, b) != 0) { return Bool?() }
+    return Bool?(true)
 }
 # gen_qt[mod_wrappers]: end
 

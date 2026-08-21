@@ -19,19 +19,19 @@ main()<Int> -> {
     }
     if (qt_active() == false) { return 1 }
 
-    w<Int> = qt_window_create()
+    w<Int> = qt_window_create() else 0
     if (w == 0) { return 2 }
 
     // --- Group box ------------------------------------------------------------
-    g<Int> = qt_group_create(w, "Settings")
+    g<Int> = qt_group_create(w, "Settings") else 0
     if (g == 0) { return 3 }
     if (qt_kind(g) != QtWidgetKind::group) { return 4 }
 
     // --- Multi-line text editor ------------------------------------------------
-    te<Int> = qt_text_edit_create(g)
+    te<Int> = qt_text_edit_create(g) else 0
     if (te == 0) { return 5 }
     if (qt_kind(te) != QtWidgetKind::textEdit) { return 6 }
-    if (qt_text_edit_set_text(te, "line one\nline two") != 0) { return 7 }
+    if (!(qt_text_edit_set_text(te, "line one\nline two") else false)) { return 7 }
     if (qt_text_edit_text(te) != "line one\nline two") { return 8 }
 
     // set_text should enqueue a TextChanged event.
@@ -45,34 +45,34 @@ main()<Int> -> {
     if (foundTc == false) { return 10 }
 
     // --- Radio button ----------------------------------------------------------
-    r1<Int> = qt_radio_create(g, "one")
-    r2<Int> = qt_radio_create(g, "two")
+    r1<Int> = qt_radio_create(g, "one") else 0
+    r2<Int> = qt_radio_create(g, "two") else 0
     if (r1 == 0 || r2 == 0) { return 11 }
     if (qt_kind(r1) != QtWidgetKind::radio) { return 12 }
     if (qt_radio_checked(r1) == true) { return 13 }   // default unchecked
-    if (qt_radio_set_checked(r1, true) != 0) { return 14 }
+    if (!(qt_radio_set_checked(r1, true) else false)) { return 14 }
     if (qt_radio_checked(r1) != true) { return 15 }
     // Setting r2 on unchecks r1 (exclusive within the parent).
-    if (qt_radio_set_checked(r2, true) != 0) { return 16 }
+    if (!(qt_radio_set_checked(r2, true) else false)) { return 16 }
     if (qt_radio_checked(r2) != true) { return 17 }
     if (qt_radio_checked(r1) == true) { return 18 }
 
     // --- Grid layout -----------------------------------------------------------
-    gl<Int> = qt_grid(w)
+    gl<Int> = qt_grid(w) else 0
     if (gl == 0) { return 19 }
-    b1<Int> = qt_button_create(w, "A")
-    b2<Int> = qt_button_create(w, "B")
+    b1<Int> = qt_button_create(w, "A") else 0
+    b2<Int> = qt_button_create(w, "B") else 0
     if (b1 == 0 || b2 == 0) { return 20 }
-    if (qt_grid_add(gl, b1, 0, 0) != 0) { return 21 }
-    if (qt_grid_add(gl, b2, 1, 1) != 0) { return 22 }
+    if (!(qt_grid_add(gl, b1, 0, 0) else false)) { return 21 }
+    if (!(qt_grid_add(gl, b2, 1, 1) else false)) { return 22 }
 
     // --- Generic enable ---------------------------------------------------------
     if (qt_widget_enabled(r2) != true) { return 23 }
-    if (qt_widget_set_enabled(r2, false) != 0) { return 24 }
+    if (!(qt_widget_set_enabled(r2, false) else false)) { return 24 }
     if (qt_widget_enabled(r2) == true) { return 25 }
-    if (qt_widget_set_enabled(r2, true) != 0) { return 26 }
+    if (!(qt_widget_set_enabled(r2, true) else false)) { return 26 }
     if (qt_widget_enabled(r2) != true) { return 27 }
-    if (qt_widget_set_enabled(w, false) != 0) { return 28 }
+    if (!(qt_widget_set_enabled(w, false) else false)) { return 28 }
     if (qt_widget_enabled(w) == true) { return 29 }
 
     qt_quit()

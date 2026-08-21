@@ -18,14 +18,14 @@ main()<Int> -> {
     }
     if (qt_active() == false) { return 1 }
 
-    w<Int> = qt_window_create()
+    w<Int> = qt_window_create() else 0
     if (w == 0) { return 2 }
 
     // --- Modal dialogs (auto-accepted under VYB_QT_DIALOG_AUTO=1) ------------
-    if (qt_msg_info(w, "Info", "hello") != 0) { return 10 }
-    if (qt_msg_warn(w, "Warn", "careful") != 0) { return 11 }
-    if (qt_msg_error(w, "Error", "boom") != 0) { return 12 }
-    if (qt_msg_about(w, "About", "tiny") != 0) { return 13 }
+    if (!(qt_msg_info(w, "Info", "hello") else false)) { return 10 }
+    if (!(qt_msg_warn(w, "Warn", "careful") else false)) { return 11 }
+    if (!(qt_msg_error(w, "Error", "boom") else false)) { return 12 }
+    if (!(qt_msg_about(w, "About", "tiny") else false)) { return 13 }
     if (qt_msg_question(w, "Ask", "yes?") != 1) { return 14 }   // auto answers Yes
     // File/dir pickers are auto-accepted; their returned path is platform/
     // mode dependent (Save may pre-fill a name), so we only exercise them.
@@ -37,20 +37,20 @@ main()<Int> -> {
     if (d == "sentinel-unreachable") { return 17 }
 
     // --- Rich-text editor (QTextEdit) ----------------------------------------
-    ed<Int> = qt_rich_create(w)
+    ed<Int> = qt_rich_create(w) else 0
     if (ed == 0) { return 20 }
     if (qt_kind(ed) != QtWidgetKind::rich) { return 21 }
-    if (qt_rich_set_html(ed, "<b>hi</b> <i>there</i>") != 0) { return 22 }
+    if (!(qt_rich_set_html(ed, "<b>hi</b> <i>there</i>") else false)) { return 22 }
     if (qt_rich_plain(ed) != "hi there") { return 23 }
     html<String> = qt_rich_html(ed)
     if (html == "") { return 24 }
-    if (qt_rich_set_plain(ed, "plain text") != 0) { return 25 }
+    if (!(qt_rich_set_plain(ed, "plain text") else false)) { return 25 }
     if (qt_rich_plain(ed) != "plain text") { return 26 }
-    if (qt_rich_append(ed, "!") != 0) { return 27 }
-    if (qt_rich_append(ed, " second") != 0) { return 28 }
-    if (qt_rich_clear(ed) != 0) { return 29 }
+    if (!(qt_rich_append(ed, "!") else false)) { return 27 }
+    if (!(qt_rich_append(ed, " second") else false)) { return 28 }
+    if (!(qt_rich_clear(ed) else false)) { return 29 }
     if (qt_rich_plain(ed) != "") { return 30 }
-    if (qt_rich_set_text_color(ed, 255, 0, 0) != 0) { return 31 }
+    if (!(qt_rich_set_text_color(ed, 255, 0, 0) else false)) { return 31 }
 
     // A rich text edit should have enqueued QtEvent::TextChanged records.
     sawText<Bool> = false
@@ -63,20 +63,20 @@ main()<Int> -> {
     if (sawText == false) { return 33 }
 
     // --- Font / color helpers (any widget) -----------------------------------
-    lbl<Int> = qt_label_create(w, "styled")
+    lbl<Int> = qt_label_create(w, "styled") else 0
     if (lbl == 0) { return 40 }
-    if (qt_widget_set_font_size(lbl, 18) != 0) { return 41 }
-    if (qt_widget_set_font_bold(lbl, 1) != 0) { return 42 }
-    if (qt_widget_set_text_color(lbl, 0, 0, 255) != 0) { return 43 }
-    if (qt_widget_set_font_size(w, 12) != 0) { return 44 }
-    if (qt_widget_set_text_color(w, 10, 20, 30) != 0) { return 45 }
+    if (!(qt_widget_set_font_size(lbl, 18) else false)) { return 41 }
+    if (!(qt_widget_set_font_bold(lbl, 1) else false)) { return 42 }
+    if (!(qt_widget_set_text_color(lbl, 0, 0, 255) else false)) { return 43 }
+    if (!(qt_widget_set_font_size(w, 12) else false)) { return 44 }
+    if (!(qt_widget_set_text_color(w, 10, 20, 30) else false)) { return 45 }
 
     // Bad-handle / wrong-kind rejection paths.
-    if (qt_rich_set_html(0, "<b>x</b>") != -1) { return 50 }
+    if (qt_rich_set_html(0, "<b>x</b>") else false) { return 50 }
     if (qt_rich_plain(0) != "") { return 51 }
-    if (qt_widget_set_font_size(0, 8) != -1) { return 52 }
-    if (qt_widget_set_text_color(0, 1, 2, 3) != -1) { return 53 }
-    if (qt_msg_info(0, "t", "x") != 0) { return 54 }
+    if (qt_widget_set_font_size(0, 8) else false) { return 52 }
+    if (qt_widget_set_text_color(0, 1, 2, 3) else false) { return 53 }
+    if (!(qt_msg_info(0, "t", "x") else false)) { return 54 }
 
     qt_window_close(w)
     println("qt-dialogs-ok")

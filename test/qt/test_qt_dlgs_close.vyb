@@ -28,30 +28,30 @@ main()<Int> -> {
         println("qt-dlgs-close-ok (Qt5 unavailable)")
         return 0
     }
-    w<Int> = qt_window_create()
+    w<Int> = qt_window_create() else 0
     if (w == 0) { return 1 }
 
     // Warn box: programmatic close -> rejected -> result 0.
-    d1<Int> = qt_dlg_warn(w, "Warn", "careful")
+    d1<Int> = qt_dlg_warn(w, "Warn", "careful") else 0
     if (d1 == 0) { return 2 }
-    if (qt_dlg_close(d1) != 0) { return 3 }
+    if (!(qt_dlg_close(d1) else false)) { return 3 }
     if (drain_dialog(d1) != 0) { return 4 }
 
     // Question box: closing without a choice is a rejection -> result 0.
-    d2<Int> = qt_dlg_question(w, "Ask", "really?")
+    d2<Int> = qt_dlg_question(w, "Ask", "really?") else 0
     if (d2 == 0) { return 5 }
-    if (qt_dlg_close(d2) != 0) { return 6 }
+    if (!(qt_dlg_close(d2) else false)) { return 6 }
     if (drain_dialog(d2) != 0) { return 7 }
 
     // Directory picker: close -> 0; no path was selected.
-    d3<Int> = qt_dlg_dir(w, "Pick")
+    d3<Int> = qt_dlg_dir(w, "Pick") else 0
     if (d3 == 0) { return 8 }
-    if (qt_dlg_close(d3) != 0) { return 9 }
+    if (!(qt_dlg_close(d3) else false)) { return 9 }
     if (drain_dialog(d3) != 0) { return 10 }
     if (qt_dlg_selected(d3) != "") { return 11 }
 
     // Bad-handle paths.
-    if (qt_dlg_close(0) != -1) { return 12 }
+    if (qt_dlg_close(0) else false) { return 12 }
     if (qt_dlg_selected(0) != "") { return 13 }
 
     qt_window_close(w)

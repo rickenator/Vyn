@@ -42,23 +42,23 @@ main()<Int> -> {
         println("qt-dlgs-ok (Qt5 unavailable)")
         return 0
     }
-    w<Int> = qt_window_create()
+    w<Int> = qt_window_create() else 0
     if (w == 0) { return 1 }
 
     // Info box: non-blocking handle, Ok -> result 0.
-    d1<Int> = qt_dlg_info(w, "Info", "hello")
+    d1<Int> = qt_dlg_info(w, "Info", "hello") else 0
     if (d1 == 0) { return 2 }
     if (pump_until_event() != 1) { return 3 }
     if (drain_dialog(d1) != 0) { return 4 }
 
     // Question box: default (Yes) auto-picked -> result 1.
-    d2<Int> = qt_dlg_question(w, "Ask", "proceed?")
+    d2<Int> = qt_dlg_question(w, "Ask", "proceed?") else 0
     if (d2 == 0) { return 5 }
     if (pump_until_event() != 1) { return 6 }
     if (drain_dialog(d2) != 1) { return 7 }
 
     // File-open picker: accepted -> result 1 (path need not be materialized).
-    d3<Int> = qt_dlg_open(w, "Open", "All files (*)")
+    d3<Int> = qt_dlg_open(w, "Open", "All files (*)") else 0
     if (d3 == 0) { return 8 }
     if (pump_until_event() != 1) { return 9 }
     if (drain_dialog(d3) != 1) { return 10 }

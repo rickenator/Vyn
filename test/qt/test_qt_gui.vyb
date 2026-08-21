@@ -21,30 +21,30 @@ main()<Int> -> {
     }
     if (qt_active() == false) { return 1 }
 
-    w<Int> = qt_window_create()
+    w<Int> = qt_window_create() else 0
     if (w == 0) { return 2 }
-    if (qt_window_set_title(w, "Test Window") != 0) { return 3 }
+    if (!(qt_window_set_title(w, "Test Window") else false)) { return 3 }
     if (qt_window_title(w) != "Test Window") { return 4 }
-    if (qt_window_resize(w, 320, 200) != 0) { return 5 }
+    if (!(qt_window_resize(w, 320, 200) else false)) { return 5 }
     if (qt_window_width(w) != 320) { return 6 }
     if (qt_window_height(w) != 200) { return 7 }
 
-    l<Int> = qt_label_create(w, "Hello, Qt")
+    l<Int> = qt_label_create(w, "Hello, Qt") else 0
     if (l == 0) { return 8 }
     if (qt_label_text(l) != "Hello, Qt") { return 9 }
-    if (qt_label_set_text(l, "Bye") != 0) { return 10 }
+    if (!(qt_label_set_text(l, "Bye") else false)) { return 10 }
     if (qt_label_text(l) != "Bye") { return 11 }
 
-    if (qt_window_show(w) != 0) { return 12 }
+    if (!(qt_window_show(w) else false)) { return 12 }
     if (qt_window_visible(w) == false) { return 13 }
-    if (qt_process_events() != 0) { return 14 }
+    if (!(qt_process_events() else false)) { return 14 }
 
     // Polled deadline timer: must fire within ~a second of a 30ms interval.
-    if (qt_set_timer(30) != 0) { return 15 }
+    if (!(qt_set_timer(30) else false)) { return 15 }
     fired<Bool> = false
     poll<Int> = 0
     while (poll < 200) {
-        if (qt_process_events() != 0) { return 16 }
+        if (!(qt_process_events() else false)) { return 16 }
         if (qt_timer_fired()) { fired = true }
         if (fired) { poll = 999 }
         sleep_ms(10)
@@ -52,9 +52,9 @@ main()<Int> -> {
     }
     if (fired == false) { return 17 }
 
-    if (qt_window_hide(w) != 0) { return 18 }
+    if (!(qt_window_hide(w) else false)) { return 18 }
     if (qt_window_visible(w)) { return 19 }
-    if (qt_window_close(w) != 0) { return 20 }
+    if (!(qt_window_close(w) else false)) { return 20 }
 
     qt_quit()
     println("qt-ok")

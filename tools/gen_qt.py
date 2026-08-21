@@ -38,37 +38,37 @@ QT_FUNCS = [
     dict(mod="qt_init", vn="vyb_qt_init", cn="__vyb_qt_init", args=[], ret="Bool", shape="int0", stub="0",
          doc="Initialize the QApplication (once); true if the GUI is available."),
     dict(mod="qt_quit", vn="vyb_qt_quit", cn="__vyb_qt_quit", args=[], ret="Int", shape="int0", stub="0",
-         doc="Shut the GUI down (terminal - do not use Qt handles afterwards). Returns 0."),
+         doc="Shut the GUI down (terminal - do not use Qt handles afterwards). Returns `Bool?` -- present once the GUI has quit."),
     dict(mod="qt_active", vn="vyb_qt_active", cn="__vyb_qt_active", args=[], ret="Bool", shape="int0", stub="0",
          doc="true while the GUI is initialized."),
     dict(mod="qt_process_events", vn="vyb_qt_process_events", cn="__vyb_qt_process_events", args=[], ret="Int",
-         shape="int0", stub="-1", doc="Pump the Qt event loop once. Returns 0, or -1 if the GUI is not running."),
+         shape="int0", stub="-1", doc="Pump the Qt event loop once. Returns `Bool?` -- present on success, absent if the GUI is not running."),
     dict(mod="qt_set_timer", vn="vyb_qt_set_timer", cn="__vyb_qt_set_timer", args=[("ms", "Int")], ret="Int",
-         shape="int1", stub="-1", doc="Arm a repeating timer every `ms` ms; poll qt_timer_fired(). Returns 0."),
+         shape="int1", stub="-1", doc="Arm a repeating timer every `ms` ms; poll qt_timer_fired(). Returns `Bool?` -- present on success, absent on failure."),
     dict(mod="qt_timer_fired", vn="vyb_qt_timer_fired", cn="__vyb_qt_timer_fired", args=[], ret="Bool", shape="int0",
          stub="0", doc="true once the armed timer has fired since the last check (read clears)."),
 
     # Window (QWidget)
     dict(mod="qt_window_create", vn="vyb_qt_window_create", cn="__vyb_qt_window_create", args=[], ret="Int",
-         shape="int0", stub="0", doc="Create a top-level window; returns its Int handle or 0 on failure."),
+         shape="int0", stub="0", doc="Create a top-level window. Returns `Int?` -- present with the live handle, absent if creation failed."),
     dict(mod="qt_window_close", vn="vyb_qt_window_close", cn="__vyb_qt_window_close", args=[("w", "Int")], ret="Int",
-         shape="int1", stub="-1", doc="Destroy window `w` (children go with it). Returns 0."),
+         shape="int1", stub="-1", doc="Destroy window `w` (children go with it). Returns `Bool?` -- present on success, absent on a bad handle."),
     dict(mod="qt_window_set_title", vn="vyb_qt_window_set_title", cn="__vyb_qt_window_set_title",
          args=[("w", "Int"), ("title", "String")], ret="Int", shape="text", stub="-1",
-         doc="Set titlebar text. Returns 0, or -1 on a bad handle."),
+         doc="Set titlebar text. Returns `Bool?` -- present on success, absent on a bad handle."),
     dict(mod="qt_window_title", vn="vyb_qt_window_title", cn="__vyb_qt_window_title", args=[("w", "Int")], ret="String",
          shape="str1", stub="qt_stub_str()", doc="Current titlebar text (String); \"\" on a bad handle."),
     dict(mod="qt_window_resize", vn="vyb_qt_window_resize", cn="__vyb_qt_window_resize",
          args=[("w", "Int"), ("width", "Int"), ("height", "Int")], ret="Int", shape="3int", stub="-1",
-         doc="Resize to (width, height) pixels. Returns 0."),
+         doc="Resize to (width, height) pixels. Returns `Bool?` -- present on success, absent on a bad handle."),
     dict(mod="qt_window_width", vn="vyb_qt_window_width", cn="__vyb_qt_window_width", args=[("w", "Int")], ret="Int",
          shape="int1", stub="-1", doc="Content width in pixels, or -1 on a bad handle."),
     dict(mod="qt_window_height", vn="vyb_qt_window_height", cn="__vyb_qt_window_height", args=[("w", "Int")], ret="Int",
          shape="int1", stub="-1", doc="Content height in pixels, or -1 on a bad handle."),
     dict(mod="qt_window_show", vn="vyb_qt_window_show", cn="__vyb_qt_window_show", args=[("w", "Int")], ret="Int",
-         shape="int1", stub="-1", doc="Show (map) the window. Returns 0."),
+         shape="int1", stub="-1", doc="Show (map) the window. Returns `Bool?` -- present on success, absent on a bad handle."),
     dict(mod="qt_window_hide", vn="vyb_qt_window_hide", cn="__vyb_qt_window_hide", args=[("w", "Int")], ret="Int",
-         shape="int1", stub="-1", doc="Hide (unmap) the window. Returns 0."),
+         shape="int1", stub="-1", doc="Hide (unmap) the window. Returns `Bool?` -- present on success, absent on a bad handle."),
     dict(mod="qt_window_visible", vn="vyb_qt_window_visible", cn="__vyb_qt_window_visible", args=[("w", "Int")],
          ret="Bool", shape="int1", stub="0", doc="true while window `w` is visible, else false."),
 
@@ -83,74 +83,74 @@ QT_FUNCS = [
     # Label (QLabel)
     dict(mod="qt_label_create", vn="vyb_qt_label_create", cn="__vyb_qt_label_create",
          args=[("parent", "Int"), ("text", "String")], ret="Int", shape="text", stub="0",
-         doc="Create a label with `text` under `parent` (0 = none); returns its handle or 0."),
+         doc="Create a label with `text` under `parent` (0 = none). Returns `Int?` -- present with the live handle, absent if creation failed."),
     dict(mod="qt_label_set_text", vn="vyb_qt_label_set_text", cn="__vyb_qt_label_set_text",
          args=[("label", "Int"), ("text", "String")], ret="Int", shape="text", stub="-1",
-         doc="Replace label text. Returns 0, or -1 on a non-label handle."),
+         doc="Replace label text. Returns `Bool?` -- present on success, absent on a non-label handle."),
     dict(mod="qt_label_text", vn="vyb_qt_label_text", cn="__vyb_qt_label_text", args=[("label", "Int")], ret="String",
          shape="str1", stub="qt_stub_str()", doc="Current label text (String); \"\" on a non-label handle."),
 
     # Buttons (QPushButton)
     dict(mod="qt_button_create", vn="vyb_qt_button_create", cn="__vyb_qt_button_create",
          args=[("parent", "Int"), ("text", "String")], ret="Int", shape="text", stub="0",
-         doc="Create a push button under `parent`; a click enqueues QtEvent::Click. Returns its handle."),
+         doc="Create a push button under `parent`; a click enqueues QtEvent::Click. Returns `Int?` -- present with the live handle, absent if creation failed."),
     dict(mod="qt_button_set_text", vn="vyb_qt_button_set_text", cn="__vyb_qt_button_set_text",
          args=[("button", "Int"), ("text", "String")], ret="Int", shape="text", stub="-1",
-         doc="Replace button label. Returns 0, or -1 on a non-button handle."),
+         doc="Replace button label. Returns `Bool?` -- present on success, absent on a non-button handle."),
     dict(mod="qt_button_text", vn="vyb_qt_button_text", cn="__vyb_qt_button_text", args=[("button", "Int")],
          ret="String", shape="str1", stub="qt_stub_str()", doc="Current button label (String); \"\" on a non-button handle."),
     dict(mod="qt_button_set_enabled", vn="vyb_qt_button_set_enabled", cn="__vyb_qt_button_set_enabled",
          args=[("button", "Int"), ("enabled", "Bool")], ret="Int", shape="value", stub="-1",
-         doc="Enable (true) / disable (false) the button. Returns 0.",
+         doc="Enable (true) / disable (false) the button. Returns `Bool?` -- present on success, absent on a non-button handle.",
          body=("if (enabled) {\n        return vyb_qt_button_set_enabled(button, 1)\n    }\n"
                "    return vyb_qt_button_set_enabled(button, 0)")),
 
     # Text edits (QLineEdit)
     dict(mod="qt_edit_create", vn="vyb_qt_edit_create", cn="__vyb_qt_edit_create",
          args=[("parent", "Int"), ("text", "String")], ret="Int", shape="text", stub="0",
-         doc="Create a single-line text edit under `parent`; text changes enqueue QtEvent::TextChanged."),
+         doc="Create a single-line text edit under `parent`; text changes enqueue QtEvent::TextChanged. Returns `Int?` -- present with the live handle, absent if creation failed."),
     dict(mod="qt_edit_text", vn="vyb_qt_edit_text", cn="__vyb_qt_edit_text", args=[("edit", "Int")], ret="String",
          shape="str1", stub="qt_stub_str()", doc="Current edit text (String); \"\" on a non-edit handle."),
     dict(mod="qt_edit_set_text", vn="vyb_qt_edit_set_text", cn="__vyb_qt_edit_set_text",
          args=[("edit", "Int"), ("text", "String")], ret="Int", shape="text", stub="-1",
-         doc="Replace edit text. Returns 0, or -1 on a non-edit handle."),
+         doc="Replace edit text. Returns `Bool?` -- present on success, absent on a non-edit handle."),
     dict(mod="qt_edit_set_placeholder", vn="vyb_qt_edit_set_placeholder", cn="__vyb_qt_edit_set_placeholder",
          args=[("edit", "Int"), ("text", "String")], ret="Int", shape="text", stub="-1",
-         doc="Set placeholder (ghost) text. Returns 0."),
+         doc="Set placeholder (ghost) text. Returns `Bool?` -- present on success, absent on a non-edit handle."),
 
     # Checkboxes (QCheckBox)
     dict(mod="qt_checkbox_create", vn="vyb_qt_checkbox_create", cn="__vyb_qt_checkbox_create",
          args=[("parent", "Int"), ("text", "String")], ret="Int", shape="text", stub="0",
-         doc="Create a checkbox under `parent`; toggles enqueue QtEvent::Toggled. Returns its handle."),
+         doc="Create a checkbox under `parent`; toggles enqueue QtEvent::Toggled. Returns `Int?` -- present with the live handle, absent if creation failed."),
     dict(mod="qt_checkbox_checked", vn="vyb_qt_checkbox_checked", cn="__vyb_qt_checkbox_checked", args=[("box", "Int")],
          ret="Bool", shape="int1", stub="-1", doc="true if the checkbox is checked, else false."),
     dict(mod="qt_checkbox_set_checked", vn="vyb_qt_checkbox_set_checked", cn="__vyb_qt_checkbox_set_checked",
          args=[("box", "Int"), ("on", "Bool")], ret="Int", shape="value", stub="-1",
-         doc="Check (true) / uncheck (false) the box (enqueues QtEvent::Toggled). Returns 0.",
+         doc="Check (true) / uncheck (false) the box (enqueues QtEvent::Toggled). Returns `Bool?` -- present on success, absent on a non-checkbox handle.",
          body=("if (on) {\n        return vyb_qt_checkbox_set_checked(box, 1)\n    }\n"
                "    return vyb_qt_checkbox_set_checked(box, 0)")),
 
     # Progress bars (QProgressBar)
     dict(mod="qt_progress_create", vn="vyb_qt_progress_create", cn="__vyb_qt_progress_create",
          args=[("parent", "Int"), ("max", "Int")], ret="Int", shape="value", stub="0",
-         doc="Create a progress bar with range 0..max under `parent`. Returns its handle or 0."),
+         doc="Create a progress bar with range 0..max under `parent`. Returns `Int?` -- present with the live handle, absent if creation failed."),
     dict(mod="qt_progress_set_value", vn="vyb_qt_progress_set_value", cn="__vyb_qt_progress_set_value",
          args=[("bar", "Int"), ("value", "Int")], ret="Int", shape="value", stub="-1",
-         doc="Set the progress value (clamped). Returns 0."),
+         doc="Set the progress value (clamped). Returns `Bool?` -- present on success, absent on a bad handle."),
 
     # Box layouts
     dict(mod="qt_vbox", vn="vyb_qt_vbox", cn="__vyb_qt_vbox", args=[("parent", "Int")], ret="Int", shape="int1",
-         stub="0", doc="Create a vertical box layout on window `parent`. Returns a layout handle."),
+         stub="0", doc="Create a vertical box layout on window `parent`. Returns `Int?` -- present with the live layout handle, absent if creation failed."),
     dict(mod="qt_hbox", vn="vyb_qt_hbox", cn="__vyb_qt_hbox", args=[("parent", "Int")], ret="Int", shape="int1",
-         stub="0", doc="Create a horizontal box layout on window `parent`. Returns a layout handle."),
+         stub="0", doc="Create a horizontal box layout on window `parent`. Returns `Int?` -- present with the live layout handle, absent if creation failed."),
     dict(mod="qt_layout_add", vn="vyb_qt_layout_add", cn="__vyb_qt_layout_add", args=[("layout", "Int"), ("child", "Int")],
-         ret="Int", shape="value", stub="-1", doc="Add widget `child` to box-layout `layout`. Returns 0."),
+         ret="Int", shape="value", stub="-1", doc="Add widget `child` to box-layout `layout`. Returns `Bool?` -- present on success, absent on a bad handle."),
     dict(mod="qt_layout_add_layout", vn="vyb_qt_layout_add_layout", cn="__vyb_qt_layout_add_layout",
          args=[("layout", "Int"), ("sub", "Int")], ret="Int", shape="value", stub="-1",
-         doc="Nest sub-layout `sub` inside box-layout `layout` (adds it as the next item). Returns 0."),
+         doc="Nest sub-layout `sub` inside box-layout `layout` (adds it as the next item). Returns `Bool?` -- present on success, absent on a bad handle."),
     dict(mod="qt_layout_set_stretch", vn="vyb_qt_layout_set_stretch", cn="__vyb_qt_layout_set_stretch",
          args=[("layout", "Int"), ("index", "Int"), ("stretch", "Int")], ret="Int", shape="3int", stub="-1",
-         doc="Set the stretch factor of the item at `index` (add order, 0-based) to `stretch`. Returns 0."),
+         doc="Set the stretch factor of the item at `index` (add order, 0-based) to `stretch`. Returns `Bool?` -- present on success, absent on a bad handle."),
 
     # Kind introspection
     dict(mod="qt_kind", vn="vyb_qt_kind", cn="__vyb_qt_kind", args=[("h", "Int")], ret="Int", shape="int1", stub="0",
@@ -175,7 +175,7 @@ QT_FUNCS = [
     dict(mod="qt_run", vn="vyb_qt_run", cn="__vyb_qt_run", args=[], ret="Int", shape="int0", stub="-1",
          doc="Run the Qt native event loop, dispatching queued control events to the qt_on_event handler, until qt_run_stop()/qt_quit(). Returns exit code."),
     dict(mod="qt_run_stop", vn="vyb_qt_run_stop", cn="__vyb_qt_run_stop", args=[], ret="Int", shape="int0", stub="-1",
-         doc="Stop a running qt_run() loop (graceful; GUI stays up). Returns 0, or -1 if not running."),
+         doc="Stop a running qt_run() loop (graceful; GUI stays up). Returns `Bool?` -- present if a loop was stopped; absent if none was running."),
     dict(mod="qt_on_event", vn="vyb_qt_on_event", cn="__vyb_qt_on_event",
          args=[("env", "Ptr"), ("fn", "Ptr")], ret="Int", shape="cb", stub="0",
          doc="Register fn(handle, kind) called for each control event queued while qt_run() runs. Returns 0.",
@@ -183,14 +183,14 @@ QT_FUNCS = [
          wrap_body="return vyb_qt_on_event(handler)"),
     dict(mod="qt_post_event", vn="vyb_qt_post_event", cn="__vyb_qt_post_event",
          args=[("h", "Int"), ("kind", "Int")], ret="Int", shape="value", stub="0",
-         doc="Enqueue a synthetic control event for handle `h` (thread-safe: a background async can signal the UI loop without touching widgets off-thread). Returns 0."),
+         doc="Enqueue a synthetic control event for handle `h` (thread-safe: a background async can signal the UI loop without touching widgets off-thread). Returns `Bool?` -- present on success, absent on failure."),
 
     # Combo boxes (QComboBox)
     dict(mod="qt_combo_create", vn="vyb_qt_combo_create", cn="__vyb_qt_combo_create", args=[("parent", "Int")], ret="Int",
-         shape="int1", stub="0", doc="Create a combo box under `parent`; index changes enqueue QtEvent::IndexChanged."),
+         shape="int1", stub="0", doc="Create a combo box under `parent`; index changes enqueue QtEvent::IndexChanged. Returns `Int?` -- present with the live handle, absent if creation failed."),
     dict(mod="qt_combo_add_item", vn="vyb_qt_combo_add_item", cn="__vyb_qt_combo_add_item",
          args=[("combo", "Int"), ("text", "String")], ret="Int", shape="text", stub="-1",
-         doc="Append `text` as the last combo item. Returns 0."),
+         doc="Append `text` as the last combo item. Returns `Bool?` -- present on success, absent on a bad handle."),
     dict(mod="qt_combo_count", vn="vyb_qt_combo_count", cn="__vyb_qt_combo_count", args=[("combo", "Int")], ret="Int",
          shape="int1", stub="-1", doc="Combo item count, or -1 on a bad handle."),
     dict(mod="qt_combo_current_index", vn="vyb_qt_combo_current_index", cn="__vyb_qt_combo_current_index",
@@ -198,7 +198,7 @@ QT_FUNCS = [
          doc="Currently selected combo index (0-based), or -1 on a bad handle."),
     dict(mod="qt_combo_set_current_index", vn="vyb_qt_combo_set_current_index", cn="__vyb_qt_combo_set_current_index",
          args=[("combo", "Int"), ("idx", "Int")], ret="Int", shape="value", stub="-1",
-         doc="Select combo item `idx`. Returns 0."),
+         doc="Select combo item `idx`. Returns `Bool?` -- present on success, absent on a bad handle."),
     dict(mod="qt_combo_item_text", vn="vyb_qt_combo_item_text", cn="__vyb_qt_combo_item_text",
          args=[("combo", "Int"), ("idx", "Int")], ret="String", shape="str2", stub="qt_stub_str()",
          doc="Text of combo item `idx` (String); \"\" on a bad handle/index."),
@@ -206,64 +206,64 @@ QT_FUNCS = [
     # Spin boxes (QSpinBox)
     dict(mod="qt_spin_create", vn="vyb_qt_spin_create", cn="__vyb_qt_spin_create",
          args=[("parent", "Int"), ("min", "Int"), ("max", "Int")], ret="Int", shape="3int", stub="0",
-         doc="Create an integer spin box with range [min, max]; value changes enqueue QtEvent::ValueChanged."),
+         doc="Create an integer spin box with range [min, max]; value changes enqueue QtEvent::ValueChanged. Returns `Int?` -- present with the live handle, absent if creation failed."),
     dict(mod="qt_spin_value", vn="vyb_qt_spin_value", cn="__vyb_qt_spin_value", args=[("spin", "Int")], ret="Int",
          shape="int1", stub="0", doc="Current spin box value, or 0 on a bad handle."),
     dict(mod="qt_spin_set_value", vn="vyb_qt_spin_set_value", cn="__vyb_qt_spin_set_value",
          args=[("spin", "Int"), ("value", "Int")], ret="Int", shape="value", stub="-1",
-         doc="Set the spin box value (clamped). Returns 0."),
+         doc="Set the spin box value (clamped). Returns `Bool?` -- present on success, absent on a bad handle."),
 
     # Sliders (QSlider)
     dict(mod="qt_slider_create", vn="vyb_qt_slider_create", cn="__vyb_qt_slider_create",
          args=[("parent", "Int"), ("min", "Int"), ("max", "Int")], ret="Int", shape="3int", stub="0",
-         doc="Create a horizontal slider with range [min, max]; value changes enqueue QtEvent::ValueChanged."),
+         doc="Create a horizontal slider with range [min, max]; value changes enqueue QtEvent::ValueChanged. Returns `Int?` -- present with the live handle, absent if creation failed."),
     dict(mod="qt_slider_value", vn="vyb_qt_slider_value", cn="__vyb_qt_slider_value", args=[("slider", "Int")], ret="Int",
          shape="int1", stub="0", doc="Current slider value, or 0 on a bad handle."),
     dict(mod="qt_slider_set_value", vn="vyb_qt_slider_set_value", cn="__vyb_qt_slider_set_value",
          args=[("slider", "Int"), ("value", "Int")], ret="Int", shape="value", stub="-1",
-         doc="Set the slider value (clamped). Returns 0."),
+         doc="Set the slider value (clamped). Returns `Bool?` -- present on success, absent on a bad handle."),
 
     # Dials (QDial)
     dict(mod="qt_dial_create", vn="vyb_qt_dial_create", cn="__vyb_qt_dial_create",
          args=[("parent", "Int"), ("min", "Int"), ("max", "Int")], ret="Int", shape="3int", stub="0",
-         doc="Create a dial with range [min, max]; value changes enqueue QtEvent::ValueChanged."),
+         doc="Create a dial with range [min, max]; value changes enqueue QtEvent::ValueChanged. Returns `Int?` -- present with the live handle, absent if creation failed."),
     dict(mod="qt_dial_value", vn="vyb_qt_dial_value", cn="__vyb_qt_dial_value", args=[("dial", "Int")], ret="Int",
          shape="int1", stub="0", doc="Current dial value, or 0 on a bad handle."),
     dict(mod="qt_dial_set_value", vn="vyb_qt_dial_set_value", cn="__vyb_qt_dial_set_value",
          args=[("dial", "Int"), ("value", "Int")], ret="Int", shape="value", stub="-1",
-         doc="Set the dial value (clamped). Returns 0."),
+         doc="Set the dial value (clamped). Returns `Bool?` -- present on success, absent on a bad handle."),
 
     # Group boxes (QGroupBox): titled container.
     dict(mod="qt_group_create", vn="vyb_qt_group_create", cn="__vyb_qt_group_create",
          args=[("parent", "Int"), ("title", "String")], ret="Int", shape="text", stub="0",
-         doc="Create a titled group-box container under `parent`; put a layout on it. Returns its handle or 0."),
+         doc="Create a titled group-box container under `parent`; put a layout on it. Returns `Int?` -- present with the live handle, absent if creation failed."),
 
     # Multi-line text editor (QPlainTextEdit).
     dict(mod="qt_text_edit_create", vn="vyb_qt_text_edit_create", cn="__vyb_qt_text_edit_create",
          args=[("parent", "Int")], ret="Int", shape="int1", stub="0",
-         doc="Create a multi-line plain-text editor under `parent`; edits enqueue QtEvent::TextChanged. Returns its handle."),
+         doc="Create a multi-line plain-text editor under `parent`; edits enqueue QtEvent::TextChanged. Returns `Int?` -- present with the live handle, absent if creation failed."),
     dict(mod="qt_text_edit_text", vn="vyb_qt_text_edit_text", cn="__vyb_qt_text_edit_text", args=[("ed", "Int")],
          ret="String", shape="str1", stub="qt_stub_str()", doc="Current editor text (String); \"\" on a bad handle."),
     dict(mod="qt_text_edit_set_text", vn="vyb_qt_text_edit_set_text", cn="__vyb_qt_text_edit_set_text",
          args=[("ed", "Int"), ("text", "String")], ret="Int", shape="text", stub="-1",
-         doc="Replace editor text. Returns 0, or -1 on a non-editor handle."),
+         doc="Replace editor text. Returns `Bool?` -- present on success, absent on a non-editor handle."),
 
     # Radio buttons (QRadioButton): exclusive toggled.
     dict(mod="qt_radio_create", vn="vyb_qt_radio_create", cn="__vyb_qt_radio_create",
          args=[("parent", "Int"), ("text", "String")], ret="Int", shape="text", stub="0",
-         doc="Create a radio button under `parent`; toggles enqueue QtEvent::Toggled. Returns its handle."),
+         doc="Create a radio button under `parent`; toggles enqueue QtEvent::Toggled. Returns `Int?` -- present with the live handle, absent if creation failed."),
     dict(mod="qt_radio_checked", vn="vyb_qt_radio_checked", cn="__vyb_qt_radio_checked", args=[("radio", "Int")],
          ret="Bool", shape="int1", stub="-1", doc="true if the radio button is checked, else false."),
     dict(mod="qt_radio_set_checked", vn="vyb_qt_radio_set_checked", cn="__vyb_qt_radio_set_checked",
          args=[("radio", "Int"), ("on", "Bool")], ret="Int", shape="value", stub="-1",
-         doc="Check (true) / uncheck (false) the radio (enqueues QtEvent::Toggled). Returns 0.",
+         doc="Check (true) / uncheck (false) the radio (enqueues QtEvent::Toggled). Returns `Bool?` -- present on success, absent on a non-radio handle.",
          body=("if (on) {\n        return vyb_qt_radio_set_checked(radio, 1)\n    }\n"
                "    return vyb_qt_radio_set_checked(radio, 0)")),
 
     # Generic widget enable / visibility.
     dict(mod="qt_widget_set_enabled", vn="vyb_qt_widget_set_enabled", cn="__vyb_qt_widget_set_enabled",
          args=[("h", "Int"), ("on", "Bool")], ret="Int", shape="value", stub="-1",
-         doc="Enable (true) / disable (false) any widget. Returns 0, or -1 on a non-widget handle.",
+         doc="Enable (true) / disable (false) any widget. Returns `Bool?` -- present on success, absent on a non-widget handle.",
          body=("if (on) {\n        return vyb_qt_widget_set_enabled(h, 1)\n    }\n"
                "    return vyb_qt_widget_set_enabled(h, 0)")),
     dict(mod="qt_widget_enabled", vn="vyb_qt_widget_enabled", cn="__vyb_qt_widget_enabled", args=[("h", "Int")],
@@ -271,15 +271,15 @@ QT_FUNCS = [
 
     # Grid layout (QGridLayout).
     dict(mod="qt_grid", vn="vyb_qt_grid", cn="__vyb_qt_grid", args=[("parent", "Int")], ret="Int", shape="int1",
-         stub="0", doc="Create a grid layout on window `parent`. Returns a layout handle."),
+         stub="0", doc="Create a grid layout on window `parent`. Returns `Int?` -- present with the live layout handle, absent if creation failed."),
     dict(mod="qt_grid_add", vn="vyb_qt_grid_add", cn="__vyb_qt_grid_add",
          args=[("layout", "Int"), ("child", "Int"), ("row", "Int"), ("col", "Int")], ret="Int", shape="4int",
-         stub="-1", doc="Add widget `child` to grid-layout `layout` at (row, col). Returns 0."),
+         stub="-1", doc="Add widget `child` to grid-layout `layout` at (row, col). Returns `Bool?` -- present on success, absent on a bad handle."),
 
     # Generic widget visibility.
     dict(mod="qt_widget_set_visible", vn="vyb_qt_widget_set_visible", cn="__vyb_qt_widget_set_visible",
          args=[("h", "Int"), ("on", "Bool")], ret="Int", shape="value", stub="-1",
-         doc="Show (true) / hide (false) any widget. Returns 0, or -1 on a non-widget handle.",
+         doc="Show (true) / hide (false) any widget. Returns `Bool?` -- present on success, absent on a non-widget handle.",
          body=("if (on) {\n        return vyb_qt_widget_set_visible(h, 1)\n    }\n"
                "    return vyb_qt_widget_set_visible(h, 0)")),
     dict(mod="qt_widget_visible", vn="vyb_qt_widget_visible", cn="__vyb_qt_widget_visible", args=[("h", "Int")],
@@ -287,31 +287,31 @@ QT_FUNCS = [
 
     # Tab widget (QTabWidget): page container.
     dict(mod="qt_tabs_create", vn="vyb_qt_tabs_create", cn="__vyb_qt_tabs_create", args=[("parent", "Int")],
-         ret="Int", shape="int1", stub="0", doc="Create a tab container under `parent`; returns its handle or 0."),
+         ret="Int", shape="int1", stub="0", doc="Create a tab container under `parent`. Returns `Int?` -- present with the live handle, absent if creation failed."),
     dict(mod="qt_tabs_add", vn="vyb_qt_tabs_add", cn="__vyb_qt_tabs_add",
          args=[("tabs", "Int"), ("text", "String")], ret="Int", shape="text", stub="0",
-         doc="Append a tab titled `text`; returns the page's widget handle (put a layout on it)."),
+         doc="Append a tab titled `text`. Returns `Int?` -- present with the page's widget handle (put a layout on it), absent if the tab could not be added."),
     dict(mod="qt_tabs_count", vn="vyb_qt_tabs_count", cn="__vyb_qt_tabs_count", args=[("tabs", "Int")],
          ret="Int", shape="int1", stub="-1", doc="Tab count, or -1 on a bad handle."),
     dict(mod="qt_tabs_current", vn="vyb_qt_tabs_current", cn="__vyb_qt_tabs_current", args=[("tabs", "Int")],
          ret="Int", shape="int1", stub="-1", doc="Current (0-based) tab index, or -1 on a bad handle."),
     dict(mod="qt_tabs_set_current", vn="vyb_qt_tabs_set_current", cn="__vyb_qt_tabs_set_current",
          args=[("tabs", "Int"), ("idx", "Int")], ret="Int", shape="value", stub="-1",
-         doc="Select tab `idx` (enqueues QtEvent::CurrentChanged). Returns 0."),
+         doc="Select tab `idx` (enqueues QtEvent::CurrentChanged). Returns `Bool?` -- present on success, absent on a bad handle."),
 
     # List widget (QListWidget).
     dict(mod="qt_list_create", vn="vyb_qt_list_create", cn="__vyb_qt_list_create", args=[("parent", "Int")],
-         ret="Int", shape="int1", stub="0", doc="Create an item list under `parent`; selection changes enqueue QtEvent::CurrentChanged. Returns its handle."),
+         ret="Int", shape="int1", stub="0", doc="Create an item list under `parent`; selection changes enqueue QtEvent::CurrentChanged. Returns `Int?` -- present with the live handle, absent if creation failed."),
     dict(mod="qt_list_add", vn="vyb_qt_list_add", cn="__vyb_qt_list_add",
          args=[("list", "Int"), ("text", "String")], ret="Int", shape="text", stub="-1",
-         doc="Append `text` as the last list item. Returns 0."),
+         doc="Append `text` as the last list item. Returns `Bool?` -- present on success, absent on a bad handle."),
     dict(mod="qt_list_count", vn="vyb_qt_list_count", cn="__vyb_qt_list_count", args=[("list", "Int")],
          ret="Int", shape="int1", stub="-1", doc="List item count, or -1 on a bad handle."),
     dict(mod="qt_list_current", vn="vyb_qt_list_current", cn="__vyb_qt_list_current", args=[("list", "Int")],
          ret="Int", shape="int1", stub="-1", doc="Current (0-based) list index, or -1 when none / bad handle."),
     dict(mod="qt_list_set_current", vn="vyb_qt_list_set_current", cn="__vyb_qt_list_set_current",
          args=[("list", "Int"), ("idx", "Int")], ret="Int", shape="value", stub="-1",
-         doc="Select list item `idx`. Returns 0."),
+         doc="Select list item `idx`. Returns `Bool?` -- present on success, absent on a bad handle."),
     dict(mod="qt_list_item_text", vn="vyb_qt_list_item_text", cn="__vyb_qt_list_item_text",
          args=[("list", "Int"), ("idx", "Int")], ret="String", shape="str2", stub="qt_stub_str()",
          doc="Text of list item `idx` (String); \"\" on a bad handle/index."),
@@ -319,25 +319,25 @@ QT_FUNCS = [
     # Main-window chrome (QMainWindow): menubar, menus, actions, statusbar, toolbar.
     dict(mod="qt_main_window_create", vn="vyb_qt_main_window_create", cn="__vyb_qt_main_window_create",
          args=[], ret="Int", shape="int0", stub="0",
-         doc="Create a top-level QMainWindow (kind Window) with menubar/statusbar/toolbar support; returns its handle or 0."),
+         doc="Create a top-level QMainWindow (kind Window) with menubar/statusbar/toolbar support. Returns `Int?` -- present with the live handle, absent if creation failed."),
     dict(mod="qt_menubar", vn="vyb_qt_menubar", cn="__vyb_qt_menubar", args=[("mw", "Int")],
-         ret="Int", shape="int1", stub="0", doc="The main window's menu bar handle (created on demand)."),
+         ret="Int", shape="int1", stub="0", doc="Obtain the main window's menu bar handle (created on demand). Returns `Int?` -- present with the live handle, absent if unavailable."),
     dict(mod="qt_menu_add", vn="vyb_qt_menu_add", cn="__vyb_qt_menu_add",
          args=[("mw", "Int"), ("title", "String")], ret="Int", shape="text", stub="0",
-         doc="Add a top-level menu titled `title` to the menu bar; returns its menu handle or 0."),
+         doc="Add a top-level menu titled `title` to the menu bar. Returns `Int?` -- present with the live menu handle, absent if creation failed."),
     dict(mod="qt_action_add", vn="vyb_qt_action_add", cn="__vyb_qt_action_add",
          args=[("menu", "Int"), ("text", "String")], ret="Int", shape="text", stub="0",
-         doc="Add an action to `menu`; its trigger enqueues QtEvent::Click. Returns the action handle."),
+         doc="Add an action to `menu`; its trigger enqueues QtEvent::Click. Returns `Int?` -- present with the live action handle, absent if creation failed."),
     dict(mod="qt_action_count", vn="vyb_qt_action_count", cn="__vyb_qt_action_count", args=[("menu", "Int")],
          ret="Int", shape="int1", stub="-1", doc="Number of actions in `menu`, or -1 on a bad handle."),
     dict(mod="qt_statusbar_message", vn="vyb_qt_statusbar_message", cn="__vyb_qt_statusbar_message",
          args=[("mw", "Int"), ("text", "String")], ret="Int", shape="text", stub="-1",
-         doc="Show `text` in the main window's status bar. Returns 0, or -1 on a bad handle."),
+         doc="Show `text` in the main window's status bar. Returns `Bool?` -- present on success, absent on a bad handle."),
     dict(mod="qt_statusbar_text", vn="vyb_qt_statusbar_text", cn="__vyb_qt_statusbar_text", args=[("mw", "Int")],
          ret="String", shape="str1", stub="qt_stub_str()", doc="Current status-bar message (String); \"\" on a bad handle."),
     dict(mod="qt_toolbar_create", vn="vyb_qt_toolbar_create", cn="__vyb_qt_toolbar_create",
          args=[("mw", "Int"), ("title", "String")], ret="Int", shape="text", stub="0",
-         doc="Add a toolbar titled `title` to the main window; returns its handle or 0."),
+         doc="Add a toolbar titled `title` to the main window. Returns `Int?` -- present with the live handle, absent if creation failed."),
 
     # Modal dialogs (QMessageBox / QFileDialog). These block on the main thread
     # for user input and return the chosen result (standard-button code for
@@ -346,16 +346,16 @@ QT_FUNCS = [
     # honors an opt-in VYB_QT_DIALOG_AUTO env var to auto-accept for tests.
     dict(mod="qt_msg_info", vn="vyb_qt_msg_info", cn="__vyb_qt_msg_info",
          args=[("parent", "Int"), ("title", "String"), ("text", "String")], ret="Int", shape="text2", stub="-1",
-         doc="Show a modal informational message box (blocks until dismissed). Returns 0."),
+         doc="Show a modal informational message box (blocks until dismissed). Returns `Bool?` -- present once the box was shown and dismissed."),
     dict(mod="qt_msg_warn", vn="vyb_qt_msg_warn", cn="__vyb_qt_msg_warn",
          args=[("parent", "Int"), ("title", "String"), ("text", "String")], ret="Int", shape="text2", stub="-1",
-         doc="Show a modal warning message box (blocks until dismissed). Returns 0."),
+         doc="Show a modal warning message box (blocks until dismissed). Returns `Bool?` -- present once the box was shown and dismissed."),
     dict(mod="qt_msg_error", vn="vyb_qt_msg_error", cn="__vyb_qt_msg_error",
          args=[("parent", "Int"), ("title", "String"), ("text", "String")], ret="Int", shape="text2", stub="-1",
-         doc="Show a modal critical-error message box (blocks until dismissed). Returns 0."),
+         doc="Show a modal critical-error message box (blocks until dismissed). Returns `Bool?` -- present once the box was shown and dismissed."),
     dict(mod="qt_msg_about", vn="vyb_qt_msg_about", cn="__vyb_qt_msg_about",
          args=[("parent", "Int"), ("title", "String"), ("text", "String")], ret="Int", shape="text2", stub="-1",
-         doc="Show a modal 'about' box (blocks until dismissed). Returns 0."),
+         doc="Show a modal 'about' box (blocks until dismissed). Returns `Bool?` -- present once the box was shown and dismissed."),
     dict(mod="qt_msg_question", vn="vyb_qt_msg_question", cn="__vyb_qt_msg_question",
          args=[("parent", "Int"), ("title", "String"), ("text", "String")], ret="Int", shape="text2", stub="-1",
          doc="Show a modal Yes/No question. Returns 1 for Yes, 0 for No/dismiss."),
@@ -379,31 +379,31 @@ QT_FUNCS = [
     # readable any time via qt_dlg_selected(handle).
     dict(mod="qt_dlg_info", vn="vyb_qt_dlg_info", cn="__vyb_qt_dlg_info",
          args=[("parent", "Int"), ("title", "String"), ("text", "String")], ret="Int", shape="text2",
-         stub="0", doc="Open a non-blocking information box; returns its handle, or 0 on failure."),
+         stub="0", doc="Open a non-blocking information box. Returns `Int?` -- present with the dialog handle, absent if creation failed."),
     dict(mod="qt_dlg_warn", vn="vyb_qt_dlg_warn", cn="__vyb_qt_dlg_warn",
          args=[("parent", "Int"), ("title", "String"), ("text", "String")], ret="Int", shape="text2",
-         stub="0", doc="Open a non-blocking warning box; returns its handle, or 0 on failure."),
+         stub="0", doc="Open a non-blocking warning box. Returns `Int?` -- present with the dialog handle, absent if creation failed."),
     dict(mod="qt_dlg_error", vn="vyb_qt_dlg_error", cn="__vyb_qt_dlg_error",
          args=[("parent", "Int"), ("title", "String"), ("text", "String")], ret="Int", shape="text2",
-         stub="0", doc="Open a non-blocking error box; returns its handle, or 0 on failure."),
+         stub="0", doc="Open a non-blocking error box. Returns `Int?` -- present with the dialog handle, absent if creation failed."),
     dict(mod="qt_dlg_about", vn="vyb_qt_dlg_about", cn="__vyb_qt_dlg_about",
          args=[("parent", "Int"), ("title", "String"), ("text", "String")], ret="Int", shape="text2",
-         stub="0", doc="Open a non-blocking about box; returns its handle, or 0 on failure."),
+         stub="0", doc="Open a non-blocking about box. Returns `Int?` -- present with the dialog handle, absent if creation failed."),
     dict(mod="qt_dlg_question", vn="vyb_qt_dlg_question", cn="__vyb_qt_dlg_question",
          args=[("parent", "Int"), ("title", "String"), ("text", "String")], ret="Int", shape="text2",
-         stub="0", doc="Open a non-blocking Yes/No box; finishes with result 1 for Yes, 0 otherwise."),
+         stub="0", doc="Open a non-blocking Yes/No box; finishes with result 1 for Yes, 0 otherwise. Returns `Int?` -- present with the dialog handle, absent if creation failed."),
     dict(mod="qt_dlg_open", vn="vyb_qt_dlg_open", cn="__vyb_qt_dlg_open",
          args=[("parent", "Int"), ("title", "String"), ("filter", "String")], ret="Int", shape="text2",
-         stub="0", doc="Open a non-blocking file-open picker; finishes with result 1 (Accepted) + qt_dlg_selected."),
+         stub="0", doc="Open a non-blocking file-open picker; finishes with result 1 (Accepted) + qt_dlg_selected. Returns `Int?` -- present with the dialog handle, absent if creation failed."),
     dict(mod="qt_dlg_save", vn="vyb_qt_dlg_save", cn="__vyb_qt_dlg_save",
          args=[("parent", "Int"), ("title", "String"), ("filter", "String")], ret="Int", shape="text2",
-         stub="0", doc="Open a non-blocking file-save picker; finishes with result 1 (Accepted) + qt_dlg_selected."),
+         stub="0", doc="Open a non-blocking file-save picker; finishes with result 1 (Accepted) + qt_dlg_selected. Returns `Int?` -- present with the dialog handle, absent if creation failed."),
     dict(mod="qt_dlg_dir", vn="vyb_qt_dlg_dir", cn="__vyb_qt_dlg_dir",
          args=[("parent", "Int"), ("title", "String")], ret="Int", shape="text",
-         stub="0", doc="Open a non-blocking directory picker; finishes with result 1 (Accepted) + qt_dlg_selected."),
+         stub="0", doc="Open a non-blocking directory picker; finishes with result 1 (Accepted) + qt_dlg_selected. Returns `Int?` -- present with the dialog handle, absent if creation failed."),
     dict(mod="qt_dlg_close", vn="vyb_qt_dlg_close", cn="__vyb_qt_dlg_close", args=[("h", "Int")],
          ret="Int", shape="int1", stub="-1",
-         doc="Finish dialog `h` as rejected (enqueues QtEvent::dialog with result 0). Returns 0."),
+         doc="Finish dialog `h` as rejected (enqueues QtEvent::dialog with result 0). Returns `Bool?` -- present on success, absent on a non-dialog or bad handle."),
     dict(mod="qt_dlg_selected", vn="vyb_qt_dlg_selected", cn="__vyb_qt_dlg_selected", args=[("h", "Int")],
          ret="String", shape="str1", stub="qt_stub_str()",
          doc="Path chosen by file/dir dialog `h` (String); \"\" on a non-picker handle."),
@@ -414,36 +414,36 @@ QT_FUNCS = [
     # Rich-text editor (QTextEdit) + font/color helpers.
     dict(mod="qt_rich_create", vn="vyb_qt_rich_create", cn="__vyb_qt_rich_create", args=[("parent", "Int")],
          ret="Int", shape="int1", stub="0",
-         doc="Create a rich-text editor (QTextEdit) under `parent`; edits enqueue QtEvent::TextChanged."),
+         doc="Create a rich-text editor (QTextEdit) under `parent`; edits enqueue QtEvent::TextChanged. Returns `Int?` -- present with the live handle, absent if creation failed."),
     dict(mod="qt_rich_set_html", vn="vyb_qt_rich_set_html", cn="__vyb_qt_rich_set_html",
          args=[("ed", "Int"), ("html", "String")], ret="Int", shape="text", stub="-1",
-         doc="Set the rich-text editor body from `html` (supports <b>/<i>/<font color> etc). Returns 0."),
+         doc="Set the rich-text editor body from `html` (supports <b>/<i>/<font color> etc). Returns `Bool?` -- present on success, absent on a non-editor handle."),
     dict(mod="qt_rich_html", vn="vyb_qt_rich_html", cn="__vyb_qt_rich_html", args=[("ed", "Int")],
          ret="String", shape="str1", stub="qt_stub_str()",
          doc="Current rich-text body as HTML (String); \"\" on a bad handle."),
     dict(mod="qt_rich_set_plain", vn="vyb_qt_rich_set_plain", cn="__vyb_qt_rich_set_plain",
          args=[("ed", "Int"), ("text", "String")], ret="Int", shape="text", stub="-1",
-         doc="Set the rich-text editor's plain text (clears formatting). Returns 0."),
+         doc="Set the rich-text editor's plain text (clears formatting). Returns `Bool?` -- present on success, absent on a non-editor handle."),
     dict(mod="qt_rich_plain", vn="vyb_qt_rich_plain", cn="__vyb_qt_rich_plain", args=[("ed", "Int")],
          ret="String", shape="str1", stub="qt_stub_str()",
          doc="Current plain text (String); \"\" on a bad handle."),
     dict(mod="qt_rich_append", vn="vyb_qt_rich_append", cn="__vyb_qt_rich_append",
          args=[("ed", "Int"), ("text", "String")], ret="Int", shape="text", stub="-1",
-         doc="Append `text` at the end (keeps the current character format). Returns 0."),
+         doc="Append `text` at the end (keeps the current character format). Returns `Bool?` -- present on success, absent on a non-editor handle."),
     dict(mod="qt_rich_clear", vn="vyb_qt_rich_clear", cn="__vyb_qt_rich_clear", args=[("ed", "Int")],
-         ret="Int", shape="int1", stub="-1", doc="Clear all rich-text content. Returns 0."),
+         ret="Int", shape="int1", stub="-1", doc="Clear all rich-text content. Returns `Bool?` -- present on success, absent on a non-editor handle."),
     dict(mod="qt_rich_set_text_color", vn="vyb_qt_rich_set_text_color", cn="__vyb_qt_rich_set_text_color",
          args=[("ed", "Int"), ("r", "Int"), ("g", "Int"), ("b", "Int")], ret="Int", shape="4int", stub="-1",
-         doc="Set the editor's text color to (r,g,b) each 0-255. Returns 0."),
+         doc="Set the editor's text color to (r,g,b) each 0-255. Returns `Bool?` -- present on success, absent on a non-editor handle."),
     dict(mod="qt_widget_set_font_size", vn="vyb_qt_widget_set_font_size", cn="__vyb_qt_widget_set_font_size",
          args=[("h", "Int"), ("pt", "Int")], ret="Int", shape="value", stub="-1",
-         doc="Set a widget's font point size. Returns 0, or -1 on a bad handle."),
+         doc="Set a widget's font point size. Returns `Bool?` -- present on success, absent on a bad handle."),
     dict(mod="qt_widget_set_font_bold", vn="vyb_qt_widget_set_font_bold", cn="__vyb_qt_widget_set_font_bold",
          args=[("h", "Int"), ("on", "Int")], ret="Int", shape="value", stub="-1",
-         doc="Toggle a widget's font bold (on != 0). Returns 0, or -1 on a bad handle."),
+         doc="Toggle a widget's font bold (on != 0). Returns `Bool?` -- present on success, absent on a bad handle."),
     dict(mod="qt_widget_set_text_color", vn="vyb_qt_widget_set_text_color", cn="__vyb_qt_widget_set_text_color",
          args=[("h", "Int"), ("r", "Int"), ("g", "Int"), ("b", "Int")], ret="Int", shape="4int", stub="-1",
-         doc="Set a widget's foreground text color via palette (r,g,b each 0-255). Returns 0, or -1 on a bad handle."),
+         doc="Set a widget's foreground text color via palette (r,g,b each 0-255). Returns `Bool?` -- present on success, absent on a bad handle."),
 ]
 
 QT_WEB_FUNCS = [
@@ -451,10 +451,10 @@ QT_WEB_FUNCS = [
     # fallback) but actual rendering needs QtWebEngine linked into the build.
     dict(mod="qt_web_create", vn="vyb_qt_web_create", cn="__vyb_qt_web_create", args=[("parent", "Int")],
          ret="Int", shape="int1", stub="0",
-         doc="Create a QWebEngineView under `parent`; returns its handle or 0 (needs QtWebEngine)."),
+         doc="Create a QWebEngineView under `parent`. Returns `Int?` -- present with the live handle, absent if QtWebEngine is unavailable or creation failed."),
     dict(mod="qt_web_load", vn="vyb_qt_web_load", cn="__vyb_qt_web_load",
          args=[("web", "Int"), ("url", "String")], ret="Int", shape="text", stub="-1",
-         doc="Begin loading `url` in the web view (async). Returns 0, or -1 on a bad handle."),
+         doc="Begin loading `url` in the web view (async). Returns `Bool?` -- present on success, absent on a bad handle."),
     dict(mod="qt_web_url", vn="vyb_qt_web_url", cn="__vyb_qt_web_url", args=[("web", "Int")],
          ret="String", shape="str1", stub="qt_stub_str()", doc="Current page URL (String); \"\" on a bad handle."),
     dict(mod="qt_web_title", vn="vyb_qt_web_title", cn="__vyb_qt_web_title", args=[("web", "Int")],
@@ -462,18 +462,114 @@ QT_WEB_FUNCS = [
     dict(mod="qt_web_loading", vn="vyb_qt_web_loading", cn="__vyb_qt_web_loading", args=[("web", "Int")],
          ret="Bool", shape="int1", stub="0", doc="true while the page is still loading."),
     dict(mod="qt_web_back", vn="vyb_qt_web_back", cn="__vyb_qt_web_back", args=[("web", "Int")],
-         ret="Int", shape="int1", stub="-1", doc="Go back in history. Returns 0, or -1 on a bad handle."),
+         ret="Int", shape="int1", stub="-1", doc="Go back in history. Returns `Bool?` -- present on success, absent on a bad handle."),
     dict(mod="qt_web_forward", vn="vyb_qt_web_forward", cn="__vyb_qt_web_forward", args=[("web", "Int")],
-         ret="Int", shape="int1", stub="-1", doc="Go forward in history. Returns 0, or -1 on a bad handle."),
+         ret="Int", shape="int1", stub="-1", doc="Go forward in history. Returns `Bool?` -- present on success, absent on a bad handle."),
     dict(mod="qt_web_reload", vn="vyb_qt_web_reload", cn="__vyb_qt_web_reload", args=[("web", "Int")],
-         ret="Int", shape="int1", stub="-1", doc="Reload the page. Returns 0, or -1 on a bad handle."),
+         ret="Int", shape="int1", stub="-1", doc="Reload the page. Returns `Bool?` -- present on success, absent on a bad handle."),
     dict(mod="qt_web_zoom_in", vn="vyb_qt_web_zoom_in", cn="__vyb_qt_web_zoom_in", args=[("web", "Int")],
-         ret="Int", shape="int1", stub="-1", doc="Zoom the web view in (larger text). Returns 0, or -1 on a bad handle."),
+         ret="Int", shape="int1", stub="-1", doc="Zoom the web view in (larger text). Returns `Bool?` -- present on success, absent on a bad handle."),
     dict(mod="qt_web_zoom_out", vn="vyb_qt_web_zoom_out", cn="__vyb_qt_web_zoom_out", args=[("web", "Int")],
-         ret="Int", shape="int1", stub="-1", doc="Zoom the web view out (smaller text). Returns 0, or -1 on a bad handle."),
+         ret="Int", shape="int1", stub="-1", doc="Zoom the web view out (smaller text). Returns `Bool?` -- present on success, absent on a bad handle."),
 ]
 
 QT_ALL = QT_WEB_FUNCS + QT_FUNCS
+
+# ---------------------------------------------------------------------------
+# T? migration for the public Vyb wrappers (issue #134).
+#
+# The underlying C intrinsic for every Qt function still returns a plain
+# int64_t (so the codegen/semantic/stub layers, which key off `ret`/`shape`,
+# are untouched). These keys only change the *public wrapper* signature and
+# body in mod.vyb:
+#
+#   "Int?"   -> creator functions: an absent Int? means the handle alloc
+#               failed (the intrinsic returned 0); a present Int?(h) is the
+#               live handle.
+#   "Bool?"  -> op-status functions: an absent Bool? means the operation
+#               failed (the intrinsic returned != 0); a present Bool?(true)
+#               means it succeeded.
+#
+# Value/probe getters (qt_*_text/url/count/value/current/..., qt_screen_*,
+# qt_init/qt_active/qt_timer_fired, qt_run, qt_wait_event, qt_msg_question,
+# qt_file_*/qt_dir_select/qt_dlg_selected, qt_event_*, qt_rich_html/plain)
+# are intentionally NOT listed: they return meaningful data or a -1 "found
+# nothing" sentinel rather than op status, and stay as-is.
+# ---------------------------------------------------------------------------
+MIGRATION = {
+    # Creators / handle-returning -> Int?
+    "qt_web_create": "Int?", "qt_window_create": "Int?", "qt_label_create": "Int?",
+    "qt_button_create": "Int?", "qt_edit_create": "Int?", "qt_checkbox_create": "Int?",
+    "qt_progress_create": "Int?", "qt_vbox": "Int?", "qt_hbox": "Int?", "qt_grid": "Int?",
+    "qt_combo_create": "Int?", "qt_spin_create": "Int?", "qt_slider_create": "Int?",
+    "qt_dial_create": "Int?", "qt_group_create": "Int?", "qt_text_edit_create": "Int?",
+    "qt_radio_create": "Int?", "qt_tabs_create": "Int?", "qt_tabs_add": "Int?",
+    "qt_list_create": "Int?", "qt_main_window_create": "Int?", "qt_menubar": "Int?",
+    "qt_menu_add": "Int?", "qt_action_add": "Int?", "qt_toolbar_create": "Int?",
+    "qt_rich_create": "Int?",
+    "qt_dlg_info": "Int?", "qt_dlg_warn": "Int?", "qt_dlg_error": "Int?",
+    "qt_dlg_about": "Int?", "qt_dlg_question": "Int?", "qt_dlg_open": "Int?",
+    "qt_dlg_save": "Int?", "qt_dlg_dir": "Int?",
+    # Op-status -> Bool?
+    "qt_quit": "Bool?", "qt_process_events": "Bool?", "qt_set_timer": "Bool?",
+    "qt_run_stop": "Bool?", "qt_post_event": "Bool?",
+    "qt_window_close": "Bool?", "qt_window_set_title": "Bool?", "qt_window_resize": "Bool?",
+    "qt_window_show": "Bool?", "qt_window_hide": "Bool?",
+    "qt_label_set_text": "Bool?", "qt_button_set_text": "Bool?", "qt_button_set_enabled": "Bool?",
+    "qt_edit_set_text": "Bool?", "qt_edit_set_placeholder": "Bool?",
+    "qt_checkbox_set_checked": "Bool?", "qt_progress_set_value": "Bool?",
+    "qt_layout_add": "Bool?", "qt_layout_add_layout": "Bool?", "qt_layout_set_stretch": "Bool?",
+    "qt_combo_add_item": "Bool?", "qt_combo_set_current_index": "Bool?",
+    "qt_spin_set_value": "Bool?", "qt_slider_set_value": "Bool?", "qt_dial_set_value": "Bool?",
+    "qt_text_edit_set_text": "Bool?", "qt_radio_set_checked": "Bool?",
+    "qt_widget_set_enabled": "Bool?", "qt_widget_set_visible": "Bool?",
+    "qt_grid_add": "Bool?", "qt_tabs_set_current": "Bool?",
+    "qt_list_add": "Bool?", "qt_list_set_current": "Bool?",
+    "qt_statusbar_message": "Bool?",
+    "qt_msg_info": "Bool?", "qt_msg_warn": "Bool?", "qt_msg_error": "Bool?", "qt_msg_about": "Bool?",
+    "qt_dlg_close": "Bool?",
+    "qt_rich_set_html": "Bool?", "qt_rich_set_plain": "Bool?", "qt_rich_append": "Bool?",
+    "qt_rich_clear": "Bool?", "qt_rich_set_text_color": "Bool?",
+    "qt_widget_set_font_size": "Bool?", "qt_widget_set_font_bold": "Bool?",
+    "qt_widget_set_text_color": "Bool?",
+    "qt_web_load": "Bool?", "qt_web_back": "Bool?", "qt_web_forward": "Bool?",
+    "qt_web_reload": "Bool?", "qt_web_zoom_in": "Bool?", "qt_web_zoom_out": "Bool?",
+}
+
+
+def _qt_call(f, truthy):
+    """Render an intrinsic call, coercing Bool args to 1/0 (intrinsics take Int)."""
+    args = []
+    for n, t in f["args"]:
+        if t == "Bool":
+            args.append("1" if truthy else "0")
+        else:
+            args.append(n)
+    return "%s(%s)" % (f["vn"], ", ".join(args))
+
+
+def migrate_body(f):
+    want = MIGRATION[f["mod"]]
+    if want == "Int?":
+        return ("h = %s\n"
+                "    if (h == 0) { return Int?() }\n"
+                "    return Int?(h)") % _qt_call(f, False)
+    elif want == "Bool?":
+        bnames = [n for n, t in f["args"] if t == "Bool"]
+        if not bnames:
+            return ("if (%s != 0) { return Bool?() }\n"
+                    "    return Bool?(true)") % _qt_call(f, False)
+        # Single Bool control arg -> emit the 1/0 branches (assume one Bool arg).
+        bname = bnames[0]
+        return ("if (%s) {\n"
+                "        if (%s != 0) { return Bool?() }\n"
+                "        return Bool?(true)\n"
+                "    }\n"
+                "    if (%s != 0) { return Bool?() }\n"
+                "    return Bool?(true)") % (bname, _qt_call(f, True), _qt_call(f, False))
+    raise SystemExit("gen_qt: bad MIGRATION target %r for %s" % (want, f["mod"]))
+
+
 
 QT_EVENTS = [
     ("none", 0), ("click", 1), ("textChanged", 2), ("toggled", 3),
@@ -784,8 +880,11 @@ def emit_mod_wrappers():
             sig = f["wrap_sig"]
         else:
             sig = ", ".join("%s<%s>" % (n, t) for n, t in f["args"])
-        out.append("%s(%s)<%s> -> {" % (f["mod"], sig, f["ret"]))
-        if "wrap_body" in f:
+        ret = MIGRATION.get(f["mod"], f["ret"])
+        out.append("%s(%s)<%s> -> {" % (f["mod"], sig, ret))
+        if f["mod"] in MIGRATION:
+            out.append("    " + migrate_body(f))
+        elif "wrap_body" in f:
             out.append("    " + f["wrap_body"])
         elif "body" in f:
             out.append("    " + f["body"])

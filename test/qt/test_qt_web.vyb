@@ -52,22 +52,22 @@ main()<Int> -> {
         return 0
     }
     if (qt_active() == false) { return 1 }
-    w<Int> = qt_window_create()
+    w<Int> = qt_window_create() else 0
     if (w == 0) { return 2 }
 
-    web<Int> = qt_web_create(w)
+    web<Int> = qt_web_create(w) else 0
     if (web == 0) {
         // QtWebEngine not linked into this build: the stub surface must still
         // resolve each call to its documented default (no crash / no JIT miss).
-        if (qt_web_load(0, "http://example.org/") != -1) { return 3 }
+        if (qt_web_load(0, "http://example.org/") else false) { return 3 }
         if (qt_web_url(0) != "") { return 4 }
         if (qt_web_title(0) != "") { return 5 }
         if (qt_web_loading(0) != false) { return 6 }
-        if (qt_web_back(0) != -1) { return 7 }
-        if (qt_web_forward(0) != -1) { return 8 }
-        if (qt_web_reload(0) != -1) { return 9 }
-        if (qt_web_zoom_in(0) != -1) { return 10 }
-        if (qt_web_zoom_out(0) != -1) { return 11 }
+        if (qt_web_back(0) else false) { return 7 }
+        if (qt_web_forward(0) else false) { return 8 }
+        if (qt_web_reload(0) else false) { return 9 }
+        if (qt_web_zoom_in(0) else false) { return 10 }
+        if (qt_web_zoom_out(0) else false) { return 11 }
         qt_quit()
         println("qt-web-ok (QtWebEngine unavailable)")
         return 0
@@ -75,27 +75,27 @@ main()<Int> -> {
 
     // QtWebEngine present.
     if (qt_kind(web) != QtWidgetKind::web) { return 20 }
-    if (qt_web_load(web, "about:blank") != 0) { return 21 }
-    if (qt_web_reload(web) != 0) { return 22 }
-    if (qt_web_zoom_in(web) != 0) { return 23 }
-    if (qt_web_zoom_out(web) != 0) { return 24 }
+    if (!(qt_web_load(web, "about:blank") else false)) { return 21 }
+    if (!(qt_web_reload(web) else false)) { return 22 }
+    if (!(qt_web_zoom_in(web) else false)) { return 23 }
+    if (!(qt_web_zoom_out(web) else false)) { return 24 }
 
     // Deterministic navigation with network-free data: URLs.
     ua<String> = "data:text/html,<title>VybA</title>a"
     ub<String> = "data:text/html,<title>VybB</title>b"
-    if (qt_web_load(web, ua) != 0) { return 30 }
+    if (!(qt_web_load(web, ua) else false)) { return 30 }
     if (wait_title(web, "VybA") != 1) { return 31 }
-    if (qt_web_load(web, ub) != 0) { return 32 }
+    if (!(qt_web_load(web, ub) else false)) { return 32 }
     if (wait_title(web, "VybB") != 1) { return 33 }
-    if (qt_web_back(web) != 0) { return 34 }
+    if (!(qt_web_back(web) else false)) { return 34 }
     if (wait_title(web, "VybA") != 1) { return 35 }
-    if (qt_web_forward(web) != 0) { return 36 }
+    if (!(qt_web_forward(web) else false)) { return 36 }
     if (wait_title(web, "VybB") != 1) { return 37 }
-    if (qt_web_reload(web) != 0) { return 38 }
+    if (!(qt_web_reload(web) else false)) { return 38 }
     if (wait_title(web, "VybB") != 1) { return 39 }
 
     // Real network load: google.com renders a page offscreen.
-    if (qt_web_load(web, "https://www.google.com/") != 0) { return 40 }
+    if (!(qt_web_load(web, "https://www.google.com/") else false)) { return 40 }
     active<Int> = saw_web_event(web, QtEvent::titleChanged, 400)
     if (active == 0) { active = saw_web_event(web, QtEvent::loadProgress, 400) }
     if (active == 0) { return 41 }

@@ -22,53 +22,53 @@ main()<Int> -> {
     }
     if (qt_active() == false) { return 1 }
 
-    w<Int> = qt_window_create()
+    w<Int> = qt_window_create() else 0
     if (w == 0) { return 2 }
 
     // --- Buttons --------------------------------------------------------------
-    b<Int> = qt_button_create(w, "Go")
+    b<Int> = qt_button_create(w, "Go") else 0
     if (b == 0) { return 3 }
     if (qt_kind(b) != QtWidgetKind::button) { return 4 }
     if (qt_button_text(b) != "Go") { return 5 }
-    if (qt_button_set_text(b, "Stop") != 0) { return 6 }
+    if (!(qt_button_set_text(b, "Stop") else false)) { return 6 }
     if (qt_button_text(b) != "Stop") { return 7 }
-    if (qt_button_set_enabled(b, false) != 0) { return 8 }
-    if (qt_button_set_enabled(b, true) != 0) { return 9 }
+    if (!(qt_button_set_enabled(b, false) else false)) { return 8 }
+    if (!(qt_button_set_enabled(b, true) else false)) { return 9 }
 
     // --- Text edits -----------------------------------------------------------
-    e<Int> = qt_edit_create(w, "name")
+    e<Int> = qt_edit_create(w, "name") else 0
     if (e == 0) { return 10 }
     if (qt_kind(e) != QtWidgetKind::edit) { return 11 }
     if (qt_edit_text(e) != "name") { return 12 }
-    if (qt_edit_set_text(e, "Vyb") != 0) { return 13 }
+    if (!(qt_edit_set_text(e, "Vyb") else false)) { return 13 }
     if (qt_edit_text(e) != "Vyb") { return 14 }
-    if (qt_edit_set_placeholder(e, "type here") != 0) { return 15 }
+    if (!(qt_edit_set_placeholder(e, "type here") else false)) { return 15 }
 
     // --- Checkboxes ------------------------------------------------------------
-    c<Int> = qt_checkbox_create(w, "done")
+    c<Int> = qt_checkbox_create(w, "done") else 0
     if (c == 0) { return 16 }
     if (qt_kind(c) != QtWidgetKind::checkbox) { return 17 }
     if (qt_checkbox_checked(c) != false) { return 18 }
 
     // --- Progress bars ----------------------------------------------------------
-    p<Int> = qt_progress_create(w, 100)
+    p<Int> = qt_progress_create(w, 100) else 0
     if (p == 0) { return 19 }
     if (qt_kind(p) != QtWidgetKind::progress) { return 20 }
-    if (qt_progress_set_value(p, 75) != 0) { return 21 }
+    if (!(qt_progress_set_value(p, 75) else false)) { return 21 }
 
     // --- Box layouts -------------------------------------------------------------
-    lay<Int> = qt_vbox(w)
+    lay<Int> = qt_vbox(w) else 0
     if (lay == 0) { return 22 }
-    if (qt_layout_add(lay, b) != 0) { return 23 }
-    if (qt_layout_add(lay, e) != 0) { return 24 }
+    if (!(qt_layout_add(lay, b) else false)) { return 23 }
+    if (!(qt_layout_add(lay, e) else false)) { return 24 }
 
     // A separate window hosts the horizontal layout (a widget may own only one).
-    w2<Int> = qt_window_create()
+    w2<Int> = qt_window_create() else 0
     if (w2 == 0) { return 25 }
-    hlay<Int> = qt_hbox(w2)
+    hlay<Int> = qt_hbox(w2) else 0
     if (hlay == 0) { return 26 }
-    if (qt_layout_add(hlay, c) != 0) { return 27 }
-    if (qt_layout_add(hlay, p) != 0) { return 28 }
+    if (!(qt_layout_add(hlay, c) else false)) { return 27 }
+    if (!(qt_layout_add(hlay, p) else false)) { return 28 }
 
     // Kind introspection: the plain top-level window reports its own kind.
     if (qt_kind(w) != QtWidgetKind::window) { return 29 }
@@ -80,11 +80,11 @@ main()<Int> -> {
     while (qt_event_count() > 0) {
         if (qt_event_pop() != 0) { return 30 }
     }
-    if (qt_checkbox_set_checked(c, true) != 0) { return 31 }
+    if (!(qt_checkbox_set_checked(c, true) else false)) { return 31 }
     if (qt_checkbox_checked(c) != true) { return 32 }
-    if (qt_edit_set_text(e, "changed") != 0) { return 32 }
+    if (!(qt_edit_set_text(e, "changed") else false)) { return 32 }
     if (qt_edit_text(e) != "changed") { return 33 }
-    if (qt_process_events() != 0) { return 34 }
+    if (!(qt_process_events() else false)) { return 34 }
 
     // Oldest: checkbox toggled (handle c).
     if (qt_event_count() != 2) { return 35 }
@@ -104,8 +104,8 @@ main()<Int> -> {
     if (qt_event_pop() != -1) { return 45 }
 
     // Toggling the checkbox again re-enqueues its event (kind toggled, handle c).
-    if (qt_checkbox_set_checked(c, false) != 0) { return 46 }
-    if (qt_process_events() != 0) { return 47 }
+    if (!(qt_checkbox_set_checked(c, false) else false)) { return 46 }
+    if (!(qt_process_events() else false)) { return 47 }
     if (qt_event_count() != 1) { return 48 }
     if (qt_event_handle() != c) { return 49 }
     if (qt_event_kind() != QtEvent::toggled) { return 50 }

@@ -19,32 +19,32 @@ main()<Int> -> {
     }
     if (qt_active() == false) { return 1 }
 
-    w<Int> = qt_window_create()
+    w<Int> = qt_window_create() else 0
     if (w == 0) { return 2 }
 
     // --- Tab widget -------------------------------------------------------------
-    tabs<Int> = qt_tabs_create(w)
+    tabs<Int> = qt_tabs_create(w) else 0
     if (tabs == 0) { return 3 }
     if (qt_kind(tabs) != QtWidgetKind::tabs) { return 4 }
-    p1<Int> = qt_tabs_add(tabs, "one")
-    p2<Int> = qt_tabs_add(tabs, "two")
+    p1<Int> = qt_tabs_add(tabs, "one") else 0
+    p2<Int> = qt_tabs_add(tabs, "two") else 0
     if (p1 == 0 || p2 == 0) { return 5 }
     if (qt_tabs_count(tabs) != 2) { return 6 }
     if (qt_tabs_current(tabs) != 0) { return 7 }
-    if (qt_tabs_set_current(tabs, 1) != 0) { return 8 }
+    if (!(qt_tabs_set_current(tabs, 1) else false)) { return 8 }
     if (qt_tabs_current(tabs) != 1) { return 9 }
 
     // --- List widget ------------------------------------------------------------
-    lst<Int> = qt_list_create(w)
+    lst<Int> = qt_list_create(w) else 0
     if (lst == 0) { return 10 }
     if (qt_kind(lst) != QtWidgetKind::list) { return 11 }
-    if (qt_list_add(lst, "alpha") != 0) { return 12 }
-    if (qt_list_add(lst, "beta") != 0) { return 13 }
-    if (qt_list_add(lst, "gamma") != 0) { return 14 }
+    if (!(qt_list_add(lst, "alpha") else false)) { return 12 }
+    if (!(qt_list_add(lst, "beta") else false)) { return 13 }
+    if (!(qt_list_add(lst, "gamma") else false)) { return 14 }
     if (qt_list_count(lst) != 3) { return 15 }
     if (qt_list_item_text(lst, 0) != "alpha") { return 16 }
     if (qt_list_item_text(lst, 2) != "gamma") { return 17 }
-    if (qt_list_set_current(lst, 1) != 0) { return 18 }
+    if (!(qt_list_set_current(lst, 1) else false)) { return 18 }
     if (qt_list_current(lst) != 1) { return 19 }
 
     // qt_list_set_current should have enqueued a CurrentChanged record.
@@ -58,13 +58,13 @@ main()<Int> -> {
     // --- Generic visibility ------------------------------------------------------
     // Show after building the tree (isVisible is live once the window maps;
     // the qt_process_events pump lets offscreen deliver the show).
-    if (qt_window_show(w) != 0) { return 22 }
+    if (!(qt_window_show(w) else false)) { return 22 }
     qt_process_events()
     if (qt_widget_visible(lst) != true) { return 23 }   // inside shown window
-    if (qt_widget_set_visible(lst, false) != 0) { return 24 }
+    if (!(qt_widget_set_visible(lst, false) else false)) { return 24 }
     qt_process_events()
     if (qt_widget_visible(lst) == true) { return 25 }
-    if (qt_widget_set_visible(lst, true) != 0) { return 26 }
+    if (!(qt_widget_set_visible(lst, true) else false)) { return 26 }
     qt_process_events()
     if (qt_widget_visible(lst) != true) { return 27 }
 

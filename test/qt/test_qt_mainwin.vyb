@@ -18,33 +18,33 @@ main()<Int> -> {
     }
     if (qt_active() == false) { return 1 }
 
-    mw<Int> = qt_main_window_create()
+    mw<Int> = qt_main_window_create() else 0
     if (mw == 0) { return 2 }
     // A QMainWindow is still a plain window to the existing qt_window_* API.
-    if (qt_window_set_title(mw, "App") != 0) { return 3 }
+    if (!(qt_window_set_title(mw, "App") else false)) { return 3 }
     if (qt_window_title(mw) != "App") { return 4 }
 
-    mb<Int> = qt_menubar(mw)
+    mb<Int> = qt_menubar(mw) else 0
     if (mb == 0) { return 5 }
     if (qt_kind(mb) != QtWidgetKind::menuBar) { return 6 }
 
-    file<Int> = qt_menu_add(mw, "File")
+    file<Int> = qt_menu_add(mw, "File") else 0
     if (file == 0) { return 7 }
     if (qt_kind(file) != QtWidgetKind::menu) { return 8 }
 
-    open<Int> = qt_action_add(file, "Open")
-    quit<Int> = qt_action_add(file, "Quit")
+    open<Int> = qt_action_add(file, "Open") else 0
+    quit<Int> = qt_action_add(file, "Quit") else 0
     if (open == 0 || quit == 0) { return 9 }
     if (qt_action_count(file) != 2) { return 10 }
-    if (qt_action_add(file, "About") == 0) { return 11 }
+    if ((qt_action_add(file, "About") else 0) == 0) { return 11 }
     if (qt_action_count(file) != 3) { return 12 }
 
     // Status bar message round-trip.
-    if (qt_statusbar_message(mw, "ready") != 0) { return 13 }
+    if (!(qt_statusbar_message(mw, "ready") else false)) { return 13 }
     if (qt_statusbar_text(mw) != "ready") { return 14 }
 
     // Toolbar.
-    tb<Int> = qt_toolbar_create(mw, "Main")
+    tb<Int> = qt_toolbar_create(mw, "Main") else 0
     if (tb == 0) { return 15 }
     if (qt_kind(tb) != QtWidgetKind::toolbar) { return 16 }
 
@@ -58,10 +58,10 @@ main()<Int> -> {
 
     // Preserve `open` across the handler via a captured global? Use a label to
     // prove the handler ran instead (immutable captures snapshot handles).
-    if (qt_post_event(open, QtEvent::click) != 0) { return 18 }
+    if (!(qt_post_event(open, QtEvent::click) else false)) { return 18 }
     rc<Int> = qt_run()
     if (qt_active() == false) { return 19 }   // graceful stop
-    if (qt_statusbar_message(mw, "clicked") != 0) { return 20 }
+    if (!(qt_statusbar_message(mw, "clicked") else false)) { return 20 }
     if (qt_statusbar_text(mw) != "clicked") { return 21 }
 
     // The mutable `opened` flag is written back by the handler; verify it here.
