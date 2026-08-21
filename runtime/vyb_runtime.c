@@ -1550,7 +1550,8 @@ hand_back_original:
 // surface allocation/pointer-free). Server certificates are supplied as in-line
 // PEM strings and loaded through memory BIOs, so there is no file-path coupling.
 // The client context verifies nothing by default (self-signed loopback tests);
-// a verified variant is a follow-up. Every op reports its outcome via
+// a pinned-cert verified variant is available for real hosts. Every op reports
+// its outcome via
 // __vyb_tls_error_code() / __vyb_tls_error_message().
 // ============================================================================
 

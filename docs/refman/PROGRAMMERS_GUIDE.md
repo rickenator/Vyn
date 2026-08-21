@@ -1546,33 +1546,38 @@ exercise the full wiring end-to-end.
 ### 4.13 `http` — pure-Vyb HTTP/1.1 client and server
 
 Module page: [`http.md`](http.md). Layered over `network`/`threads` (not raw
-runtime calls). `HttpResponse` holds `status`, `headers`, `body`.
+runtime calls). Fallible ops expose the File?/net shape: `HttpResponse` holds
+`status`, `headers`, `body`; `http_listen` returns a `TcpListener?`,
+`http_accept` a `TcpStream?`, `http_get` a `String?`, and `http_get_full` an
+`HttpResponse?` — absence *is* failure (no `-1`/`""` sentinels). Unwrap with
+`match`/`else` and escalate with `fail http_error(op, target)` (a shared
+`HttpError { op, target, message }`).
 
 ```vyb
-# client
-body = http_get(host, port, path)<String>
-resp = http_get_full(host, port, path)<HttpResponse>
-resp.status_code()
-http_header(resp, "content-type")
+# client -- an absent HttpResponse? is a failed round-trip
+match (http_get_full(host, port, path)) {   # HttpResponse?
+    resp -> { http_header(resp, "content-type") }
+    ?     -> { fail http_error("get", host) }
+}
 
 # server
-fd = http_listen(port, backlog)<Int>      # 0 = ephemeral
-http_serve(port, backlog)<Int>            # threaded server loop
-http_response(status, body)<String>       # well-formed response
+match (http_listen(port, backlog)) {        # TcpListener? (0 = ephemeral)
+    listener -> {
+        port_ = listener.local_port()
+        match (http_accept(listener)) { c -> { ... } , ? -> { ... } }
+        listener.close()
+    }
+    ? -> { fail http_error("listen", port.to_string()) }
+}
 
-# low-level request building
+# helpers (unchanged)
+http_response(status, body)<String>         # well-formed response
 http_request(method, path, host)<String>
-http_send_all(fd, data)<Int>
-
-# wire parsing
+http_get(host, port, path)<String?>          # body or absent
 http_status_code(line)<Int>
 http_index_of(s, needle)<Int>
-http_parse_int(s)<Int>
 http_header_value(header, name)<String>
-http_read_line(fd)<String>
-http_read_head(conn, max)<String>
-http_read_exact(fd, n)<String>
-http_read_all(fd, max)<String>
+http_read_line(fd)<String> / http_read_head / http_read_exact / http_read_all
 ```
 
 The threaded `http_serve` dispatches each accepted connection to its own
@@ -1584,13 +1589,20 @@ here before layering TLS.
 
 Module page: [`https.md`](https.md). A client that runs the `http` request
 state machine over a `TlsStream` (reusing `http`'s parsers and the shared
-`HttpResponse` type, which it re-exports).
+`HttpResponse` type, which it re-exports). Like `http`, the fallible client
+surface returns optionals: `http_get_full`-style calls now yield `HttpResponse?`
+(absent on a failed round-trip) and the body wrappers yield `String?`; escalate
+with `fail http_error(...)` and interpret a `-1` status as a genuine protocol
+result rather than a transport sentinel.
 
 ```vyb
-https_get(host, port, path)<String>
-https_get_full(host, port, path)<HttpResponse>            # unverified ctx
-https_get_full_verified(host, port, path, ca_pem)<HttpResponse>
-https_get_verified(host, port, path, ca_pem)<String>
+match (https_get_full(host, port, path)) {   # HttpResponse? (unverified ctx)
+    resp -> { http_header(resp, "content-type") }
+    ?     -> { fail http_error("get", host) }
+}
+https_get_full_verified(host, port, path, ca_pem)<HttpResponse?>
+https_get(host, port, path)<String?>
+https_get_verified(host, port, path, ca_pem)<String?>
 
 # diagnostics: throwaway TLS server answering one request
 https_selfhost(cert_pem, key_pem)<Int>
@@ -2078,6 +2090,8 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
+
 
 
 

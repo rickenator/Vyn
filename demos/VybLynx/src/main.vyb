@@ -203,6 +203,15 @@ sanitize(s<String>)<String> -> {
     return out
 }
 
+# The module http/https clients expose the native `HttpResponse?` shape (absence
+# IS a failed round-trip). The browser keeps an `HttpResponse` internally, so a
+# failed request surfaces as this status -1 sentinel that navigation treats like
+# any other non-2xx page.
+bad_http()<HttpResponse> -> {
+    return HttpResponse { status = -1, reason = "",
+                          headers = Vec<String>(), body = "" }
+}
+
 # --- Resource providers (RFE §3/§6/§44) -------------------------------------
 # Content is fetched through a `ResourceProvider` aspect, dispatched by URL
 # scheme. Each provider wraps the stdlib `http`/`https` module client, so the
@@ -217,7 +226,10 @@ struct HttpResourceProvider {}
 bind ResourceProvider -> HttpResourceProvider {
     scheme(self)<String> -> { return "http" }
     fetch(self, u<Url>)<HttpResponse> -> {
-        return http_get_full(u.host, u.port, u.path)
+        match (http_get_full(u.host, u.port, u.path)) {
+            r -> { return r }
+            ? -> { return bad_http() }
+        }
     }
 }
 
@@ -226,7 +238,10 @@ bind ResourceProvider -> HttpsResourceProvider {
     scheme(self)<String> -> { return "https" }
     fetch(self, u<Url>)<HttpResponse> -> {
         # Verified TLS with the system trust store and hostname/SNI check.
-        return https_get_full_verified(u.host, u.port, u.path, "")
+        match (https_get_full_verified(u.host, u.port, u.path, "")) {
+            r -> { return r }
+            ? -> { return bad_http() }
+        }
     }
 }
 
@@ -293,12 +308,10 @@ local_doc(urlStr<String>)<HttpResponse> -> {
 # Dispatch a URL to its provider by scheme and follow up to `hops` redirects
 # (a bad round-trip yields a status of -1 instead of a crash).
 fetch_resource(urlStr<String>, hops<Int>)<HttpResponse> -> {
-    bad<HttpResponse> = HttpResponse { status = -1, reason = "",
-                                       headers = Vec<String>(), body = "" }
-    if (hops <= 0) { return bad }
+    if (hops <= 0) { return bad_http() }
     u<Url> = parse_url(urlStr)
     if (u.scheme == "local") { return local_doc(urlStr) }
-    resp<HttpResponse> = bad
+    resp<HttpResponse> = bad_http()
     if (u.scheme == "https") {
         resp = fetch_with(HttpsResourceProvider {}, u)
     } else {
@@ -321,16 +334,20 @@ fetch_resource(urlStr<String>, hops<Int>)<HttpResponse> -> {
 # download forever (the worker never publishes its result). Direct calls are used
 # throughout the worker path so downloading cannot block on that edge.
 download_fetch(urlStr<String>, hops<Int>)<HttpResponse> -> {
-    bad<HttpResponse> = HttpResponse { status = -1, reason = "",
-                                       headers = Vec<String>(), body = "" }
-    if (hops <= 0) { return bad }
+    if (hops <= 0) { return bad_http() }
     u<Url> = parse_url(urlStr)
     if (u.scheme == "local") { return local_doc(urlStr) }
-    resp<HttpResponse> = bad
+    resp<HttpResponse> = bad_http()
     if (u.scheme == "https") {
-        resp = https_get_full_verified(u.host, u.port, u.path, "")
+        match (https_get_full_verified(u.host, u.port, u.path, "")) {
+            r -> { resp = r }
+            ? -> { }
+        }
     } else {
-        resp = http_get_full(u.host, u.port, u.path)
+        match (http_get_full(u.host, u.port, u.path)) {
+            r -> { resp = r }
+            ? -> { }
+        }
     }
     if (resp.status == 301 || resp.status == 302 || resp.status == 303 ||
         resp.status == 307 || resp.status == 308) {

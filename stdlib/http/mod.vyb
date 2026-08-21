@@ -7,23 +7,27 @@
 # loopback/lan.
 #
 #   Server (building blocks):
-#     http_listen(port, backlog) -> fd    open + bind + listen (0 = ephemeral)
-#     http_local_port(fd) -> Int          the bound port (handy after a 0)
-#     http_accept(fd) -> conn             accept one pending connection
-#     http_read_head(conn, max) -> String read the head, up to + including CRLFCRLF
-#     http_request_path(head) -> String   "GET /x HTTP/1.1" -> "/x"
-#     http_send_all(conn, data) -> Int    send the whole string
-#     http_close(fd) -> Int               close a socket/connection
-#     http_response(status, body) -> String  a well-formed text/plain response
+#     http_listen(port, backlog) -> TcpListener?   open + bind + listen (0 = ephemeral)
+#     http_local_port(listener) -> Int             the bound port (handy after a 0)
+#     http_accept(listener) -> TcpStream?          accept one pending connection
+#     http_read_head(fd, max) -> String            read the head, up to CRLFCRLF
+#     http_request_path(head) -> String            "GET /x HTTP/1.1" -> "/x"
+#     http_send_all(fd, data) -> Int               send the whole string
+#     http_close(fd) -> Int                        close a socket/connection
+#     http_response(status, body) -> String        a well-formed text/plain response
 #
 #   Client (convenience):
-#     http_request(method, path, host) -> String  a request head
-#     http_read_rest(conn, max) -> String         everything until the peer closes
-#     http_get(host, port, path) -> String        full GET round-trip -> body
+#     http_request(method, path, host) -> String   a request head
+#     http_read_rest(fd, max) -> String            everything until the peer closes
+#     http_get(host, port, path) -> String?        full GET round-trip -> body (absent on failure)
+#     http_get_full(host, port, path) -> HttpResponse?  full HTTP/1.1 client
 #
 #   Concurrent server:
-#     http_serve(port, backlog) -> Int   listen + accept on a worker thread
-#                                        (one detached thread per connection)
+#     http_serve(port, backlog) -> TcpListener?  listen + accept on a worker thread
+#                                                (one detached thread per connection)
+#
+#   Fallibility: absences above are failures. Escalate via `match`/`else`
+#   and `fail http_error(op, target)` into the fail/trap framework.
 #
 # Threading: `http_serve` runs the accept loop on a worker thread and serves
 # each accepted connection on its own detached thread, so the server keeps
@@ -34,38 +38,45 @@
 # external/local server.
 
 # Underlying socket plumbing comes from the `network` module, and per-connection
-# worker threads from the `threads` module. http itself only exposes `http_*`
-# functions over `Int`/`String`.
+# worker threads from the `threads` module. Fallible http ops expose the File?/net
+# shape: http_listen returns `TcpListener?`, http_accept returns `TcpStream?`,
+# http_get returns `String?`, and http_get_full returns `HttpResponse?` -- absence
+# IS failure (no `-1`/`""` sentinels). Unwrap with `match`/`else` and escalate with
+# `fail http_error(op, target)` into the fail/trap framework.
 import network::{socket_open, socket_bind, socket_listen, socket_accept,
                   socket_connect, socket_recv, socket_send, socket_local_port,
-                  socket_resolve, socket_close, Socket}
+                  socket_resolve, socket_close, Socket, TcpListener, TcpStream}
 import threads::{thread_spawn, thread_detach}
 
 # --- Server building blocks -------------------------------------------------
 
-# Open + bind + listen on `port` (use 0 to let the kernel pick one). Returns the
-# listening descriptor (>= 0) or -1 on failure.
+# Open + bind + listen on `port` (use 0 to let the kernel pick one). Returns a
+# `TcpListener?` -- present on success, absent on failure.
 share(all)
-http_listen(port<Int>, backlog<Int>)<Int> -> {
+http_listen(port<Int>, backlog<Int>)<TcpListener?> -> {
     fd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
-    if (fd < 0) { return -1 }
+    if (fd < 0) { return TcpListener?() }
     if (socket_bind(fd, "0.0.0.0", port) < 0 || socket_listen(fd, backlog) < 0) {
         socket_close(fd)
-        return -1
+        return TcpListener?()
     }
-    return fd
+    lp<Int> = socket_local_port(fd)
+    return TcpListener?(TcpListener { fd = fd, local_ip = "0.0.0.0", local_port = lp })
 }
 
 # The port a listening socket is bound to (read a 0 back after http_listen(0)).
 share(all)
-http_local_port(fd<Int>)<Int> -> {
-    return socket_local_port(fd)
+http_local_port(listener<TcpListener>)<Int> -> {
+    return listener.local_port
 }
 
-# Accept one pending connection; returns the connected descriptor (>= 0) or -1.
+# Accept one pending connection on `listener`. Returns the connected stream as a
+# `TcpStream?` -- present on success, absent on failure.
 share(all)
-http_accept(fd<Int>)<Int> -> {
-    return socket_accept(fd)
+http_accept(listener<TcpListener>)<TcpStream?> -> {
+    c<Int> = socket_accept(listener.fd)
+    if (c < 0) { return TcpStream?() }
+    return TcpStream?(TcpStream { fd = c, peer_ip = "", peer_port = -1 })
 }
 
 # Read an HTTP head (everything up to and including the blank line) into a fresh
@@ -150,34 +161,35 @@ http_read_rest(conn<Int>, max<Int>)<String> -> {
     return buf
 }
 
-# Full GET round-trip against `host`:`port` for `path`; returns the body (empty
-# on connection failure). Blocks until the peer responds.
+# Full GET round-trip against `host`:`port` for `path`. Returns the body as a
+# `String?` -- absent on connection failure (an empty body is still a valid
+# present value). Blocks until the peer responds.
 share(all)
-http_get(host<String>, port<Int>, path<String>)<String> -> {
+http_get(host<String>, port<Int>, path<String>)<String?> -> {
     fd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
-    if (fd < 0) { return "" }
+    if (fd < 0) { return String?() }
     if (socket_connect(fd, host, port) < 0) {
         socket_close(fd)
-        return ""
+        return String?()
     }
     http_send_all(fd, http_request("GET", path, host))
     http_read_head(fd, 65536)
     body<String> = http_read_rest(fd, 65536)
     socket_close(fd)
-    return body
+    return String?(body)
 }
 
 # Serve one accepted connection on a fresh detached thread: read its head,
 # extract the request path, and answer with a well-formed response before
 # closing. Runs concurrently with the rest of the server.
 share(all)
-http_serve_conn(conn<Int>)<Int> -> {
+http_serve_conn(conn<TcpStream>)<Int> -> {
     h<Int> = thread_spawn(|| -> {
-        head<String> = http_read_head(conn, 65536)
+        head<String> = http_read_head(conn.fd, 65536)
         path<String> = http_request_path(head)
         pk<String> = http_response(200, "hi from vyb: " + path)
-        http_send_all(conn, pk)
-        http_close(conn)
+        http_send_all(conn.fd, pk)
+        http_close(conn.fd)
         return 0
     })
     if (h >= 0) { thread_detach(h) }
@@ -186,29 +198,33 @@ http_serve_conn(conn<Int>)<Int> -> {
 
 # Start a threaded HTTP/1.1 server: bind+listen on `port` (0 = ephemeral; read
 # it back via http_local_port), spawn a detached worker running the accept
-# loop, and return the listening descriptor (or -1 on failure). Each connection
-# is served concurrently on its own detached thread via http_serve_conn. The
-# server stops once the fd is closed and the pending accept returns -1 (the
-# accept worker then reaps itself); pre-1.0, prefer closing when no connect is
-# in flight.
+# loop, and return the listener as a `TcpListener?` (absent on failure). Each
+# connection is served concurrently on its own detached thread via
+# http_serve_conn. The server stops once the listener is closed and the pending
+# accept returns an absent `TcpStream?` (the accept worker then reaps itself);
+# prefer closing when no connect is in flight.
 share(all)
-http_serve(port<Int>, backlog<Int>)<Int> -> {
-    fd<Int> = http_listen(port, backlog)
-    if (fd < 0) { return -1 }
-    thr<Int> = thread_spawn(|| -> {
-        while (true) {
-            c<Int> = http_accept(fd)
-            if (c < 0) { return 0 }
-            http_serve_conn(c)
+http_serve(port<Int>, backlog<Int>)<TcpListener?> -> {
+    match (http_listen(port, backlog)) {
+        ls -> {
+            thr<Int> = thread_spawn(|| -> {
+                while (true) {
+                    match (http_accept(ls)) {
+                        c -> { http_serve_conn(c) }
+                        ? -> { return 0 }
+                    }
+                }
+                return 0
+            })
+            if (thr < 0) {
+                http_close(ls.fd)
+                return TcpListener?()
+            }
+            thread_detach(thr)
+            return TcpListener?(ls)
         }
-        return 0
-    })
-    if (thr < 0) {
-        http_close(fd)
-        return -1
+        ? -> { return TcpListener?() }
     }
-    thread_detach(thr)
-    return fd
 }
 
 # --- HTTP/1.1 client ---------------------------------------------------------
@@ -227,6 +243,26 @@ struct HttpResponse {
     reason<String>,
     headers<Vec<String>>,
     body<String>
+}
+
+# A shared error value for escalating a failed HTTP op into the fail/trap
+# framework. `op` names the failing call ("get", "listen", "accept", ...);
+# `target` is the host:port (or port) intended; `message` is a fixed
+# description (http is pure Vyb, so there is no low-level diagnostic to
+# snapshot). Build with a literal or via `http_error()`.
+share(all)
+struct HttpError {
+    op<String>,
+    target<String>,
+    message<String>
+}
+
+# Build an `HttpError` for a failed `op` targeting `target`. Typical use is
+# escalating an absent `String?` / `HttpResponse?` / `TcpListener?`:
+#   match (http_get_full(h, p, path)) { r -> body(r), ? -> { fail http_error("get", h) } }
+share(all)
+http_error(op<String>, target<String>)<HttpError> -> {
+    return HttpError { op = op, target = target, message = "http " + op + " failed" }
 }
 
 # Index of the first occurrence of `needle` in `s`, or -1.
@@ -384,20 +420,18 @@ http_read_chunked(fd<Int>)<String> -> {
 # reason, headers, and body; status is -1 if the round-trip could not be
 # completed (e.g. connection failure).
 share(all)
-http_get_full(host<String>, port<Int>, path<String>)<HttpResponse> -> {
-    bad<HttpResponse> = HttpResponse { status = -1, reason = "",
-                                        headers = Vec<String>(), body = "" }
+http_get_full(host<String>, port<Int>, path<String>)<HttpResponse?> -> {
     # Resolve the host to an IPv4 address first (exactly like the https client),
     # then connect by IP. The sockets are AF_INET only, and a bare hostname can
     # resolve to an IPv6 address first, which would make the connect fail - even
     # when the host serves IPv4 too. The hostname is kept for the Host header.
     connect_ip<String> = socket_resolve(host)
-    if (connect_ip.len() == 0) { return bad }
+    if (connect_ip.len() == 0) { return HttpResponse?() }
     fd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP)
-    if (fd < 0) { return bad }
+    if (fd < 0) { return HttpResponse?() }
     if (socket_connect(fd, connect_ip, port) < 0) {
         socket_close(fd)
-        return bad
+        return HttpResponse?()
     }
     req<String> = "GET " + path + " HTTP/1.1\r\nHost: " + host + "\r\nConnection: close\r\n\r\n"
     socket_send(fd, req)
@@ -405,7 +439,7 @@ http_get_full(host<String>, port<Int>, path<String>)<HttpResponse> -> {
     code<Int> = http_status_code(line)
     if (code < 0) {
         socket_close(fd)
-        return bad
+        return HttpResponse?()
     }
     hs<Vec<String>> = Vec<String>()
     length<Int> = -1
@@ -443,7 +477,7 @@ http_get_full(host<String>, port<Int>, path<String>)<HttpResponse> -> {
         }
     }
     socket_close(fd)
-    return HttpResponse { status = code, reason = reason, headers = hs, body = body }
+    return HttpResponse?(HttpResponse { status = code, reason = reason, headers = hs, body = body })
 }
 
 # Look a header up by (case-insensitive) name across a parsed response's headers.

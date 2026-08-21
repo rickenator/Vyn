@@ -1,5 +1,5 @@
 {
-  "git_rev": "486587cc9f2e2ed2e80b809f17628ccfe00a7055",
+  "git_rev": "67b436480ee3bd729f1edb55a7304a2ebbae7824",
   "modules": [
     "agents",
     "asyncs",
@@ -98,9 +98,9 @@
         "files": [
           "stdlib/http/mod.vyb"
         ],
-        "exported": 26,
+        "exported": 28,
         "fan_in": 1,
-        "fan_out": 2
+        "fan_out": 3
       },
       {
         "name": "https",
@@ -108,7 +108,7 @@
           "stdlib/https/mod.vyb"
         ],
         "exported": 11,
-        "fan_in": 0,
+        "fan_in": 1,
         "fan_out": 4
       },
       {
@@ -448,6 +448,8 @@
           "http_serve_conn",
           "http_serve",
           "HttpResponse",
+          "HttpError",
+          "http_error",
           "http_index_of",
           "http_key_eq",
           "http_parse_int",
@@ -470,7 +472,7 @@
           "tls_read_exact",
           "tls_read_all",
           "tls_read_chunked",
-          "Vec<String>",
+          "socket_open",
           "https_get_full",
           "https_get_full_verified",
           "https_get",
@@ -2037,6 +2039,15 @@
         "fan_in": 0
       },
       {
+        "name": "HttpError",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "struct",
+        "signature": "struct HttpError {",
+        "summary": "A shared error value for escalating a failed HTTP op into the fail/trap",
+        "fan_in": 0
+      },
+      {
         "name": "HttpResponse",
         "module": "http",
         "file": "stdlib/http/mod.vyb",
@@ -2050,8 +2061,8 @@
         "module": "http",
         "file": "stdlib/http/mod.vyb",
         "kind": "fn",
-        "signature": "http_accept(fd<Int>)<Int> ->",
-        "summary": "Accept one pending connection; returns the connected descriptor (>= 0) or -1.",
+        "signature": "http_accept(listener<TcpListener>)<TcpStream?> ->",
+        "summary": "Accept one pending connection on `listener`. Returns the connected stream as a",
         "fan_in": 0
       },
       {
@@ -2064,12 +2075,21 @@
         "fan_in": 0
       },
       {
+        "name": "http_error",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_error(op<String>, target<String>)<HttpError> ->",
+        "summary": "Build an `HttpError` for a failed `op` targeting `target`. Typical use is",
+        "fan_in": 0
+      },
+      {
         "name": "http_get",
         "module": "http",
         "file": "stdlib/http/mod.vyb",
         "kind": "fn",
-        "signature": "http_get(host<String>, port<Int>, path<String>)<String> ->",
-        "summary": "Full GET round-trip against `host`:`port` for `path`; returns the body (empty",
+        "signature": "http_get(host<String>, port<Int>, path<String>)<String?> ->",
+        "summary": "Full GET round-trip against `host`:`port` for `path`. Returns the body as a",
         "fan_in": 0
       },
       {
@@ -2077,7 +2097,7 @@
         "module": "http",
         "file": "stdlib/http/mod.vyb",
         "kind": "fn",
-        "signature": "http_get_full(host<String>, port<Int>, path<String>)<HttpResponse> ->",
+        "signature": "http_get_full(host<String>, port<Int>, path<String>)<HttpResponse?> ->",
         "summary": "Full HTTP/1.1 GET round-trip. Returns an HttpResponse with the parsed status,",
         "fan_in": 0
       },
@@ -2122,8 +2142,8 @@
         "module": "http",
         "file": "stdlib/http/mod.vyb",
         "kind": "fn",
-        "signature": "http_listen(port<Int>, backlog<Int>)<Int> ->",
-        "summary": "Open + bind + listen on `port` (use 0 to let the kernel pick one). Returns the",
+        "signature": "http_listen(port<Int>, backlog<Int>)<TcpListener?> ->",
+        "summary": "Open + bind + listen on `port` (use 0 to let the kernel pick one). Returns a",
         "fan_in": 0
       },
       {
@@ -2131,7 +2151,7 @@
         "module": "http",
         "file": "stdlib/http/mod.vyb",
         "kind": "fn",
-        "signature": "http_local_port(fd<Int>)<Int> ->",
+        "signature": "http_local_port(listener<TcpListener>)<Int> ->",
         "summary": "The port a listening socket is bound to (read a 0 back after http_listen(0)).",
         "fan_in": 0
       },
@@ -2248,7 +2268,7 @@
         "module": "http",
         "file": "stdlib/http/mod.vyb",
         "kind": "fn",
-        "signature": "http_serve(port<Int>, backlog<Int>)<Int> ->",
+        "signature": "http_serve(port<Int>, backlog<Int>)<TcpListener?> ->",
         "summary": "Start a threaded HTTP/1.1 server: bind+listen on `port` (0 = ephemeral; read",
         "fan_in": 0
       },
@@ -2257,7 +2277,7 @@
         "module": "http",
         "file": "stdlib/http/mod.vyb",
         "kind": "fn",
-        "signature": "http_serve_conn(conn<Int>)<Int> ->",
+        "signature": "http_serve_conn(conn<TcpStream>)<Int> ->",
         "summary": "Serve one accepted connection on a fresh detached thread: read its head,",
         "fan_in": 0
       },
@@ -2271,21 +2291,12 @@
         "fan_in": 1
       },
       {
-        "name": "Vec<String>",
-        "module": "https",
-        "file": "stdlib/https/mod.vyb",
-        "kind": "fn",
-        "signature": "headers = Vec<String>(), body = \"\" }",
-        "summary": "Full HTTPS/1.1 GET round-trip. Returns an HttpResponse with the parsed status,",
-        "fan_in": 0
-      },
-      {
         "name": "https_get",
         "module": "https",
         "file": "stdlib/https/mod.vyb",
         "kind": "fn",
-        "signature": "https_get(host<String>, port<Int>, path<String>)<String> ->",
-        "summary": "Convenience wrapper returning just the response body (\"\" on failure).",
+        "signature": "https_get(host<String>, port<Int>, path<String>)<String?> ->",
+        "summary": "Convenience wrapper returning just the response body as a `String?` (absent on",
         "fan_in": 0
       },
       {
@@ -2293,7 +2304,7 @@
         "module": "https",
         "file": "stdlib/https/mod.vyb",
         "kind": "fn",
-        "signature": "https_get_full(host<String>, port<Int>, path<String>)<HttpResponse> ->",
+        "signature": "https_get_full(host<String>, port<Int>, path<String>)<HttpResponse?> ->",
         "summary": "Full HTTPS/1.1 GET round-trip over an unverified client context (self-signed",
         "fan_in": 0
       },
@@ -2302,7 +2313,7 @@
         "module": "https",
         "file": "stdlib/https/mod.vyb",
         "kind": "fn",
-        "signature": "https_get_full_verified(host<String>, port<Int>, path<String>, ca_pem<String>)<HttpResponse> ->",
+        "signature": "https_get_full_verified(host<String>, port<Int>, path<String>, ca_pem<String>)<HttpResponse?> ->",
         "summary": "Full HTTPS/1.1 GET round-trip with peer verification. `host` is a hostname:",
         "fan_in": 0
       },
@@ -2311,8 +2322,8 @@
         "module": "https",
         "file": "stdlib/https/mod.vyb",
         "kind": "fn",
-        "signature": "https_get_verified(host<String>, port<Int>, path<String>, ca_pem<String>)<String> ->",
-        "summary": "Verified convenience wrapper returning just the response body (\"\" on failure).",
+        "signature": "https_get_verified(host<String>, port<Int>, path<String>, ca_pem<String>)<String?> ->",
+        "summary": "Verified convenience wrapper returning just the response body as a `String?`",
         "fan_in": 0
       },
       {
@@ -2332,6 +2343,15 @@
         "signature": "https_selfhost_verified(cert_pem<String>, key_pem<String>)<Int> ->",
         "summary": "Diagnostics like https_selfhost, but the client uses a verified context pinned",
         "fan_in": 0
+      },
+      {
+        "name": "socket_open",
+        "module": "https",
+        "file": "stdlib/https/mod.vyb",
+        "kind": "fn",
+        "signature": "fd<Int> = socket_open(2, 1, 6)",
+        "summary": "Full HTTPS/1.1 GET round-trip. Returns an HttpResponse with the parsed status,",
+        "fan_in": 1
       },
       {
         "name": "tls_read_all",
@@ -2520,7 +2540,7 @@
         "kind": "struct",
         "signature": "struct TcpListener {",
         "summary": "",
-        "fan_in": 0
+        "fan_in": 1
       },
       {
         "name": "TcpListenerOps",
@@ -2547,7 +2567,7 @@
         "kind": "struct",
         "signature": "struct TcpStream {",
         "summary": "",
-        "fan_in": 0
+        "fan_in": 1
       },
       {
         "name": "TcpStreamOps",
@@ -4866,6 +4886,13 @@
       "type": "call",
       "from_module": "http",
       "from_symbol": "http_get",
+      "to_module": "https",
+      "to_symbol": "socket_open"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_get",
       "to_module": "network",
       "to_symbol": "socket_close"
     },
@@ -4943,6 +4970,13 @@
       "type": "call",
       "from_module": "http",
       "from_symbol": "http_get_full",
+      "to_module": "https",
+      "to_symbol": "socket_open"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_get_full",
       "to_module": "network",
       "to_symbol": "socket_close"
     },
@@ -4999,6 +5033,13 @@
       "type": "call",
       "from_module": "http",
       "from_symbol": "http_listen",
+      "to_module": "https",
+      "to_symbol": "socket_open"
+    },
+    {
+      "type": "call",
+      "from_module": "http",
+      "from_symbol": "http_listen",
       "to_module": "network",
       "to_symbol": "socket_bind"
     },
@@ -5021,14 +5062,14 @@
       "from_module": "http",
       "from_symbol": "http_listen",
       "to_module": "network",
-      "to_symbol": "socket_open"
+      "to_symbol": "socket_local_port"
     },
     {
       "type": "call",
       "from_module": "http",
-      "from_symbol": "http_local_port",
+      "from_symbol": "http_listen",
       "to_module": "network",
-      "to_symbol": "socket_local_port"
+      "to_symbol": "socket_open"
     },
     {
       "type": "call",
@@ -5244,6 +5285,13 @@
       "type": "call",
       "from_module": "https",
       "from_symbol": "https_selfhost",
+      "to_module": "https",
+      "to_symbol": "socket_open"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost",
       "to_module": "network",
       "to_symbol": "socket_accept"
     },
@@ -5274,13 +5322,6 @@
       "from_symbol": "https_selfhost",
       "to_module": "network",
       "to_symbol": "socket_local_port"
-    },
-    {
-      "type": "call",
-      "from_module": "https",
-      "from_symbol": "https_selfhost",
-      "to_module": "network",
-      "to_symbol": "socket_open"
     },
     {
       "type": "call",
@@ -5349,6 +5390,13 @@
       "type": "call",
       "from_module": "https",
       "from_symbol": "https_selfhost_verified",
+      "to_module": "https",
+      "to_symbol": "socket_open"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_selfhost_verified",
       "to_module": "network",
       "to_symbol": "socket_accept"
     },
@@ -5379,13 +5427,6 @@
       "from_symbol": "https_selfhost_verified",
       "to_module": "network",
       "to_symbol": "socket_local_port"
-    },
-    {
-      "type": "call",
-      "from_module": "https",
-      "from_symbol": "https_selfhost_verified",
-      "to_module": "network",
-      "to_symbol": "socket_open"
     },
     {
       "type": "call",
@@ -6098,6 +6139,24 @@
       "from_module": "http",
       "from_symbol": "",
       "to_module": "network",
+      "to_symbol": "TcpListener",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "http",
+      "from_symbol": "",
+      "to_module": "network",
+      "to_symbol": "TcpStream",
+      "reexport": false,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "http",
+      "from_symbol": "",
+      "to_module": "network",
       "to_symbol": "socket_accept",
       "reexport": false,
       "resolved": true
@@ -6585,6 +6644,20 @@
       "from_symbol": "samekey<K<Equatable>>",
       "to_module": "core",
       "to_symbol": "Equatable"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "http",
+      "from_symbol": "HttpError",
+      "to_module": "http",
+      "to_symbol": "http_error"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "http",
+      "from_symbol": "http_error",
+      "to_module": "http",
+      "to_symbol": "HttpError"
     },
     {
       "type": "proseRef",
@@ -8639,6 +8712,27 @@
     {
       "type": "usesType",
       "from_module": "http",
+      "from_symbol": "http_accept",
+      "to_module": "network",
+      "to_symbol": "TcpListener"
+    },
+    {
+      "type": "usesType",
+      "from_module": "http",
+      "from_symbol": "http_accept",
+      "to_module": "network",
+      "to_symbol": "TcpStream"
+    },
+    {
+      "type": "usesType",
+      "from_module": "http",
+      "from_symbol": "http_error",
+      "to_module": "http",
+      "to_symbol": "HttpError"
+    },
+    {
+      "type": "usesType",
+      "from_module": "http",
       "from_symbol": "http_get_full",
       "to_module": "http",
       "to_symbol": "HttpResponse"
@@ -8649,6 +8743,34 @@
       "from_symbol": "http_header",
       "to_module": "http",
       "to_symbol": "HttpResponse"
+    },
+    {
+      "type": "usesType",
+      "from_module": "http",
+      "from_symbol": "http_listen",
+      "to_module": "network",
+      "to_symbol": "TcpListener"
+    },
+    {
+      "type": "usesType",
+      "from_module": "http",
+      "from_symbol": "http_local_port",
+      "to_module": "network",
+      "to_symbol": "TcpListener"
+    },
+    {
+      "type": "usesType",
+      "from_module": "http",
+      "from_symbol": "http_serve",
+      "to_module": "network",
+      "to_symbol": "TcpListener"
+    },
+    {
+      "type": "usesType",
+      "from_module": "http",
+      "from_symbol": "http_serve_conn",
+      "to_module": "network",
+      "to_symbol": "TcpStream"
     },
     {
       "type": "usesType",

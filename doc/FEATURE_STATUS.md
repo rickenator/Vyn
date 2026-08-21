@@ -137,4 +137,12 @@ Legend: ✅ Implemented | 🚧 Partial / Stubbed | 📋 Planned
 
 ---
 
+## Standard Module Error Handling
+
+| Module | Shape | Notes |
+|--------|-------|-------|
+| `io`, `network`, `tls`, `https` | Native `T?` | Fallible ops return a `T?` (absence = failure), with a shared error struct (`IoError`, `NetError`, `TlsError`, `HttpError`) + `<mod>_error(op, target)` builder so callers `match`/`else` then `fail` the typed value into the fail/trap framework. No `-1`/`""`/`status == -1` sentinels. See PROGRAMMERS_GUIDE §3.16. |
+
+**Note (reviewbot):** the default `https_get_full`/`tls_client_context` are intentionally *unverified* (self-signed loopback / demo convenience), and the module header documents this; there is **no runtime guard** warning against using the unverified context against real hosts. Verified variants (`https_get_full_verified`, `tls_client_context_verified`) exist. Acceptable for now per the docs; a build-time `--require-tls-verify` flag or runtime warning is a future improvement.
+
 *Last updated: v0.7.3 (2026-08-19)*
