@@ -469,7 +469,7 @@ init_colors()<Void> -> {
         color_ok = 0
         return
     }
-    if (curses_start_color() != 0) {
+    if (!(curses_start_color() else false)) {
         color_ok = 0
         return
     }
@@ -505,7 +505,7 @@ bar_attr()<Int> -> {
     return curses_attr_reverse()
 }
 
-put(row<Int>, col<Int>, text<String>, maxw<Int>)<Int> -> {
+put(row<Int>, col<Int>, text<String>, maxw<Int>)<Bool?> -> {
     t<String> = sanitize(text)
     if (t.len() > maxw) { t = t.substring(0, maxw) }
     return curses_move_addstr(row, col, t)
@@ -513,15 +513,15 @@ put(row<Int>, col<Int>, text<String>, maxw<Int>)<Int> -> {
 
 # Raw add-str for box-drawing UTF-8 cells (put()'s byte-width clamp would
 # truncate a multi-byte column glyph). sanitize() still runs at the boundary.
-bput(row<Int>, col<Int>, text<String>)<Int> -> {
+bput(row<Int>, col<Int>, text<String>)<Bool?> -> {
     return curses_move_addstr(row, col, sanitize(text))
 }
 
-refresh()<Int> -> {
+refresh()<Bool?> -> {
     return curses_refresh()
 }
 
-clear_screen()<Int> -> {
+clear_screen()<Bool?> -> {
     return curses_clear()
 }
 
@@ -1226,7 +1226,7 @@ run_browser(initial<String>, initial_status<String>)<Int> -> {
 }
 
 main()<Int> -> {
-    if (curses_init() != 0) {
+    if ((curses_init() else 0) == 0) {
         println("vyblynx: screen unavailable - run under a real terminal/TTY")
         return 1
     }

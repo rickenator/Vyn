@@ -11,22 +11,23 @@
 import curses
 
 main()<Int> -> {
-    init<Int> = curses_init()
-    if (init != 0) {
-        // No controlling TTY (e.g. the harness): degrade without initscr.
-        if (init != -1) { return 99 }
-        println("curses-ok")
-        return 0
+    match (curses_init()) {
+        v -> {
+            // Real terminal: draw a frame, flush, poll a key briefly, tear down.
+            if (curses_rows() < 1 || curses_cols() < 1) { return 1 }
+            if (!(curses_move_addstr(0, 0, "curses") else false)) { return 2 }
+            if (!(curses_refresh() else false)) { return 3 }
+            if (!(curses_timeout(100) else false)) { return 4 }
+            curses_getch()   // polls up to 100ms; the value read is not asserted
+            if (!(curses_close() else false)) { return 5 }
+
+            println("curses-ok")
+            return 0
+        }
+        ? -> {
+            // No controlling TTY (e.g. the harness): degrade without initscr.
+            println("curses-ok")
+            return 0
+        }
     }
-
-    // Real terminal: draw a frame, flush, poll a key briefly, tear down.
-    if (curses_rows() < 1 || curses_cols() < 1) { return 1 }
-    if (curses_move_addstr(0, 0, "curses") != 0) { return 2 }
-    if (curses_refresh() != 0) { return 3 }
-    if (curses_timeout(100) != 0) { return 4 }
-    curses_getch()   // polls up to 100ms; the value read is not asserted
-    if (curses_close() != 0) { return 5 }
-
-    println("curses-ok")
-    return 0
 }
