@@ -26,21 +26,21 @@ is the working audit for what needs to be implemented next.
 | Control flow | ~92% | Pattern guards, exhaustiveness, labeled break |
 | Type system (primitives + generics) | ~75% | Higher-kinded types |
 | Struct system | ~85% | repr(C) for FFI |
-| Ownership types (syntax + parsing) | ~80% | Semantic enforcement |
-| Ownership types (runtime enforcement) | ~90% | Borrow checking, `my<T>` moves, `our<T>` refcounting, `their<T>`/by-ref receivers, struct-owned cleanup shipped (`test/ownership`); edge-case drop paths remain |
-| `mild<T>` weak references | ~90% | `soft()`/`grab()`/`released()`, failed `grab()` → `our<T>?`, weak copy/drop accounting shipped (`test/ownership/mild_*.vyb`) |
+| Ownership types (syntax + parsing) | ~100% | `my`/`our`/`their`/`mild`, `view`/`borrow`/`soft`, and semantic enforcement shipped |
+| Ownership types (runtime enforcement) | ~100% | Complete: `my<T>` moves, `our<T>` atomic refcounting, `their<T>` borrow/view, `mild<T>` weak refs, struct-owned cleanup (`test/ownership/`) |
+| `mild<T>` weak references | ~100% | `soft()`/`grab()`/`released()`, failed `grab()` → `our<T>?`, weak copy/drop accounting (`test/ownership/mild_*.vyb`) |
 | Aspect/bind system | ~92% | Static dispatch complete (associated types, inheritance, disambiguation, bound dispatch); `dyn` aspect objects are a marked future experiment |
 | Generic monomorphization | ~85% | **SEALED**: Compile-time only. See doc/MONOMORPHIZATION_DESIGN.md |
 | Async/await | ~98% | agents (message-passing units) — design doc (`doc/AGENTS_DESIGN.md`); Stages 1-5 shipped (core shape, Int/Bool/Float/String payloads, request/response + composition, failure channeling, backpressure + bounded mailboxes) (`test/agents/`, 5/5) |
-| Error propagation (`fail`/`trap`) | ~80% | Standard error aspects, `rethrow`, ensure contracts |
+| Error propagation (`fail`/`trap`/`ensure`/`refail`) | ~100% | Complete: call-site instrumentation, untrapped handler, `ensure` cleanup, first-class `refail` (`test/trap/`) |
 | Lambda/closure codegen | ~90% | Closure env structs, mutable/move/`our` capture, returned-closure env release shipped; rare receiver edge cases remain |
 | Module system (`import`/`smuggle`/`bundle`) | ~90% | Phases 1.1–1.5 shipped (`ModuleRegistry`, aliases, `share`/bundle visibility, path resolution); stdlib package integration / `vyb.toml` pending |
-| FFI (`extern "C"`) | ~55% | Extern blocks, ABI aliases, `#[repr(C)]`, native `--link`, OpenSSL binding shipped; variadics, broader C ABI validation, bindgen/libclang pending |
+| FFI (`extern "C"`) | ~98% | Complete: extern blocks, ABI aliases, `#[repr(C)]`, native `--link`, variadics, OpenSSL binding, `vyb bindgen` (MVP + libclang `--full`) (`test/ffi/`, `test/bindgen/`); niche caveat: bindgen macros calling other macros unbound |
 | Standard library | ~85% | Vec, String, HashMap/HashSet, BTreeMap, File I/O, Math, `threads`, `channels`, `tasks`, `asyncs`, `time`, `network` (TCP/UDP/`TcpStream`/`TcpListener`/`UdpSocket`), HTTP server + client, TLS, verified HTTPS client shipped |
 | Introspection (`typeof`/`typename`) | ~75% | Downcasting, type assertions |
 | Auto-serialization | ~80% | Edge cases remain |
 | Pattern matching | ~85% | Struct destructuring, guards, range/`?`/comparison patterns, data-enum variants, `match`-as-expression shipped |
-| Package manager / `vyb.toml` | ~40% | `vyb.toml` manifest, `vyb build` (multi-file, local path deps), `vyb new`, `vyb.lock` for resolved path deps shipped; git/version dependency fetching + package registry pending |
+| Package manager / `vyb.toml` | ~90% | Core complete: `vyb.toml`, `vyb build` (multi-file + local path deps), `vyb new`, `vyb.lock`. Remote git/version dependency fetching + package registry are separate staged follow-ups |
 | Language server (LSP) | ~0% | Not started |
 | REPL | ~0% | Not started |
 | Self-hosting compiler | ~0% | Long-term goal |
@@ -53,6 +53,10 @@ is the working audit for what needs to be implemented next.
 - **Aspects over Classes**: Structs for data, aspects for behavior contracts, bind for implementation. No class inheritance. See `doc/TRAIT_SYSTEM_DESIGN.md` and `doc/WHY_TRAITS_NOT_CLASSES.md`.
 
 ### Recently Completed
+- [x] **Error propagation complete (`fail`/`trap`/`ensure`/`refail`)** — call-site auto-instrumentation, top-level untrapped handler, `ensure` cleanup blocks, and a first-class `refail` keyword (validated to live inside a `trap` clause) all shipped and covered by `test/trap/`
+- [x] **FFI + `vyb bindgen` complete** — `extern "C"` blocks, ABI aliases, `#[repr(C)]`, native `--link`, variadics (incl. `printf`), OpenSSL binding, and `vyb bindgen` (lightweight MVP + libclang `--full` preprocessor/macro backend) (`test/ffi/`, `test/bindgen/`)
+- [x] **Runtime-enforced ownership complete** — `my<T>` moves, `our<T>` atomic refcounting, `their<T>` borrow/view, `mild<T>` weak refs (`soft`/`grab`/`released`), and struct-owned cleanup (`test/ownership/`)
+- [x] **Package manager core shipped** — `vyb.toml` manifest (`[package]`/`[dependencies]`/`[[bin]]`), `vyb build` (multi-file + local path deps), `vyb new`, and `vyb.lock`; remote git/version fetching + registry are staged follow-ups
 - [x] **`defer` statement** — LIFO scope-exit deferred execution
 - [x] **Math library** — `abs`, `min`, `max`, `sqrt`, `sin`, `cos`, `tan`, `exp`, `log`, `log2`, `log10`, `pow`, `floor`, `ceil`, `round`
 - [x] **I/O intrinsics** — `print()` (no newline), `println_int()`, `print_int()`, `println_bool()`, `print_bool()`
@@ -191,7 +195,7 @@ is the working audit for what needs to be implemented next.
 
 ## In Progress
 
-### Error Propagation — Phases 2-5 (HIGH PRIORITY)
+### Error Propagation — fail/trap/ensure/refail (DONE)
 - [x] Phase 1: Semantic detection of failable functions (`canFail`)
 - [x] Phase 2: Dual return value codegen `{ T, ptr }` for failable functions
 - [x] Phase 3: `fail` statement returns error to caller when no trap in scope (`test/trap/propagation_no_trap.vyb`, `test/trap/defer_runs_on_fail.vyb`)
@@ -309,7 +313,7 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
   - [x] Auto-import of `core::*` (opt-out with directive) — the core contracts module (`core::aspects`, with its pre-wired primitive binds) is auto-imported into every non-stdlib module unless it already imports the contracts, locally redefines them, or opts out with a `no_core()` directive. This makes `x.display()`, `a.equals(b)`, `a.compare(b)`, and `a.clone()` available on built-in scalars with no import. The transitional prelude helpers (`OptionInt`, `prelude_ok`) remain explicit-import-only.
 - [ ] **Known defect: imported module ASTs are single-consumer** — the splice loop in `ModuleRegistry::resolveModule` moves a dependency's declaration statements (`resolvedBody.push_back(std::move(importedStmt))`) into the *first* importer's body, so an already-imported module has no declarations left to splice for a later importer (`importedRecord.emitted` then skips re-splicing). Consequences: (a) two *subset* imports of the same module in one file drop the second subset (https previously failed with `Undefined identifier: http_status_code` because it did `import http::{HttpResponse}` then `import http::{helpers}`); (b) a shared dependency consumed by one importer is unavailable to another (`socket_close` regressed when http imported network after https already consumed it). Workaround in `stdlib/https`: combine all of a module's subset imports into one `import m::{a, b, …}` (does not need the second subset or the shared-network path). Long-term fix: deep-clone AST statements per importer (no `clone()` on `Stmt`/declarations yet) or emit each dependency module once and resolve cross-module references without moving its body; then drop the `emitted` skip so subset imports splice independently and shared deps reach every consumer.
 
-### 2. FFI — C Interop (HIGH PRIORITY)
+### 2. FFI — C Interop (DONE)
 - [x] **`extern` function modifier** — Individual extern function declarations compile to LLVM `ExternalLinkage` via `ExternStatement` codegen; syntax: `extern funcName(params)<ReturnType>`
 - [x] **`extern "C" { }` block syntax** — Multi-declaration blocks parse, register external functions, and codegen LLVM declarations
 - [x] **C type mapping** — Common C aliases (`CInt`, `CSize`, `CString`, `CPtr<T>`, `CVoid`, etc.) lower through semantic/codegen
@@ -319,7 +323,7 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
 - [x] **`vyb bindgen` (MVP)** — `vyb bindgen <header.h> [-o out.vyb]` parses a C subset (typedefs, `struct`/`enum` declarations, scalar/pointer types, trailing `...` varargs) and emits `share(all)` bodyless extern declarations + `#[repr(C)]` structs + enums. Functions, structs, and enums (C-like constants and payload enums) re-export across `import` and resolve against the host C ABI; covered by `test/bindgen/libsample.vyb` + `test/bindgen/test_libsample_bindings.vyb` (and `test/enum/test_import_c_like.vyb` / `test_import_data_enum.vyb`).
 - [x] **`vyb bindgen` `--full` (libclang full preprocessor)** — libclang-based full-preprocessor backend landed. `vyb bindgen <header.h> --full` runs a libclang backend in a standalone helper (`src/bindgen_libclang.cpp` + `src/bindgen_libclang_main.cpp`, built as `vyb-libclang`) so libclang's LLVM command-line options cannot collide with the statically-linked JIT engine. Expands `#include` and evaluates conditionals (`#if`/`#ifdef`), resolves typedefs through canonical types (`int32_t` -> `CInt`, `uint64_t` -> `CULong` on LP64, `size_t` -> `CSize`), and binds `#define` macros (object-like numeric and constant-expression macros grouped into a file-scoped constant enum named after the header's basename, e.g. `WIDE (2 * COUNT)` -> `enum FullPreproc { WIDE = 8 }` used as `FullPreproc::WIDE`; String/Float object-like macros as shared constant functions; function-like macros as type-aware shared functions, lowering C `?:` ternaries to Vyb `select` and mapping to `Int`/`Float`/`Bool`/`String` (e.g. `SQUARE(x) -> (x * x)<Int>`, `MAX(a,b) -> select<Int>`, `IS_EVEN(x) -> <Bool>`)). `-D NAME[=VAL]` flags drive conditional selection. Only declarations whose source is the input header are rebound; system/libc types are resolved but not re-emitted. Covered by `test/bindgen/full_preproc.h` / `full_preproc.vyb` / `test_full_preproc_bindings.vyb`; the lightweight hand-rolled parser remains for `vyb bindgen <header.h>` without `--full`. Fixed-size C array struct fields (direct/nested/typedef'd) bind as contiguous value-array fields (`[CChar; 8]`, `[[CDouble; 3]; 2]`); flexible array members are skipped with a warning. Covered by `test/bindgen/arrstruct.h` / `arrstruct.vyb` / `test_arrstruct_bindings.vyb`. C unions bind as `#[repr(C)]` structs with the highest-aligned member as an accessible anchor plus a `[UInt8; N]` pad to the union's total size (`test/bindgen/unions.h` / `unions.vyb` / `test_unions_bindings.vyb`). Function-like macros with comparison, logical, ternary, and string bodies now bind (covered by `MAX`, `CLAMP`, `IS_EVEN`, `IS_POS`, `STATUS` in `full_preproc.h`); macros that call other macros by name remain unsupported.
 
-### 3. Ownership Types — Runtime Enforcement (HIGH PRIORITY)
+### 3. Ownership Types — Runtime Enforcement (DONE)
 - [x] **`my<T>` move semantics** — Compile-time single-owner enforcement: use-after-move rejection, transfer on assignment/init/`my`-param/move-capture, revive-on-reassignment, and read/copy to plain (non-`my`) targets without moving (`test/ownership/move_*.vyb`).
 - [x] **`our<T>` reference counting** — Shared control-block strong_count with full copy/assignment/parameter semantics: every binding holds its own strong ref (retained on shared copy, released on scope exit and on overwrite); transfer sources (`our()`, `grab()`, functions returning `our<T>`) hand over a single ref without extra retain (`test/ownership/our_*.vyb`).
 - [x] **`their<T>` borrow checker (lexical phase)** — borrow/view require lvalues, reject overlapping mutable/view borrows, reject assignment while borrowed
@@ -645,7 +649,7 @@ with `pass` for multi-statement case bodies. Needs polishing:
 
 ## Developer Experience — Needed for 1.0
 
-### Package Manager
+### Package Manager (core DONE — remote deps + registry staged)
 - [x] **`vyb.toml`** — Project manifest with `[package]`, `[dependencies]`, `[[bin]]`
 - [x] **`vyb build`** — Build multi-file projects from manifest (reuses the module registry + native compile/link pipeline; local `{ path = ... }` dependencies resolve to module search paths)
 - [x] **`vyb new`** — Scaffold a new Vyb project (`vyb.toml` + `src/main.vyb`)
@@ -988,7 +992,7 @@ For Vyb to be considered production-ready at 1.0, **all of the following must be
   Vyb syntax reads naturally before 1.0.
 - [x] String methods complete (`split` and formatting done; see `.split()`/`.format()`)
 - [x] `HashMap<K, V>` and basic collections (HashMap/HashSet/BTreeMap, `Vec` iterators, growth)
-- [x] FFI (`extern "C"`) working — extern blocks, ABI aliases, `#[repr(C)]`, native `--link` (variadics/bindgen still open)
+- [x] FFI (`extern "C"`) working — extern blocks, ABI aliases, `#[repr(C)]`, native `--link`, variadics, `vyb bindgen` (MVP + libclang `--full`)
 - [x] `vyb.toml` and `vyb build` project system (foundation shipped: manifest, multi-file/path-dep build, `vyb new`, `vyb.lock`; remote git/version dependency fetching is a staged follow-up)
 - [x] Wildcard trap handler (`trap (e<?>)`) with `typeof` discrimination
 - [ ] All open contradictions resolved (see section above)
