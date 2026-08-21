@@ -20,7 +20,7 @@ main()<Int> -> {
         chan_send(ch, -1)          # must be carried as real data, not "closed"
         chan_close(ch)
         return 0
-    })
+}) else -1
 
     total<Int> = 0
     count<Int> = 0
@@ -43,7 +43,7 @@ main()<Int> -> {
         strchan_send(sch, "")          # empty string is real data too
         strchan_close(sch)
         return 0
-    })
+}) else -1
 
     ssum<Int> = 0
     scount<Int> = 0

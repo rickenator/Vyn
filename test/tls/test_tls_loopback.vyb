@@ -94,7 +94,7 @@ QsM4qhE7CXh5EW4f/zlKqRoL
                     }
                     ? -> { socket_close(c); return 2 }
                 }
-            })
+}) else -1
             if (th < 0) { return 6 }
 
             // Client: connect the raw socket, wrap it in TLS, bring the handshake up.

@@ -31,7 +31,7 @@ main()<Int> -> {
                     }
                     ? -> { return 1 }
                 }
-            })
+}) else -1
             match (tcp_connect("127.0.0.1", port)) {
                 s -> {
                     s.write(MSG)

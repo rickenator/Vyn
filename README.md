@@ -568,8 +568,9 @@ pthread runtime (no raw C ABI in user code):
   at once and returns the index of the first ready one. String-payload channels
   (`strchan_new`/`send`/`recv`/`try`) retain the string on send and transfer the
   reference on recv.
-- **`threads`** — pthread-backed `thread_spawn`/`thread_join`/`thread_detach`,
-  `mutex_*`, `cond_*`, and lock-free `atomic_*`.
+- **`threads`** — pthread-backed `thread_spawn` (returns an `Int?` handle, absent
+  on spawn failure)/`thread_join`/`thread_detach`, `mutex_*`, `cond_*`, and
+  lock-free `atomic_*`.
 - **`tasks`** — fire-and-forget workers on a detached pthread: `task_spawn`
   returns an `Int?` handle, `task_await` blocks on its result, `task_poll`
   returns an `Int?` result (absent while still running), `task_free` reclaims it.

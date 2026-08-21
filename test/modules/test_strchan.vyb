@@ -23,7 +23,7 @@ main()<Int> -> {
     if (strchan_len(sc) != 0) { return 2 }
     if (strchan_try(sc) != "") { return 3 }
 
-    w<Int> = thread_spawn(|| -> { sleep_ms(5); strchan_send(sc, "hello from worker"); return 0 })
+    w<Int> = thread_spawn(|| -> { sleep_ms(5); strchan_send(sc, "hello from worker"); return 0 }) else -1
     if (w < 0) { return 4 }
     if (strchan_recv(sc) != "hello from worker") { return 5 }
     if (thread_join(w) != 0) { return 6 }

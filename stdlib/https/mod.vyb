@@ -258,7 +258,7 @@ https_selfhost(cert_pem<String>, key_pem<String>)<Int> -> {
                     }
                     ? -> { socket_close(c); return 2 }
                 }
-            })
+}) else -1
             if (th < 0) { tls_free_context(scx); socket_close(srv); return -1 }
             code<Int> = 0
             got<String> = ""
@@ -315,7 +315,7 @@ https_selfhost_verified(cert_pem<String>, key_pem<String>)<Int> -> {
                     }
                     ? -> { socket_close(c); return 2 }
                 }
-            })
+}) else -1
             if (th < 0) { tls_free_context(scx); socket_close(srv); return -1 }
             code<Int> = 0
             got<String> = ""

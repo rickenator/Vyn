@@ -16,8 +16,8 @@ main()<Int> -> {
     ch<chan<Int>> = chan<Int>()
     if (ch == 0) { return 1 }
 
-    p1<Int> = thread_spawn(|| -> { ch.send(10); ch.send(20); return 0 })
-    p2<Int> = thread_spawn(|| -> { ch.send(30); ch.send(40); return 0 })
+    p1<Int> = thread_spawn(|| -> { ch.send(10); ch.send(20); return 0 }) else -1
+    p2<Int> = thread_spawn(|| -> { ch.send(30); ch.send(40); return 0 }) else -1
     if (p1 < 0 || p2 < 0) { return 2 }
     s1<Int> = ch.recv()
     s2<Int> = ch.recv()
@@ -30,7 +30,7 @@ main()<Int> -> {
 
     sc<chan<String>> = chan<String>()
     if (sc == 0) { return 7 }
-    q1<Int> = thread_spawn(|| -> { sc.send("alpha"); sc.send("beta"); return 0 })
+    q1<Int> = thread_spawn(|| -> { sc.send("alpha"); sc.send("beta"); return 0 }) else -1
     if (q1 < 0) { return 8 }
     a<String> = sc.recv()
     b<String> = sc.recv()

@@ -114,7 +114,7 @@ QsM4qhE7CXh5EW4f/zlKqRoL
                     n = n + 1
                 }
                 return 0
-            })
+}) else -1
             # Happy path first (served by the worker's first accept): the pinned
             # self-signed cert is trusted and the name matches, so a correct-hostname
             # handshake must NOT raise a TlsError.

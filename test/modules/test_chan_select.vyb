@@ -21,8 +21,8 @@ main()<Int> -> {
     if (a == 0 || b == 0) { return 1 }
 
     # b arrives ~5ms, a ~40ms, so select must report index 1 first.
-    w<Int> = thread_spawn(|| -> { sleep_ms(40); chan_send(a, 100); return 0 })
-    w2<Int> = thread_spawn(|| -> { sleep_ms(5); chan_send(b, 200); return 0 })
+    w<Int> = thread_spawn(|| -> { sleep_ms(40); chan_send(a, 100); return 0 }) else -1
+    w2<Int> = thread_spawn(|| -> { sleep_ms(5); chan_send(b, 200); return 0 }) else -1
     if (w < 0 || w2 < 0) { return 2 }
 
     hs<Vec<Int>> = Vec<Int>()

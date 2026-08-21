@@ -18,8 +18,8 @@ main()<Int> -> {
     if (ch == 0) { return 1 }
 
     # Two producer threads enqueue 10,11 and 20,21 in parallel.
-    p1<Int> = thread_spawn(|| -> { return produce(ch, 10) })
-    p2<Int> = thread_spawn(|| -> { return produce(ch, 20) })
+    p1<Int> = thread_spawn(|| -> { return produce(ch, 10) }) else -1
+    p2<Int> = thread_spawn(|| -> { return produce(ch, 20) }) else -1
     if (p1 < 0 || p2 < 0) { return 2 }
 
     # Consumer blocks until all four values arrive; order is not promised.
@@ -35,7 +35,7 @@ main()<Int> -> {
     # Heap payloads travel too: a String channel under refcounted ownership.
     sc<chan<String>> = chan<String>()
     if (sc == 0) { return 7 }
-    q1<Int> = thread_spawn(|| -> { sc.send("alpha"); sc.send("beta"); return 0 })
+    q1<Int> = thread_spawn(|| -> { sc.send("alpha"); sc.send("beta"); return 0 }) else -1
     if (q1 < 0) { return 8 }
     a<String> = sc.recv()
     b<String> = sc.recv()

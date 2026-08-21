@@ -43,7 +43,7 @@ main()<Int> -> {
         mutex_unlock(m)
         return atomic_load(flag)
     }
-    s<Int> = thread_spawn(w)
+    s<Int> = thread_spawn(w) else -1
     if (s < 0) { return 10 }
 
     sleep_ms(20)

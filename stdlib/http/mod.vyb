@@ -191,7 +191,7 @@ http_serve_conn(conn<TcpStream>)<Int> -> {
         http_send_all(conn.fd, pk)
         http_close(conn.fd)
         return 0
-    })
+}) else -1
     if (h >= 0) { thread_detach(h) }
     return 0
 }
@@ -215,7 +215,7 @@ http_serve(port<Int>, backlog<Int>)<TcpListener?> -> {
                     }
                 }
                 return 0
-            })
+}) else -1
             if (thr < 0) {
                 http_close(ls.fd)
                 return TcpListener?()

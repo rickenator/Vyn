@@ -1,5 +1,5 @@
 {
-  "git_rev": "ebbb715899eb507d03e7a61e879f5038c5bff12b",
+  "git_rev": "f883c04c38a552c270d04cbb5e4231d89d400cad",
   "modules": [
     "agents",
     "asyncs",
@@ -4592,8 +4592,8 @@
         "module": "threads",
         "file": "stdlib/threads/mod.vyb",
         "kind": "fn",
-        "signature": "thread_spawn(work<fn() -> Int>)<Int> ->",
-        "summary": "Start `work` on a new thread; returns a handle (>= 1) or -1 on failure",
+        "signature": "thread_spawn(work<fn() -> Int>)<Int?> ->",
+        "summary": "Start `work` on a new thread. Returns `Int?` -- present holding the thread",
         "fan_in": 2
       },
       {

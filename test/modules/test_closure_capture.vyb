@@ -13,7 +13,7 @@
 import threads
 
 mk(v<Int>)<Int> -> {
-    return thread_spawn(|| -> { return v })
+    return thread_spawn(|| -> { return v }) else -1
 }
 
 main()<Int> -> {

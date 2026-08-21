@@ -21,11 +21,17 @@
 #   cnt = atomic_new(0)             // lock-free shared Int
 #   atomic_add(cnt, 1); atomic_load(cnt); atomic_cas(cnt, old, new)
 
-# Start `work` on a new thread; returns a handle (>= 1) or -1 on failure
-# (thread-table full or pthread_create failed).
+# Start `work` on a new thread. Returns `Int?` -- present holding the thread
+# handle (>= 1) when the thread was created, absent when it could not be spawned
+# (thread-table full or pthread_create failed), so callers escalate the failure
+# with `else`/`match` instead of a `-1` sentinel. The mutex/cond/atomic helpers
+# below keep their documented Int status/return codes (they are not fallible
+# "open"s).
 share(all)
-thread_spawn(work<fn() -> Int>)<Int> -> {
-    return vyb_thread_spawn(work)
+thread_spawn(work<fn() -> Int>)<Int?> -> {
+    h<Int> = vyb_thread_spawn(work)
+    if (h < 1) { return Int?() }
+    return Int?(h)
 }
 
 # Wait for the thread `handle` to finish and return its closure result. Returns

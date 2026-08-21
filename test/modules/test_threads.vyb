@@ -17,25 +17,25 @@ import time::{sleep_ms, time_mono_millis}
 
 main()<Int> -> {
     // Correctness: each thread returns its own result; sum matches.
-    a<Int> = thread_join(thread_spawn(|| -> 10))
-    b<Int> = thread_join(thread_spawn(|| -> 20))
-    c<Int> = thread_join(thread_spawn(|| -> 12))
+    a<Int> = thread_join(thread_spawn(|| -> 10) else -1)
+    b<Int> = thread_join(thread_spawn(|| -> 20) else -1)
+    c<Int> = thread_join(thread_spawn(|| -> 12) else -1)
     if (a + b + c != 42) { return 1 }
 
     // Edge cases: unknown handle and already-joined handle both report -2.
     if (thread_join(9999) != -2) { return 2 }
-    d<Int> = thread_spawn(|| -> 7)
+    d<Int> = thread_spawn(|| -> 7) else -1
     if (thread_join(d) != 7) { return 3 }
     if (thread_join(d) != -2) { return 4 }
 
     // Detach semantics: a detached thread is not joinable (-2), detaching it
     // again reports -1, and a handle already reclaimed by join detaches to -2.
-    e<Int> = thread_spawn(|| -> 0)
+    e<Int> = thread_spawn(|| -> 0) else -1
     if (e < 0) { return 12 }
     if (thread_detach(e) != 0) { return 13 }
     if (thread_join(e) != -2) { return 14 }
     if (thread_detach(e) != -1) { return 15 }
-    f<Int> = thread_spawn(|| -> 0)
+    f<Int> = thread_spawn(|| -> 0) else -1
     if (f < 0) { return 16 }
     if (thread_join(f) != 0) { return 17 }
     if (thread_detach(f) != -2) { return 18 }
@@ -45,7 +45,7 @@ main()<Int> -> {
     // detached reaper frees each slot as its body returns, so no spawn fails.
     k<Int> = 0
     while (k < 260) {
-        g<Int> = thread_spawn(|| -> 0)
+        g<Int> = thread_spawn(|| -> 0) else -1
         if (g < 0) { return 20 }  // table would be full without the reaper
         thread_detach(g)
         sleep_ms(1)
@@ -56,9 +56,9 @@ main()<Int> -> {
     // than the 180ms a sequential run would take (>=30ms overlap => concurrent).
     hs<Vec<Int>> = Vec<Int>()
     start<Int> = time_mono_millis()
-    hs.push(thread_spawn(|| -> sleep_ms(60)))
-    hs.push(thread_spawn(|| -> sleep_ms(60)))
-    hs.push(thread_spawn(|| -> sleep_ms(60)))
+    hs.push(thread_spawn(|| -> sleep_ms(60)) else -1)
+    hs.push(thread_spawn(|| -> sleep_ms(60)) else -1)
+    hs.push(thread_spawn(|| -> sleep_ms(60)) else -1)
     if (hs.get(0) < 0 || hs.get(1) < 0 || hs.get(2) < 0) { return 5 }
     j<Int> = 2
     while (j >= 0) {

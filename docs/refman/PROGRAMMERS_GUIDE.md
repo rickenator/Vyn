@@ -1332,7 +1332,7 @@ Module page: [`threads.md`](threads.md). A thread runs a `fn() -> Int`
 closure (zero captures in the basic surface).
 
 ```vyb
-h = thread_spawn(|| -> 40 + 2)<Int>     # start
+h = thread_spawn(|| -> 40 + 2) else -1   # Int? -- present handle, absent on spawn failure
 thread_join(h)<Int> / thread_detach(h)<Int>
 
 m = mutex_new(); mutex_lock(m); mutex_unlock(m); mutex_free(m)
@@ -1340,6 +1340,12 @@ cv = cond_new(); cond_wait(cv, m); cond_signal(cv); cond_broadcast(cv)
 a = atomic_new(0); atomic_load(a); atomic_store(a, v)
 atomic_add(a, v); atomic_cas(a, exp, des)<Int>; atomic_free(a)
 ```
+
+`thread_spawn` follows the engine-wide `T?` shape (§3.16): it returns `Int?`,
+present holding the thread handle when the thread was created and absent when it
+could not be spawned (table full / `pthread_create` failed) -- no `-1` sentinel.
+`thread_join`/`thread_detach` and the mutex/cond/atomic ops keep their documented
+Int status codes (they are not fallible "open"s).
 
 ### 4.8 `tasks` — fire-and-forget threads
 
@@ -2115,6 +2121,8 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
+
 
 
 
