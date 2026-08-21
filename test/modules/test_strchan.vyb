@@ -48,10 +48,10 @@ main()<Int> -> {
     if ((strchan_recv(es) else "missing") != "") { return 17 }   # "" read back
     strchan_close(es)
     if ((strchan_recv(es) else "") != "") { return 18 }          # drained -> absent
-    if (strchan_free(es) != 0) { return 19 }
+    if (!(strchan_free(es) else false)) { return 19 }
 
-    if (strchan_free(sc) != 0) { return 20 }
-    if (strchan_free(bs) != 0) { return 21 }
+    if (!(strchan_free(sc) else false)) { return 20 }
+    if (!(strchan_free(bs) else false)) { return 21 }
 
     println("ok")
     return 0

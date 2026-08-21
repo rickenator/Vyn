@@ -89,16 +89,20 @@ chan_len(ch<Int>)<Int> -> {
 }
 
 # Mark `ch` closed and wake any blocked receivers. After close, receivers see
-# buffered values, then report absent once drained. Returns 1 or 0.
+# buffered values, then report absent once drained. Returns `Bool?` -- present
+# when closed, absent on a bad handle.
 share(all)
-chan_close(ch<Int>)<Int> -> {
-    return vyb_chan_close(ch)
+chan_close(ch<Int>)<Bool?> -> {
+    if (vyb_chan_close(ch) == 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Destroy and free `ch`; returns 0 or -1.
+# Destroy and free `ch`. Returns `Bool?` -- present on success, absent on a bad
+# handle.
 share(all)
-chan_free(ch<Int>)<Int> -> {
-    return vyb_chan_free(ch)
+chan_free(ch<Int>)<Bool?> -> {
+    if (vyb_chan_free(ch) != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Block until at least one of the channels in `handles` has a value (or is
@@ -166,14 +170,18 @@ strchan_len(ch<Int>)<Int> -> {
 }
 
 # Mark a String channel closed and wake any blocked receivers (drained receivers
-# then see `String?` absence). Returns 1 or 0.
+# then see `String?` absence). Returns `Bool?` -- present when closed, absent on
+# a bad handle.
 share(all)
-strchan_close(ch<Int>)<Int> -> {
-    return vyb_strchan_close(ch)
+strchan_close(ch<Int>)<Bool?> -> {
+    if (vyb_strchan_close(ch) == 0) { return Bool?() }
+    return Bool?(true)
 }
 
-# Reclaim and free `ch` (call after draining so no reference leaks); 0 or -1.
+# Reclaim and free `ch` (call after draining so no reference leaks). Returns
+# `Bool?` -- present on success, absent on a bad handle.
 share(all)
-strchan_free(ch<Int>)<Int> -> {
-    return vyb_strchan_free(ch)
+strchan_free(ch<Int>)<Bool?> -> {
+    if (vyb_strchan_free(ch) != 0) { return Bool?() }
+    return Bool?(true)
 }

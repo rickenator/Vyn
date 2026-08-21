@@ -58,10 +58,10 @@ main()<Int> -> {
     if ((chan_recv(nc) else 999) != -1) { return 19 }   # -1 read back intact
     chan_close(nc)
     if ((chan_recv(nc) else -1) != -1) { return 20 }     # drained -> absent
-    if (chan_free(nc) != 0) { return 21 }
+    if (!(chan_free(nc) else false)) { return 21 }
 
-    if (chan_free(ch) != 0) { return 22 }
-    if (chan_free(bc) != 0) { return 23 }
+    if (!(chan_free(ch) else false)) { return 22 }
+    if (!(chan_free(bc) else false)) { return 23 }
 
     println("ok")
     return 0
