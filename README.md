@@ -67,8 +67,8 @@ git clone https://github.com/rickenator/Vyb.git
 cd Vyb
 mkdir -p build && cd build && LLVM_DIR=/usr/lib/llvm-18/cmake cmake .. && make -j$(nproc) && cd ..
 
-# Run with modern test harness (900+ .vyb tests)
-python3 test_harness.py --vyb ./build/vyb --test-dirs test/new_features --workers 4
+# Run the full test suite (1061 .vyb tests) with the canonical harness
+python3 test/run_tests.py --vyb build/vyb --test-dir test --execute-jit
 
 # Run your first Vyb program
 echo 'main()<Int> -> { return 42 }' > hello.vyb
@@ -2616,22 +2616,25 @@ cmake --build build --target run-milestone
 
 ## Test Harness
 
-Vyb includes a modern, comprehensive test harness for managing 900+ `.vyb` test files:
+Vyb's canonical test runner is `test/run_tests.py`, the same suite wired into
+CTest as the `run-tests` target and used for the full regression gate (currently
+**1061 `.vyb` tests, all passing**):
 
 ### Quick Testing
 ```bash
-# Run all tests with parallel execution
-./test_harness.py
+# Full suite (JIT execution), from the repo root
+python3 test/run_tests.py --vyb build/vyb --test-dir test --execute-jit
 
-# Run specific categories
-./test_harness.py --category parser,semantic
+# Run a single category (parse, semantic, async, tls, ...)
+python3 test/run_tests.py --vyb build/vyb --test-dir test --category async
 
-# Generate comprehensive reports
-./test_harness.py --html-report report.html --json-report results.json
-
-# Run with filtering and analysis
-./test_harness.py --priority high --exclude-slow --workers 8
+# Save results as JSON
+python3 test/run_tests.py --vyb build/vyb --test-dir test --json results.json
 ```
+
+A secondary parallel harness (`test_harness.py`) plus `triage_tool.py` add HTML
+reporting, failure-triage, and performance analysis on top of that suite; the
+authoritative pass/fail count is always the `run-tests` CTest target output.
 
 ### Test Analysis and Triage
 ```bash
@@ -2646,7 +2649,7 @@ Vyb includes a modern, comprehensive test harness for managing 900+ `.vyb` test 
 ```
 
 ### Test Features
-- **900+ Test Files**: Comprehensive coverage across all language features
+- **1061 Tests, All Passing**: The full `run_tests.py` suite covers parse, semantic, modules, async, agents, tls, qt, and every other feature area
 - **Parallel Execution**: Multi-threaded test runner for fast feedback
 - **Rich Reporting**: HTML, JSON, and console output with detailed metrics
 - **Smart Categorization**: Automatic test categorization and filtering
@@ -2856,10 +2859,10 @@ python3 test_harness.py --directory test/units --timeout 30
 - **Error Context**: Detailed failure information with context and suggestions
 
 #### **Test Statistics**
-- **Total Tests**: 400+ comprehensive test cases (growing)
+- **Total Tests**: 1061 `.vyb` tests (full suite, all passing as of v0.7.3)
 - **Coverage Areas**: Language features, control flow, error handling, type system, math, strings, introspection
 - **Test Types**: Feature tests (with `@expect: pass`), future-feature docs (with `@expect: fail`), parser tests
-- **Success Rate**: >90% pass rate maintained across all implemented features
+- **Success Rate**: 100% (1061/1061) on the current suite
 
 ### 🔧 **Syntax Migration Tools**
 
@@ -2961,7 +2964,7 @@ See `doc/` directory for detailed design documents and RFCs.
   - **Type inference**: First case determines result type for entire select
   - **Pattern matching**: Exact equality patterns with wildcard `?` support
 - ✅ **Canonical Syntax Unification**: Complete migration to unified `my()`/`our()` constructors and `view`/`borrow` operators
-- ✅ **Modern Test Harness**: Parallel test runner managing 900+ tests with HTML/JSON reporting and failure triage
+- ✅ **Modern Test Harness**: `test/run_tests.py` running the full suite — 1061 `.vyb` tests all passing — with an auxiliary parallel/HTML/triage harness
 - ✅ **Syntax Migration Tools**: Automated migration from legacy to canonical syntax with comprehensive reporting
 - ✅ **Match Statements**: Complete pattern matching with `->` arrow syntax and `?` wildcard; no-match results in NOP
 - ✅ **Break/Continue**: Loop control flow statements working in all loop types
@@ -2974,7 +2977,7 @@ See `doc/` directory for detailed design documents and RFCs.
 - ✅ **Async/Await**: `async` functions with `Future<T>` types and `await` (synchronous resolution today)
 - ✅ **Debug Infrastructure**: Full LLVM debug metadata for source-level debugging
 
-**Language Status**: Vyb (freedom-1.0 series, tracked as v0.6.x) is an actively developed systems programming language with unified canonical syntax, a sized type system (Int8–Int64, UInt8–UInt64, Float32/Float64, Char, Rune, Bytes), compile-time monomorphized generics, aspect/bind polymorphism, a `fail`/`trap` error system, JIT/AOT/native codegen, and a modern test harness. The core language is stable and well tested; see `doc/FEATURE_STATUS.md` for the current feature matrix.
+**Language Status**: Vyb (freedom-1.0 series, tracked as v0.7.x) is an actively developed systems programming language with unified canonical syntax, a sized type system (Int8–Int64, UInt8–UInt64, Float32/Float64, Char, Rune, Bytes), compile-time monomorphized generics, aspect/bind polymorphism, a `fail`/`trap` error system, JIT/AOT/native codegen, and a modern test harness. The core language is stable and well tested; see `doc/FEATURE_STATUS.md` for the current feature matrix.
 
 ## Getting Help
 
