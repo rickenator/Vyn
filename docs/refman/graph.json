@@ -1,5 +1,5 @@
 {
-  "git_rev": "1a68ba42c0166bf8ff8c70930cfff98162163db0",
+  "git_rev": "f2bfb26b9dd91c1cd7e93873140353ce9a40405b",
   "modules": [
     "agents",
     "asyncs",
@@ -2016,7 +2016,7 @@
         "module": "env",
         "file": "stdlib/env/mod.vyb",
         "kind": "fn",
-        "signature": "env_get(name<String>)<String> ->",
+        "signature": "env_get(name<String>)<String?> ->",
         "summary": "",
         "fan_in": 0
       },
@@ -7195,7 +7195,7 @@
       "type": "runtimeRef",
       "from_module": "env",
       "from_symbol": "env_get",
-      "to_symbol": "vyb_env_get"
+      "to_symbol": "vyb_env_get_opt"
     },
     {
       "type": "runtimeRef",

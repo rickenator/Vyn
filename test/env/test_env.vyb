@@ -1,5 +1,7 @@
 // @test: env stdlib module - get/set/unset
 // @description: deterministic process-environment checks within this process.
+//   env_get returns String? -- absent when unset, present holding the value (which
+//   may legitimately be empty), so "unset" and "set to empty" are distinguishable.
 // @category: env, stdlib
 // @expect: pass
 // @expect-return: 0
@@ -8,20 +10,25 @@
 import env
 
 main()<Int> -> {
-    // An unset variable reads back as "".
-    if (env_get("VYB_TEST_PROBE_ASDF") != "") { return 1 }
-    // A real variable (HOME or PATH) is never empty.
-    if (env_get("PATH") == "") { return 2 }
+    // An unset variable reads back as absent; `else ""` recovers the old "" view.
+    if ((env_get("VYB_TEST_PROBE_ASDF") else "") != "") { return 1 }
+    // A real variable (HOME or PATH) is present and never empty.
+    if ((env_get("PATH") else "") == "") { return 2 }
 
     // Set then read back the same value.
     if (env_set("VYB_TEST_PROBE_ASDF", "hello") != 0) { return 3 }
-    if (env_get("VYB_TEST_PROBE_ASDF") != "hello") { return 4 }
+    if ((env_get("VYB_TEST_PROBE_ASDF") else "") != "hello") { return 4 }
+
+    // A variable set to an empty string is present -- NOT indistinguishable from
+    // unset.
+    if (env_set("VYB_TEST_PROBE_EMPTY", "") != 0) { return 5 }
+    if ((env_get("VYB_TEST_PROBE_EMPTY") else "absent") != "") { return 6 }
 
     // Overwrite, then unset.
-    if (env_set("VYB_TEST_PROBE_ASDF", "world") != 0) { return 5 }
-    if (env_get("VYB_TEST_PROBE_ASDF") != "world") { return 6 }
-    if (env_unset("VYB_TEST_PROBE_ASDF") != 0) { return 7 }
-    if (env_get("VYB_TEST_PROBE_ASDF") != "") { return 8 }
+    if (env_set("VYB_TEST_PROBE_ASDF", "world") != 0) { return 7 }
+    if ((env_get("VYB_TEST_PROBE_ASDF") else "") != "world") { return 8 }
+    if (env_unset("VYB_TEST_PROBE_ASDF") != 0) { return 9 }
+    if ((env_get("VYB_TEST_PROBE_ASDF") else "") != "") { return 10 }
 
     println("env ok")
     return 0

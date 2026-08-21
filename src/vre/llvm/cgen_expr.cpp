@@ -4689,6 +4689,34 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "stropt.h"), 1);
             m_currentLLVMValue = opt;
             return;
+        } else if (fname == "vyb_env_get_opt") {
+            // Lossless env lookup returning a native `String?` (`{ String, has }`);
+            // absent when the variable is unset, present holding its value (which
+            // may legitimately be empty). Mirrors vyb_strchan_recv_opt.
+            if (node->arguments.size() != 1) {
+                logError(node->loc, "vyb_env_get_opt expects 1 argument (name)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this);
+            llvm::Value* nm = m_currentLLVMValue;
+            if (!nm) return;
+            llvm::Value* namePtr = nm;
+            if (namePtr->getType()->isStructTy())
+                namePtr = builder->CreateExtractValue(namePtr, 0, "envopt.name");
+            llvm::StructType* strTy = llvm::StructType::get(*context, {int8PtrType, int64Type}, false);
+            llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
+            llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "envopt.slot");
+            llvm::FunctionType* ft = llvm::FunctionType::get(
+                int64Type, {int8PtrType, llvm::PointerType::get(*context, 0)}, false);
+            llvm::Function* f = module->getFunction("__vyb_env_get_opt");
+            if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_env_get_opt", module.get());
+            llvm::Value* has = builder->CreateCall(f, {namePtr, slot}, "envopt.has");
+            llvm::Value* val = builder->CreateLoad(strTy, slot, "envopt.val");
+            llvm::Value* opt = llvm::UndefValue::get(optTy);
+            opt = builder->CreateInsertValue(opt, val, 0, "envopt.v");
+            opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "envopt.h"), 1);
+            m_currentLLVMValue = opt;
+            return;
         } else if (fname == "vyb_strchan_recv") {
             // Blocking recv returning a String { ptr, len } that the caller owns.
             if (node->arguments.size() != 1) {

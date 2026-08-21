@@ -134,6 +134,7 @@ extern "C" {
 
     // Environment helpers (env stdlib module)
     vyb_file_str __vyb_env_get(const char* name);
+    int64_t __vyb_env_get_opt(const char* name, vyb_file_str* out);
     int64_t __vyb_env_set(const char* name, const char* value);
     int64_t __vyb_env_unset(const char* name);
 
@@ -2094,6 +2095,8 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
         // Environment helpers (env stdlib module)
         runtimeSymbols[mangle("__vyb_env_get")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_env_get), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_env_get_opt")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_env_get_opt), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_env_set")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_env_set), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_env_unset")] = llvm::orc::ExecutorSymbolDef(

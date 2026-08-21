@@ -1652,10 +1652,15 @@ Module page: [`env.md`](env.md). Read and write environment variables in-process
 a browser honors `HTTP_PROXY` / `HOME` / `TERM` here instead of hard-coding them.
 
 ```vyb
-env_get(name<String>)<String>       # "" when the variable is unset
+home<String> = env_get("HOME") else ""   # String? -- absent when unset
 env_set(name<String>, value<String>)<Int>   # 0 on success
 env_unset(name<String>)<Int>        # 0 on success
 ```
+
+`env_get` follows the engine-wide `T?` shape (§3.16): it returns `String?`, absent
+when the variable is unset and present holding its value otherwise (a variable set
+to an empty string is present, unlike the old `""` sentinel). `else ""` recovers
+the legacy "unset reads as empty" behavior.
 
 ### 4.18 `rand` — pseudo-random integers
 
@@ -2099,6 +2104,7 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

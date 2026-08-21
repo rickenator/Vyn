@@ -1210,6 +1210,24 @@ VYB_WEAK vyb_file_str __vyb_env_get(const char* name) {
     return r;
 }
 
+// Lossless env lookup: returns 1 and writes the value's vyb_file_str to *out
+// when the variable is set, or 0 when it is unset (or `name` is null). Unlike
+// __vyb_env_get (which returns "" for both "unset" and "set to empty"), a real
+// empty-string value is not confused with "unset".
+VYB_WEAK int64_t __vyb_env_get_opt(const char* name, vyb_file_str* out) {
+    if (!name || !out) return 0;
+    const char* v = getenv(name);
+    if (!v) return 0;
+    size_t vlen = strlen(v);
+    char* buf = (char*)malloc(vlen + 1);
+    if (!buf) return 0;
+    memcpy(buf, v, vlen + 1);
+    __vyb_string_register(buf);
+    out->ptr = buf;
+    out->len = (int64_t)vlen;
+    return 1;
+}
+
 VYB_WEAK int64_t __vyb_env_set(const char* name, const char* value) {
     if (!name || !value) return -1;
     return (setenv(name, value, 1) == 0) ? 0 : -1;

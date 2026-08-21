@@ -1244,7 +1244,7 @@ main()<Int> -> {
         ? -> "degraded"
     }
 
-    start<String> = env_get("VYB_LYNX_HOME")
+    start<String> = env_get("VYB_LYNX_HOME") else ""
     if (start.trim().len() == 0) {
         # Bundled offline home: the demo opens and navigates with no network.
         start = "local:///welcome.html"

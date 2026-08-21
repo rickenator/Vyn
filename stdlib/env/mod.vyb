@@ -2,13 +2,20 @@
 #
 # Thin wrappers over the runtime's `__vyb_env_*` functions in
 # `runtime/vyb_runtime.c`. A lynx-style browser reads HTTP_PROXY / HOME / TERM
-# here instead of hard-coding them. `env_get` returns "" when a variable is
-# unset; `env_set` / `env_unset` return 0 on success (the change applies to this
-# process and any children it spawns).
+# here instead of hard-coding them. `env_get` follows the engine-wide `T?` shape
+# (PROGRAMMERS_GUIDE §3.16): it returns `String?` -- absent when the variable is
+# unset, present holding its value (which may legitimately be empty). `env_set` /
+# `env_unset` return 0 on success (the change applies to this process and any
+# children it spawns).
+#
+# Usage:
+#   import env
+#   home<String> = env_get("HOME") else "~"
+#   match (env_get("UNSET")) { v -> ..., ? -> ... }   // absent = unset
 
 share(all)
-env_get(name<String>)<String> -> {
-    return vyb_env_get(name)
+env_get(name<String>)<String?> -> {
+    return vyb_env_get_opt(name)
 }
 
 share(all)

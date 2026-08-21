@@ -2150,7 +2150,8 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_net_set_timeout" ||
             name == "vyb_utf8_len" || name == "vyb_utf8_at" ||
             name == "vyb_utf8_index" || name == "vyb_utf8_valid" ||
-            name == "vyb_env_get" || name == "vyb_env_set" ||
+            name == "vyb_env_get" || name == "vyb_env_get_opt" ||
+            name == "vyb_env_set" ||
             name == "vyb_env_unset" ||
             name == "vyb_rand" || name == "vyb_rand_range" ||
             name == "vyb_rand_seed" ||
@@ -2983,6 +2984,19 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             if (name == "vyb_task_poll_opt" || name == "vyb_async_poll_opt") {
                 auto* inner = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "Int"));
+                auto* resTy = new ast::OptionalType(node->loc,
+                    std::unique_ptr<ast::TypeNode>(inner));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+            // Lossless env lookup: env_get_opt returns a native `String?` --
+            // absent when the variable is unset, present holding its value (which
+            // may legitimately be empty). This fixes env_get's "" sentinel, which
+            // could not distinguish "unset" from "set to empty".
+            if (name == "vyb_env_get_opt") {
+                auto* inner = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "String"));
                 auto* resTy = new ast::OptionalType(node->loc,
                     std::unique_ptr<ast::TypeNode>(inner));
                 expressionTypes[node] = retainType(resTy);
