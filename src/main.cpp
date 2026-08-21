@@ -372,6 +372,7 @@ extern "C" {
     int64_t __vyb_tls_accept(int64_t sslp);
     int64_t __vyb_tls_write(int64_t sslp, const char* data, int64_t len);
     vyb_file_str __vyb_tls_read(int64_t sslp, int64_t maxlen);
+    int64_t __vyb_tls_read_opt(int64_t sslp, int64_t maxlen, vyb_file_str* out);
     int64_t __vyb_tls_close(int64_t sslp, int64_t fd);
     int64_t __vyb_tls_error_code(void);
     const char* __vyb_tls_error_message(void);
@@ -2173,6 +2174,8 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_tls_write), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_tls_read")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_tls_read), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_tls_read_opt")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_tls_read_opt), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_tls_close")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_tls_close), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_tls_error_code")] = llvm::orc::ExecutorSymbolDef(

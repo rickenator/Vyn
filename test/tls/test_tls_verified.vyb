@@ -86,7 +86,7 @@ QsM4qhE7CXh5EW4f/zlKqRoL
                         s -> {
                             match (s.accept()) {
                                 ok -> {
-                                    msg<String> = tls_read(ok, 64)
+                                    msg<String> = tls_read(ok, 64) else ""
                                     tls_write(ok, msg)
                                     tls_close(ok)
                                 }
@@ -113,7 +113,7 @@ QsM4qhE7CXh5EW4f/zlKqRoL
                             match (v1.connect()) {
                                 ok1 -> {
                                     tls_write(ok1, "verified-ok")
-                                    got<String> = tls_read(ok1, 64)
+                                    got<String> = tls_read(ok1, 64) else ""
                                     tls_close(ok1)
                                     if (got != "verified-ok") { return 12 }
 

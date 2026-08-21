@@ -1872,6 +1872,18 @@ VYB_WEAK vyb_file_str __vyb_tls_read(int64_t sslp, int64_t maxlen) {
     return r;
 }
 
+// Lossless TLS read: returns 1 and writes the received decrypted bytes'
+// vyb_file_str to *out when data was produced, or 0 on error/EOF (see
+// tls_error_code). Mirrors __vyb_net_recv_opt over the encrypted channel, so a
+// clean end of stream stays distinct from a failed read.
+VYB_WEAK int64_t __vyb_tls_read_opt(int64_t sslp, int64_t maxlen, vyb_file_str* out) {
+    if (!out) return 0;
+    vyb_file_str r = __vyb_tls_read(sslp, maxlen);
+    if (!r.ptr) return 0;
+    *out = r;
+    return 1;
+}
+
 // Shut down and free the SSL, then close the underlying fd. Returns close()'s
 // result (0 on success, -1 on error).
 VYB_WEAK int64_t __vyb_tls_close(int64_t sslp, int64_t fd) {

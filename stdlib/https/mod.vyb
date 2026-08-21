@@ -39,7 +39,7 @@ tls_read_line(s<TlsStream>)<String> -> {
     buf<String> = ""
     crlf<String> = "\r\n"
     while (true) {
-        chunk<String> = tls_read(s, 1)
+        chunk<String> = tls_read(s, 1) else ""
         if (chunk.len() == 0) { break }
         buf = buf.concat(chunk)
         idx<Int> = buf.index_of(crlf)
@@ -53,7 +53,7 @@ share(all)
 tls_read_exact(s<TlsStream>, length<Int>)<String> -> {
     buf<String> = ""
     while (buf.len() < length) {
-        chunk<String> = tls_read(s, length - buf.len())
+        chunk<String> = tls_read(s, length - buf.len()) else ""
         if (chunk.len() == 0) { break }
         buf = buf.concat(chunk)
     }
@@ -65,7 +65,7 @@ share(all)
 tls_read_all(s<TlsStream>, max<Int>)<String> -> {
     buf<String> = ""
     while (buf.len() < max) {
-        chunk<String> = tls_read(s, 1024)
+        chunk<String> = tls_read(s, 1024) else ""
         if (chunk.len() == 0) { break }
         buf = buf.concat(chunk)
     }
@@ -244,7 +244,7 @@ https_selfhost(cert_pem<String>, key_pem<String>)<Int> -> {
                             ok -> {
                                 got<String> = ""
                                 while (got.len() < 2048 && got.index_of("\r\n\r\n") < 0) {
-                                    chunk<String> = tls_read(ok, 256)
+                                    chunk<String> = tls_read(ok, 256) else ""
                                     if (chunk.len() == 0) { break }
                                     got = got.concat(chunk)
                                 }
@@ -301,7 +301,7 @@ https_selfhost_verified(cert_pem<String>, key_pem<String>)<Int> -> {
                             ok -> {
                                 got<String> = ""
                                 while (got.len() < 2048 && got.index_of("\r\n\r\n") < 0) {
-                                    chunk<String> = tls_read(ok, 256)
+                                    chunk<String> = tls_read(ok, 256) else ""
                                     if (chunk.len() == 0) { break }
                                     got = got.concat(chunk)
                                 }

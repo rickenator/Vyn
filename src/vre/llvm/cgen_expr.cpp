@@ -4926,6 +4926,36 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "resolve.h"), 1);
             m_currentLLVMValue = opt;
             return;
+        } else if (fname == "vyb_tls_read_opt") {
+            // Lossless TLS read returning a native `String?` ({ String, has });
+            // absent on an error/EOF read, present holding the decrypted bytes.
+            // Mirrors vyb_net_recv_opt: (sslp, maxlen) integer arguments, and
+            // __vyb_tls_read_opt deposits the bytes into a caller buffer.
+            if (node->arguments.size() != 2) {
+                logError(node->loc, "vyb_tls_read_opt expects 2 arguments (sslp, maxlen)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this); llvm::Value* sslp = m_currentLLVMValue;
+            node->arguments[1]->accept(*this); llvm::Value* maxlen = m_currentLLVMValue;
+            if (!sslp || !maxlen) return;
+            auto tlsToI64 = [&](llvm::Value* v) -> llvm::Value* {
+                if (!v->getType()->isIntegerTy(64)) return builder->CreateSExt(v, int64Type, "tls.toi64");
+                return v;
+            };
+            llvm::StructType* strTy = llvm::StructType::get(*context, {int8PtrType, int64Type}, false);
+            llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
+            llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "tls.slot");
+            llvm::FunctionType* ft = llvm::FunctionType::get(
+                int64Type, {int64Type, int64Type, llvm::PointerType::get(*context, 0)}, false);
+            llvm::Function* f = module->getFunction("__vyb_tls_read_opt");
+            if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_tls_read_opt", module.get());
+            llvm::Value* has = builder->CreateCall(f, {tlsToI64(sslp), tlsToI64(maxlen), slot}, "tls.has");
+            llvm::Value* val = builder->CreateLoad(strTy, slot, "tls.val");
+            llvm::Value* opt = llvm::UndefValue::get(optTy);
+            opt = builder->CreateInsertValue(opt, val, 0, "tls.v");
+            opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "tls.h"), 1);
+            m_currentLLVMValue = opt;
+            return;
         } else if (fname == "vyb_strchan_recv") {
             // Blocking recv returning a String { ptr, len } that the caller owns.
             if (node->arguments.size() != 1) {

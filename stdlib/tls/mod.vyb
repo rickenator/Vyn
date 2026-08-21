@@ -10,12 +10,15 @@
 # hostname in the peer certificate.
 #
 # The ergonomic API returns native optionals (the File?/net shape): absence *is*
-# a failed context, stream, or handshake, so callers never test a `ctx.ctx < 0`
-# or `ssl < 0` sentinel. Unwrap with `match` (or `else`) and escalate with
-# `fail tls_error(op, host)` into the fail/trap framework via the shared
-# `TlsError { op, host, message }` (which snapshots the last TLS diagnostic).
-# A failed handshake leaves the stream's fd owned by the stream, so an absent
-# `connect()`/`accept()` arm should still `tls_close` the receiver.
+# a failed context, stream, handshake, write, read, or close, so callers never
+# test a `ctx.ctx < 0`, `ssl < 0`, or `-1` sentinel. `tls_write`/`write` return
+# `Int?` (bytes written), `tls_read`/`read` return `String?` (lossless; absent
+# only on error/EOF), `tls_close`/`close` return `Bool?`. Unwrap with `match`
+# (or `else`) and escalate with `fail tls_error(op, host)` into the fail/trap
+# framework via the shared `TlsError { op, host, message }` (which snapshots the
+# last TLS diagnostic). A failed handshake leaves the stream's fd owned by the
+# stream, so an absent `connect()`/`accept()` arm should still `tls_close` the
+# receiver.
 #
 # Usage (client):
 #   import network::{socket_open, socket_connect, socket_close, Socket}
@@ -29,7 +32,11 @@
 #           match (tls_stream(ctx, fd, "localhost")) {   # TlsStream?
 #               s -> {
 #                   match (s.connect()) {     # TlsStream?
-#                       c -> { tls_write(c, "hello"); echo = tls_read(c, 5); tls_close(c) }
+#                       c -> {
+#                          tls_write(c, "hello")
+#                          echo = tls_read(c, 5) else ""
+#                          tls_close(c)
+#                      }
 #                       ? -> { tls_close(s); fail tls_error("connect", "localhost") }
 #                   }
 #                   tls_free_context(ctx)
@@ -92,9 +99,9 @@ aspect TlsStreamOps {
     connect(self<Self>)<TlsStream?> -> { }
     # Complete the server handshake (mirrors connect()).
     accept(self<Self>)<TlsStream?> -> { }
-    write(self<Self>, data<String>)<Int> -> { }
-    read(self<Self>, max<Int>)<String> -> { }
-    close(self<Self>)<Int> -> { }
+    write(self<Self>, data<String>)<Int?> -> { }
+    read(self<Self>, max<Int>)<String?> -> { }
+    close(self<Self>)<Bool?> -> { }
 }
 
 share(all)
@@ -107,9 +114,17 @@ bind TlsStreamOps -> TlsStream {
         if (vyb_tls_accept(self.ssl) == 0) { return TlsStream?(self) }
         return TlsStream?()
     }
-    write(self<Self>, data<String>)<Int> -> { return vyb_tls_write(self.ssl, data) }
-    read(self<Self>, max<Int>)<String> -> { return vyb_tls_read(self.ssl, max) }
-    close(self<Self>)<Int> -> { return vyb_tls_close(self.ssl, self.fd) }
+    write(self<Self>, data<String>)<Int?> -> {
+        n<Int> = vyb_tls_write(self.ssl, data)
+        if (n < 0) { return Int?() }
+        return Int?(n)
+    }
+    read(self<Self>, max<Int>)<String?> -> { return vyb_tls_read_opt(self.ssl, max) }
+    close(self<Self>)<Bool?> -> {
+        r<Int> = vyb_tls_close(self.ssl, self.fd)
+        if (r != 0) { return Bool?() }
+        return Bool?(true)
+    }
 }
 
 # A client SSL_CTX (no peer verification). Returns `TlsContext?` -- present on
@@ -172,22 +187,30 @@ tls_accept(s<TlsStream>)<TlsStream?> -> {
     return TlsStream?()
 }
 
-# Send the whole of `data` on the stream. Returns bytes sent (or -1).
+# Send the whole of `data` on the stream. Returns `Int?` -- present holding the
+# number of bytes written, absent on failure.
 share(all)
-tls_write(s<TlsStream>, data<String>)<Int> -> {
-    return vyb_tls_write(s.ssl, data)
+tls_write(s<TlsStream>, data<String>)<Int?> -> {
+    n<Int> = vyb_tls_write(s.ssl, data)
+    if (n < 0) { return Int?() }
+    return Int?(n)
 }
 
-# Receive up to `max` decrypted bytes as a fresh String (empty on error/EOF).
+# Receive up to `max` decrypted bytes as a lossless `String?` -- present holding
+# the bytes read (which may legitimately be empty), absent on error/EOF, so an
+# empty read is never conflated with a failed read.
 share(all)
-tls_read(s<TlsStream>, max<Int>)<String> -> {
-    return vyb_tls_read(s.ssl, max)
+tls_read(s<TlsStream>, max<Int>)<String?> -> {
+    return vyb_tls_read_opt(s.ssl, max)
 }
 
-# Shut down the TLS session and close the underlying fd.
+# Shut down the TLS session and close the underlying fd. Returns `Bool?` --
+# present on success, absent if the close failed.
 share(all)
-tls_close(s<TlsStream>)<Int> -> {
-    return vyb_tls_close(s.ssl, s.fd)
+tls_close(s<TlsStream>)<Bool?> -> {
+    r<Int> = vyb_tls_close(s.ssl, s.fd)
+    if (r != 0) { return Bool?() }
+    return Bool?(true)
 }
 
 # Diagnostic helpers: the last low-level TLS operation's result (0 / "").

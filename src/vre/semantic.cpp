@@ -2086,7 +2086,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_tls_server_context" ||
             name == "vyb_tls_ctx_free" || name == "vyb_tls_stream" ||
             name == "vyb_tls_connect" || name == "vyb_tls_accept" ||
-            name == "vyb_tls_write" || name == "vyb_tls_read" ||
+            name == "vyb_tls_write" || name == "vyb_tls_read" || name == "vyb_tls_read_opt" ||
             name == "vyb_tls_close" || name == "vyb_tls_error_code" ||
             name == "vyb_tls_error_message" ||
             name == "vyb_time_epoch_secs" || name == "vyb_time_epoch_millis" ||
@@ -3061,6 +3061,19 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             // absent on error, present holding the bytes read (an empty EOF read
             // is the present "", distinct from an error).
             if (name == "vyb_net_recv_opt" || name == "vyb_net_resolve_opt") {
+                auto* inner = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "String"));
+                auto* resTy = new ast::OptionalType(node->loc,
+                    std::unique_ptr<ast::TypeNode>(inner));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+            // Lossless TLS read: tls_read_opt returns a native `String?` -- absent
+            // on an error/EOF read, present holding the decrypted bytes. This is
+            // the durability fix for tls_read's "" sentinel, which conflated an
+            // empty read with a failed read.
+            if (name == "vyb_tls_read_opt") {
                 auto* inner = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "String"));
                 auto* resTy = new ast::OptionalType(node->loc,
