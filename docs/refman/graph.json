@@ -1,5 +1,5 @@
 {
-  "git_rev": "23a60281f5555b347f8f0598854db23477cdf9cf",
+  "git_rev": "fb468e846c2030c6b73df7a9023f96553bfe34e1",
   "modules": [
     "agents",
     "asyncs",
@@ -848,7 +848,7 @@
         "module": "agents",
         "file": "stdlib/agents/mod.vyb",
         "kind": "fn",
-        "signature": "agent_close(a<Int>)<Int> ->",
+        "signature": "agent_close(a<Int>)<Bool?> ->",
         "summary": "Gracefully stop: close the mailbox; the agent drains buffered messages then",
         "fan_in": 0
       },
@@ -857,7 +857,7 @@
         "module": "agents",
         "file": "stdlib/agents/mod.vyb",
         "kind": "fn",
-        "signature": "agent_dead_letter(a<Int>, ch<Int>)<Int> ->",
+        "signature": "agent_dead_letter(a<Int>, ch<Int>)<Bool?> ->",
         "summary": "Register an int-slot reply channel as a dead-letter: on failure the runtime",
         "fan_in": 0
       },
@@ -884,7 +884,7 @@
         "module": "agents",
         "file": "stdlib/agents/mod.vyb",
         "kind": "fn",
-        "signature": "agent_free(a<Int>)<Int> ->",
+        "signature": "agent_free(a<Int>)<Bool?> ->",
         "summary": "Reclaim an agent: waits for the worker to exit (closing first if needed), then",
         "fan_in": 0
       },
@@ -911,8 +911,8 @@
         "module": "agents",
         "file": "stdlib/agents/mod.vyb",
         "kind": "fn",
-        "signature": "agent_send(a<Int>, v<Int>)<Int> ->",
-        "summary": "Post a message (non-blocking). Returns 1 on accepted, or 0 if the agent is",
+        "signature": "agent_send(a<Int>, v<Int>)<Bool?> ->",
+        "summary": "Post a message (non-blocking). Returns `Bool?` -- present when the message",
         "fan_in": 0
       },
       {
@@ -920,8 +920,8 @@
         "module": "agents",
         "file": "stdlib/agents/mod.vyb",
         "kind": "fn",
-        "signature": "agent_send_bool(a<Int>, b<Bool>)<Int> ->",
-        "summary": "Post a Bool message (non-blocking). 1 on accepted, 0 if stopped/full.",
+        "signature": "agent_send_bool(a<Int>, b<Bool>)<Bool?> ->",
+        "summary": "Post a Bool message (non-blocking). Returns `Bool?` -- present when accepted,",
         "fan_in": 0
       },
       {
@@ -929,8 +929,8 @@
         "module": "agents",
         "file": "stdlib/agents/mod.vyb",
         "kind": "fn",
-        "signature": "agent_send_float(a<Int>, f<Float>)<Int> ->",
-        "summary": "Post a Float message (non-blocking). 1 on accepted, 0 if stopped/full.",
+        "signature": "agent_send_float(a<Int>, f<Float>)<Bool?> ->",
+        "summary": "Post a Float message (non-blocking). Returns `Bool?` -- present when accepted,",
         "fan_in": 0
       },
       {
@@ -938,8 +938,8 @@
         "module": "agents",
         "file": "stdlib/agents/mod.vyb",
         "kind": "fn",
-        "signature": "agent_send_string(a<Int>, s<String>)<Int> ->",
-        "summary": "Post a String message (non-blocking). 1 on accepted, 0 if stopped/full. The",
+        "signature": "agent_send_string(a<Int>, s<String>)<Bool?> ->",
+        "summary": "Post a String message (non-blocking). Returns `Bool?` -- present when accepted,",
         "fan_in": 0
       },
       {
@@ -974,8 +974,8 @@
         "module": "asyncs",
         "file": "stdlib/asyncs/mod.vyb",
         "kind": "fn",
-        "signature": "async_connect(fd<Int>, ip<String>, port<Int>)<Int> ->",
-        "summary": "Non-blocking connect, suspending until established or refused. Returns 0 on",
+        "signature": "async_connect(fd<Int>, ip<String>, port<Int>)<Bool?> ->",
+        "summary": "Non-blocking connect, suspending until established or refused. Returns `Bool?`",
         "fan_in": 0
       },
       {
@@ -1001,8 +1001,8 @@
         "module": "asyncs",
         "file": "stdlib/asyncs/mod.vyb",
         "kind": "fn",
-        "signature": "async_recv(fd<Int>, maxlen<Int>)<String> ->",
-        "summary": "Receive up to `maxlen` bytes from `fd` as a fresh String, suspending until",
+        "signature": "async_recv(fd<Int>, maxlen<Int>)<String?> ->",
+        "summary": "Receive up to `maxlen` bytes from `fd`, suspending until data is readable.",
         "fan_in": 0
       },
       {
@@ -1019,7 +1019,7 @@
         "module": "asyncs",
         "file": "stdlib/asyncs/mod.vyb",
         "kind": "fn",
-        "signature": "async_send(fd<Int>, data<String>)<Int> ->",
+        "signature": "async_send(fd<Int>, data<String>)<Int?> ->",
         "summary": "Send all of `data` on `fd`, suspending until the socket accepts it. Returns",
         "fan_in": 0
       },
@@ -1028,7 +1028,7 @@
         "module": "asyncs",
         "file": "stdlib/asyncs/mod.vyb",
         "kind": "fn",
-        "signature": "async_sleep_ms(ms<Int>)<Int> ->",
+        "signature": "async_sleep_ms(ms<Int>)<Bool?> ->",
         "summary": "Cooperative sleep: suspend the current fiber for `ms` on a timer so other loop",
         "fan_in": 0
       },
@@ -1064,7 +1064,7 @@
         "module": "channels",
         "file": "stdlib/channels/mod.vyb",
         "kind": "fn",
-        "signature": "chan_close(ch<Int>)<Int> ->",
+        "signature": "chan_close(ch<Int>)<Bool?> ->",
         "summary": "Mark `ch` closed and wake any blocked receivers. After close, receivers see",
         "fan_in": 0
       },
@@ -1073,8 +1073,8 @@
         "module": "channels",
         "file": "stdlib/channels/mod.vyb",
         "kind": "fn",
-        "signature": "chan_free(ch<Int>)<Int> ->",
-        "summary": "Destroy and free `ch`; returns 0 or -1.",
+        "signature": "chan_free(ch<Int>)<Bool?> ->",
+        "summary": "Destroy and free `ch`. Returns `Bool?` -- present on success, absent on a bad",
         "fan_in": 0
       },
       {
@@ -1154,7 +1154,7 @@
         "module": "channels",
         "file": "stdlib/channels/mod.vyb",
         "kind": "fn",
-        "signature": "strchan_close(ch<Int>)<Int> ->",
+        "signature": "strchan_close(ch<Int>)<Bool?> ->",
         "summary": "Mark a String channel closed and wake any blocked receivers (drained receivers",
         "fan_in": 0
       },
@@ -1163,8 +1163,8 @@
         "module": "channels",
         "file": "stdlib/channels/mod.vyb",
         "kind": "fn",
-        "signature": "strchan_free(ch<Int>)<Int> ->",
-        "summary": "Reclaim and free `ch` (call after draining so no reference leaks); 0 or -1.",
+        "signature": "strchan_free(ch<Int>)<Bool?> ->",
+        "summary": "Reclaim and free `ch` (call after draining so no reference leaks). Returns",
         "fan_in": 0
       },
       {
@@ -1775,8 +1775,8 @@
         "module": "curses",
         "file": "stdlib/curses/mod.vyb",
         "kind": "fn",
-        "signature": "curses_addstr(s<String>)<Int> ->",
-        "summary": "Write `s` at the cursor. Returns 0 on success, -1 if not active.",
+        "signature": "curses_addstr(s<String>)<Bool?> ->",
+        "summary": "Write `s` at the cursor. Returns `Bool?` -- present on success, absent if the",
         "fan_in": 0
       },
       {
@@ -1811,8 +1811,8 @@
         "module": "curses",
         "file": "stdlib/curses/mod.vyb",
         "kind": "fn",
-        "signature": "curses_attr_off(attrs<Int>)<Int> ->",
-        "summary": "Turn off an attribute value previously enabled with curses_attr_on.",
+        "signature": "curses_attr_off(attrs<Int>)<Bool?> ->",
+        "summary": "Turn off an attribute value previously enabled with curses_attr_on. Returns",
         "fan_in": 0
       },
       {
@@ -1820,7 +1820,7 @@
         "module": "curses",
         "file": "stdlib/curses/mod.vyb",
         "kind": "fn",
-        "signature": "curses_attr_on(attrs<Int>)<Int> ->",
+        "signature": "curses_attr_on(attrs<Int>)<Bool?> ->",
         "summary": "Turn on an attribute value (e.g. A_BOLD | curses_color_pair(n)). Call",
         "fan_in": 0
       },
@@ -1847,8 +1847,8 @@
         "module": "curses",
         "file": "stdlib/curses/mod.vyb",
         "kind": "fn",
-        "signature": "curses_clear()<Int> ->",
-        "summary": "Clear the screen window. Returns 0 on success, -1 if not active.",
+        "signature": "curses_clear()<Bool?> ->",
+        "summary": "Clear the screen window. Returns `Bool?` -- present on success, absent if the",
         "fan_in": 0
       },
       {
@@ -1856,7 +1856,7 @@
         "module": "curses",
         "file": "stdlib/curses/mod.vyb",
         "kind": "fn",
-        "signature": "curses_close()<Int> ->",
+        "signature": "curses_close()<Bool?> ->",
         "summary": "Shut the screen down and restore the terminal. Safe to call when not active.",
         "fan_in": 0
       },
@@ -1901,8 +1901,8 @@
         "module": "curses",
         "file": "stdlib/curses/mod.vyb",
         "kind": "fn",
-        "signature": "curses_hide_cursor()<Int> ->",
-        "summary": "Hide the terminal cursor (typical for full-screen UIs). Returns 0 on success.",
+        "signature": "curses_hide_cursor()<Bool?> ->",
+        "summary": "Hide the terminal cursor (typical for full-screen UIs). Returns `Bool?`.",
         "fan_in": 0
       },
       {
@@ -1910,8 +1910,8 @@
         "module": "curses",
         "file": "stdlib/curses/mod.vyb",
         "kind": "fn",
-        "signature": "curses_init()<Int> ->",
-        "summary": "Initialize the terminal. Returns 0 on success, -1 if stdin is not a TTY or",
+        "signature": "curses_init()<Int?> ->",
+        "summary": "Initialize the terminal. Returns `Int?` -- present once the screen is active,",
         "fan_in": 0
       },
       {
@@ -1919,7 +1919,7 @@
         "module": "curses",
         "file": "stdlib/curses/mod.vyb",
         "kind": "fn",
-        "signature": "curses_init_pair(pair<Int>, fg<Int>, bg<Int>)<Int> ->",
+        "signature": "curses_init_pair(pair<Int>, fg<Int>, bg<Int>)<Bool?> ->",
         "summary": "Define color-pair `pair` as foreground `fg` on background `bg` (both CursColor).",
         "fan_in": 0
       },
@@ -1928,8 +1928,8 @@
         "module": "curses",
         "file": "stdlib/curses/mod.vyb",
         "kind": "fn",
-        "signature": "curses_keypad(flag<Bool>)<Int> ->",
-        "summary": "Enable (1) / disable (0) the keypad so arrow/function keys arrive as KEY_* codes.",
+        "signature": "curses_keypad(flag<Bool>)<Bool?> ->",
+        "summary": "Enable (1) / disable (0) the keypad so arrow/function keys arrive as KEY_*",
         "fan_in": 0
       },
       {
@@ -1937,8 +1937,8 @@
         "module": "curses",
         "file": "stdlib/curses/mod.vyb",
         "kind": "fn",
-        "signature": "curses_move(row<Int>, col<Int>)<Int> ->",
-        "summary": "Move the cursor to (row, col) (0-based) before the next addstr.",
+        "signature": "curses_move(row<Int>, col<Int>)<Bool?> ->",
+        "summary": "Move the cursor to (row, col) (0-based) before the next addstr. Returns",
         "fan_in": 0
       },
       {
@@ -1946,8 +1946,8 @@
         "module": "curses",
         "file": "stdlib/curses/mod.vyb",
         "kind": "fn",
-        "signature": "curses_move_addstr(row<Int>, col<Int>, s<String>)<Int> ->",
-        "summary": "Move to (row, col) then write `s`. Returns 0 on success, -1 on any error.",
+        "signature": "curses_move_addstr(row<Int>, col<Int>, s<String>)<Bool?> ->",
+        "summary": "Move to (row, col) then write `s`. Returns `Bool?` -- present on success,",
         "fan_in": 0
       },
       {
@@ -1955,7 +1955,7 @@
         "module": "curses",
         "file": "stdlib/curses/mod.vyb",
         "kind": "fn",
-        "signature": "curses_nodelay(flag<Bool>)<Int> ->",
+        "signature": "curses_nodelay(flag<Bool>)<Bool?> ->",
         "summary": "1: getch returns immediately (-1) when nothing is pending; 0: block for input.",
         "fan_in": 0
       },
@@ -1973,7 +1973,7 @@
         "module": "curses",
         "file": "stdlib/curses/mod.vyb",
         "kind": "fn",
-        "signature": "curses_refresh()<Int> ->",
+        "signature": "curses_refresh()<Bool?> ->",
         "summary": "Flush pending screen changes to the terminal. Call after drawing a frame.",
         "fan_in": 0
       },
@@ -1991,8 +1991,8 @@
         "module": "curses",
         "file": "stdlib/curses/mod.vyb",
         "kind": "fn",
-        "signature": "curses_show_cursor()<Int> ->",
-        "summary": "Show the terminal cursor. Returns 0 on success, -1 if not active.",
+        "signature": "curses_show_cursor()<Bool?> ->",
+        "summary": "Show the terminal cursor. Returns `Bool?` -- present on success, absent if the",
         "fan_in": 0
       },
       {
@@ -2000,7 +2000,7 @@
         "module": "curses",
         "file": "stdlib/curses/mod.vyb",
         "kind": "fn",
-        "signature": "curses_start_color()<Int> ->",
+        "signature": "curses_start_color()<Bool?> ->",
         "summary": "Enable color support (must call after curses_init, before using color pairs).",
         "fan_in": 0
       },
@@ -2009,8 +2009,8 @@
         "module": "curses",
         "file": "stdlib/curses/mod.vyb",
         "kind": "fn",
-        "signature": "curses_timeout(ms<Int>)<Int> ->",
-        "summary": "Set getch polling: -1 blocks, 0 no-wait, >0 wait up to ms. Returns 0.",
+        "signature": "curses_timeout(ms<Int>)<Bool?> ->",
+        "summary": "Set getch polling: -1 blocks, 0 no-wait, >0 wait up to ms. Returns `Bool?`.",
         "fan_in": 0
       },
       {
@@ -2639,7 +2639,7 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "async_tcp_read(s<TcpStream>, max<Int>)<String> ->",
+        "signature": "async_tcp_read(s<TcpStream>, max<Int>)<String?> ->",
         "summary": "",
         "fan_in": 0
       },
@@ -2864,8 +2864,8 @@
         "module": "network",
         "file": "stdlib/network/mod.vyb",
         "kind": "fn",
-        "signature": "udp_recv_from(s<UdpSocket>, max<Int>)<String> ->",
-        "summary": "Receive one datagram as a String. Records the sender, read with",
+        "signature": "udp_recv_from(s<UdpSocket>, max<Int>)<String?> ->",
+        "summary": "Receive one datagram as a lossless `String?`. Records the sender, read with",
         "fan_in": 0
       },
       {
@@ -2945,8 +2945,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_action_add(menu<Int>, text<String>)<Int> ->",
-        "summary": "Add an action to `menu`; its trigger enqueues QtEvent::Click. Returns the action handle.",
+        "signature": "qt_action_add(menu<Int>, text<String>)<Int?> ->",
+        "summary": "Add an action to `menu`; its trigger enqueues QtEvent::Click. Returns `Int?` -- present with the live action handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -2972,8 +2972,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_button_create(parent<Int>, text<String>)<Int> ->",
-        "summary": "Create a push button under `parent`; a click enqueues QtEvent::Click. Returns its handle.",
+        "signature": "qt_button_create(parent<Int>, text<String>)<Int?> ->",
+        "summary": "Create a push button under `parent`; a click enqueues QtEvent::Click. Returns `Int?` -- present with the live handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -2981,8 +2981,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_button_set_enabled(button<Int>, enabled<Bool>)<Int> ->",
-        "summary": "Enable (true) / disable (false) the button. Returns 0.",
+        "signature": "qt_button_set_enabled(button<Int>, enabled<Bool>)<Bool?> ->",
+        "summary": "Enable (true) / disable (false) the button. Returns `Bool?` -- present on success, absent on a non-button handle.",
         "fan_in": 0
       },
       {
@@ -2990,8 +2990,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_button_set_text(button<Int>, text<String>)<Int> ->",
-        "summary": "Replace button label. Returns 0, or -1 on a non-button handle.",
+        "signature": "qt_button_set_text(button<Int>, text<String>)<Bool?> ->",
+        "summary": "Replace button label. Returns `Bool?` -- present on success, absent on a non-button handle.",
         "fan_in": 0
       },
       {
@@ -3017,8 +3017,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_checkbox_create(parent<Int>, text<String>)<Int> ->",
-        "summary": "Create a checkbox under `parent`; toggles enqueue QtEvent::Toggled. Returns its handle.",
+        "signature": "qt_checkbox_create(parent<Int>, text<String>)<Int?> ->",
+        "summary": "Create a checkbox under `parent`; toggles enqueue QtEvent::Toggled. Returns `Int?` -- present with the live handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3026,8 +3026,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_checkbox_set_checked(box<Int>, on<Bool>)<Int> ->",
-        "summary": "Check (true) / uncheck (false) the box (enqueues QtEvent::Toggled). Returns 0.",
+        "signature": "qt_checkbox_set_checked(box<Int>, on<Bool>)<Bool?> ->",
+        "summary": "Check (true) / uncheck (false) the box (enqueues QtEvent::Toggled). Returns `Bool?` -- present on success, absent on a non-checkbox handle.",
         "fan_in": 0
       },
       {
@@ -3035,8 +3035,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_combo_add_item(combo<Int>, text<String>)<Int> ->",
-        "summary": "Append `text` as the last combo item. Returns 0.",
+        "signature": "qt_combo_add_item(combo<Int>, text<String>)<Bool?> ->",
+        "summary": "Append `text` as the last combo item. Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -3053,8 +3053,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_combo_create(parent<Int>)<Int> ->",
-        "summary": "Create a combo box under `parent`; index changes enqueue QtEvent::IndexChanged.",
+        "signature": "qt_combo_create(parent<Int>)<Int?> ->",
+        "summary": "Create a combo box under `parent`; index changes enqueue QtEvent::IndexChanged. Returns `Int?` -- present with the live handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3080,8 +3080,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_combo_set_current_index(combo<Int>, idx<Int>)<Int> ->",
-        "summary": "Select combo item `idx`. Returns 0.",
+        "signature": "qt_combo_set_current_index(combo<Int>, idx<Int>)<Bool?> ->",
+        "summary": "Select combo item `idx`. Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -3089,8 +3089,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_dial_create(parent<Int>, min<Int>, max<Int>)<Int> ->",
-        "summary": "Create a dial with range [min, max]; value changes enqueue QtEvent::ValueChanged.",
+        "signature": "qt_dial_create(parent<Int>, min<Int>, max<Int>)<Int?> ->",
+        "summary": "Create a dial with range [min, max]; value changes enqueue QtEvent::ValueChanged. Returns `Int?` -- present with the live handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3098,8 +3098,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_dial_set_value(dial<Int>, value<Int>)<Int> ->",
-        "summary": "Set the dial value (clamped). Returns 0.",
+        "signature": "qt_dial_set_value(dial<Int>, value<Int>)<Bool?> ->",
+        "summary": "Set the dial value (clamped). Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -3125,8 +3125,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_dlg_about(parent<Int>, title<String>, text<String>)<Int> ->",
-        "summary": "Open a non-blocking about box; returns its handle, or 0 on failure.",
+        "signature": "qt_dlg_about(parent<Int>, title<String>, text<String>)<Int?> ->",
+        "summary": "Open a non-blocking about box. Returns `Int?` -- present with the dialog handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3134,8 +3134,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_dlg_close(h<Int>)<Int> ->",
-        "summary": "Finish dialog `h` as rejected (enqueues QtEvent::dialog with result 0). Returns 0.",
+        "signature": "qt_dlg_close(h<Int>)<Bool?> ->",
+        "summary": "Finish dialog `h` as rejected (enqueues QtEvent::dialog with result 0). Returns `Bool?` -- present on success, absent on a non-dialog or bad handle.",
         "fan_in": 0
       },
       {
@@ -3143,8 +3143,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_dlg_dir(parent<Int>, title<String>)<Int> ->",
-        "summary": "Open a non-blocking directory picker; finishes with result 1 (Accepted) + qt_dlg_selected.",
+        "signature": "qt_dlg_dir(parent<Int>, title<String>)<Int?> ->",
+        "summary": "Open a non-blocking directory picker; finishes with result 1 (Accepted) + qt_dlg_selected. Returns `Int?` -- present with the dialog handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3152,8 +3152,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_dlg_error(parent<Int>, title<String>, text<String>)<Int> ->",
-        "summary": "Open a non-blocking error box; returns its handle, or 0 on failure.",
+        "signature": "qt_dlg_error(parent<Int>, title<String>, text<String>)<Int?> ->",
+        "summary": "Open a non-blocking error box. Returns `Int?` -- present with the dialog handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3161,8 +3161,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_dlg_info(parent<Int>, title<String>, text<String>)<Int> ->",
-        "summary": "Open a non-blocking information box; returns its handle, or 0 on failure.",
+        "signature": "qt_dlg_info(parent<Int>, title<String>, text<String>)<Int?> ->",
+        "summary": "Open a non-blocking information box. Returns `Int?` -- present with the dialog handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3170,8 +3170,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_dlg_open(parent<Int>, title<String>, filter<String>)<Int> ->",
-        "summary": "Open a non-blocking file-open picker; finishes with result 1 (Accepted) + qt_dlg_selected.",
+        "signature": "qt_dlg_open(parent<Int>, title<String>, filter<String>)<Int?> ->",
+        "summary": "Open a non-blocking file-open picker; finishes with result 1 (Accepted) + qt_dlg_selected. Returns `Int?` -- present with the dialog handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3179,8 +3179,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_dlg_question(parent<Int>, title<String>, text<String>)<Int> ->",
-        "summary": "Open a non-blocking Yes/No box; finishes with result 1 for Yes, 0 otherwise.",
+        "signature": "qt_dlg_question(parent<Int>, title<String>, text<String>)<Int?> ->",
+        "summary": "Open a non-blocking Yes/No box; finishes with result 1 for Yes, 0 otherwise. Returns `Int?` -- present with the dialog handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3188,8 +3188,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_dlg_save(parent<Int>, title<String>, filter<String>)<Int> ->",
-        "summary": "Open a non-blocking file-save picker; finishes with result 1 (Accepted) + qt_dlg_selected.",
+        "signature": "qt_dlg_save(parent<Int>, title<String>, filter<String>)<Int?> ->",
+        "summary": "Open a non-blocking file-save picker; finishes with result 1 (Accepted) + qt_dlg_selected. Returns `Int?` -- present with the dialog handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3206,8 +3206,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_dlg_warn(parent<Int>, title<String>, text<String>)<Int> ->",
-        "summary": "Open a non-blocking warning box; returns its handle, or 0 on failure.",
+        "signature": "qt_dlg_warn(parent<Int>, title<String>, text<String>)<Int?> ->",
+        "summary": "Open a non-blocking warning box. Returns `Int?` -- present with the dialog handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3215,8 +3215,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_edit_create(parent<Int>, text<String>)<Int> ->",
-        "summary": "Create a single-line text edit under `parent`; text changes enqueue QtEvent::TextChanged.",
+        "signature": "qt_edit_create(parent<Int>, text<String>)<Int?> ->",
+        "summary": "Create a single-line text edit under `parent`; text changes enqueue QtEvent::TextChanged. Returns `Int?` -- present with the live handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3224,8 +3224,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_edit_set_placeholder(edit<Int>, text<String>)<Int> ->",
-        "summary": "Set placeholder (ghost) text. Returns 0.",
+        "signature": "qt_edit_set_placeholder(edit<Int>, text<String>)<Bool?> ->",
+        "summary": "Set placeholder (ghost) text. Returns `Bool?` -- present on success, absent on a non-edit handle.",
         "fan_in": 0
       },
       {
@@ -3233,8 +3233,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_edit_set_text(edit<Int>, text<String>)<Int> ->",
-        "summary": "Replace edit text. Returns 0, or -1 on a non-edit handle.",
+        "signature": "qt_edit_set_text(edit<Int>, text<String>)<Bool?> ->",
+        "summary": "Replace edit text. Returns `Bool?` -- present on success, absent on a non-edit handle.",
         "fan_in": 0
       },
       {
@@ -3314,8 +3314,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_grid(parent<Int>)<Int> ->",
-        "summary": "Create a grid layout on window `parent`. Returns a layout handle.",
+        "signature": "qt_grid(parent<Int>)<Int?> ->",
+        "summary": "Create a grid layout on window `parent`. Returns `Int?` -- present with the live layout handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3323,8 +3323,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_grid_add(layout<Int>, child<Int>, row<Int>, col<Int>)<Int> ->",
-        "summary": "Add widget `child` to grid-layout `layout` at (row, col). Returns 0.",
+        "signature": "qt_grid_add(layout<Int>, child<Int>, row<Int>, col<Int>)<Bool?> ->",
+        "summary": "Add widget `child` to grid-layout `layout` at (row, col). Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -3332,8 +3332,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_group_create(parent<Int>, title<String>)<Int> ->",
-        "summary": "Create a titled group-box container under `parent`; put a layout on it. Returns its handle or 0.",
+        "signature": "qt_group_create(parent<Int>, title<String>)<Int?> ->",
+        "summary": "Create a titled group-box container under `parent`; put a layout on it. Returns `Int?` -- present with the live handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3341,8 +3341,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_hbox(parent<Int>)<Int> ->",
-        "summary": "Create a horizontal box layout on window `parent`. Returns a layout handle.",
+        "signature": "qt_hbox(parent<Int>)<Int?> ->",
+        "summary": "Create a horizontal box layout on window `parent`. Returns `Int?` -- present with the live layout handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3368,8 +3368,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_label_create(parent<Int>, text<String>)<Int> ->",
-        "summary": "Create a label with `text` under `parent` (0 = none); returns its handle or 0.",
+        "signature": "qt_label_create(parent<Int>, text<String>)<Int?> ->",
+        "summary": "Create a label with `text` under `parent` (0 = none). Returns `Int?` -- present with the live handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3377,8 +3377,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_label_set_text(label<Int>, text<String>)<Int> ->",
-        "summary": "Replace label text. Returns 0, or -1 on a non-label handle.",
+        "signature": "qt_label_set_text(label<Int>, text<String>)<Bool?> ->",
+        "summary": "Replace label text. Returns `Bool?` -- present on success, absent on a non-label handle.",
         "fan_in": 0
       },
       {
@@ -3395,8 +3395,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_layout_add(layout<Int>, child<Int>)<Int> ->",
-        "summary": "Add widget `child` to box-layout `layout`. Returns 0.",
+        "signature": "qt_layout_add(layout<Int>, child<Int>)<Bool?> ->",
+        "summary": "Add widget `child` to box-layout `layout`. Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -3404,8 +3404,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_layout_add_layout(layout<Int>, sub<Int>)<Int> ->",
-        "summary": "Nest sub-layout `sub` inside box-layout `layout` (adds it as the next item). Returns 0.",
+        "signature": "qt_layout_add_layout(layout<Int>, sub<Int>)<Bool?> ->",
+        "summary": "Nest sub-layout `sub` inside box-layout `layout` (adds it as the next item). Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -3413,8 +3413,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_layout_set_stretch(layout<Int>, index<Int>, stretch<Int>)<Int> ->",
-        "summary": "Set the stretch factor of the item at `index` (add order, 0-based) to `stretch`. Returns 0.",
+        "signature": "qt_layout_set_stretch(layout<Int>, index<Int>, stretch<Int>)<Bool?> ->",
+        "summary": "Set the stretch factor of the item at `index` (add order, 0-based) to `stretch`. Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -3422,8 +3422,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_list_add(list<Int>, text<String>)<Int> ->",
-        "summary": "Append `text` as the last list item. Returns 0.",
+        "signature": "qt_list_add(list<Int>, text<String>)<Bool?> ->",
+        "summary": "Append `text` as the last list item. Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -3440,8 +3440,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_list_create(parent<Int>)<Int> ->",
-        "summary": "Create an item list under `parent`; selection changes enqueue QtEvent::CurrentChanged. Returns its handle.",
+        "signature": "qt_list_create(parent<Int>)<Int?> ->",
+        "summary": "Create an item list under `parent`; selection changes enqueue QtEvent::CurrentChanged. Returns `Int?` -- present with the live handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3467,8 +3467,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_list_set_current(list<Int>, idx<Int>)<Int> ->",
-        "summary": "Select list item `idx`. Returns 0.",
+        "signature": "qt_list_set_current(list<Int>, idx<Int>)<Bool?> ->",
+        "summary": "Select list item `idx`. Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -3476,8 +3476,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_main_window_create()<Int> ->",
-        "summary": "Create a top-level QMainWindow (kind Window) with menubar/statusbar/toolbar support; returns its handle or 0.",
+        "signature": "qt_main_window_create()<Int?> ->",
+        "summary": "Create a top-level QMainWindow (kind Window) with menubar/statusbar/toolbar support. Returns `Int?` -- present with the live handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3485,8 +3485,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_menu_add(mw<Int>, title<String>)<Int> ->",
-        "summary": "Add a top-level menu titled `title` to the menu bar; returns its menu handle or 0.",
+        "signature": "qt_menu_add(mw<Int>, title<String>)<Int?> ->",
+        "summary": "Add a top-level menu titled `title` to the menu bar. Returns `Int?` -- present with the live menu handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3494,8 +3494,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_menubar(mw<Int>)<Int> ->",
-        "summary": "The main window's menu bar handle (created on demand).",
+        "signature": "qt_menubar(mw<Int>)<Int?> ->",
+        "summary": "Obtain the main window's menu bar handle (created on demand). Returns `Int?` -- present with the live handle, absent if unavailable.",
         "fan_in": 0
       },
       {
@@ -3503,8 +3503,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_msg_about(parent<Int>, title<String>, text<String>)<Int> ->",
-        "summary": "Show a modal 'about' box (blocks until dismissed). Returns 0.",
+        "signature": "qt_msg_about(parent<Int>, title<String>, text<String>)<Bool?> ->",
+        "summary": "Show a modal 'about' box (blocks until dismissed). Returns `Bool?` -- present once the box was shown and dismissed.",
         "fan_in": 0
       },
       {
@@ -3512,8 +3512,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_msg_error(parent<Int>, title<String>, text<String>)<Int> ->",
-        "summary": "Show a modal critical-error message box (blocks until dismissed). Returns 0.",
+        "signature": "qt_msg_error(parent<Int>, title<String>, text<String>)<Bool?> ->",
+        "summary": "Show a modal critical-error message box (blocks until dismissed). Returns `Bool?` -- present once the box was shown and dismissed.",
         "fan_in": 0
       },
       {
@@ -3521,8 +3521,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_msg_info(parent<Int>, title<String>, text<String>)<Int> ->",
-        "summary": "Show a modal informational message box (blocks until dismissed). Returns 0.",
+        "signature": "qt_msg_info(parent<Int>, title<String>, text<String>)<Bool?> ->",
+        "summary": "Show a modal informational message box (blocks until dismissed). Returns `Bool?` -- present once the box was shown and dismissed.",
         "fan_in": 0
       },
       {
@@ -3539,8 +3539,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_msg_warn(parent<Int>, title<String>, text<String>)<Int> ->",
-        "summary": "Show a modal warning message box (blocks until dismissed). Returns 0.",
+        "signature": "qt_msg_warn(parent<Int>, title<String>, text<String>)<Bool?> ->",
+        "summary": "Show a modal warning message box (blocks until dismissed). Returns `Bool?` -- present once the box was shown and dismissed.",
         "fan_in": 0
       },
       {
@@ -3557,8 +3557,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_post_event(h<Int>, kind<Int>)<Int> ->",
-        "summary": "Enqueue a synthetic control event for handle `h` (thread-safe: a background async can signal the UI loop without touching widgets off-thread). Returns 0.",
+        "signature": "qt_post_event(h<Int>, kind<Int>)<Bool?> ->",
+        "summary": "Enqueue a synthetic control event for handle `h` (thread-safe: a background async can signal the UI loop without touching widgets off-thread). Returns `Bool?` -- present on success, absent on failure.",
         "fan_in": 0
       },
       {
@@ -3566,8 +3566,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_process_events()<Int> ->",
-        "summary": "Pump the Qt event loop once. Returns 0, or -1 if the GUI is not running.",
+        "signature": "qt_process_events()<Bool?> ->",
+        "summary": "Pump the Qt event loop once. Returns `Bool?` -- present on success, absent if the GUI is not running.",
         "fan_in": 0
       },
       {
@@ -3575,8 +3575,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_progress_create(parent<Int>, max<Int>)<Int> ->",
-        "summary": "Create a progress bar with range 0..max under `parent`. Returns its handle or 0.",
+        "signature": "qt_progress_create(parent<Int>, max<Int>)<Int?> ->",
+        "summary": "Create a progress bar with range 0..max under `parent`. Returns `Int?` -- present with the live handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3584,8 +3584,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_progress_set_value(bar<Int>, value<Int>)<Int> ->",
-        "summary": "Set the progress value (clamped). Returns 0.",
+        "signature": "qt_progress_set_value(bar<Int>, value<Int>)<Bool?> ->",
+        "summary": "Set the progress value (clamped). Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -3593,8 +3593,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_quit()<Int> ->",
-        "summary": "Shut the GUI down (terminal - do not use Qt handles afterwards). Returns 0.",
+        "signature": "qt_quit()<Bool?> ->",
+        "summary": "Shut the GUI down (terminal - do not use Qt handles afterwards). Returns `Bool?` -- present once the GUI has quit.",
         "fan_in": 0
       },
       {
@@ -3611,8 +3611,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_radio_create(parent<Int>, text<String>)<Int> ->",
-        "summary": "Create a radio button under `parent`; toggles enqueue QtEvent::Toggled. Returns its handle.",
+        "signature": "qt_radio_create(parent<Int>, text<String>)<Int?> ->",
+        "summary": "Create a radio button under `parent`; toggles enqueue QtEvent::Toggled. Returns `Int?` -- present with the live handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3620,8 +3620,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_radio_set_checked(radio<Int>, on<Bool>)<Int> ->",
-        "summary": "Check (true) / uncheck (false) the radio (enqueues QtEvent::Toggled). Returns 0.",
+        "signature": "qt_radio_set_checked(radio<Int>, on<Bool>)<Bool?> ->",
+        "summary": "Check (true) / uncheck (false) the radio (enqueues QtEvent::Toggled). Returns `Bool?` -- present on success, absent on a non-radio handle.",
         "fan_in": 0
       },
       {
@@ -3629,8 +3629,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_rich_append(ed<Int>, text<String>)<Int> ->",
-        "summary": "Append `text` at the end (keeps the current character format). Returns 0.",
+        "signature": "qt_rich_append(ed<Int>, text<String>)<Bool?> ->",
+        "summary": "Append `text` at the end (keeps the current character format). Returns `Bool?` -- present on success, absent on a non-editor handle.",
         "fan_in": 0
       },
       {
@@ -3638,8 +3638,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_rich_clear(ed<Int>)<Int> ->",
-        "summary": "Clear all rich-text content. Returns 0.",
+        "signature": "qt_rich_clear(ed<Int>)<Bool?> ->",
+        "summary": "Clear all rich-text content. Returns `Bool?` -- present on success, absent on a non-editor handle.",
         "fan_in": 0
       },
       {
@@ -3647,8 +3647,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_rich_create(parent<Int>)<Int> ->",
-        "summary": "Create a rich-text editor (QTextEdit) under `parent`; edits enqueue QtEvent::TextChanged.",
+        "signature": "qt_rich_create(parent<Int>)<Int?> ->",
+        "summary": "Create a rich-text editor (QTextEdit) under `parent`; edits enqueue QtEvent::TextChanged. Returns `Int?` -- present with the live handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3674,8 +3674,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_rich_set_html(ed<Int>, html<String>)<Int> ->",
-        "summary": "Set the rich-text editor body from `html` (supports <b>/<i>/<font color> etc). Returns 0.",
+        "signature": "qt_rich_set_html(ed<Int>, html<String>)<Bool?> ->",
+        "summary": "Set the rich-text editor body from `html` (supports <b>/<i>/<font color> etc). Returns `Bool?` -- present on success, absent on a non-editor handle.",
         "fan_in": 0
       },
       {
@@ -3683,8 +3683,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_rich_set_plain(ed<Int>, text<String>)<Int> ->",
-        "summary": "Set the rich-text editor's plain text (clears formatting). Returns 0.",
+        "signature": "qt_rich_set_plain(ed<Int>, text<String>)<Bool?> ->",
+        "summary": "Set the rich-text editor's plain text (clears formatting). Returns `Bool?` -- present on success, absent on a non-editor handle.",
         "fan_in": 0
       },
       {
@@ -3692,8 +3692,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_rich_set_text_color(ed<Int>, r<Int>, g<Int>, b<Int>)<Int> ->",
-        "summary": "Set the editor's text color to (r,g,b) each 0-255. Returns 0.",
+        "signature": "qt_rich_set_text_color(ed<Int>, r<Int>, g<Int>, b<Int>)<Bool?> ->",
+        "summary": "Set the editor's text color to (r,g,b) each 0-255. Returns `Bool?` -- present on success, absent on a non-editor handle.",
         "fan_in": 0
       },
       {
@@ -3710,8 +3710,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_run_stop()<Int> ->",
-        "summary": "Stop a running qt_run() loop (graceful; GUI stays up). Returns 0, or -1 if not running.",
+        "signature": "qt_run_stop()<Bool?> ->",
+        "summary": "Stop a running qt_run() loop (graceful; GUI stays up). Returns `Bool?` -- present if a loop was stopped; absent if none was running.",
         "fan_in": 0
       },
       {
@@ -3746,8 +3746,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_set_timer(ms<Int>)<Int> ->",
-        "summary": "Arm a repeating timer every `ms` ms; poll qt_timer_fired(). Returns 0.",
+        "signature": "qt_set_timer(ms<Int>)<Bool?> ->",
+        "summary": "Arm a repeating timer every `ms` ms; poll qt_timer_fired(). Returns `Bool?` -- present on success, absent on failure.",
         "fan_in": 0
       },
       {
@@ -3755,8 +3755,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_slider_create(parent<Int>, min<Int>, max<Int>)<Int> ->",
-        "summary": "Create a horizontal slider with range [min, max]; value changes enqueue QtEvent::ValueChanged.",
+        "signature": "qt_slider_create(parent<Int>, min<Int>, max<Int>)<Int?> ->",
+        "summary": "Create a horizontal slider with range [min, max]; value changes enqueue QtEvent::ValueChanged. Returns `Int?` -- present with the live handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3764,8 +3764,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_slider_set_value(slider<Int>, value<Int>)<Int> ->",
-        "summary": "Set the slider value (clamped). Returns 0.",
+        "signature": "qt_slider_set_value(slider<Int>, value<Int>)<Bool?> ->",
+        "summary": "Set the slider value (clamped). Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -3782,8 +3782,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_spin_create(parent<Int>, min<Int>, max<Int>)<Int> ->",
-        "summary": "Create an integer spin box with range [min, max]; value changes enqueue QtEvent::ValueChanged.",
+        "signature": "qt_spin_create(parent<Int>, min<Int>, max<Int>)<Int?> ->",
+        "summary": "Create an integer spin box with range [min, max]; value changes enqueue QtEvent::ValueChanged. Returns `Int?` -- present with the live handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3791,8 +3791,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_spin_set_value(spin<Int>, value<Int>)<Int> ->",
-        "summary": "Set the spin box value (clamped). Returns 0.",
+        "signature": "qt_spin_set_value(spin<Int>, value<Int>)<Bool?> ->",
+        "summary": "Set the spin box value (clamped). Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -3809,8 +3809,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_statusbar_message(mw<Int>, text<String>)<Int> ->",
-        "summary": "Show `text` in the main window's status bar. Returns 0, or -1 on a bad handle.",
+        "signature": "qt_statusbar_message(mw<Int>, text<String>)<Bool?> ->",
+        "summary": "Show `text` in the main window's status bar. Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -3827,8 +3827,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_tabs_add(tabs<Int>, text<String>)<Int> ->",
-        "summary": "Append a tab titled `text`; returns the page's widget handle (put a layout on it).",
+        "signature": "qt_tabs_add(tabs<Int>, text<String>)<Int?> ->",
+        "summary": "Append a tab titled `text`. Returns `Int?` -- present with the page's widget handle (put a layout on it), absent if the tab could not be added.",
         "fan_in": 0
       },
       {
@@ -3845,8 +3845,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_tabs_create(parent<Int>)<Int> ->",
-        "summary": "Create a tab container under `parent`; returns its handle or 0.",
+        "signature": "qt_tabs_create(parent<Int>)<Int?> ->",
+        "summary": "Create a tab container under `parent`. Returns `Int?` -- present with the live handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3863,8 +3863,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_tabs_set_current(tabs<Int>, idx<Int>)<Int> ->",
-        "summary": "Select tab `idx` (enqueues QtEvent::CurrentChanged). Returns 0.",
+        "signature": "qt_tabs_set_current(tabs<Int>, idx<Int>)<Bool?> ->",
+        "summary": "Select tab `idx` (enqueues QtEvent::CurrentChanged). Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -3872,8 +3872,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_text_edit_create(parent<Int>)<Int> ->",
-        "summary": "Create a multi-line plain-text editor under `parent`; edits enqueue QtEvent::TextChanged. Returns its handle.",
+        "signature": "qt_text_edit_create(parent<Int>)<Int?> ->",
+        "summary": "Create a multi-line plain-text editor under `parent`; edits enqueue QtEvent::TextChanged. Returns `Int?` -- present with the live handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3881,8 +3881,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_text_edit_set_text(ed<Int>, text<String>)<Int> ->",
-        "summary": "Replace editor text. Returns 0, or -1 on a non-editor handle.",
+        "signature": "qt_text_edit_set_text(ed<Int>, text<String>)<Bool?> ->",
+        "summary": "Replace editor text. Returns `Bool?` -- present on success, absent on a non-editor handle.",
         "fan_in": 0
       },
       {
@@ -3908,8 +3908,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_toolbar_create(mw<Int>, title<String>)<Int> ->",
-        "summary": "Add a toolbar titled `title` to the main window; returns its handle or 0.",
+        "signature": "qt_toolbar_create(mw<Int>, title<String>)<Int?> ->",
+        "summary": "Add a toolbar titled `title` to the main window. Returns `Int?` -- present with the live handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3917,8 +3917,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_vbox(parent<Int>)<Int> ->",
-        "summary": "Create a vertical box layout on window `parent`. Returns a layout handle.",
+        "signature": "qt_vbox(parent<Int>)<Int?> ->",
+        "summary": "Create a vertical box layout on window `parent`. Returns `Int?` -- present with the live layout handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -3935,8 +3935,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_web_back(web<Int>)<Int> ->",
-        "summary": "Go back in history. Returns 0, or -1 on a bad handle.",
+        "signature": "qt_web_back(web<Int>)<Bool?> ->",
+        "summary": "Go back in history. Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -3944,7 +3944,7 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_web_create(parent<Int>)<Int> ->",
+        "signature": "qt_web_create(parent<Int>)<Int?> ->",
         "summary": "gen_qt[mod_wrappers]: begin",
         "fan_in": 0
       },
@@ -3953,8 +3953,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_web_forward(web<Int>)<Int> ->",
-        "summary": "Go forward in history. Returns 0, or -1 on a bad handle.",
+        "signature": "qt_web_forward(web<Int>)<Bool?> ->",
+        "summary": "Go forward in history. Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -3962,8 +3962,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_web_load(web<Int>, url<String>)<Int> ->",
-        "summary": "Begin loading `url` in the web view (async). Returns 0, or -1 on a bad handle.",
+        "signature": "qt_web_load(web<Int>, url<String>)<Bool?> ->",
+        "summary": "Begin loading `url` in the web view (async). Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -3980,8 +3980,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_web_reload(web<Int>)<Int> ->",
-        "summary": "Reload the page. Returns 0, or -1 on a bad handle.",
+        "signature": "qt_web_reload(web<Int>)<Bool?> ->",
+        "summary": "Reload the page. Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -4007,8 +4007,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_web_zoom_in(web<Int>)<Int> ->",
-        "summary": "Zoom the web view in (larger text). Returns 0, or -1 on a bad handle.",
+        "signature": "qt_web_zoom_in(web<Int>)<Bool?> ->",
+        "summary": "Zoom the web view in (larger text). Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -4016,8 +4016,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_web_zoom_out(web<Int>)<Int> ->",
-        "summary": "Zoom the web view out (smaller text). Returns 0, or -1 on a bad handle.",
+        "signature": "qt_web_zoom_out(web<Int>)<Bool?> ->",
+        "summary": "Zoom the web view out (smaller text). Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -4034,8 +4034,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_widget_set_enabled(h<Int>, on<Bool>)<Int> ->",
-        "summary": "Enable (true) / disable (false) any widget. Returns 0, or -1 on a non-widget handle.",
+        "signature": "qt_widget_set_enabled(h<Int>, on<Bool>)<Bool?> ->",
+        "summary": "Enable (true) / disable (false) any widget. Returns `Bool?` -- present on success, absent on a non-widget handle.",
         "fan_in": 0
       },
       {
@@ -4043,8 +4043,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_widget_set_font_bold(h<Int>, on<Int>)<Int> ->",
-        "summary": "Toggle a widget's font bold (on != 0). Returns 0, or -1 on a bad handle.",
+        "signature": "qt_widget_set_font_bold(h<Int>, on<Int>)<Bool?> ->",
+        "summary": "Toggle a widget's font bold (on != 0). Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -4052,8 +4052,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_widget_set_font_size(h<Int>, pt<Int>)<Int> ->",
-        "summary": "Set a widget's font point size. Returns 0, or -1 on a bad handle.",
+        "signature": "qt_widget_set_font_size(h<Int>, pt<Int>)<Bool?> ->",
+        "summary": "Set a widget's font point size. Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -4061,8 +4061,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_widget_set_text_color(h<Int>, r<Int>, g<Int>, b<Int>)<Int> ->",
-        "summary": "Set a widget's foreground text color via palette (r,g,b each 0-255). Returns 0, or -1 on a bad handle.",
+        "signature": "qt_widget_set_text_color(h<Int>, r<Int>, g<Int>, b<Int>)<Bool?> ->",
+        "summary": "Set a widget's foreground text color via palette (r,g,b each 0-255). Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -4070,8 +4070,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_widget_set_visible(h<Int>, on<Bool>)<Int> ->",
-        "summary": "Show (true) / hide (false) any widget. Returns 0, or -1 on a non-widget handle.",
+        "signature": "qt_widget_set_visible(h<Int>, on<Bool>)<Bool?> ->",
+        "summary": "Show (true) / hide (false) any widget. Returns `Bool?` -- present on success, absent on a non-widget handle.",
         "fan_in": 0
       },
       {
@@ -4088,8 +4088,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_window_close(w<Int>)<Int> ->",
-        "summary": "Destroy window `w` (children go with it). Returns 0.",
+        "signature": "qt_window_close(w<Int>)<Bool?> ->",
+        "summary": "Destroy window `w` (children go with it). Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -4097,8 +4097,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_window_create()<Int> ->",
-        "summary": "Create a top-level window; returns its Int handle or 0 on failure.",
+        "signature": "qt_window_create()<Int?> ->",
+        "summary": "Create a top-level window. Returns `Int?` -- present with the live handle, absent if creation failed.",
         "fan_in": 0
       },
       {
@@ -4115,8 +4115,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_window_hide(w<Int>)<Int> ->",
-        "summary": "Hide (unmap) the window. Returns 0.",
+        "signature": "qt_window_hide(w<Int>)<Bool?> ->",
+        "summary": "Hide (unmap) the window. Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -4124,8 +4124,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_window_resize(w<Int>, width<Int>, height<Int>)<Int> ->",
-        "summary": "Resize to (width, height) pixels. Returns 0.",
+        "signature": "qt_window_resize(w<Int>, width<Int>, height<Int>)<Bool?> ->",
+        "summary": "Resize to (width, height) pixels. Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -4133,8 +4133,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_window_set_title(w<Int>, title<String>)<Int> ->",
-        "summary": "Set titlebar text. Returns 0, or -1 on a bad handle.",
+        "signature": "qt_window_set_title(w<Int>, title<String>)<Bool?> ->",
+        "summary": "Set titlebar text. Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -4142,8 +4142,8 @@
         "module": "qt",
         "file": "stdlib/qt/mod.vyb",
         "kind": "fn",
-        "signature": "qt_window_show(w<Int>)<Int> ->",
-        "summary": "Show (map) the window. Returns 0.",
+        "signature": "qt_window_show(w<Int>)<Bool?> ->",
+        "summary": "Show (map) the window. Returns `Bool?` -- present on success, absent on a bad handle.",
         "fan_in": 0
       },
       {
@@ -4268,8 +4268,8 @@
         "module": "tasks",
         "file": "stdlib/tasks/mod.vyb",
         "kind": "fn",
-        "signature": "task_free(h<Int>)<Int> ->",
-        "summary": "Reclaim the task handle; returns 0 or -1.",
+        "signature": "task_free(h<Int>)<Bool?> ->",
+        "summary": "Reclaim the task handle. Returns `Bool?` -- present on success, absent on a",
         "fan_in": 0
       },
       {
@@ -4440,7 +4440,7 @@
         "file": "stdlib/threads/mod.vyb",
         "kind": "fn",
         "signature": "atomic_add(a<Int>, v<Int>)<Int> ->",
-        "summary": "Atomically add `v` to the stored value; returns the *new* value after the add.",
+        "summary": "Atomically add `v` to the stored value; returns the *new* value after the add",
         "fan_in": 0
       },
       {
@@ -4457,8 +4457,8 @@
         "module": "threads",
         "file": "stdlib/threads/mod.vyb",
         "kind": "fn",
-        "signature": "atomic_free(a<Int>)<Int> ->",
-        "summary": "Destroy and free `a`; returns 0 or -1 on error.",
+        "signature": "atomic_free(a<Int>)<Bool?> ->",
+        "summary": "Destroy and free `a`. Returns `Bool?` -- present on success, absent on error.",
         "fan_in": 0
       },
       {
@@ -4475,8 +4475,8 @@
         "module": "threads",
         "file": "stdlib/threads/mod.vyb",
         "kind": "fn",
-        "signature": "atomic_new(init<Int>)<Int> ->",
-        "summary": "A fresh atomic int initialized to `init` (0 on allocation failure).",
+        "signature": "atomic_new(init<Int>)<Int?> ->",
+        "summary": "A fresh atomic int initialized to `init`. Returns `Int?` -- present holding",
         "fan_in": 0
       },
       {
@@ -4484,8 +4484,8 @@
         "module": "threads",
         "file": "stdlib/threads/mod.vyb",
         "kind": "fn",
-        "signature": "atomic_store(a<Int>, v<Int>)<Int> ->",
-        "summary": "Atomically store `v`; returns 0 or -1 on error.",
+        "signature": "atomic_store(a<Int>, v<Int>)<Bool?> ->",
+        "summary": "Atomically store `v`. Returns `Bool?` -- present on success, absent on error.",
         "fan_in": 0
       },
       {
@@ -4493,8 +4493,8 @@
         "module": "threads",
         "file": "stdlib/threads/mod.vyb",
         "kind": "fn",
-        "signature": "cond_broadcast(cv<Int>)<Int> ->",
-        "summary": "Wake every waiter blocked in cond_wait on `cv`; returns 0 or -1.",
+        "signature": "cond_broadcast(cv<Int>)<Bool?> ->",
+        "summary": "Wake every waiter blocked in cond_wait on `cv`. Returns `Bool?`.",
         "fan_in": 0
       },
       {
@@ -4502,8 +4502,8 @@
         "module": "threads",
         "file": "stdlib/threads/mod.vyb",
         "kind": "fn",
-        "signature": "cond_free(cv<Int>)<Int> ->",
-        "summary": "Destroy and free `cv`; returns 0 or -1 on error.",
+        "signature": "cond_free(cv<Int>)<Bool?> ->",
+        "summary": "Destroy and free `cv`. Returns `Bool?` -- present on success, absent on error.",
         "fan_in": 0
       },
       {
@@ -4511,8 +4511,8 @@
         "module": "threads",
         "file": "stdlib/threads/mod.vyb",
         "kind": "fn",
-        "signature": "cond_new()<Int> ->",
-        "summary": "A fresh, unlocked-pair condition variable handle (0 on allocation/init failure).",
+        "signature": "cond_new()<Int?> ->",
+        "summary": "A fresh condition variable. Returns `Int?` -- present holding the handle,",
         "fan_in": 0
       },
       {
@@ -4520,8 +4520,8 @@
         "module": "threads",
         "file": "stdlib/threads/mod.vyb",
         "kind": "fn",
-        "signature": "cond_signal(cv<Int>)<Int> ->",
-        "summary": "Wake one waiter blocked in cond_wait on `cv` (no-op if none); returns 0 or -1.",
+        "signature": "cond_signal(cv<Int>)<Bool?> ->",
+        "summary": "Wake one waiter blocked in cond_wait on `cv` (no-op if none). Returns `Bool?`.",
         "fan_in": 0
       },
       {
@@ -4529,7 +4529,7 @@
         "module": "threads",
         "file": "stdlib/threads/mod.vyb",
         "kind": "fn",
-        "signature": "cond_wait(cv<Int>, m<Int>)<Int> ->",
+        "signature": "cond_wait(cv<Int>, m<Int>)<Bool?> ->",
         "summary": "Atomically release `m`, block until signalled/broadcast, then reacquire `m`.",
         "fan_in": 0
       },
@@ -4538,8 +4538,8 @@
         "module": "threads",
         "file": "stdlib/threads/mod.vyb",
         "kind": "fn",
-        "signature": "mutex_free(m<Int>)<Int> ->",
-        "summary": "Destroy and free `m`; returns 0 or -1 on error.",
+        "signature": "mutex_free(m<Int>)<Bool?> ->",
+        "summary": "Destroy and free `m`. Returns `Bool?` -- present on success, absent on error.",
         "fan_in": 0
       },
       {
@@ -4547,8 +4547,8 @@
         "module": "threads",
         "file": "stdlib/threads/mod.vyb",
         "kind": "fn",
-        "signature": "mutex_lock(m<Int>)<Int> ->",
-        "summary": "Lock `m`, blocking until acquired; returns 0 or -1 on error.",
+        "signature": "mutex_lock(m<Int>)<Bool?> ->",
+        "summary": "Lock `m`, blocking until acquired. Returns `Bool?` -- present on success,",
         "fan_in": 0
       },
       {
@@ -4556,8 +4556,8 @@
         "module": "threads",
         "file": "stdlib/threads/mod.vyb",
         "kind": "fn",
-        "signature": "mutex_new()<Int> ->",
-        "summary": "A fresh, unlocked mutex handle (0 on allocation/init failure).",
+        "signature": "mutex_new()<Int?> ->",
+        "summary": "A fresh, unlocked mutex. Returns `Int?` -- present holding the handle, absent",
         "fan_in": 0
       },
       {
@@ -4565,8 +4565,8 @@
         "module": "threads",
         "file": "stdlib/threads/mod.vyb",
         "kind": "fn",
-        "signature": "mutex_unlock(m<Int>)<Int> ->",
-        "summary": "Unlock `m`; returns 0 or -1 on error.",
+        "signature": "mutex_unlock(m<Int>)<Bool?> ->",
+        "summary": "Unlock `m`. Returns `Bool?` -- present on success, absent on error.",
         "fan_in": 0
       },
       {
@@ -4574,7 +4574,7 @@
         "module": "threads",
         "file": "stdlib/threads/mod.vyb",
         "kind": "fn",
-        "signature": "thread_detach(handle<Int>)<Int> ->",
+        "signature": "thread_detach(handle<Int>)<Bool?> ->",
         "summary": "Detach `handle`: the thread becomes non-joinable and its slot is reclaimed",
         "fan_in": 1
       },
@@ -4583,8 +4583,8 @@
         "module": "threads",
         "file": "stdlib/threads/mod.vyb",
         "kind": "fn",
-        "signature": "thread_join(handle<Int>)<Int> ->",
-        "summary": "Wait for the thread `handle` to finish and return its closure result. Returns",
+        "signature": "thread_join(handle<Int>)<Int?> ->",
+        "summary": "Wait for the thread `handle` to finish. Returns `Int?` -- present holding the",
         "fan_in": 1
       },
       {
@@ -4736,8 +4736,8 @@
         "module": "tls",
         "file": "stdlib/tls/mod.vyb",
         "kind": "fn",
-        "signature": "tls_close(s<TlsStream>)<Int> ->",
-        "summary": "Shut down the TLS session and close the underlying fd.",
+        "signature": "tls_close(s<TlsStream>)<Bool?> ->",
+        "summary": "Shut down the TLS session and close the underlying fd. Returns `Bool?` --",
         "fan_in": 1
       },
       {
@@ -4790,8 +4790,8 @@
         "module": "tls",
         "file": "stdlib/tls/mod.vyb",
         "kind": "fn",
-        "signature": "tls_read(s<TlsStream>, max<Int>)<String> ->",
-        "summary": "Receive up to `max` decrypted bytes as a fresh String (empty on error/EOF).",
+        "signature": "tls_read(s<TlsStream>, max<Int>)<String?> ->",
+        "summary": "Receive up to `max` decrypted bytes as a lossless `String?` -- present holding",
         "fan_in": 1
       },
       {
@@ -4817,8 +4817,8 @@
         "module": "tls",
         "file": "stdlib/tls/mod.vyb",
         "kind": "fn",
-        "signature": "tls_write(s<TlsStream>, data<String>)<Int> ->",
-        "summary": "Send the whole of `data` on the stream. Returns bytes sent (or -1).",
+        "signature": "tls_write(s<TlsStream>, data<String>)<Int?> ->",
+        "summary": "Send the whole of `data` on the stream. Returns `Int?` -- present holding the",
         "fan_in": 1
       },
       {
@@ -6931,7 +6931,7 @@
       "type": "runtimeRef",
       "from_module": "asyncs",
       "from_symbol": "async_recv",
-      "to_symbol": "vyb_async_recv"
+      "to_symbol": "vyb_async_recv_opt"
     },
     {
       "type": "runtimeRef",
@@ -7309,7 +7309,7 @@
       "type": "runtimeRef",
       "from_module": "network",
       "from_symbol": "async_tcp_read",
-      "to_symbol": "vyb_async_recv"
+      "to_symbol": "vyb_async_recv_opt"
     },
     {
       "type": "runtimeRef",
@@ -7507,7 +7507,7 @@
       "type": "runtimeRef",
       "from_module": "network",
       "from_symbol": "udp_recv_from",
-      "to_symbol": "vyb_net_recvfrom"
+      "to_symbol": "vyb_net_recvfrom_opt"
     },
     {
       "type": "runtimeRef",
@@ -8623,7 +8623,7 @@
       "type": "runtimeRef",
       "from_module": "threads",
       "from_symbol": "thread_join",
-      "to_symbol": "vyb_thread_join"
+      "to_symbol": "vyb_thread_join_opt"
     },
     {
       "type": "runtimeRef",
@@ -8713,7 +8713,7 @@
       "type": "runtimeRef",
       "from_module": "tls",
       "from_symbol": "tls_read",
-      "to_symbol": "vyb_tls_read"
+      "to_symbol": "vyb_tls_read_opt"
     },
     {
       "type": "runtimeRef",

@@ -878,10 +878,15 @@ migration is complete.
 Functions that allocate a lightweight, index-based handle (no structured value
 to carry) signal allocation/pool failure with absence, not a sentinel. This
 applies to the plain-`Int` handles with no dedicated wrapper struct: mutexes
-(`mutex_new`), condvars (`cond_new`), atomics (`atomic_new`), channels
-(`chan_new`/`chan_bounded`, `strchan_new`/`strchan_bounded`), agents
-(`agent_start` and its payload variants), the curses driver (`curses_init`),
-and Qt widget handles (`qt_*_create`).
+(`mutex_new`), condvars (`cond_new`), atomics (`atomic_new`), the curses
+driver (`curses_init`), and Qt widget handles (`qt_*_create`).
+
+A few handle-creators have **not** been migrated yet and still return a plain
+`Int` with `0` on failure (tracked follow-ups): the raw channel constructors
+(`chan_new`/`chan_bounded`, `strchan_new`/`strchan_bounded`) and the agent
+`agent_start*` family. The compiler-native typed `chan<T>` constructor already
+speaks `T?`, so typed channels are the recommended path where a typed payload
+fits.
 
 ```vyb
 m = mutex_new() else fail …            # pool exhausted → absent
@@ -903,6 +908,25 @@ timeout). These keep the idiomatic `if (idx >= 0)` / `while ((ch = getch()) !=
 -1)` test and avoid conflating "no match" with "the call failed". The rule of
 thumb: **absence (`?`) means the operation failed; a sentinel value means the
 operation ran but found nothing.**
+
+**Which stdlib modules use which shape.** The 0.7.3 batch pushed every
+programmer-facing failure surface to native optionals:
+
+| Module | Shapes |
+|--------|--------|
+| `io` | `open*` -> `File?`; `read_all` -> `String?`; `write_str` -> `Int?`; `close` -> `Bool?` |
+| `term`, `env` | enabling/`set` ops -> `Bool?`; stderr writers -> `Int?` |
+| `network` (incl. oracle output) | acquisition -> `TcpStream?`/`TcpListener?`/`UdpSocket?`; `socket_*` (`Int?`/`Bool?`/`Int?`-bytes); `udp_recv_from`/`recv_from`/`async_tcp_read` -> `String?` |
+| `tls`, `https` | `tls_stream`/`tls_client_context` -> `TlsStream?`/`TlsContext?`; `https_get*` -> `HttpResponse?` |
+| `asyncs` | `async_sleep_ms`/`async_connect` -> `Bool?`; `async_recv` -> `String?`; `async_send` -> `Int?`; `async_spawn`/`async_poll`/`async_accept` -> `Int?` |
+| `curses` | `curses_init` -> `Int?`; draw/attr/window ops -> `Bool?`; getters + `curses_getch` stay `Int` |
+| `agents` | `agent_send*`/`agent_close`/`agent_free`/`agent_dead_letter` -> `Bool?`; `agent_start*` -> `Int` (0 sentinel, not yet migrated); probes stay `Int`/`String` |
+| `channels` | typed `chan<T>` speaks `T?`; raw `chan_close`/`chan_free`, `strchan_close`/`strchan_free` -> `Bool?`; raw `chan_new`/`chan_bounded`, `strchan_new`/`strchan_bounded` still return plain `Int` (0 sentinel, not yet migrated) |
+| `threads`, `tasks` | `mutex_new`/`cond_new`/`atomic_new` -> `Int?`; lock/cond/atomic/task ops -> `Bool?`; `thread_join` -> `Int?`; value probes stay `Int` |
+| `qt` | creators -> `Int?`; op-status -> `Bool?`; value getters stay `Int`/`String`/`Bool` |
+
+The canonical per-module detail lives in `doc/FEATURE_STATUS.md` ("Standard
+Module Error Handling").
 
 ### 3.17 Strings
 
@@ -2167,6 +2191,8 @@ regenerates byte-identical output.
 | Regex | [`regex`](regex.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
+
 
 
 
