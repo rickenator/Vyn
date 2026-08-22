@@ -674,6 +674,10 @@ with `pass` for multi-statement case bodies. Needs polishing:
 - [ ] **Doc comments** — `/// comment` on declarations
 - [ ] **`vyb doc`** — Generate HTML documentation from source
 - [ ] **Online reference** — Language reference manual (derived from existing docs)
+- [ ] **Web landing page** — `docs/web/landing_page/index.html` is the deployed
+  project site (see `vyb-lang.org` / `aniviza.com`). Update it periodically as
+  needed to reflect the current feature set and project status — ad hoc, no
+  fixed schedule.
 - [x] **Hyperlinked refman generator** — `tools/refman.py` scans `stdlib/**/*.vyb`
   and emits `docs/refman/` (module pages + cross-indexes + `graph.json`) as an
   inter-relationship graph (import, implement, uses-type, runtime-ref, prose-ref,
