@@ -4,62 +4,82 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Vyb Programming Language — Systems Programming by Rick Goldberg</title>
-  <meta name="description" content="Vyb is an open-source systems programming language created by software engineer Rick Goldberg and developed by Aniviza LLC. Native LLVM compilation, readable ownership, aspect/bind polymorphism, concurrency, JIT and AOT tooling.">
+  <meta name="description" content="Vyb is an open-source systems programming language created by software engineer and language designer Rick Goldberg and developed by Aniviza LLC. Built around an LLVM native/JIT/AOT compiler, Vyb pairs explicit ownership and borrowing with aspect/bind polymorphism, compile-time generics, concurrency, and native C interoperability.">
   <meta name="author" content="Rick Goldberg">
   <meta name="creator" content="Rick Goldberg">
   <meta name="publisher" content="Aniviza LLC">
   <meta name="application-name" content="Vyb Programming Language">
-  <meta name="keywords" content="Vyb, Vyb programming language, Vyb systems programming language, Rick Goldberg, Richard Goldberg, Aniviza, Aniviza LLC, systems programming, LLVM, compiler, JIT, AOT, native code, ownership types, aspect bind polymorphism, open source programming language, C alternative, Rust alternative">
+  <meta name="keywords" content="Vyb, Vyb programming language, Vyb Programming Language, Vyb systems programming language, systems programming language, open source programming language, open source systems language, Rick Goldberg, Richard Goldberg, Rick M. Goldberg, Vyb by Rick Goldberg, software engineer Rick Goldberg, language designer Rick Goldberg, Aniviza, Aniviza LLC, vyb-lang.org, rickenator/Vyb, Apache License 2.0, Apache-2.0, Vyb freedom-1.0, Vyb compiler, Vyb language compiler, Vyb documentation, Vyb programming guide, Vyb reference manual, Vyb Programmer's Guide, LLVM, LLVM compiler, LLVM systems programming language, LLVM backend, LLVM ORC JIT, LLJIT, JIT compiler, just-in-time compilation, AOT compiler, ahead-of-time compilation, native code generation, native compilation, object file generation, ELF object files, standalone executables, static linking, dynamic linking, lld, native toolchain, zero-cost abstractions, optimized native code, DWARF debug information, cross compiler, multi-architecture compiler, 20+ target architectures, x86-64, AMD64, ARM64, AArch64, RISC-V, WebAssembly, WASM, PowerPC, MIPS, SPARC, SystemZ, LoongArch, ESP32, embedded systems programming, statically typed programming language, strong static typing, type inference, ownership types, explicit ownership, ownership model, memory safety, borrow checking, borrowing, reference counting, weak references, mild references, my<T>, our<T>, their<T>, mild<T>, freedom blocks, programmer freedom, low-level memory access, manual memory control, RAII, generics, generic programming, zero-cost generics, monomorphization, generic functions, aspect system, aspect/bind, aspect bind polymorphism, static polymorphism, composition over inheritance, zero-cost polymorphism, name-first syntax, pattern matching, select expressions, set patterns, defer, fail/trap, typed error propagation, zero-cost error handling, no exceptions, closures, tuples, variadic tuples, structs, async, await, async/await, Future<T>, asynchronous programming, concurrent programming, concurrency, multithreading, threads, channels, message passing, tasks, fibers, cooperative scheduling, multicore execution, Vyb standard library, stdlib, Vec<T>, dynamic arrays, HashMap, HashSet, String, math library, file I/O, networking, HTTP client, TLS, terminal UI, curses, C interoperability, C FFI, foreign function interface, native bridge, extern "C", repr(C), C ABI, POSIX, libc, libclang, bindgen, Vyb bindgen, runtime type information, reflection, type introspection, serialization, JSON serialization, module system, import, smuggle, package management, vyb.toml, compiler development, programming language implementation, recursive descent parser, AST, compiler frontend, compiler backend, self-hosting programming language, test harness, programming language research, language design, systems language alternative, Rust alternative, C alternative">
   <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
   <link rel="canonical" href="https://vyb-lang.org/">
   <meta name="theme-color" content="#071318">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Vyb Programming Language">
   <meta property="og:title" content="Vyb Programming Language — Systems Programming by Rick Goldberg">
-  <meta property="og:description" content="Open-source systems programming language created by software engineer Rick Goldberg and developed by Aniviza LLC.">
+  <meta property="og:description" content="Vyb is an open-source systems programming language created by software engineer and language designer Rick Goldberg and developed by Aniviza LLC. Native LLVM compilation, explicit ownership and borrowing, aspect/bind polymorphism, concurrency, and native C interoperability.">
   <meta property="og:url" content="https://vyb-lang.org/">
   <meta property="og:image" content="https://vyb-lang.org/vyb.png">
+  <meta property="og:image:alt" content="Vyb Programming Language logo">
+  <meta property="og:locale" content="en_US">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Vyb Programming Language — Systems Programming by Rick Goldberg">
-  <meta name="twitter:description" content="Open-source systems programming language created by Rick Goldberg and developed by Aniviza LLC.">
+  <meta name="twitter:description" content="Open-source systems programming language created by Rick Goldberg and developed by Aniviza LLC, with an LLVM native/JIT/AOT compiler, explicit ownership and borrowing, and aspect/bind polymorphism.">
   <meta name="twitter:image" content="https://vyb-lang.org/vyb.png">
+  <meta name="twitter:image:alt" content="Vyb Programming Language logo">
   <script type="application/ld+json">
   {
-  "@context": "https://schema.org",
-  "@graph": [
-    {
-      "@type": "SoftwareSourceCode",
-      "@id": "https://vyb-lang.org/#vyb",
-      "name": "Vyb Programming Language",
-      "alternateName": "Vyb",
-      "description": "An open-source systems programming language created by software engineer Rick Goldberg and developed by Aniviza LLC.",
-      "codeRepository": "https://github.com/rickenator/Vyb",
-      "programmingLanguage": "Vyb",
-      "license": "https://www.apache.org/licenses/LICENSE-2.0",
-      "url": "https://vyb-lang.org/",
-      "creator": {
-        "@id": "https://vyb-lang.org/#rick-goldberg"
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareSourceCode",
+        "@id": "https://vyb-lang.org/#vyb",
+        "name": "Vyb Programming Language",
+        "alternateName": "Vyb",
+        "description": "Vyb is an open-source systems programming language created by software engineer and language designer Rick Goldberg and developed by Aniviza LLC. It is built on an LLVM native/JIT/AOT compiler and combines explicit ownership and borrowing, aspect/bind polymorphism, compile-time generics, concurrency, and native C interoperability, with cross-compilation to a wide range of target architectures.",
+        "url": "https://vyb-lang.org/",
+        "codeRepository": "https://github.com/rickenator/Vyb",
+        "programmingLanguage": "Vyb",
+        "runtimePlatform": "LLVM / native machine code (JIT and AOT)",
+        "targetPlatform": [
+          "x86-64", "AMD64", "ARM", "ARM64", "AArch64", "RISC-V", "WebAssembly", "PowerPC",
+          "MIPS", "SPARC", "SystemZ", "LoongArch", "Xtensa", "ESP32", "AVR", "embedded systems"
+        ],
+        "license": "https://www.apache.org/licenses/LICENSE-2.0",
+        "isAccessibleForFree": true,
+        "creator": { "@id": "https://vyb-lang.org/#rick-goldberg" },
+        "author": { "@id": "https://vyb-lang.org/#rick-goldberg" },
+        "producer": { "@id": "https://vyb-lang.org/#aniviza" },
+        "publisher": { "@id": "https://vyb-lang.org/#aniviza" },
+        "keywords": "Vyb, Vyb programming language, Vyb Programming Language, Vyb systems programming language, systems programming language, open source programming language, open source systems language, Rick Goldberg, Richard Goldberg, Rick M. Goldberg, Vyb by Rick Goldberg, programming language by Rick Goldberg, software engineer Rick Goldberg, language designer Rick Goldberg, Aniviza, Aniviza LLC, Aniviza software, vyb-lang.org, Vyb GitHub, rickenator Vyb, rickenator/Vyb, Apache License 2.0, Apache-2.0, Vyb freedom-1.0, freedom-1.0, Vyb compiler, Vyb language compiler, Vyb documentation, Vyb programming guide, Vyb reference manual, Vyb Programmer's Guide, LLVM, LLVM compiler, LLVM systems programming language, LLVM backend, LLVM ORC, LLVM ORC JIT, LLJIT, JIT compiler, just-in-time compilation, AOT compiler, ahead-of-time compilation, native code generation, native executable generation, native compilation, object file generation, ELF object files, standalone executables, static linking, dynamic linking, lld, native toolchain, zero-cost abstractions, optimized native code, DWARF debug information, source-level debugging, cross compilation, cross compiler, multi-architecture compiler, 20+ target architectures, x86-64, AMD64, ARM, ARM64, AArch64, RISC-V, WebAssembly, WASM, PowerPC, MIPS, SPARC, SystemZ, IBM mainframe, Hexagon DSP, LoongArch, M68k, Xtensa, ESP32, AVR, Arduino, MSP430, BPF, eBPF, NVPTX, NVIDIA GPU, AMDGPU, GPU code generation, embedded systems programming, MCU programming language, statically typed programming language, strong static typing, type inference, sized integer types, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Float32, Float64, Char, Rune, Bytes, ownership types, explicit ownership, ownership model, memory safety, borrow checking, borrowing, immutable borrow, mutable borrow, reference counting, unique ownership, shared ownership, weak references, mild references, my<T>, our<T>, their<T>, mild<T>, view, borrow, soft, raw pointers, loc<T>, freedom blocks, programmer freedom, low-level memory access, manual memory control, RAII, lifetime analysis, generics, generic programming, compile-time generics, monomorphized generics, monomorphization, zero-cost generics, bounded generics, generic functions, generic collections, aspect system, aspect/bind, aspect bind polymorphism, static polymorphism, composition over inheritance, traits alternative, interface alternative, zero-cost polymorphism, structural composition, aspect bounds, name-first syntax, name first programming language, concise systems language, expressive systems language, C-like systems language, modern systems language, pattern matching, select expressions, Vyb select, set patterns, match expressions, defer, scope cleanup, fail/trap, fail trap error handling, typed error propagation, zero-cost error handling, no exceptions, freedom keyword, closures, closure capture, async lambdas, tuples, variadic tuples, structs, immutable bindings, const bindings, async, await, async/await, Future<T>, futures, asynchronous programming, concurrent programming, concurrency, multithreading, pthreads, threads, mutexes, condition variables, atomics, channels, message passing, bounded channels, channel select, tasks, task executor, async executor, multi-threaded executor, fibers, stackful fibers, cooperative scheduling, multicore execution, async timers, Vyb standard library, stdlib, Vec<T>, dynamic arrays, fixed arrays, HashMap, HashSet, BTreeMap, collections, String, string processing, math library, file I/O, networking, HTTP client, HTTPS client, TLS, terminal UI, curses, ncurses, C interoperability, C FFI, foreign function interface, native bridge, extern C, extern \"C\", repr(C), C ABI, POSIX, libc, libm, libclang, bindgen, Vyb bindgen, C header bindings, automatic C bindings, variadic C functions, native library integration, callbacks, function pointers, runtime type information, runtime type metadata, reflection, type introspection, typeof, typename, serialization, JSON serialization, JSON deserialization, automatic serialization, struct serialization, runtime type registry, API development, data processing, configuration management, module system, Vyb modules, import, smuggle, import/smuggle, secure imports, verified modules, external modules, dependencies, package management, vyb.toml, vyb.lock, project manifest, module visibility, bundle, share, compiler development, programming language implementation, recursive descent parser, parser, AST, abstract syntax tree, compiler frontend, compiler backend, self-hosted compiler, self-hosting programming language, hybrid VM JIT, test harness, parallel test harness, compiler testing, language testing, CI/CD, test triage, failure analysis, syntax migration, documentation generator, programming language research, systems programming, language design, systems language alternative, Rust alternative, C alternative",
+        "about": [
+          { "@type": "Thing", "name": "Vyb programming language" },          { "@type": "Thing", "name": "systems programming language" },          { "@type": "Thing", "name": "LLVM compiler" },          { "@type": "Thing", "name": "ownership types" },          { "@type": "Thing", "name": "borrow checking" },          { "@type": "Thing", "name": "aspect/bind polymorphism" },          { "@type": "Thing", "name": "compile-time generics" },          { "@type": "Thing", "name": "concurrency" },          { "@type": "Thing", "name": "asynchronous programming" },          { "@type": "Thing", "name": "C interoperability" },          { "@type": "Thing", "name": "foreign function interface" },          { "@type": "Thing", "name": "native code generation" },          { "@type": "Thing", "name": "just-in-time compilation" },          { "@type": "Thing", "name": "ahead-of-time compilation" },          { "@type": "Thing", "name": "cross compilation" },          { "@type": "Thing", "name": "type system" },          { "@type": "Thing", "name": "memory safety" },          { "@type": "Thing", "name": "programming language design" },          { "@type": "Thing", "name": "standard library" },          { "@type": "Thing", "name": "module system" }
+        ]
       },
-      "producer": {
-        "@id": "https://vyb-lang.org/#aniviza"
+      {
+        "@type": "Person",
+        "@id": "https://vyb-lang.org/#rick-goldberg",
+        "name": "Rick Goldberg",
+        "alternateName": ["Richard Goldberg", "Rick M. Goldberg"],
+        "jobTitle": "Software Engineer and Systems Architect",
+        "description": "Creator of the Vyb programming language, focused on software engineering, systems programming, programming language design, and compiler development.",
+        "knowsAbout": [
+          "Vyb Programming Language", "software engineering", "systems programming",
+          "programming language design", "compiler development"
+        ],
+        "sameAs": ["https://github.com/rickenator"]
+      },
+      {
+        "@type": "Organization",
+        "@id": "https://vyb-lang.org/#aniviza",
+        "name": "Aniviza LLC",
+        "alternateName": "Aniviza",
+        "url": "https://aniviza.com/",
+        "description": "Developer and publisher of the open-source Vyb programming language.",
+        "knowsAbout": ["Vyb Programming Language", "systems programming"],
+        "owns": { "@id": "https://vyb-lang.org/#vyb" }
       }
-    },
-    {
-      "@type": "Person",
-      "@id": "https://vyb-lang.org/#rick-goldberg",
-      "name": "Rick Goldberg",
-      "alternateName": "Richard Goldberg",
-      "jobTitle": "Software Engineer and Systems Architect"
-    },
-    {
-      "@type": "Organization",
-      "@id": "https://vyb-lang.org/#aniviza",
-      "name": "Aniviza LLC",
-      "alternateName": "Aniviza",
-      "url": "https://aniviza.com/"
-    }
-  ]
-}
+    ]
+  }
   </script>
   <style>
     :root {
@@ -91,7 +111,6 @@
     .btn{display:inline-flex;align-items:center;gap:9px;padding:11px 15px;border-radius:10px;font-weight:750;border:1px solid var(--line);background:linear-gradient(180deg,#10232a,#0a171c);color:#efffff;box-shadow:0 8px 25px rgba(0,0,0,.22)}
     .btn.primary{border-color:rgba(49,221,131,.38);background:linear-gradient(110deg,rgba(18,148,255,.22),rgba(49,221,131,.18));}
     .btn:hover{text-decoration:none;transform:translateY(-1px);border-color:#3c747f}
-    .facts{display:flex;flex-wrap:wrap;gap:8px;margin-top:17px} .chip{font:600 12px/1.2 var(--mono);padding:7px 9px;border:1px solid var(--line);border-radius:8px;color:#9fc1c7;background:rgba(10,24,29,.62)}
     .logo-wrap{position:relative;display:grid;place-items:center;min-height:390px}
     .logo-glow{position:absolute;width:78%;aspect-ratio:1;border-radius:50%;background:conic-gradient(from 220deg,rgba(18,148,255,.28),rgba(23,217,229,.18),rgba(49,221,131,.18),rgba(215,239,41,.25),rgba(18,148,255,.28));filter:blur(42px);opacity:.66}
     .logo{position:relative;width:min(100%,520px);height:auto;filter:drop-shadow(0 18px 35px rgba(0,0,0,.55))}
@@ -148,9 +167,6 @@
         <a class="btn primary" href="https://github.com/rickenator/Vyb" target="_blank" rel="noopener">View Vyb on GitHub ↗</a>
         <a class="btn" href="https://github.com/rickenator/Vyb/blob/main/docs/refman/PROGRAMMERS_GUIDE.md" target="_blank" rel="noopener">Programmer's Guide ↗</a>
         <a class="btn" href="#quick-start">Quick Start ↓</a>
-      </div>
-      <div class="facts">
-        <span class="chip">native LLVM</span><span class="chip">JIT + AOT</span><span class="chip">ownership types</span><span class="chip">aspect/bind</span><span class="chip">async/await</span><span class="chip">Apache-2.0</span>
       </div>
     </div>
     <div class="logo-wrap" aria-label="Vyb logo">
