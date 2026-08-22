@@ -17,6 +17,90 @@ is the working audit for what needs to be implemented next.
 
 ---
 
+## Implementation Safety and Release Priorities (2026-08-22 audit)
+
+These items take priority over expanding the language surface. They are based on
+the current compiler and runtime implementation, and should be closed with a
+regression test plus documentation that describes the resulting behavior.
+
+### P0 — Correctness and safety
+
+- [ ] **Make `Vec` access safe and document one contract** — `Vec::get` and
+  `Vec::set` currently calculate an element address without a bounds check.
+  Decide whether reads/writes return `T?`/a status, trap, or return a documented
+  default; implement that rule for every receiver path and add JIT + native
+  regression tests for negative, equal-to-length, and empty-vector indexes.
+- [ ] **Make file, network, TLS, and UDP diagnostic state concurrency-safe** —
+  last-error values and the last UDP peer must be thread-local or carried in
+  operation results, rather than process-global state that concurrent threads
+  and async workers can overwrite.
+- [ ] **Make agent `Int` payloads lossless** — agent behavior loops currently
+  use the sentinel-based channel receive path, so a legitimate `-1` message is
+  indistinguishable from a closed mailbox. Use the existing presence-reporting
+  receive primitive and add a regression test that delivers `-1` before normal
+  shutdown.
+- [ ] **Prove the advertised ownership boundary** — state precisely which
+  borrow/lifetime guarantees are lexical today, then add negative tests for
+  borrow escape, aliasing, mutation while borrowed, closure capture, and
+  cross-thread handoff. Do not describe the model as a general lifetime solver
+  until those cases are enforced.
+- [ ] **Add required CI execution coverage** — GitHub Actions must build Vyb
+  and run the canonical suite in JIT, object/AOT, and native-link modes. Add an
+  ASan job or scheduled memory-safety job; the existing refman-only check is
+  not release validation.
+
+### P1 — Toolchain and maintenance hardening
+
+- [ ] **Remove shell-string execution from native build paths** — replace
+  concatenated `system()` compile/probe commands with argument-vector process
+  execution and robust path handling.
+- [ ] **Reconcile the documentation hierarchy** — make the Programmer's Guide
+  and generated refman authoritative; update or archive stale design/review
+  documents and remove contradictory claims (including obsolete async-stub and
+  `Result` placeholder text).
+- [ ] **Reduce compiler coupling and source debris** — split the large semantic,
+  expression-codegen, and driver units along subsystem boundaries; classify or
+  remove obsolete `.bak`/`.backup` sources and inactive codegen files.
+- [ ] **Finish the developer workflow** — complete remote dependency handling,
+  `--version` and subcommand help, an integrated test command, formatter, LSP,
+  and REPL in that order after the safety gate above.
+
+### Audit finding coverage (2026-08-22)
+
+The following is the complete tracking map for actionable findings from the
+2026-08-22 implementation review. Architectural descriptions and verified
+positive findings are intentionally not issues; every identified correctness,
+contract, documentation, maintenance, or release-process gap has a dedicated
+tracking issue below. Linked issues may share implementation work, but none is
+being treated as an untracked footnote.
+
+| Audit finding | Tracking issue(s) |
+|---|---|
+| `Vec::get` / `Vec::set` perform unchecked address calculation | [#146](https://github.com/rickenator/Vyb/issues/146) |
+| File, network, TLS, and UDP diagnostic state races between threads/fibers | [#147](https://github.com/rickenator/Vyb/issues/147) |
+| `-1` is lost as an `Int` agent payload | [#148](https://github.com/rickenator/Vyb/issues/148) |
+| Ownership documentation overstates lexical enforcement as general lifetime safety | [#149](https://github.com/rickenator/Vyb/issues/149) |
+| No required compiler/JIT/AOT/native/ASan CI validation | [#150](https://github.com/rickenator/Vyb/issues/150), [#158](https://github.com/rickenator/Vyb/issues/158) |
+| Native build uses shell-concatenated runtime compile/probe commands | [#151](https://github.com/rickenator/Vyb/issues/151) |
+| Canonical guide, generated reference, historical design/status reports, and roadmap claims conflict | [#152](https://github.com/rickenator/Vyb/issues/152) |
+| Large compiler units, inactive codegen, backups, and generated/object debris complicate maintenance | [#153](https://github.com/rickenator/Vyb/issues/153) |
+| Missing integrated developer workflow (`test`, formatter, LSP, REPL, help/version) | [#154](https://github.com/rickenator/Vyb/issues/154) |
+| POSIX `ucontext` fibers, per-task 1 MiB stacks, and fixed worker/thread/agent limits need a supported-runtime policy | [#155](https://github.com/rickenator/Vyb/issues/155) |
+| Opaque channel/task/agent/synchronization/socket handles can outlive their safe lifecycle | [#156](https://github.com/rickenator/Vyb/issues/156) |
+| Error matching is string-based and legacy defer/ensure runtime APIs are stubs | [#157](https://github.com/rickenator/Vyb/issues/157) |
+| CMake `run-tests` is not a CTest test and the claimed full-suite result lacks reproducible CI evidence | [#158](https://github.com/rickenator/Vyb/issues/158) |
+| HTTP/HTTPS is not yet a general modern web stack; supported behavior needs a tested boundary | [#159](https://github.com/rickenator/Vyb/issues/159) |
+| CMake build-type defaults, optimized builds, and sanitizer profiles are not explicit/reproducible | [#160](https://github.com/rickenator/Vyb/issues/160) |
+| `BTreeMap` is a sorted-vector map with O(n) insertion, not a node-based B-tree | [#161](https://github.com/rickenator/Vyb/issues/161) |
+| String tracking can become invisible/leak-prone when its fixed registry fills | [#162](https://github.com/rickenator/Vyb/issues/162) |
+| `core::result` says `Result` is unimplemented despite the tested compiler builtin | [#163](https://github.com/rickenator/Vyb/issues/163) |
+| `vyb.toml` accepts only an underspecified TOML subset | [#164](https://github.com/rickenator/Vyb/issues/164) |
+| Git and version dependency declarations parse but do not resolve | [#165](https://github.com/rickenator/Vyb/issues/165) |
+| Generic/aspect validation and codegen contain special-case paths without a clear conformance boundary | [#166](https://github.com/rickenator/Vyb/issues/166) |
+| Raw socket, async-I/O, close, timeout, and UDP-peer API semantics need an explicit contract | [#167](https://github.com/rickenator/Vyb/issues/167) |
+
+---
+
 ## Overall Completion Estimate
 
 | Domain | Done | Remaining |

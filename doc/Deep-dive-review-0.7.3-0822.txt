@@ -1,0 +1,276 @@
+ # Deep dive: Vyb 0.7.3
+
+  Vyb is a substantial, functioning LLVM language implementation—not a syntax prototype. It has real parsing, semantic analysis, monomorphized generics, ownership-aware code generation, ORC JIT execution, native object emission, a POSIX runtime, and a broad standard
+  library.
+
+  My overall assessment: Vyb is an ambitious and usable experimental systems language, but it is not yet safe to treat as a production-grade systems toolchain. The largest gap is not feature breadth; it is that several documented safety guarantees are stronger than
+  the current implementation.
+
+  ## Architecture
+
+  .vyb source
+      │
+      ▼
+  ModuleRegistry
+    parse imports, visibility, namespaces, stdlib discovery
+    deep-clone imported declarations and build effective scopes
+      │
+      ▼
+  SemanticAnalyzer
+    names, types, ownership/moves, borrows, aspects, errors
+      │
+      ▼
+  LLVMCodegen
+    monomorphization, ownership/drop code, async launchers,
+    optional/error ABI, serialization, LLVM IR
+      │
+      ├──► LLVM ORC LLJIT ──► in-process runtime symbols
+      │
+      └──► object file ──► system C/C++ linker ──► native executable
+                                │
+                                ▼
+                  C/C++ runtime + optional native libraries
+
+  The active compiler is C++17 and requires LLVM 18.1.3. OpenSSL, libclang, ncurses and Qt are optional integrations: CMakeLists.txt:1.
+
+  The main compilation pipeline is clearly visible in src/main.cpp:644:
+
+  - ModuleRegistry::resolveRoot
+  - SemanticAnalyzer::analyze
+  - LLVMCodegen::generate
+  - LLVM module verification
+  - ORC JIT or target-machine object emission
+
+  The parser is sensibly split by language concern under src/parser/. LLVM code generation is split across 22 cgen_*.cpp units. Unfortunately, the high-complexity centers remain very large:
+
+  - semantic.cpp: 10,362 lines
+  - cgen_expr.cpp: 10,980 lines
+  - main.cpp: 3,032 lines
+  - module_registry.cpp: 2,498 lines
+  - vyb_runtime.c: 3,880 lines
+
+  That concentration makes regressions and cross-feature interactions more likely.
+
+  ## The language
+
+  Vyb’s identity is clear and fairly distinctive:
+
+  - Name-first declarations: add(a<Int>, b<Int>)<Int> -> { ... }
+  - Native T? optionals with else and pattern consumption
+  - match and value-oriented select
+  - Data-only structs plus aspect/bind static polymorphism
+  - Monomorphized generics with aspect bounds
+  - my, our, their, and mild ownership forms
+  - Typed fail/trap/refail error propagation
+  - ensure and LIFO defer
+  - freedom blocks for raw loc<T> access
+  - C FFI, repr(C), variadics and bindgen
+  - First-class async functions and async lambdas
+  - Automatic serialization of non-integer main results
+
+  The current language tour is docs/refman/PROGRAMMERS_GUIDE.md:193. It is much more current than most files under doc/ and reports/.
+
+  ### Ownership reality
+
+  The runtime side of ownership is real:
+
+  - our<T> uses strong/weak control blocks.
+  - mild<T> can detect released objects and upgrade through grab().
+  - Owned struct fields and closure captures have generated cleanup paths.
+  - Strings and captured environments use reference counting.
+  - my<T> moves are tracked and use-after-move diagnostics exist.
+
+  However, the semantic checker is not a Rust-style lifetime or region solver. Borrow state is recorded by root variable name and held in lexical scope maps: src/vre/semantic.cpp:685, src/vre/semantic.cpp:843. Move detection similarly keys from syntactic my<...> type
+  strings and identifier transfers: src/vre/semantic.cpp:903.
+
+  So the honest description is:
+
+  > Vyb has deterministic ownership code generation and useful lexical move/borrow enforcement, but it does not yet provide a generally proven lifetime system.
+
+  The guide’s claim that their<T> is “lifetime-checked” is currently broader than the implementation evidence supports.
+
+  ### Generics and polymorphism
+
+  Generics are compile-time monomorphized. Aspects and binds provide static dispatch; the project deliberately rejects vtables, trait objects and class inheritance as part of the sealed design.
+
+  This gives Vyb a coherent model and avoids runtime dispatch machinery, but the semantic/codegen implementation still contains type-validation shortcuts and special cases. The system is mature enough to power generic collections and associated iterator types, but it
+  is not yet a general-purpose type-theory implementation.
+
+  ### Error handling
+
+  fail/trap uses a generated {value, error} ABI. ensure is emitted through control-flow blocks, while defer statements are collected and emitted in reverse order during returns. The old runtime registration functions for defer/ensure remain as unimplemented stubs in
+  src/runtime/error_handling.cpp:581, but they are not the primary current implementation.
+
+  Error-type matching still relies on string equality rather than aspect relationships: src/runtime/error_handling.cpp:402.
+
+  ### Async
+
+  Async is now considerably more complete than older project snapshots suggest.
+
+  The parser recognizes async |x| -> ... and zero-argument async || -> ...: src/parser/expression_parser.cpp:307. Current tests cover captures, strings, nested awaits, async lambdas passed as parameters, and returned closure environments: test/async/
+  async_lambda.vyb:1.
+
+  This is genuine stackful async, not a compiler-generated state machine:
+
+  - Every task gets a 1 MiB stack.
+  - Workers are pthreads, normally one per online CPU, capped at 64.
+  - Fibers use ucontext.
+  - Each fiber stays pinned to the worker that created its context.
+  - Yield, sleep and await cooperatively suspend the fiber.
+  - A separate poll(2) pump handles socket readiness.
+
+  The implementation is documented directly in runtime/vyb_runtime.c:3075.
+
+  This design is understandable and effective on Linux/POSIX, but ucontext is obsolete/nonportable on several platforms, and 1 MiB per live task limits claims about extremely high task counts.
+
+  ## Runtime
+
+  The runtime is a large native substrate rather than a minimal allocator. It implements:
+
+  - Strings, conversion and serialization
+  - File and terminal I/O
+  - ncurses
+  - sockets and DNS
+  - TLS through OpenSSL
+  - regex and process execution
+  - pthreads, mutexes, condition variables and atomics
+  - typed channels and thread-per-task jobs
+  - agents
+  - the async fiber pool and socket pump
+  - Qt bridge functionality
+
+  JIT mode exposes process symbols and explicitly registers runtime entry points. Native builds compile runtime C/C++ units and link them beside the emitted object.
+
+  ### Concrete runtime risks
+
+  These are the most important implementation findings.
+
+  1. Vec::get and Vec::set are not bounds-checked.
+
+     handleVecGet explicitly says “assume index is valid” and calculates the address directly: src/vre/llvm/cgen_vec.cpp:340. Vec::set likewise stores without validating the index: src/vre/llvm/cgen_vec.cpp:406.
+
+     This directly contradicts several guide claims that Vec::get is bounds-checked or returns an absent optional. The collections source itself admits the gap: stdlib/collections/mod.vyb:590.
+
+     This is the strongest reason not to describe Vyb as memory-safe today.
+
+  2. Concurrent error diagnostics are process-global.
+
+     File, network and TLS “last error” values are ordinary globals. Network error state and the last UDP peer are visible at runtime/vyb_runtime.c:891. Concurrent threads or fibers can overwrite each other’s diagnostics.
+
+     These should be thread-local or returned as part of the operation result.
+
+  3. An Int agent cannot safely receive -1.
+
+     Scalar agent behavior loops call the sentinel-based raw receive and interpret -1 as closed: runtime/vyb_runtime.c:2679. But -1 is a valid Int accepted by agent_send.
+
+     Channels already have lossless recv_opt primitives; agents should use them.
+
+  4. Fixed resource caps are embedded in the runtime.
+      - String registry: 262,144 simultaneous tracked allocations
+      - Thread table: 256
+      - Agent table: 64
+      - Async workers: 64
+
+     The string registry becoming full makes new buffers invisible to reference counting and therefore leak-prone: runtime/vyb_runtime.c:91.
+
+  5. Handle teardown relies heavily on caller discipline.
+
+     Channels, async handles, agent mailboxes and pointer-shaped mutex handles can be freed while other code still holds them. Documentation explains the intended lifecycle, but runtime validation is necessarily limited.
+
+  6. Native build command construction needs hardening.
+
+     The final linker uses fork/execvp, which is good. But runtime compilation and object inspection still concatenate filenames into system() shell commands without robust quoting: src/main.cpp:838. Paths containing shell metacharacters can break builds or become
+     injection vectors.
+
+  ## Standard library
+
+  The stdlib currently contains 26 Vyb source files and about 5,315 lines. The generated index reports 22 modules, 370 exported functions and 323 runtime references: docs/refman/index.md:10.
+
+  It divides naturally into four layers:
+
+   Layer                      Modules                                                   Implementation character
+  ━━━━━━━━━━━━━━━━━━━━━━━━━  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Core language contracts    core, prelude, collections, utf8                          Mostly Vyb code over compiler primitives
+  ─────────────────────────  ────────────────────────────────────────────────────────  ─────────────────────────────────────────────────
+   OS facilities              io, term, time, env, rand, regex, process, curses         Thin Vyb wrappers over C runtime intrinsics
+  ─────────────────────────  ────────────────────────────────────────────────────────  ─────────────────────────────────────────────────
+   Concurrency/network        threads, tasks, channels, agents, asyncs, network, tls    Vyb API over pthread/socket/OpenSSL runtime
+  ─────────────────────────  ────────────────────────────────────────────────────────  ─────────────────────────────────────────────────
+   Higher-level facilities    http, https, qt                                           Significant Vyb composition plus native bridges
+
+  Notable details:
+
+  - HashMap and HashSet are real Vyb implementations using parallel vectors and bucket chains.
+  - BTreeMap is not a tree. It is a sorted-vector map: binary-search lookup, O(n) insertion. Its source documents this accurately: stdlib/collections/mod.vyb:27.
+  - http is a straightforward HTTP/1.x implementation. It supports common framing, including chunked responses, but is not a modern general-purpose HTTP stack with HTTP/2, pooling, automatic redirects, compression or a mature URL layer.
+  - https composes sockets, TLS and HTTP parsing in Vyb: stdlib/https/mod.vyb:1.
+  - qt is the largest module at 1,082 Vyb lines, backed by roughly 1,542 lines of C++ bridge code.
+  - core::result says Result<T,E> is unimplemented, but that file is obsolete: the compiler has a built-in generic Result with Ok/Err, tested under test/units. The placeholder should be removed or rewritten: stdlib/core/result.vyb:1.
+
+  ## Modules and packaging
+
+  The module system has meaningful implementation depth:
+
+  - Relative and configured search paths
+  - Stdlib discovery
+  - mod.vyb directory modules
+  - Subset and namespace imports
+  - share exports
+  - Per-module effective scopes
+  - Cycle detection
+  - Deep-cloning imported AST declarations
+  - Auto-imported core aspects
+
+  Protocol locators such as HTTP URLs are explicitly rejected: src/module_registry.cpp:2132.
+
+  vyb.toml, vyb build, vyb new, multiple binaries and vyb.lock exist, but the manifest parser supports only a small TOML subset: src/manifest.cpp:1. Only local path dependencies resolve; git and version dependencies are parsed but rejected during builds: src/
+  main.cpp:1223.
+
+  This is a project builder, not yet a package manager.
+
+  ## Testing and project health
+
+  There are exactly 1,061 .vyb tests in the checkout. The largest areas are:
+
+  - 286 unit tests
+  - 90 module tests
+  - 83 aspect tests
+  - 60 trap/error tests
+  - 48 debug fixtures
+  - 47 new-feature tests
+  - 46 ownership tests
+  - 21 async tests
+
+  The Python harness has useful declarative metadata for expected compilation, diagnostics, stdout and serialized main returns: test/run_tests.py:51.
+
+  Positive findings:
+
+  - The generated-reference consistency check passed: 26 files, 22 modules and 640 edges.
+  - The suite is broad and feature-oriented.
+  - There are existing ordinary, ASan and no-Qt build trees.
+  - Recent commits show active correction of ownership, thread races, optionals and documentation.
+
+  Release-process gaps:
+
+  - The repository’s only GitHub Actions workflow checks generated reference documentation; it does not compile Vyb or run language tests: .github/workflows/refman-check.yml:1.
+  - CMake has a run-tests custom target, but it is not registered through CTest despite the guide saying it is: CMakeLists.txt:294.
+  - The claimed “1061/1061 passing” result is documented in TODO.md, but I did not rerun the full suite during this read-only audit.
+  - Several doc/ and reports/ files are stale. For example, the agents design still says “not implemented” even though agents ship, while an older May completion review describes many now-completed features as missing.
+  - Source-tree backup files, an object file under runtime/, and apparently unused codegen files remain as maintenance debris.
+
+  ## Recommended priorities
+
+  Before calling Vyb production-safe, I would prioritize:
+
+  1. Add bounds checking or optional results to every Vec read/write path and turn the guide contradiction into regression tests.
+  2. Make file/network/TLS error and UDP peer state thread-local.
+  3. Change agent scalar loops to lossless optional receives so every Int, including -1, is valid.
+  4. Put build plus full JIT, AOT and native-link suites into CI, with ASan as a scheduled or required job.
+  5. Define the exact ownership guarantee: lexical enforcement versus full lifetime safety, then add escape, aliasing and cross-thread negative tests.
+  6. Replace shell-concatenated runtime compilation commands with argument-vector process execution.
+  7. Consolidate current documentation and archive obsolete design/status reports.
+  8. Break up semantic.cpp, cgen_expr.cpp and main.cpp along subsystem boundaries.
+  9. Finish package dependency resolution and basic tooling such as fmt, LSP, integrated vyb test, and a proper --version/subcommand help surface.
+
+  No files were changed during this audit. The existing favicon and vyb-traffic working-tree changes remain untouched. I ran only read-only inspection, the prebuilt compiler’s help, and tools/refman.py --check; I did not rebuild the compiler or rerun the 1,061-test
+  suite.
