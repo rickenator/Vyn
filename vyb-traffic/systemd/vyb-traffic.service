@@ -1,0 +1,12 @@
+[Unit]
+Description=Archive GitHub repository traffic for rickenator/Vyb
+Documentation=https://github.com/rickenator/Vyb/tree/main/vyb-traffic
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Keep this file mode 0600. It may also contain VYB_TRAFFIC_* overrides.
+EnvironmentFile=-%h/.config/vyb-traffic/env
+Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/usr/bin/env vyb-traffic collect

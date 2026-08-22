@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+# vyb-traffic launcher: runs the packaged CLI without a pip install.
+DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ -z "${PYTHONPATH:-}" ]; then
+    PYTHONPATH="$DIR"
+else
+    PYTHONPATH="$DIR:$PYTHONPATH"
+fi
+export PYTHONPATH
+exec python3 -m vyb_traffic "$@"

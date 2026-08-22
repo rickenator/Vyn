@@ -1,0 +1,11 @@
+[Unit]
+Description=Run vyb-traffic collection daily
+
+[Timer]
+# Run around 03:15 local time. Missing runs are made up afterwards (Persistent).
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+Unit=vyb-traffic.service
+
+[Install]
+WantedBy=timers.target

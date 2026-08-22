@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vyb-traffic"
+version = "1.0.0"
+description = "Permanently archive GitHub repository traffic in SQLite"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [{name = "Vyb contributors"}]
+dependencies = []
+
+[project.optional-dependencies]
+graphs = ["matplotlib>=3.5"]
+test = ["pytest>=7"]
+
+[project.scripts]
+vyb-traffic = "vyb_traffic.cli:main"
+
+[tool.setuptools]
+packages = ["vyb_traffic"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
