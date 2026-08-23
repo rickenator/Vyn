@@ -5581,17 +5581,19 @@ void SemanticAnalyzer::visit(ast::FunctionExpression* node) {
     // contains the lambda itself, so free variables resolve from it (and its
     // ancestors) but never from within the lambda's own body scope.
     lambdaCaptureStack.push_back(LambdaCaptureCtx{currentScope, {}, {}});
-    LambdaCaptureCtx& ctx = lambdaCaptureStack.back();
-    for (const auto& param : node->params) {
-        if (param.name) {
-            ctx.locals.insert(param.name->name);
-        }
-        if (param.typeNode) {
-            paramTypes.push_back(param.typeNode->clone());
-        } else {
-            // Unknown parameter type — use a generic placeholder
-            paramTypes.push_back(std::make_unique<ast::TypeName>(
-                node->loc, std::make_unique<ast::Identifier>(node->loc, "?")));
+    {
+        LambdaCaptureCtx& ctx = lambdaCaptureStack.back();
+        for (const auto& param : node->params) {
+            if (param.name) {
+                ctx.locals.insert(param.name->name);
+            }
+            if (param.typeNode) {
+                paramTypes.push_back(param.typeNode->clone());
+            } else {
+                // Unknown parameter type — use a generic placeholder
+                paramTypes.push_back(std::make_unique<ast::TypeName>(
+                    node->loc, std::make_unique<ast::Identifier>(node->loc, "?")));
+            }
         }
     }
 
@@ -5620,6 +5622,12 @@ void SemanticAnalyzer::visit(ast::FunctionExpression* node) {
     lambdaStack.pop_back();
 
     exitScope();
+
+    // Re-acquire the capture context. Visiting the body above may push nested
+    // lambda contexts onto this stack, which reallocates it and invalidates any
+    // reference taken before the body. Re-fetching `back()` returns the moved-in
+    // copy, which retains every reference/local/write recorded during the visit.
+    LambdaCaptureCtx& ctx = lambdaCaptureStack.back();
 
     // Free variables referenced by the body (not a lambda-local name nor a
     // parameter) that resolve to a variable in an enclosing scope are captures:
