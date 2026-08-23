@@ -404,7 +404,10 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                 llvm::Function* printlnFunc = getVybPrintlnFunction();
                 if (jsonStr) builder->CreateCall(printlnFunc, {jsonStr});
 
-                // Clean up the function's scopes and pop call frame, then return void
+                // Clean up the function's scopes and pop call frame, then return void.
+                // The standalone-executable path wraps this function (see
+                // finalizeStandaloneExecutable in main.cpp) so the process still exits 0
+                // even though the generated `main` here is lowered to a void signature.
                 exitToFunctionBaseline();
                 generatePopFrameCall();
                 builder->CreateRetVoid();

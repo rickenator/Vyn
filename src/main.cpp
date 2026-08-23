@@ -43,6 +43,7 @@ extern "C" {
     char* __vyb_serialize_to_json(void* obj, const char* type_name);
     char* __vyb_convert_lit_string(const char* str);
     char* __vyb_string_concat(const char* left, const char* right);
+    int64_t __vyb_cstr_length(const char* s);
 
     // String concatenation intrinsic function
     char* __vyb_string_concat(const char* left, const char* right);
@@ -526,6 +527,9 @@ extern "C" {
 
 // LLVM includes for object file emission
 #include <llvm/IR/LegacyPassManager.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Function.h>
+#include <llvm/IR/BasicBlock.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/TargetParser/Host.h>
 #include <llvm/MC/TargetRegistry.h>
@@ -771,6 +775,104 @@ ParsedModule parse_vyb_module(const std::string& source, const std::string& file
 
 
 
+// Rewrite the LLVM module's entry point so a standalone executable built with
+// `--build`/`--compile` returns a well-defined exit status. The generated Vyb
+// `main` keeps whatever return shape codegen produced (void for Void and
+// auto-serialized mains, a `{ payload, i8* }` failable struct, or a `{ ptr, i64 }`
+// Vyb String) — none of which matches crt0's expectation of `int main(...)`.
+// Without a wrapper the process would leak an arbitrary value (observed as exit
+// 128) from a stale register. We rename the Vyb `main` to `__vyb_program_main`
+// and emit a true `int main()` that runs it and exits 0 — serializing a String
+// return to stdout and reporting an untrapped failable error, mirroring the JIT
+// runner in run_vyb_code.
+static void finalizeStandaloneExecutable(llvm::Module* module) {
+    llvm::Function* progMain = module->getFunction("main");
+    if (!progMain) {
+        return;  // no program entry point; nothing to wrap
+    }
+    progMain->setName("__vyb_program_main");
+
+    llvm::LLVMContext& ctx = module->getContext();
+    llvm::IRBuilder<> builder(ctx);
+    llvm::FunctionType* wrapperTy = llvm::FunctionType::get(builder.getInt32Ty(), /*isVarArg=*/false);
+    llvm::Function* main =
+        llvm::Function::Create(wrapperTy, llvm::Function::ExternalLinkage, "main", module);
+    llvm::BasicBlock* entry = llvm::BasicBlock::Create(ctx, "entry", main);
+    builder.SetInsertPoint(entry);
+
+    llvm::Type* retTy = progMain->getReturnType();
+
+    // The failable ABI is `{ payload, i8* }` (its second element is the error
+    // pointer). A Vyb String is `{ ptr, i64 }`, whose second element is an integer
+    // (its payload length), so it is deliberately not classified as failable.
+    llvm::PointerType* charPtr = llvm::PointerType::getUnqual(ctx);
+    bool isFailable = false;
+    bool isString = false;
+    if (retTy->isStructTy()) {
+        auto* st = llvm::cast<llvm::StructType>(retTy);
+        if (st->getNumElements() == 2) {
+            if (st->getElementType(1)->isPointerTy()) {
+                isFailable = true;
+            } else if (st->getElementType(0)->isPointerTy() &&
+                       st->getElementType(1)->isIntegerTy(64)) {
+                isString = true;
+            }
+        }
+    }
+
+    auto getOrDecl = [&](const std::string& name, llvm::FunctionType* ft) {
+        llvm::Function* f = module->getFunction(name);
+        if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, name, module);
+        return f;
+    };
+
+    if (isString) {
+        // Serialize a `main()<String>` return to stdout as a JSON-quoted string
+        // (`"<value>"`), or `null` for an absent pointer — mirroring the JIT runner.
+        llvm::Value* res = builder.CreateCall(progMain);
+        llvm::Value* strPtr = builder.CreateExtractValue(res, 0, "main.str");
+        llvm::Function* println = getOrDecl(
+            "__vyb_println",
+            llvm::FunctionType::get(llvm::Type::getVoidTy(ctx), {charPtr}, false));
+        llvm::Function* concat = getOrDecl(
+            "__vyb_string_concat",
+            llvm::FunctionType::get(charPtr, {charPtr, charPtr}, false));
+        llvm::Value* isNull = builder.CreateIsNull(strPtr, "main.strNull");
+        llvm::BasicBlock* nullBB = llvm::BasicBlock::Create(ctx, "str.null", main);
+        llvm::BasicBlock* printBB = llvm::BasicBlock::Create(ctx, "str.print", main);
+        builder.CreateCondBr(isNull, nullBB, printBB);
+        builder.SetInsertPoint(nullBB);
+        builder.CreateCall(println, {builder.CreateGlobalStringPtr("null")});
+        builder.CreateRet(builder.getInt32(0));
+        builder.SetInsertPoint(printBB);
+        llvm::Value* openQ = builder.CreateGlobalStringPtr("\"");
+        llvm::Value* closeQ = builder.CreateGlobalStringPtr("\"");
+        llvm::Value* tmp = builder.CreateCall(concat, {openQ, strPtr}, "str.open");
+        llvm::Value* json = builder.CreateCall(concat, {tmp, closeQ}, "str.json");
+        builder.CreateCall(println, {json});
+        builder.CreateRet(builder.getInt32(0));
+    } else if (isFailable) {
+        llvm::Value* res = builder.CreateCall(progMain);
+        llvm::Value* err = builder.CreateExtractValue(res, 1, "main.err");
+        llvm::Value* hasErr = builder.CreateIsNotNull(err, "main.hasErr");
+        llvm::Function* untrapped = getOrDecl(
+            "__vyb_runtime_untrapped_error",
+            llvm::FunctionType::get(llvm::Type::getVoidTy(ctx), {charPtr}, false));
+        untrapped->addFnAttr(llvm::Attribute::NoReturn);
+        llvm::BasicBlock* failBB = llvm::BasicBlock::Create(ctx, "fail", main);
+        llvm::BasicBlock* okBB = llvm::BasicBlock::Create(ctx, "ok", main);
+        builder.CreateCondBr(hasErr, failBB, okBB);
+        builder.SetInsertPoint(failBB);
+        builder.CreateCall(untrapped, {err});
+        builder.CreateUnreachable();
+        builder.SetInsertPoint(okBB);
+        builder.CreateRet(builder.getInt32(0));
+    } else {
+        builder.CreateCall(progMain);  // discard any payload (Void/auto-serialized)
+        builder.CreateRet(builder.getInt32(0));
+    }
+}
+
 // Function to compile Vyb code to object file
 int compile_vyb_to_object(const std::string& source, const std::string& fileName,
                           const std::string& outputFile, int optLevel = 2) {
@@ -815,6 +917,10 @@ int compile_vyb_to_object(const std::string& source, const std::string& fileName
 
         // Get the LLVM module
         llvm::Module* module = codegen.getModule();
+
+        // Ensure the standalone executable returns a well-defined (0) exit status
+        // regardless of the Vyb `main` return shape.
+        finalizeStandaloneExecutable(module);
 
         // Verify the module
         std::cout << "Verifying module..." << std::endl;
@@ -1459,6 +1565,7 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
         llvm::Function* serializeFunc = module->getFunction("__vyb_serialize_to_json");
         llvm::Function* litConvertFunc = module->getFunction("__vyb_convert_lit_string");
         llvm::Function* stringConcatFunc = module->getFunction("__vyb_string_concat");
+        llvm::Function* cstrLengthFunc = module->getFunction("__vyb_cstr_length");
 
         // Retrieve toString functions
         llvm::Function* toStringIntFunc = module->getFunction("__vyb_toString_int");
@@ -1610,6 +1717,10 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
         if (stringConcatFunc) {
             runtimeSymbols[mangle("__vyb_string_concat")] = llvm::orc::ExecutorSymbolDef(
                 llvm::orc::ExecutorAddr::fromPtr(&__vyb_string_concat), llvm::JITSymbolFlags::Exported);
+        }
+        if (cstrLengthFunc) {
+            runtimeSymbols[mangle("__vyb_cstr_length")] = llvm::orc::ExecutorSymbolDef(
+                llvm::orc::ExecutorAddr::fromPtr(&__vyb_cstr_length), llvm::JITSymbolFlags::Exported);
         }
 
         // Register string replace helper (always export — codegen may emit the symbol)

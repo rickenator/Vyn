@@ -574,6 +574,13 @@ extern "C" char* __vyb_string_concat(const char* left, const char* right) {
     return result;
 }
 
+// C-string length safe for wrapping a raw char* into a Vyb String. strlen(NULL)
+// would otherwise segfault, so a null pointer maps to length 0 — the "absent"
+// string's length. Used by codegen when converting a pointer to a String struct.
+extern "C" int64_t __vyb_cstr_length(const char* s) {
+    return s ? static_cast<int64_t>(strlen(s)) : 0;
+}
+
 // JSON array context for multi-value returns
 struct JSONArrayContext {
     std::string json;

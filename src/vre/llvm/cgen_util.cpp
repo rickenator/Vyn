@@ -137,16 +137,19 @@ llvm::Value* LLVMCodegen::tryCast(llvm::Value* value, llvm::Type* targetType, co
             // Use strlen to compute actual length via __vyb_strlen if needed
             llvm::Value* strStruct = llvm::UndefValue::get(targetType);
             strStruct = builder->CreateInsertValue(strStruct, value, 0, "strwrap.ptr");
-            // Compute strlen for the length field
-            llvm::Function* strlenFunc = module->getFunction("strlen");
-            if (!strlenFunc) {
-                llvm::FunctionType* strlenType = llvm::FunctionType::get(
+            // Compute the length field via __vyb_cstr_length: it treats a null
+            // char* as length 0, so wrapping a null (constant or runtime) pointer
+            // into a String cannot segfault in strlen.
+            llvm::Function* cstrLen = module->getFunction("__vyb_cstr_length");
+            if (!cstrLen) {
+                llvm::FunctionType* cstrLenType = llvm::FunctionType::get(
                     llvm::Type::getInt64Ty(*context),
                     {llvm::PointerType::get(*context, 0)},
                     false);
-                strlenFunc = llvm::Function::Create(strlenType, llvm::Function::ExternalLinkage, "strlen", module.get());
+                cstrLen = llvm::Function::Create(cstrLenType, llvm::Function::ExternalLinkage,
+                                                 "__vyb_cstr_length", module.get());
             }
-            llvm::Value* lenVal = builder->CreateCall(strlenFunc, {value}, "strwrap.len");
+            llvm::Value* lenVal = builder->CreateCall(cstrLen, {value}, "strwrap.len");
             strStruct = builder->CreateInsertValue(strStruct, lenVal, 1, "strwrap.result");
             return strStruct;
         }
