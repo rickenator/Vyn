@@ -2559,8 +2559,9 @@ VYB_WEAK int64_t __vyb_chan_select(int64_t* handles, int64_t n) {
 }
 // --- agents: lightweight isolated message-passing units -------------------
 // An agent owns a mailbox (an unbounded Int channel) and a worker thread running
-// a behavior loop: it blocks on recv and hands each payload to the behavior
-// closure `fn(env, i64)` until the mailbox is closed and drained (recv == -1).
+// a behavior loop: it blocks on a presence-reporting receive and hands each
+// payload to the behavior closure `fn(env, i64)` until the mailbox is closed
+// and drained. No scalar payload value is reserved as a close sentinel.
 // The handle is an index into vyb_agents (>= 1) so a worker can be joined and
 // reclaimed exactly once. Message passing reuses the channel runtime; agents add
 // the worker + lifecycle on top.
@@ -2655,8 +2656,8 @@ static void* vyb_agent_loop(void* arg) {
     } else if (a->kind == AGENT_KIND_FLOAT) {
         // Float64 stored as its i64 bit pattern in the int-slot channel.
         for (;;) {
-            int64_t v = __vyb_chan_recv(a->mailbox);
-            if (v == -1) break;
+            int64_t v;
+            if (!__vyb_chan_recv_opt(a->mailbox, &v)) break;
             double d; memcpy(&d, &v, sizeof(d));
             if (a->failable) {
                 vyb_agent_fail_ret r = ((vyb_agent_fail_ret (*)(void*, double))a->fn)(a->env, d);
@@ -2667,8 +2668,8 @@ static void* vyb_agent_loop(void* arg) {
         }
     } else if (a->kind == AGENT_KIND_BOOL) {
         for (;;) {
-            int64_t v = __vyb_chan_recv(a->mailbox);
-            if (v == -1) break;
+            int64_t v;
+            if (!__vyb_chan_recv_opt(a->mailbox, &v)) break;
             if (a->failable) {
                 vyb_agent_fail_ret r = ((vyb_agent_fail_ret (*)(void*, int))a->fn)(a->env, (int)(v != 0));
                 if (r.err) { vyb_agent_close_self(a, r.err); break; }
@@ -2678,8 +2679,8 @@ static void* vyb_agent_loop(void* arg) {
         }
     } else { // AGENT_KIND_INT
         for (;;) {
-            int64_t v = __vyb_chan_recv(a->mailbox);
-            if (v == -1) break;
+            int64_t v;
+            if (!__vyb_chan_recv_opt(a->mailbox, &v)) break;
             if (a->failable) {
                 vyb_agent_fail_ret r = ((vyb_agent_fail_ret (*)(void*, int64_t))a->fn)(a->env, v);
                 if (r.err) { vyb_agent_close_self(a, r.err); break; }

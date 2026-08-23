@@ -1,0 +1,28 @@
+// @test: Agents preserve the Int payload -1
+// @description: Scalar agent mailboxes use a presence-reporting receive, so -1
+//   is delivered normally and does not terminate the worker loop.
+// @category: agents,concurrency,regression
+// @expect: pass
+// @expect-return: 0
+// @execute-jit: true
+
+import agents
+import channels
+
+main()<Int> -> {
+    replies<Int> = chan_new() else 0
+    worker<Int> = agent_start(|v<Int>| -> {
+        chan_send(replies, v)
+    }) else 0
+    if (worker == 0) { return 1 }
+
+    if (!(agent_send(worker, -1) else false)) { return 2 }
+    if (!(agent_send(worker, 42) else false)) { return 3 }
+    if ((chan_recv(replies) else 99) != -1) { return 4 }
+    if ((chan_recv(replies) else 99) != 42) { return 5 }
+
+    if (!(agent_close(worker) else false)) { return 6 }
+    if (!(agent_free(worker) else false)) { return 7 }
+    chan_free(replies)
+    return 0
+}
