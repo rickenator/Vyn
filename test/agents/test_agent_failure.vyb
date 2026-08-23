@@ -18,11 +18,16 @@ main()<Int> -> {
     # A service that fails (code 42) on negative input, else replies 10x.
     out<Int> = chan_new() else 0
     big<Int> = chan_new() else 0   # dead-letter channel for the supervisor
-    a<Int> = agent_start(|v<Int>| -> {
-        if (v < 0) {
-            fail<Int>(42)
+    a<Int> = agent_start(|message<Int?>| -> {
+        match (message) {
+            v -> {
+                if (v < 0) {
+                    fail<Int>(42)
+                }
+                chan_send(out, v * 10)
+            }
+            ? -> { }
         }
-        chan_send(out, v * 10)
     }) else 0
     if (a == 0) { return 1 }
 

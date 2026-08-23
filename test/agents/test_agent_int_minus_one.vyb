@@ -11,8 +11,12 @@ import channels
 
 main()<Int> -> {
     replies<Int> = chan_new() else 0
-    worker<Int> = agent_start(|v<Int>| -> {
-        chan_send(replies, v)
+    closed<Int> = chan_new() else 0
+    worker<Int> = agent_start(|message<Int?>| -> {
+        match (message) {
+            v -> { chan_send(replies, v) }
+            ? -> { chan_send(closed, 1) }
+        }
     }) else 0
     if (worker == 0) { return 1 }
 
@@ -22,7 +26,9 @@ main()<Int> -> {
     if ((chan_recv(replies) else 99) != 42) { return 5 }
 
     if (!(agent_close(worker) else false)) { return 6 }
-    if (!(agent_free(worker) else false)) { return 7 }
+    if ((chan_recv(closed) else 0) != 1) { return 7 }
+    if (!(agent_free(worker) else false)) { return 8 }
     chan_free(replies)
+    chan_free(closed)
     return 0
 }

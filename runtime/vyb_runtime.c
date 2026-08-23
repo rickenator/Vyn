@@ -2611,6 +2611,13 @@ typedef struct {
     void* err;
 } vyb_agent_fail_ret;
 
+// Agent behavior receives Vyb `T?`: its payload plus a presence flag. A final
+// absent value signals that the mailbox has closed and drained; no payload value
+// is reserved for shutdown. Scalar Bool and String callbacks are invoked as
+// their ABI-lowered payload components plus that flag.
+typedef struct { int64_t value; bool present; } vyb_agent_int_opt;
+typedef struct { double value; bool present; } vyb_agent_float_opt;
+
 // Forward declarations for the String channel runtime, which is defined later
 // in this file but used by String-payload agents.
 VYB_WEAK int64_t __vyb_strchan_new(int64_t capacity);
@@ -2644,49 +2651,56 @@ static void* vyb_agent_loop(void* arg) {
         // String mailbox: lossless blocking recv transfers a reference to the
         // worker, which passes it to the behavior; the closure's String param
         // teardown releases it once the handler returns.
-        vyb_file_str msg;
-        while (__vyb_strchan_recv_opt(a->mailbox, &msg)) {
+        for (;;) {
+            vyb_file_str msg = { NULL, 0 };
+            int present = __vyb_strchan_recv_opt(a->mailbox, &msg);
             if (a->failable) {
-                vyb_agent_fail_ret r = ((vyb_agent_fail_ret (*)(void*, vyb_file_str))a->fn)(a->env, msg);
+                vyb_agent_fail_ret r = ((vyb_agent_fail_ret (*)(void*, vyb_file_str, int64_t))a->fn)(a->env, msg, present);
                 if (r.err) { vyb_agent_close_self(a, r.err); break; }
             } else {
-                ((void (*)(void*, vyb_file_str))a->fn)(a->env, msg);
+                ((void (*)(void*, vyb_file_str, int64_t))a->fn)(a->env, msg, present);
             }
+            if (!present) break;
         }
     } else if (a->kind == AGENT_KIND_FLOAT) {
         // Float64 stored as its i64 bit pattern in the int-slot channel.
         for (;;) {
-            int64_t v;
-            if (!__vyb_chan_recv_opt(a->mailbox, &v)) break;
-            double d; memcpy(&d, &v, sizeof(d));
+            int64_t v = 0;
+            int present = __vyb_chan_recv_opt(a->mailbox, &v);
+            double d = 0.0; if (present) memcpy(&d, &v, sizeof(d));
+            vyb_agent_float_opt event = { d, present != 0 };
             if (a->failable) {
-                vyb_agent_fail_ret r = ((vyb_agent_fail_ret (*)(void*, double))a->fn)(a->env, d);
+                vyb_agent_fail_ret r = ((vyb_agent_fail_ret (*)(void*, vyb_agent_float_opt))a->fn)(a->env, event);
                 if (r.err) { vyb_agent_close_self(a, r.err); break; }
             } else {
-                ((void (*)(void*, double))a->fn)(a->env, d);
+                ((void (*)(void*, vyb_agent_float_opt))a->fn)(a->env, event);
             }
+            if (!present) break;
         }
     } else if (a->kind == AGENT_KIND_BOOL) {
         for (;;) {
-            int64_t v;
-            if (!__vyb_chan_recv_opt(a->mailbox, &v)) break;
+            int64_t v = 0;
+            int present = __vyb_chan_recv_opt(a->mailbox, &v);
             if (a->failable) {
-                vyb_agent_fail_ret r = ((vyb_agent_fail_ret (*)(void*, int))a->fn)(a->env, (int)(v != 0));
+                vyb_agent_fail_ret r = ((vyb_agent_fail_ret (*)(void*, int64_t, int64_t))a->fn)(a->env, v != 0, present);
                 if (r.err) { vyb_agent_close_self(a, r.err); break; }
             } else {
-                ((void (*)(void*, int))a->fn)(a->env, (int)(v != 0));
+                ((void (*)(void*, int64_t, int64_t))a->fn)(a->env, v != 0, present);
             }
+            if (!present) break;
         }
     } else { // AGENT_KIND_INT
         for (;;) {
-            int64_t v;
-            if (!__vyb_chan_recv_opt(a->mailbox, &v)) break;
+            int64_t v = 0;
+            int present = __vyb_chan_recv_opt(a->mailbox, &v);
+            vyb_agent_int_opt event = { v, present != 0 };
             if (a->failable) {
-                vyb_agent_fail_ret r = ((vyb_agent_fail_ret (*)(void*, int64_t))a->fn)(a->env, v);
+                vyb_agent_fail_ret r = ((vyb_agent_fail_ret (*)(void*, vyb_agent_int_opt))a->fn)(a->env, event);
                 if (r.err) { vyb_agent_close_self(a, r.err); break; }
             } else {
-                ((void (*)(void*, int64_t))a->fn)(a->env, v);
+                ((void (*)(void*, vyb_agent_int_opt))a->fn)(a->env, event);
             }
+            if (!present) break;
         }
     }
     if (a->env) __vyb_closure_release(a->env);  // drop the agent's reference
@@ -2735,8 +2749,9 @@ static int64_t vyb_agent_spawn(void* env, void* fn, int kind, int failable, int6
     return (int64_t)(idx + 1);
 }
 
-// Start an agent running `fn`, a Vyb `fn(Payload) -> Void` closure (as { env, fn }).
-// `cap` bounds the mailbox (0 = unbounded).
+// Start an agent running `fn`, a Vyb `fn(Payload?) -> Void` closure (as { env, fn }).
+// It receives one absent value after the mailbox closes and drains. `cap` bounds
+// the mailbox (0 = unbounded).
 VYB_WEAK int64_t __vyb_agent_start(void* env, void* fn, int64_t failable, int64_t cap)          { return vyb_agent_spawn(env, fn, AGENT_KIND_INT, (int)failable, cap); }
 VYB_WEAK int64_t __vyb_agent_start_bool(void* env, void* fn, int64_t failable, int64_t cap)     { return vyb_agent_spawn(env, fn, AGENT_KIND_BOOL, (int)failable, cap); }
 VYB_WEAK int64_t __vyb_agent_start_float(void* env, void* fn, int64_t failable, int64_t cap)    { return vyb_agent_spawn(env, fn, AGENT_KIND_FLOAT, (int)failable, cap); }

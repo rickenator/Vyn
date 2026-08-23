@@ -20,8 +20,11 @@ main()<Int> -> {
     # The pinger treats each request's value as a reply-to channel handle, so a
     # client gets its answer routed back onto its own channel. The reply is a
     # deterministic function of the request token, so correlation is verifiable.
-    pinger<Int> = agent_start(|ch<Int>| -> {
-        chan_send(ch, (ch * 9) % 100)
+    pinger<Int> = agent_start(|message<Int?>| -> {
+        match (message) {
+            ch -> { chan_send(ch, (ch * 9) % 100) }
+            ? -> { }
+        }
     }) else 0
 
     ca<Int> = chan_new() else 0
@@ -44,8 +47,8 @@ main()<Int> -> {
     # --- fan-in composition: select over the workers' reply channels ---------
     resA<Int> = chan_new() else 0
     resB<Int> = chan_new() else 0
-    wa<Int> = agent_start(|v<Int>| -> { chan_send(resA, v) }) else 0
-    wb<Int> = agent_start(|v<Int>| -> { chan_send(resB, v) }) else 0
+    wa<Int> = agent_start(|message<Int?>| -> { match (message) { v -> { chan_send(resA, v) } ? -> { } } }) else 0
+    wb<Int> = agent_start(|message<Int?>| -> { match (message) { v -> { chan_send(resB, v) } ? -> { } } }) else 0
     agent_send(wa, 1111)
     agent_send(wb, 2222)
 
@@ -70,7 +73,7 @@ main()<Int> -> {
 
     # --- agent_mailbox: scalar mailboxes join the channel surface -------------
     # String agents use a separate mailbox type: agent_mailbox reports -1.
-    sa<Int> = agent_start_string(|s<String>| -> { }) else 0
+    sa<Int> = agent_start_string(|s<String?>| -> { }) else 0
     if (agent_mailbox(sa) != -1) { return 6 }
     agent_close(sa)
     agent_free(sa)
@@ -78,7 +81,7 @@ main()<Int> -> {
     # Scalar agent: expose its mailbox handle and verify it is a live channel
     # handle: it mirrors chan_len and is accepted inside a chan_select set.
     drain<Int> = chan_new() else 0
-    da<Int> = agent_start(|v<Int>| -> { chan_send(drain, v) }) else 0
+    da<Int> = agent_start(|message<Int?>| -> { match (message) { v -> { chan_send(drain, v) } ? -> { } } }) else 0
     mb<Int> = agent_mailbox(da)
     if (mb <= 0) { return 7 }
     agent_send(da, 5)

@@ -1,16 +1,20 @@
 # agents - lightweight isolated message-passing units.
 #
 # An agent is a unit of concurrency that owns a mailbox (an unbounded Int
-# channel) and runs a behavior loop on its own worker thread: it blocks on recv
-# and hands each message to the behavior closure. Only messages cross the
+# channel) and runs a behavior loop on its own worker thread. The behavior
+# receives `T?`: a present value for each message and one absent value after the
+# mailbox closes and drains. Only messages cross the
 # boundary -- the agent's internal state stays private to its behavior. The
 # handle is an Int (a runtime table index).
 #
 # Usage:
 #   import agents
 #
-#   counter = agent_start(|v<Int>| -> {
-#       println("got " + v.to_string())
+#   counter = agent_start(|message<Int?>| -> {
+#       match (message) {
+#           v -> { println("got " + v.to_string()) }
+#           ? -> { println("mailbox closed") }
+#       }
 #   })
 #
 #   ok = agent_send(counter, 42)   // Bool? -> present when accepted
@@ -18,9 +22,10 @@
 #   agent_close(counter)           // drain then stop (lossless)
 #   agent_free(counter)            // wait for the worker and reclaim
 #
-# A behavior loop exits once the mailbox is closed and drained, so shutdown is
-# cooperative and loses no buffered messages. agent_free closes the mailbox if
-# it was never closed, then waits for the worker before reclaiming.
+# Shutdown is cooperative and loses no buffered messages. After a mailbox is
+# closed and drained, its behavior receives exactly one absent `T?` and exits.
+# agent_free closes the mailbox if it was never closed, then waits for the worker
+# before reclaiming.
 
 # `agent_start` / `agent_start_bool` / `agent_start_float` / `agent_start_string`
 # are compiler-native: the behavior closure's failable flag is unpacked there, so

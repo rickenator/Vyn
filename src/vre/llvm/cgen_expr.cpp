@@ -4327,7 +4327,7 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                    fname == "agent_start_float" || fname == "agent_start_string" ||
                    fname == "vyb_agent_start" || fname == "vyb_agent_start_bool" ||
                    fname == "vyb_agent_start_float" || fname == "vyb_agent_start_string") {
-            // Agents: `agent_start*` takes a `fn(Payload) -> Void` behavior closure
+            // Agents: `agent_start*` takes a `fn(Payload?) -> Void` behavior closure
             // value `{ env, fn }`. The two pointers go to the runtime, which creates
             // the mailbox (Int/Bool/Float share the int-slot channel; String uses a
             // strchan) and runs the behavior loop on a worker thread. A behavior
@@ -4348,6 +4348,17 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             // (1 when it can propagate a failure, 0 for a plain Void behavior).
             int failable = 0;
             if (auto* fe = dynamic_cast<ast::FunctionExpression*>(node->arguments[0].get())) {
+                auto* optionalPayload = fe->params.size() == 1 && fe->params[0].typeNode
+                    ? dynamic_cast<ast::OptionalType*>(fe->params[0].typeNode.get()) : nullptr;
+                const char* expectedPayload = (rtName == std::string("__vyb_agent_start")) ? "Int"
+                    : (rtName == std::string("__vyb_agent_start_bool")) ? "Bool"
+                    : (rtName == std::string("__vyb_agent_start_float")) ? "Float" : "String";
+                if (!optionalPayload || !optionalPayload->containedType ||
+                    optionalPayload->containedType->toString() != expectedPayload) {
+                    logError(node->loc, fname + " behavior must accept exactly one " +
+                        std::string(expectedPayload) + "? parameter");
+                    m_currentLLVMValue = nullptr; return;
+                }
                 failable = fe->canFail ? 1 : 0;
             }
             node->arguments[0]->accept(*this);

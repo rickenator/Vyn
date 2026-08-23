@@ -18,9 +18,14 @@ main()<Int> -> {
     # rest: total outstanding = 1 in-flight + 3 buffered = 4.
     gate<Int> = chan_new() else 0
     out<Int> = chan_new() else 0
-    a<Int> = agent_start(|v<Int>| -> {
-        chan_recv(gate)
-        chan_send(out, v)
+    a<Int> = agent_start(|message<Int?>| -> {
+        match (message) {
+            v -> {
+                chan_recv(gate)
+                chan_send(out, v)
+            }
+            ? -> { }
+        }
     }, 3) else 0
     if (a == 0) { return 1 }
 
@@ -58,8 +63,11 @@ main()<Int> -> {
     # plus whatever the worker holds in-flight at that instant, so the box can
     # accept 2..3 before a full send returns 0 (timing-dependent).
     sgate<Int> = chan_new() else 0
-    sa<Int> = agent_start_string(|sv<String>| -> {
-        chan_recv(sgate)
+    sa<Int> = agent_start_string(|message<String?>| -> {
+        match (message) {
+            sv -> { chan_recv(sgate) }
+            ? -> { }
+        }
     }, 2) else 0
     if (!(agent_send_string(sa, "a") else false)) { return 10 }
     if (!(agent_send_string(sa, "b") else false)) { return 11 }
@@ -83,7 +91,7 @@ main()<Int> -> {
     chan_free(sgate)
 
     # Unbounded (0 / omitted): every send is accepted.
-    u<Int> = agent_start(|v<Int>| -> { }, 0) else 0
+    u<Int> = agent_start(|v<Int?>| -> { }, 0) else 0
     c<Int> = 0
     while (c < 100) {
         if (!(agent_send(u, c) else false)) { return 15 }

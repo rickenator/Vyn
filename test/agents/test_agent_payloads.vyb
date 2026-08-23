@@ -13,8 +13,11 @@ import channels
 main()<Int> -> {
     # Bool messages
     bres<Int> = chan_new() else 0
-    ba<Int> = agent_start_bool(|b<Bool>| -> {
-        if (b) { chan_send(bres, 1) } else { chan_send(bres, 0) }
+    ba<Int> = agent_start_bool(|message<Bool?>| -> {
+        match (message) {
+            b -> { if (b) { chan_send(bres, 1) } else { chan_send(bres, 0) } }
+            ? -> { }
+        }
     }) else 0
     agent_send_bool(ba, true)
     agent_send_bool(ba, false)
@@ -27,8 +30,11 @@ main()<Int> -> {
 
     # Float messages (exact value round-trip verified via to_string)
     frep<Int> = strchan_new() else 0
-    fa<Int> = agent_start_float(|f<Float>| -> {
-        strchan_send(frep, f.to_string())
+    fa<Int> = agent_start_float(|message<Float?>| -> {
+        match (message) {
+            f -> { strchan_send(frep, f.to_string()) }
+            ? -> { }
+        }
     }) else 0
     agent_send_float(fa, 1.25)
     agent_send_float(fa, -0.5)
@@ -41,8 +47,11 @@ main()<Int> -> {
 
     # String messages (owned transfer; behavior echoes an uppercased result)
     srep<Int> = strchan_new() else 0
-    sa<Int> = agent_start_string(|sv<String>| -> {
-        strchan_send(srep, sv + "!")
+    sa<Int> = agent_start_string(|message<String?>| -> {
+        match (message) {
+            sv -> { strchan_send(srep, sv + "!") }
+            ? -> { }
+        }
     }) else 0
     agent_send_string(sa, "hello")
     agent_send_string(sa, "agent")

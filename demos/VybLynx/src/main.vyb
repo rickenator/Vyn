@@ -961,7 +961,9 @@ download_path(urlStr<String>)<String> -> {
 }
 
 start_download(urlStr<String>)<Void> -> {
-    do<Int> = agent_start_string(|s<String>| -> {
+    do<Int> = agent_start_string(|message<String?>| -> {
+        match (message) {
+            s -> {
         # Derive everything from the mailbox String `s` (stable for the whole
         # behavior run). A String local in start_download is freed when this
         # function returns - before the agent thread runs - so capturing it here
@@ -982,6 +984,9 @@ start_download(urlStr<String>)<Void> -> {
             }
         } else {
             strchan_send(dl_progress, "download failed: HTTP " + resp.status.to_string())
+        }
+            }
+            ? -> { }
         }
     }) else 0
     if (do == 0) {
