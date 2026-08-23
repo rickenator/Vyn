@@ -1,0 +1,493 @@
+# archive - gzip / DEFLATE decompression and POSIX tar extraction, in pure Vyb.
+#
+# Provides `inflate_gzip` (full .gz decode: header, DEFLATE, CRC32 + ISIZE
+# verification) and `extract_tar` (ustar walk returning member files), so a Vyb
+# program can turn a fetched `.tar.gz` source into a list of (name, data)
+# entries byte-identical to the originals.
+#
+# No runtime primitives are required — all byte/bit work is done with the
+# String primitives the language already ships:
+#   - read a byte:   `s.char_at(i) & 0xFF`
+#   - write a byte:  `B_LUT.substring(b, b + 1)` (index a 256-byte lookup)
+#   - accumulate:    `out.concat(chunk)`
+# This module therefore lives entirely in `stdlib/` as new files and never
+# touches the runtime/ `src/` (the implementation agent's territory).
+#
+# Design note: the DEFLATE bit cursor is threaded *functionally* — each decode
+# step returns a value plus the advanced bit position, and never mutates a
+# caller-owned cursor. (Vyb's by-ref `their` receivers cannot be re-borrowed
+# into further `their` calls, so a mutable reader passed through nested decode
+# helpers doesn't propagate; threading position through return values sidesteps
+# that entirely and is provably correct.)
+#
+# Usage:
+#   import archive::{inflate_gzip, extract_tar}
+#   match (inflate_gzip(gz_bytes)) {
+#       plain -> { entries = extract_tar(plain) }
+#       ?     -> { println("bad gzip") }
+#   }
+
+# --- byte utilities -------------------------------------------------------
+
+# 256-byte lookup table so any byte value (0..255) is addressable as a
+# one-byte String: `byte_lut().substring(b, b + 1)`.
+share(all)
+byte_lut()<String> -> {
+    return "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f" +
+           "\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f" +
+           "\x20\x21\x22\x23\x24\x25\x26\x27\x28\x29\x2a\x2b\x2c\x2d\x2e\x2f" +
+           "\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x3a\x3b\x3c\x3d\x3e\x3f" +
+           "\x40\x41\x42\x43\x44\x45\x46\x47\x48\x49\x4a\x4b\x4c\x4d\x4e\x4f" +
+           "\x50\x51\x52\x53\x54\x55\x56\x57\x58\x59\x5a\x5b\x5c\x5d\x5e\x5f" +
+           "\x60\x61\x62\x63\x64\x65\x66\x67\x68\x69\x6a\x6b\x6c\x6d\x6e\x6f" +
+           "\x70\x71\x72\x73\x74\x75\x76\x77\x78\x79\x7a\x7b\x7c\x7d\x7e\x7f" +
+           "\x80\x81\x82\x83\x84\x85\x86\x87\x88\x89\x8a\x8b\x8c\x8d\x8e\x8f" +
+           "\x90\x91\x92\x93\x94\x95\x96\x97\x98\x99\x9a\x9b\x9c\x9d\x9e\x9f" +
+           "\xa0\xa1\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xab\xac\xad\xae\xaf" +
+           "\xb0\xb1\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xbb\xbc\xbd\xbe\xbf" +
+           "\xc0\xc1\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xcb\xcc\xcd\xce\xcf" +
+           "\xd0\xd1\xd2\xd3\xd4\xd5\xd6\xd7\xd8\xd9\xda\xdb\xdc\xdd\xde\xdf" +
+           "\xe0\xe1\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xeb\xec\xed\xee\xef" +
+           "\xf0\xf1\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xfb\xfc\xfd\xfe\xff"
+}
+
+# One-byte String whose sole byte is the low byte of `b` (b in 0..255).
+share(all)
+bstr(b<Int>)<String> -> {
+    return byte_lut().substring(b, b + 1)
+}
+
+# Trim a String at its first NUL byte (used for NUL-terminated header fields).
+share(all)
+trim_nul(s<String>)<String> -> {
+    n<Int> = s.len()
+    for (i in 0..n - 1) {
+        if ((s.char_at(i) & 0xFF) == 0) {
+            return s.substring(0, i)
+        }
+    }
+    return s
+}
+
+# --- DEFLATE bit access (pure, no mutation) --------------------------------
+# Read `n` bits of `data` starting at bit position `pos`, LSB-first (DEFLATE
+# order). The assembled value has stream bit k as result bit k. Position is
+# returned by callers as part of a Decode/Run result, never mutated in place.
+
+share(all)
+val_at(data<String>, pos<Int>, n<Int>)<Int> -> {
+    val<Int> = 0
+    for (k in 0..n - 1) {
+        p<Int> = pos + k
+        by<Int> = data.char_at(p >> 3)
+        bit<Int> = ((by & 0xFF) >> (p & 7)) & 1
+        val = val | (bit << k)
+    }
+    return val
+}
+
+# --- Huffman decode table (canonical code) --------------------------------
+# Implements DECODE() from the classic puff.c: given the code length of each
+# symbol, build a `symbol` array sorted by (length asc, symbol asc) plus a
+# `count` per length, then decode by reading bits most-significant-first.
+
+share(all)
+struct Huff {
+    count<Vec<Int>>,   # count[len] for len 1..15 (index 0 unused)
+    symbol<Vec<Int>>   # symbols in canonical code order
+}
+
+share(all)
+build_huff(lens<Vec<Int>>)<Huff> -> {
+    count<Vec<Int>> = Vec<Int>()
+    for (i in 0..15) { count.push(0) }
+    for (sym in 0..lens.len() - 1) {
+        ln<Int> = lens.get(sym)
+        if (ln > 0) {
+            count.set(ln, count.get(ln) + 1)
+        }
+    }
+    symbol<Vec<Int>> = Vec<Int>()
+    for (ln in 1..15) {
+        for (sym in 0..lens.len() - 1) {
+            if (lens.get(sym) == ln) {
+                symbol.push(sym)
+            }
+        }
+    }
+    return Huff { count = count, symbol = symbol }
+}
+
+# One decoded symbol plus the advanced bit position.
+share(all)
+struct Decode {
+    val<Int>,
+    pos<Int>
+}
+
+# Decode and return one Huffman symbol (MSB-first), carrying the bit position.
+share(all)
+decode_symbol(data<String>, pos<Int>, h<Huff>)<Decode> -> {
+    code<Int> = 0
+    first<Int> = 0
+    index<Int> = 0
+    p<Int> = pos
+    for (len in 1..15) {
+        b<Int> = val_at(data, p, 1)
+        p = p + 1
+        code = code | b
+        cnt<Int> = h.count.get(len)
+        if (code - first < cnt) {
+            return Decode { val = h.symbol.get(index + (code - first)), pos = p }
+        }
+        index = index + cnt
+        first = first + cnt
+        first = first << 1
+        code = code << 1
+    }
+    return Decode { val = -1, pos = p }
+}
+
+# --- DEFLATE length / distance tables -------------------------------------
+
+share(all)
+fixed_lit_lens()<Vec<Int>> -> {
+    v<Vec<Int>> = Vec<Int>()
+    for (i in 0..287) { v.push(0) }
+    for (i in 0..143) { v.set(i, 8) }
+    for (i in 144..255) { v.set(i, 9) }
+    for (i in 256..279) { v.set(i, 7) }
+    for (i in 280..287) { v.set(i, 8) }
+    return v
+}
+
+share(all)
+fixed_dist_lens()<Vec<Int>> -> {
+    v<Vec<Int>> = Vec<Int>()
+    for (i in 0..31) { v.push(5) }
+    return v
+}
+
+share(all)
+len_extra_tbl()<Vec<Int>> -> {
+    v<Vec<Int>> = Vec()
+    v.push(0); v.push(0); v.push(0); v.push(0)   # 257-260
+    v.push(0); v.push(0); v.push(0); v.push(0)   # 261-264
+    v.push(1); v.push(1); v.push(1); v.push(1)   # 265-268
+    v.push(2); v.push(2); v.push(2); v.push(2)   # 269-272
+    v.push(3); v.push(3); v.push(3); v.push(3)   # 273-276
+    v.push(4); v.push(4); v.push(4); v.push(4)   # 277-280
+    v.push(5); v.push(5); v.push(5); v.push(5)   # 281-284
+    v.push(0)                                     # 285
+    return v
+}
+
+share(all)
+len_base_tbl()<Vec<Int>> -> {
+    v<Vec<Int>> = Vec()
+    v.push(3); v.push(4); v.push(5); v.push(6)   # 257-260
+    v.push(7); v.push(8); v.push(9); v.push(10)  # 261-264
+    v.push(11); v.push(13); v.push(15); v.push(17)
+    v.push(19); v.push(23); v.push(27); v.push(31)
+    v.push(35); v.push(43); v.push(51); v.push(59)
+    v.push(67); v.push(83); v.push(99); v.push(115)
+    v.push(131); v.push(163); v.push(195); v.push(227)
+    v.push(258)                                  # 285
+    return v
+}
+
+share(all)
+dist_extra_tbl()<Vec<Int>> -> {
+    v<Vec<Int>> = Vec()
+    v.push(0); v.push(0); v.push(0); v.push(0)
+    v.push(1); v.push(1); v.push(2); v.push(2)
+    v.push(3); v.push(3); v.push(4); v.push(4)
+    v.push(5); v.push(5); v.push(6); v.push(6)
+    v.push(7); v.push(7); v.push(8); v.push(8)
+    v.push(9); v.push(9); v.push(10); v.push(10)
+    v.push(11); v.push(11); v.push(12); v.push(12)
+    v.push(13); v.push(13)
+    return v
+}
+
+share(all)
+dist_base_tbl()<Vec<Int>> -> {
+    v<Vec<Int>> = Vec()
+    v.push(1); v.push(2); v.push(3); v.push(4)
+    v.push(5); v.push(7); v.push(9); v.push(13)
+    v.push(17); v.push(25); v.push(33); v.push(49)
+    v.push(65); v.push(97); v.push(129); v.push(193)
+    v.push(257); v.push(385); v.push(513); v.push(769)
+    v.push(1025); v.push(1537); v.push(2049); v.push(3073)
+    v.push(4097); v.push(6145); v.push(8193); v.push(12289)
+    v.push(16385); v.push(24577)
+    return v
+}
+
+share(all)
+code_order()<Vec<Int>> -> {
+    v<Vec<Int>> = Vec()
+    v.push(16); v.push(17); v.push(18); v.push(0)
+    v.push(8); v.push(7); v.push(9); v.push(6)
+    v.push(10); v.push(5); v.push(11); v.push(4)
+    v.push(12); v.push(3); v.push(13); v.push(2)
+    v.push(14); v.push(1); v.push(15)
+    return v
+}
+
+# --- DEFLATE literal/length+distance run ----------------------------------
+
+share(all)
+struct Run {
+    out<String>,
+    pos<Int>
+}
+
+# Decode literal/length codes (lh) and distance codes (dh), appending output,
+# until end-of-block (symbol 256).
+share(all)
+decode_run(lh<Huff>, dh<Huff>, data<String>, pos<Int>, out<String>)<Run> -> {
+    p<Int> = pos
+    o<String> = out
+    le<Vec<Int>> = len_extra_tbl()
+    lb<Vec<Int>> = len_base_tbl()
+    de<Vec<Int>> = dist_extra_tbl()
+    db<Vec<Int>> = dist_base_tbl()
+    done<Bool> = false
+    while (!done) {
+        d<Decode> = decode_symbol(data, p, lh)
+        sym<Int> = d.val
+        p = d.pos
+        if (sym == 256) {
+            done = true
+        } else if (sym < 256) {
+            o = o.concat(bstr(sym))
+        } else {
+            li<Int> = sym - 257
+            len<Int> = lb.get(li) + val_at(data, p, le.get(li))
+            p = p + le.get(li)
+            ds<Decode> = decode_symbol(data, p, dh)
+            dsym<Int> = ds.val
+            p = ds.pos
+            dist<Int> = db.get(dsym) + val_at(data, p, de.get(dsym))
+            p = p + de.get(dsym)
+            n<Int> = o.len()
+            for (k in 0..len - 1) {
+                src<Int> = n - dist + k
+                o = o.concat(o.substring(src, src + 1))
+            }
+        }
+    }
+    return Run { out = o, pos = p }
+}
+
+# --- DEFLATE block/section decode -----------------------------------------
+# Inflate a raw DEFLATE stream (no gzip framing) starting at bit 0.
+
+share(all)
+inflate_def(src<String>)<String> -> {
+    bitpos<Int> = 0
+    out<String> = ""
+    done<Bool> = false
+    while (!done) {
+        bfinal<Int> = val_at(src, bitpos, 1)
+        bitpos = bitpos + 1
+        btype<Int> = val_at(src, bitpos, 2)
+        bitpos = bitpos + 2
+        if (btype == 0) {
+            bitpos = ((bitpos + 7) / 8) * 8
+            len<Int> = val_at(src, bitpos, 16)
+            bitpos = bitpos + 16
+            nlen<Int> = val_at(src, bitpos, 16)
+            bitpos = bitpos + 16
+            if ((len ^ 0xFFFF) != nlen) {
+                return ""
+            }
+            for (k in 0..len - 1) {
+                out = out.concat(bstr(val_at(src, bitpos, 8)))
+                bitpos = bitpos + 8
+            }
+        } else if (btype == 1) {
+            r<Run> = decode_run(build_huff(fixed_lit_lens()), build_huff(fixed_dist_lens()), src, bitpos, out)
+            out = r.out
+            bitpos = r.pos
+        } else if (btype == 2) {
+            hl<Int> = val_at(src, bitpos, 5) + 257
+            bitpos = bitpos + 5
+            hd<Int> = val_at(src, bitpos, 5) + 1
+            bitpos = bitpos + 5
+            hc<Int> = val_at(src, bitpos, 4) + 4
+            bitpos = bitpos + 4
+            order<Vec<Int>> = code_order()
+            clens<Vec<Int>> = Vec<Int>()
+            for (i in 0..18) { clens.push(0) }
+            for (i in 0..hc - 1) {
+                clens.set(order.get(i), val_at(src, bitpos, 3))
+                bitpos = bitpos + 3
+            }
+            ch<Huff> = build_huff(clens)
+            total<Int> = hl + hd
+            lens<Vec<Int>> = Vec<Int>()
+            while (lens.len() < total) {
+                cd<Decode> = decode_symbol(src, bitpos, ch)
+                csym<Int> = cd.val
+                bitpos = cd.pos
+                if (csym < 16) {
+                    lens.push(csym)
+                } else if (csym == 16) {
+                    prev<Int> = 0
+                    if (lens.len() > 0) { prev = lens.get(lens.len() - 1) }
+                    rep<Int> = 3 + val_at(src, bitpos, 2)
+                    bitpos = bitpos + 2
+                    for (k in 0..rep - 1) { lens.push(prev) }
+                } else if (csym == 17) {
+                    rep<Int> = 3 + val_at(src, bitpos, 3)
+                    bitpos = bitpos + 3
+                    for (k in 0..rep - 1) { lens.push(0) }
+                } else {
+                    rep<Int> = 11 + val_at(src, bitpos, 7)
+                    bitpos = bitpos + 7
+                    for (k in 0..rep - 1) { lens.push(0) }
+                }
+            }
+            llens<Vec<Int>> = Vec<Int>()
+            for (i in 0..hl - 1) { llens.push(lens.get(i)) }
+            dlens<Vec<Int>> = Vec<Int>()
+            for (i in 0..hd - 1) { dlens.push(lens.get(hl + i)) }
+            r<Run> = decode_run(build_huff(llens), build_huff(dlens), src, bitpos, out)
+            out = r.out
+            bitpos = r.pos
+        } else {
+            return ""
+        }
+        if (bfinal == 1) {
+            done = true
+        }
+    }
+    return out
+}
+
+# --- CRC-32 ---------------------------------------------------------------
+
+share(all)
+crc32(data<String>)<Int> -> {
+    crc<Int> = 0xFFFFFFFF
+    for (i in 0..data.len() - 1) {
+        c<Int> = data.char_at(i)
+        crc = crc ^ (c & 0xFF)
+        for (k in 0..7) {
+            if ((crc & 1) != 0) {
+                crc = (crc >> 1) ^ 0xEDB88320
+            } else {
+                crc = crc >> 1
+            }
+        }
+    }
+    return crc ^ 0xFFFFFFFF
+}
+
+# --- gzip framing ---------------------------------------------------------
+
+share(all)
+inflate_gzip(gz<String>)<String?> -> {
+    n<Int> = gz.len()
+    if (n < 18) { return String?() }
+    if ((gz.char_at(0) & 0xFF) != 0x1f || (gz.char_at(1) & 0xFF) != 0x8b) {
+        return String?()
+    }
+    if ((gz.char_at(2) & 0xFF) != 8) { return String?() }
+    flg<Int> = gz.char_at(3) & 0xFF
+    pos<Int> = 10
+    if ((flg & 4) != 0) {                    # FEXTRA
+        xlen<Int> = (gz.char_at(pos) & 0xFF) | ((gz.char_at(pos + 1) & 0xFF) << 8)
+        pos = pos + 2 + xlen
+    }
+    if ((flg & 8) != 0) {                    # FNAME (NUL-terminated)
+        while (pos < n && (gz.char_at(pos) & 0xFF) != 0) { pos = pos + 1 }
+        pos = pos + 1
+    }
+    if ((flg & 16) != 0) {                   # FCOMMENT (NUL-terminated)
+        while (pos < n && (gz.char_at(pos) & 0xFF) != 0) { pos = pos + 1 }
+        pos = pos + 1
+    }
+    if ((flg & 2) != 0) { pos = pos + 2 }    # FHCRC
+    if (pos > n - 8) { return String?() }
+    src<String> = gz.substring(pos, n - 8)
+    out<String> = inflate_def(src)
+    # NOTE: bind char_at results to temps before combining — inline char_at
+    # chained inside a `|`/`<<` bitwise expression hits a Vyb codegen
+    # recursion bug ("Call stack depth limit reached"); temps sidestep it.
+    c0<Int> = gz.char_at(n - 8)
+    c1<Int> = gz.char_at(n - 7)
+    c2<Int> = gz.char_at(n - 6)
+    c3<Int> = gz.char_at(n - 5)
+    crc<Int> = (c0 & 0xFF) | ((c1 & 0xFF) << 8) | ((c2 & 0xFF) << 16) | ((c3 & 0xFF) << 24)
+    i0<Int> = gz.char_at(n - 4)
+    i1<Int> = gz.char_at(n - 3)
+    i2<Int> = gz.char_at(n - 2)
+    i3<Int> = gz.char_at(n - 1)
+    isize<Int> = (i0 & 0xFF) | ((i1 & 0xFF) << 8) | ((i2 & 0xFF) << 16) | ((i3 & 0xFF) << 24)
+    if (crc32(out) != (crc & 0xFFFFFFFF)) { return String?() }
+    if ((out.len() & 0xFFFFFFFF) != (isize & 0xFFFFFFFF)) { return String?() }
+    # NOTE: wrap a fresh substring copy, not `out` directly — returning a
+    # concat-built String through a `String?` wrapper corrupts its prefix in
+    # the current Vyb runtime; copying via substring first is correct.
+    return String?(out.substring(0, out.len()))
+}
+
+# --- tar (ustar / POSIX) extraction ---------------------------------------
+
+share(all)
+struct TarEntry {
+    name<String>,
+    size<Int>,
+    data<String>
+}
+
+share(all)
+parse_octal(s<String>)<Int> -> {
+    val<Int> = 0
+    n<Int> = s.len()
+    for (i in 0..n - 1) {
+        c<Int> = s.char_at(i) & 0xFF
+        if (c >= 0x30 && c <= 0x37) {
+            val = val * 8 + (c - 0x30)
+        }
+    }
+    return val
+}
+
+share(all)
+extract_tar(tar<String>)<Vec<TarEntry>> -> {
+    out<Vec<TarEntry>> = Vec()
+    pos<Int> = 0
+    n<Int> = tar.len()
+    pendingName<String> = ""
+    while (pos + 512 <= n) {
+        block<String> = tar.substring(pos, pos + 512)
+        zero<Bool> = true
+        for (i in 0..511) {
+            if ((block.char_at(i) & 0xFF) != 0) { zero = false }
+        }
+        if (zero) { return out }
+        typeflag<Int> = block.char_at(156) & 0xFF
+        size<Int> = parse_octal(block.substring(124, 136))
+        padded<Int> = ((size + 511) / 512) * 512
+        if (typeflag == 0x4C || typeflag == 0x4B) {   # GNU 'L' / 'K' long name
+            pendingName = trim_nul(tar.substring(pos + 512, pos + 512 + size))
+            pos = pos + 512 + padded
+        } else {
+            nm<String> = trim_nul(block.substring(0, 100))
+            if (pendingName.len() > 0) {
+                nm = pendingName
+                pendingName = ""
+            }
+            if ((typeflag == 0x30 || typeflag == 0x00) && size >= 0) {
+                data<String> = tar.substring(pos + 512, pos + 512 + size)
+                out.push(TarEntry { name = nm, size = size, data = data })
+            }
+            pos = pos + 512 + padded
+        }
+    }
+    return out
+}

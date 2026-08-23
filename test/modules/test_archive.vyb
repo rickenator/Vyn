@@ -1,0 +1,45 @@
+// @test: stdlib archive module — gzip inflate + POSIX tar extract
+// @description: inflate_gzip decodes a real gzip stream (embedded literal), the
+//   CRC32 + ISIZE trailer verifies against it, and extract_tar walks the ustar
+//   archive back to the original member with byte-identical content. Also checks
+//   the RFC 1952 CRC-32 check value (0xCBF43926 for "123456789"). Self-contained
+//   fixture: a single-file tar.gz (hello.txt = "hello world\n"), no file deps.
+// @category: modules, archive, gzip, tar, stdlib
+// @expect: pass
+// @expect-output: archive-ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import archive::{inflate_gzip, extract_tar, crc32}
+
+main()<Int> -> {
+    # RFC 1952 known CRC-32 check value.
+    if (crc32("123456789") != 0xCBF43926) { return 1 }
+
+    gz<String> =
+        "\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\x03\xed\xd1\x31\x0a\xc2\x40" +
+        "\x10\x05\xd0\xa9\x3d\x45\x4e\x20\x23\x2c\xf1\x3c\x82\x42\x8a\x85" +
+        "\x40\xb2\xa2\xc7\x77\x4d\x23\xd8\x2b\x88\xef\x35\x7f\xf8\xcd\x2f" +
+        "\x66\xba\xd4\x3a\xef\xdb\xbd\xc5\xe7\x64\x37\x96\xb2\x65\xf7\x9e" +
+        "\x99\x87\xf2\xba\xb7\xfe\x38\x66\x89\x21\xe3\x0b\xae\x6b\x3b\x2d" +
+        "\x7d\x32\xfe\xd3\xf4\xfc\xff\x70\x9b\x97\x7a\xde\x05\x00\x00\x00" +
+        "\x00\x00\x00\x00\x00\x00\x3f\xe3\x01\xb3\xa4\x3d\xbb\x00\x28\x00" +
+        "\x00"
+
+    match (inflate_gzip(gz)) {
+        plain -> {
+            # Trailer fields prove CRC32 + ISIZE checks passed; the payload
+            # must be the 10240-byte (20-block) ustar archive.
+            if (plain.len() != 10240) { return 2 }
+            entries<Vec<TarEntry>> = extract_tar(plain)
+            if (entries.len() != 1) { return 3 }
+            e<TarEntry> = entries.get(0)
+            if (e.name != "hello.txt") { return 4 }
+            if (e.size != 12) { return 5 }
+            if (e.data != "hello world\n") { return 6 }
+            println("archive-ok")
+            return 0
+        }
+        ? -> { return 7 }
+    }
+}
