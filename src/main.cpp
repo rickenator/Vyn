@@ -623,6 +623,120 @@ void optimize_module(llvm::Module* module, llvm::TargetMachine* targetMachine, i
 namespace {
 namespace fs = std::filesystem;
 
+// Run a tool without passing file names or flags through a shell. Native builds
+// receive source, object, and output paths from the caller, so string-concatenated
+// `system()` commands would make ordinary path characters shell syntax.
+static int run_argv(const std::string& program, const std::vector<std::string>& arguments) {
+#if defined(__unix__) || defined(__APPLE__)
+    pid_t pid = fork();
+    if (pid < 0) {
+        std::cerr << "Failed to fork " << program << ": " << std::strerror(errno) << std::endl;
+        return -1;
+    }
+    if (pid == 0) {
+        std::vector<char*> argv;
+        argv.reserve(arguments.size() + 2);
+        argv.push_back(const_cast<char*>(program.c_str()));
+        for (const auto& argument : arguments) argv.push_back(const_cast<char*>(argument.c_str()));
+        argv.push_back(nullptr);
+        execvp(program.c_str(), argv.data());
+        std::cerr << "Failed to execute " << program << ": " << std::strerror(errno) << std::endl;
+        _exit(127);
+    }
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0) {
+        std::cerr << "Failed to wait for " << program << ": " << std::strerror(errno) << std::endl;
+        return -1;
+    }
+    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+#else
+    (void)program;
+    (void)arguments;
+    return -1;
+#endif
+}
+
+static int run_argv_capture(const std::string& program,
+                            const std::vector<std::string>& arguments,
+                            std::string& output) {
+#if defined(__unix__) || defined(__APPLE__)
+    int pipefd[2];
+    if (pipe(pipefd) != 0) {
+        std::cerr << "Failed to create output pipe for " << program << ": "
+                  << std::strerror(errno) << std::endl;
+        return -1;
+    }
+    pid_t pid = fork();
+    if (pid < 0) {
+        std::cerr << "Failed to fork " << program << ": " << std::strerror(errno) << std::endl;
+        close(pipefd[0]);
+        close(pipefd[1]);
+        return -1;
+    }
+    if (pid == 0) {
+        close(pipefd[0]);
+        if (dup2(pipefd[1], STDOUT_FILENO) < 0) _exit(127);
+        close(pipefd[1]);
+        std::vector<char*> argv;
+        argv.reserve(arguments.size() + 2);
+        argv.push_back(const_cast<char*>(program.c_str()));
+        for (const auto& argument : arguments) argv.push_back(const_cast<char*>(argument.c_str()));
+        argv.push_back(nullptr);
+        execvp(program.c_str(), argv.data());
+        _exit(127);
+    }
+    close(pipefd[1]);
+    char buffer[512];
+    ssize_t n;
+    while ((n = read(pipefd[0], buffer, sizeof(buffer))) > 0) output.append(buffer, n);
+    close(pipefd[0]);
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0) {
+        std::cerr << "Failed to wait for " << program << ": " << std::strerror(errno) << std::endl;
+        return -1;
+    }
+    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+#else
+    (void)program;
+    (void)arguments;
+    (void)output;
+    return -1;
+#endif
+}
+
+static bool executable_available(const std::string& program) {
+    if (program.find('/') != std::string::npos)
+        return access(program.c_str(), X_OK) == 0;
+    const char* path = std::getenv("PATH");
+    if (!path) return false;
+    std::istringstream directories(path);
+    std::string directory;
+    while (std::getline(directories, directory, ':')) {
+        fs::path candidate = directory.empty() ? fs::path(program) : fs::path(directory) / program;
+        if (access(candidate.c_str(), X_OK) == 0) return true;
+    }
+    return false;
+}
+
+static std::string display_argv(const std::string& program, const std::vector<std::string>& arguments) {
+    auto quote = [](const std::string& value) {
+        if (value.find_first_of(" \t'\"\\$&;|<>()") == std::string::npos) return value;
+        std::string result = "'";
+        for (char c : value) result += c == '\'' ? "'\\''" : std::string(1, c);
+        return result + "'";
+    };
+    std::string result = quote(program);
+    for (const auto& argument : arguments) result += " " + quote(argument);
+    return result;
+}
+
+static bool object_references_symbol(const std::string& objectFile, const std::string& symbol) {
+    std::ifstream input(objectFile, std::ios::binary);
+    if (!input) return false;
+    std::string contents((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    return contents.find(symbol) != std::string::npos;
+}
+
 struct ModuleParseOptions {
     std::vector<fs::path> cliModulePaths;
     fs::path executablePath;
@@ -846,16 +960,16 @@ int link_vyb_executable(const std::vector<std::string>& objectFiles,
     bool needQt = false;
     bool needWebEngine = false;
     for (const auto& objFile : objectFiles) {
-        if (!needTls && system(("grep -aq __vyb_tls_ " + objFile).c_str()) == 0) {
+        if (!needTls && object_references_symbol(objFile, "__vyb_tls_")) {
             needTls = true;
         }
-        if (!needCurses && system(("grep -aq __vyb_curses_ " + objFile).c_str()) == 0) {
+        if (!needCurses && object_references_symbol(objFile, "__vyb_curses_")) {
             needCurses = true;
         }
-        if (!needQt && system(("grep -aq __vyb_qt_ " + objFile).c_str()) == 0) {
+        if (!needQt && object_references_symbol(objFile, "__vyb_qt_")) {
             needQt = true;
         }
-        if (!needWebEngine && system(("grep -aq __vyb_qt_web_ " + objFile).c_str()) == 0) {
+        if (!needWebEngine && object_references_symbol(objFile, "__vyb_qt_web_")) {
             needWebEngine = true;
         }
     }
@@ -865,18 +979,19 @@ int link_vyb_executable(const std::vector<std::string>& objectFiles,
     for (const auto& unit : runtimeUnits) {
         fs::path runtimeObject = exeOutDir / unit.obj;
         std::cout << "Compiling Vyb runtime library (" << unit.src << ")..." << std::endl;
-        std::string compileCmd = unit.compiler + " -c -O2 -fPIC " + unit.src +
-                                 " -o " + runtimeObject.string();
+        std::vector<std::string> compileArgs{"-c", "-O2", "-fPIC", unit.src,
+                                             "-o", runtimeObject.string()};
         if (unit.compiler == "cc") {
-            compileCmd += " -D_GNU_SOURCE";
-            if (needTls) compileCmd += " -DVYB_HAVE_OPENSSL";
-            if (needCurses) compileCmd += " -DVYB_HAVE_NCURSES";
+            compileArgs.push_back("-D_GNU_SOURCE");
+            if (needTls) compileArgs.push_back("-DVYB_HAVE_OPENSSL");
+            if (needCurses) compileArgs.push_back("-DVYB_HAVE_NCURSES");
         }
         if (unit.compiler == "c++") {
-            compileCmd += " -D_GNU_SOURCE";
-            compileCmd += " -std=c++17 -I" + (repoRoot / "include").string();
+            compileArgs.push_back("-D_GNU_SOURCE");
+            compileArgs.push_back("-std=c++17");
+            compileArgs.push_back("-I" + (repoRoot / "include").string());
         }
-        if (system(compileCmd.c_str()) != 0) {
+        if (run_argv(unit.compiler, compileArgs) != 0) {
             std::cerr << "Failed to compile runtime library" << std::endl;
             return 1;
         }
@@ -888,78 +1003,73 @@ int link_vyb_executable(const std::vector<std::string>& objectFiles,
     // Qt5 (and optionally Qt5 WebEngine) is installed, so a standalone binary
     // owns the __vyb_qt_* / __vyb_qt_web_* symbols its object references.
     if (needQt) {
-        auto pkgConfig = [](const std::string& args) -> std::string {
+        auto pkgConfig = [](const std::vector<std::string>& args) -> std::vector<std::string> {
             std::string out;
-            FILE* p = popen(("pkg-config " + args + " 2>/dev/null").c_str(), "r");
-            if (!p) return "";
-            char buf[512];
-            while (fgets(buf, sizeof buf, p)) out += buf;
-            pclose(p);
-            size_t e = out.find_last_not_of(" \t\r\n");
-            if (e != std::string::npos) out.resize(e + 1);
-            return out;
+            if (run_argv_capture("pkg-config", args, out) != 0) return {};
+            std::vector<std::string> result;
+            std::istringstream fields(out);
+            for (std::string field; fields >> field;) result.push_back(std::move(field));
+            return result;
         };
-        auto tokenize = [](const std::string& s, std::vector<std::string>& out) {
-            std::string cur;
-            for (char c : s) {
-                if (c == ' ' || c == '\t') {
-                    if (!cur.empty()) { out.push_back(cur); cur.clear(); }
-                } else {
-                    cur += c;
-                }
-            }
-            if (!cur.empty()) out.push_back(cur);
+        auto append = [](std::vector<std::string>& into, const std::vector<std::string>& more) {
+            into.insert(into.end(), more.begin(), more.end());
         };
 
         std::string qtCxx = "c++";
-        std::string qtCxxFlags = "-D_GNU_SOURCE -std=c++17 -O2 -fPIC -I" +
-                                 (repoRoot / "include").string();
-        bool qtAvail = (system("pkg-config --exists Qt5Widgets") == 0);
-        bool webAvail = (system("pkg-config --exists Qt5WebEngineWidgets") == 0);
+        std::vector<std::string> qtCxxArgs{"-c", "-D_GNU_SOURCE", "-std=c++17", "-O2", "-fPIC",
+                                            "-I" + (repoRoot / "include").string()};
+        bool qtAvail = run_argv("pkg-config", {"--exists", "Qt5Widgets"}) == 0;
+        bool webAvail = run_argv("pkg-config", {"--exists", "Qt5WebEngineWidgets"}) == 0;
         if (!qtAvail) {
             // No Qt dev headers: link only the stub shims so the __vyb_qt_*
             // symbols resolve and the module degrades (qt_init()==false).
             fs::path stubObj = exeOutDir / "vyb_qt_stub.o";
-            if (system((qtCxx + " -c " + qtCxxFlags + " " +
-                        (runtimeDir / "vyb_qt_stub.cpp").string() + " -o " + stubObj.string()).c_str()) != 0) {
+            std::vector<std::string> stubArgs = qtCxxArgs;
+            stubArgs.push_back((runtimeDir / "vyb_qt_stub.cpp").string());
+            stubArgs.push_back("-o");
+            stubArgs.push_back(stubObj.string());
+            if (run_argv(qtCxx, stubArgs) != 0) {
                 std::cerr << "Failed to compile qt stub" << std::endl;
                 return 1;
             }
             runtimeObjects.push_back(stubObj.string());
         } else {
-            std::string qtCflags = pkgConfig("--cflags Qt5Widgets");
+            std::vector<std::string> qtPackages{"Qt5Widgets"};
+            if (needWebEngine && webAvail) qtPackages.push_back("Qt5WebEngineWidgets");
+            std::vector<std::string> qtCflags = pkgConfig([&] {
+                std::vector<std::string> args{"--cflags"}; append(args, qtPackages); return args;
+            }());
             fs::path bridgeObj = exeOutDir / "vyb_qt_bridge.o";
-            std::string bridgeCmd = qtCxx + " -c " + qtCxxFlags + " " + qtCflags +
-                                    " -DVYB_HAVE_QT5" +
-                                    (needWebEngine ? " -DVYB_HAVE_QT_WEBENGINE" : "") +
-                                    " " + (runtimeDir / "vyb_qt_bridge.cpp").string() +
-                                    " -o " + bridgeObj.string();
-            if (needWebEngine && webAvail)
-                bridgeCmd = qtCxx + " -c " + qtCxxFlags + " " +
-                            pkgConfig("--cflags Qt5Widgets Qt5WebEngineWidgets") +
-                            " -DVYB_HAVE_QT5 -DVYB_HAVE_QT_WEBENGINE " +
-                            (runtimeDir / "vyb_qt_bridge.cpp").string() +
-                            " -o " + bridgeObj.string();
-            if (system(bridgeCmd.c_str()) != 0) {
+            std::vector<std::string> bridgeArgs = qtCxxArgs;
+            append(bridgeArgs, qtCflags);
+            bridgeArgs.push_back("-DVYB_HAVE_QT5");
+            if (needWebEngine && webAvail) bridgeArgs.push_back("-DVYB_HAVE_QT_WEBENGINE");
+            bridgeArgs.push_back((runtimeDir / "vyb_qt_bridge.cpp").string());
+            bridgeArgs.push_back("-o");
+            bridgeArgs.push_back(bridgeObj.string());
+            if (run_argv(qtCxx, bridgeArgs) != 0) {
                 std::cerr << "Failed to compile qt bridge" << std::endl;
                 return 1;
             }
             runtimeObjects.push_back(bridgeObj.string());
-            tokenize(pkgConfig("--libs Qt5Widgets"), qtLibs);
+            std::vector<std::string> qtLibArgs{"--libs"};
+            append(qtLibArgs, qtPackages);
+            qtLibs = pkgConfig(qtLibArgs);
 
             if (needWebEngine && webAvail) {
                 fs::path webObj = exeOutDir / "vyb_qt_webengine_bridge.o";
-                std::string webCmd = qtCxx + " -c " + qtCxxFlags + " " +
-                                     pkgConfig("--cflags Qt5Widgets Qt5WebEngineWidgets") +
-                                     " -DVYB_HAVE_QT5 -DVYB_HAVE_QT_WEBENGINE " +
-                                     (runtimeDir / "vyb_qt_webengine_bridge.cpp").string() +
-                                     " -o " + webObj.string();
-                if (system(webCmd.c_str()) != 0) {
+                std::vector<std::string> webArgs = qtCxxArgs;
+                append(webArgs, qtCflags);
+                webArgs.push_back("-DVYB_HAVE_QT5");
+                webArgs.push_back("-DVYB_HAVE_QT_WEBENGINE");
+                webArgs.push_back((runtimeDir / "vyb_qt_webengine_bridge.cpp").string());
+                webArgs.push_back("-o");
+                webArgs.push_back(webObj.string());
+                if (run_argv(qtCxx, webArgs) != 0) {
                     std::cerr << "Failed to compile qt webengine bridge" << std::endl;
                     return 1;
                 }
                 runtimeObjects.push_back(webObj.string());
-                tokenize(pkgConfig("--libs Qt5Widgets Qt5WebEngineWidgets"), qtLibs);
             } else if (needWebEngine) {
                 std::cerr << "Error: this program uses the Qt web surface but Qt5 "
                              "WebEngine is not installed (install qtwebengine5-dev)."
@@ -974,10 +1084,10 @@ int link_vyb_executable(const std::vector<std::string>& objectFiles,
     // which is required once the C++ runtime atom (error_handling.o) is linked.
     auto findCompilerDriver = []() -> std::string {
         if (const char* cxx = std::getenv("CXX")) {
-            if (*cxx) return std::string(cxx);
+            if (*cxx && executable_available(cxx)) return std::string(cxx);
         }
         for (const char* cand : {"c++", "g++", "clang++"}) {
-            if (std::system((std::string("which ") + cand + " >/dev/null 2>&1").c_str()) == 0)
+            if (executable_available(cand))
                 return std::string(cand);
         }
         return "";
@@ -1005,8 +1115,8 @@ int link_vyb_executable(const std::vector<std::string>& objectFiles,
         linkerArgs.push_back("-o");
         linkerArgs.push_back(outputExecutable);
 #else
-        if (std::system("which lld >/dev/null 2>&1") == 0) linker = "lld";
-        else if (std::system("which ld.lld >/dev/null 2>&1") == 0) linker = "ld.lld";
+        if (executable_available("lld")) linker = "lld";
+        else if (executable_available("ld.lld")) linker = "ld.lld";
         else linker = "ld";
         linkerArgs.push_back("-dynamic-linker");
         linkerArgs.push_back("/lib64/ld-linux-x86-64.so.2");
@@ -1076,57 +1186,16 @@ int link_vyb_executable(const std::vector<std::string>& objectFiles,
     } else {
         linkerArgs.push_back("-lm");
     }
-    // Build command for display
-    std::string command = linker;
-    for (const auto& arg : linkerArgs) {
-        command += " " + arg;
+    std::cout << "Linker command: " << display_argv(linker, linkerArgs) << std::endl;
+    int exitCode = run_argv(linker, linkerArgs);
+    if (exitCode == 0) {
+        std::cout << "Successfully linked executable: " << outputExecutable << std::endl;
+        chmod(outputExecutable.c_str(), 0755);
+        return 0;
     }
-    std::cout << "Linker command: " << command << std::endl;
-
-    // Execute linker using fork/exec for better control
-    pid_t pid = fork();
-    if (pid == -1) {
-        std::cerr << "Failed to fork process" << std::endl;
-        return 1;
-    }
-
-    if (pid == 0) {
-        // Child process - execute linker
-        std::vector<char*> args;
-        args.push_back(const_cast<char*>(linker.c_str()));
-        for (const auto& arg : linkerArgs) {
-            args.push_back(const_cast<char*>(arg.c_str()));
-        }
-        args.push_back(nullptr);
-
-        execvp(linker.c_str(), args.data());
-
-        // If execvp returns, it failed
-        std::cerr << "Failed to execute linker: " << linker << std::endl;
-        exit(1);
-    } else {
-        // Parent process - wait for linker to complete
-        int status;
-        waitpid(pid, &status, 0);
-
-        if (WIFEXITED(status)) {
-            int exitCode = WEXITSTATUS(status);
-            if (exitCode == 0) {
-                std::cout << "Successfully linked executable: " << outputExecutable << std::endl;
-
-                // Make executable
-                chmod(outputExecutable.c_str(), 0755);
-
-                return 0;
-            } else {
-                std::cerr << "Linker failed with exit code: " << exitCode << std::endl;
-                return exitCode;
-            }
-        } else {
-            std::cerr << "Linker process terminated abnormally" << std::endl;
-            return 1;
-        }
-    }
+    if (exitCode >= 0) std::cerr << "Linker failed with exit code: " << exitCode << std::endl;
+    else std::cerr << "Linker process terminated abnormally" << std::endl;
+    return exitCode >= 0 ? exitCode : 1;
 }
 
 // ===========================================================================
