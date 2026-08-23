@@ -1,0 +1,35 @@
+// @test: Vec bounds-safe get and set
+// @description: Vec reads outside [0, len) return the element default and writes
+//   outside that range are ignored. Negative Int indexes are invalid too.
+// @category: vec, bounds, memory-safety
+// @expect: pass
+// @expect-return: 0
+// @execute-jit: true
+
+main()<Int> -> {
+    empty<Vec<Int>> = Vec()
+    if (empty.get(0) != 0 || empty.get(-1) != 0) { return 1 }
+
+    values<Vec<Int>> = Vec()
+    values.push(11)
+    values.push(22)
+
+    if (values.get(2) != 0 || values.get(-1) != 0) { return 2 }
+
+    values.set(2, 99)
+    values.set(-1, 88)
+    if (values.get(0) != 11 || values.get(1) != 22 || values.len() != 2) {
+        return 3
+    }
+
+    values.set(1, 33)
+    if (values.get(1) != 33) { return 4 }
+
+    words<Vec<String>> = Vec()
+    words.push("vyb")
+    if (words.get(1) != "" || words.get(-1) != "") { return 5 }
+    words.set(1, "wrong")
+    if (words.get(0) != "vyb") { return 6 }
+
+    return 0
+}

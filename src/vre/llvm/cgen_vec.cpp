@@ -380,27 +380,51 @@ void LLVMCodegen::handleVecGet(vyb::ast::CallExpression* node, llvm::Value* vecP
     llvm::Value* dataPtr = builder->CreateLoad(llvm::PointerType::get(*context, 0), dataFieldPtr, "vec.data");
     llvm::Value* size = builder->CreateLoad(llvm::Type::getInt64Ty(*context), sizeFieldPtr, "vec.size");
 
-    // TODO: Add bounds checking - for now assume index is valid
+    // Indexes are signed Int values at the language level. An unsigned compare
+    // rejects both negative indexes (which become large unsigned values) and
+    // indexes at or beyond the current size before calculating an address.
+    llvm::Value* indexInBounds = builder->CreateICmpULT(index, size, "vec.get.in_bounds");
+    llvm::BasicBlock* boundsCheckBlock = builder->GetInsertBlock();
+    llvm::BasicBlock* validBlock = llvm::BasicBlock::Create(
+        *context, "vec.get.valid", boundsCheckBlock->getParent());
+    llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(
+        *context, "vec.get.merge", boundsCheckBlock->getParent());
+    builder->CreateCondBr(indexInBounds, validBlock, mergeBlock);
+
+    builder->SetInsertPoint(validBlock);
 
     // Calculate offset: data_ptr + (index * element_size)
     llvm::Value* elementSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), elementSizeBytes);
     llvm::Value* offset = builder->CreateMul(index, elementSize, "vec.offset");
     llvm::Value* elementPtr = builder->CreateGEP(llvm::Type::getInt8Ty(*context), dataPtr, offset, "vec.element_ptr");
 
-    // Load the element value based on type
+    // Load the element value based on type. The valid path rejoins the
+    // out-of-bounds default below so no invalid address is ever dereferenced.
+    llvm::Value* element;
     if (elementLLVMType->isStructTy()) {
-        // For structs, load the entire struct value (will be a copy)
-        llvm::Value* structValue = builder->CreateLoad(elementLLVMType, elementPtr, "vec.element_struct");
-        m_currentLLVMValue = structValue;
-
-        VYB_CDBG << "DEBUG: Vec::get() called - returning struct value" << std::endl;
+        element = builder->CreateLoad(elementLLVMType, elementPtr, "vec.element_struct");
     } else {
-        // For primitives, load the value directly
-        llvm::Value* element = builder->CreateLoad(elementLLVMType, elementPtr, "vec.element");
-        m_currentLLVMValue = element;
-
-        VYB_CDBG << "DEBUG: Vec::get() called - element retrieved" << std::endl;
+        element = builder->CreateLoad(elementLLVMType, elementPtr, "vec.element");
     }
+    builder->CreateBr(mergeBlock);
+
+    builder->SetInsertPoint(mergeBlock);
+    llvm::Value* defaultValue;
+    if (elementLLVMType->isIntegerTy()) {
+        defaultValue = llvm::ConstantInt::get(elementLLVMType, 0);
+    } else if (elementLLVMType->isFloatingPointTy()) {
+        defaultValue = llvm::ConstantFP::get(elementLLVMType, 0.0);
+    } else if (elementLLVMType->isStructTy() || elementLLVMType->isArrayTy()) {
+        defaultValue = llvm::ConstantAggregateZero::get(elementLLVMType);
+    } else {
+        defaultValue = llvm::Constant::getNullValue(elementLLVMType);
+    }
+    llvm::PHINode* result = builder->CreatePHI(elementLLVMType, 2, "vec.get.result");
+    result->addIncoming(element, validBlock);
+    result->addIncoming(defaultValue, boundsCheckBlock);
+    m_currentLLVMValue = result;
+
+    VYB_CDBG << "DEBUG: Vec::get() called - bounds-safe element retrieval" << std::endl;
 }
 
 void LLVMCodegen::handleVecSet(vyb::ast::CallExpression* node, llvm::Value* vecPtr, llvm::Type* vecStructType) {
@@ -439,6 +463,20 @@ void LLVMCodegen::handleVecSet(vyb::ast::CallExpression* node, llvm::Value* vecP
         builder->CreateStructGEP(vecStructType, vecPtr, 0, "vec.set.data_ptr"),
         "vec.set.data");
 
+    llvm::Value* size = builder->CreateLoad(
+        llvm::Type::getInt64Ty(*context),
+        builder->CreateStructGEP(vecStructType, vecPtr, 1, "vec.set.size_ptr"),
+        "vec.set.size");
+    llvm::Value* indexInBounds = builder->CreateICmpULT(index, size, "vec.set.in_bounds");
+    llvm::BasicBlock* boundsCheckBlock = builder->GetInsertBlock();
+    llvm::BasicBlock* validBlock = llvm::BasicBlock::Create(
+        *context, "vec.set.valid", boundsCheckBlock->getParent());
+    llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(
+        *context, "vec.set.merge", boundsCheckBlock->getParent());
+    builder->CreateCondBr(indexInBounds, validBlock, mergeBlock);
+
+    builder->SetInsertPoint(validBlock);
+
     llvm::Value* elementSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), elementSizeBytes);
     llvm::Value* offset = builder->CreateMul(index, elementSize, "vec.set.offset");
     llvm::Value* elementPtr = builder->CreateGEP(llvm::Type::getInt8Ty(*context), dataPtr, offset, "vec.set.element_ptr");
@@ -455,7 +493,9 @@ void LLVMCodegen::handleVecSet(vyb::ast::CallExpression* node, llvm::Value* vecP
     }
 
     builder->CreateStore(value, elementPtr);
+    builder->CreateBr(mergeBlock);
 
+    builder->SetInsertPoint(mergeBlock);
     m_currentLLVMValue = nullptr;
 }
 

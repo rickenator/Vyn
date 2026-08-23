@@ -587,9 +587,9 @@ bind<K<Comparable, Equatable>, V> BTreeMapOps -> BTreeMap<K, V> {
 # - `find` returns the index of the first `==` match as `Int?` (absent = not found).
 # - `min` / `max` read the least / greatest element.
 #
-# On an empty vector `reversed` is a no-op, while `first` / `last` (which read
-# via `Vec::get`) inherit `get`'s current out-of-range behavior (a known
-# compiler gap: the returned value is not a clean default). Comparison order is
+# `Vec::get` returns the element's zero/default value for a negative or
+# out-of-range index, so `first` / `last` also return that default for an empty
+# vector. `Vec::set` ignores negative or out-of-range indexes. Comparison order is
 # dispatched through the `Comparable`-bounded `cmp_lt` helper (mirroring the
 # `equals`-based `samekey`), because a direct `compare` call does not resolve on
 # a generic element. The higher-order combinators live in a separate
