@@ -1,5 +1,7 @@
 // Finding the maximum value in Vec<Int>.
 
+import collections
+
 main()<Int> -> {
     numbers<Vec<Int>> = Vec()
     numbers.push(42)

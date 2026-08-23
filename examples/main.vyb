@@ -1,5 +1,7 @@
 // Vyb language showcase using current runtime-safe patterns.
 
+import collections
+
 struct Point {
     x<Int>,
     y<Int>

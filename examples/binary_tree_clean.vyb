@@ -1,6 +1,8 @@
 // Flat binary-search-tree storage demo.
 // Node traversal helpers are kept inline to avoid Vec by-value ownership copies.
 
+import collections
+
 struct TreeNode {
     key<Int>,
     value<String>

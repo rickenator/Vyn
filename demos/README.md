@@ -12,7 +12,7 @@ The demos are intentionally compact; richer runtime examples, including
 | Demo | Covers |
 |------|--------|
 | `control_flow.vyb` | recursion, arithmetic, `match`, `defer` |
-| `collections.vyb` | `Vec<Int>`, push, iteration, `len` |
+| `collections_demo.vyb` | `Vec<Int>`, push, iteration, `len`, `import collections` |
 | `structs_aspects.vyb` | structs, aspects, `bind`, method dispatch |
 | `ffi_freedom.vyb` | `extern "C"` declarations called only inside `freedom` |
 | `ffi_http_get/` | external URL request through C FFI and `curl` |

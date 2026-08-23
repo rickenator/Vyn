@@ -72,7 +72,7 @@ python3 test/run_tests.py --vyb build/vyb --test-dir test --execute-jit
 
 # Run your first Vyb program
 echo 'main()<Int> -> { return 42 }' > hello.vyb
-build/vyb hello.vyb  # Returns exit code 42
+build/vyb hello.vyb  # Prints 42 and exits 0
 
 # Try select expressions with pattern matching
 cat > example.vyb << 'EOF'
@@ -92,7 +92,7 @@ main()<Int> -> {
     return result
 }
 EOF
-build/vyb example.vyb  # Returns 30
+build/vyb example.vyb  # Prints 30 and exits 0
 
 # Complex return types with auto-serialization
 echo 'main()<Int,String> -> { return 42, "Hello!" }' > tuple.vyb
@@ -2784,7 +2784,7 @@ println(person2.age.to_string())  # Output: 30
 
 One of Vyb's standout features is automatic serialization of complex return types from `main()`:
 
-- **Simple integers**: Return as exit codes (`main()<Int> -> { return 42 }`)
+- **Simple integers**: Serialize to stdout (`main()<Int> -> { return 42 }` prints `42`)
 - **Complex types**: Automatically serialize to JSON-like format
 - **Tuples**: `main()<Int,String> -> { return 10, "hello" }` outputs `[10, "hello"]`
 - **Structs**: Full structured output with field names and values

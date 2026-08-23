@@ -1,9 +1,11 @@
 #!/bin/bash
-# Test compilation of Vyb examples
-# Tests both JIT execution and AOT compilation with build
+# Test AOT compilation of Vyb examples (`--build`)
+#
+# The compiled executable must exit 0 and write the program's main-return value
+# (JSON-serialized) to stdout, matching the JIT contract enforced by run_tests.py.
 
 echo "=========================================="
-echo "Vyb Compilation Test Suite v0.4.4"
+echo "Vyb AOT Compilation Test Suite v0.5.0"
 echo "=========================================="
 echo
 
@@ -13,7 +15,7 @@ TESTS_FAILED=0
 # Test function
 test_compile() {
     local test_file=$1
-    local expected_exit=$2
+    local expected_return=$2
     local test_name=$(basename "$test_file" .vyb)
 
     echo "Testing: $test_name"
@@ -25,17 +27,21 @@ test_compile() {
         return 1
     fi
 
-    # Run and check exit code
-    ./test_output_$test_name > /dev/null 2>&1
+    # Run, check exit code is 0, and check the serialized return value on stdout
+    local output
+    output=$(./test_output_$test_name 2>&1)
     local actual_exit=$?
 
-    if [ "$actual_exit" -eq "$expected_exit" ]; then
-        echo "✓ Pass: $test_name (exit code: $actual_exit)"
+    local actual_return
+    actual_return=$(printf '%s\n' "$output" | sed '/^$/d' | tail -1)
+
+    if [ "$actual_exit" -eq 0 ] && [ "$actual_return" = "$expected_return" ]; then
+        echo "✓ Pass: $test_name (exit code: 0, return: $actual_return)"
         TESTS_PASSED=$((TESTS_PASSED + 1))
         rm -f "test_output_$test_name" "test_output_$test_name.o"
         return 0
     else
-        echo "✗ Fail: $test_name (expected: $expected_exit, got: $actual_exit)"
+        echo "✗ Fail: $test_name (expected exit 0 and return: $expected_return, got exit: $actual_exit, return: $actual_return)"
         TESTS_FAILED=$((TESTS_FAILED + 1))
         return 1
     fi
@@ -47,7 +53,7 @@ echo
 
 test_compile "test/compilation/test_compile.vyb" 49
 test_compile "test/compilation/binary_tree.vyb" 60
-test_compile "test/compilation/binary_tree_complex.vyb" 94
+test_compile "test/compilation/binary_tree_complex.vyb" 350
 
 echo
 echo "=========================================="

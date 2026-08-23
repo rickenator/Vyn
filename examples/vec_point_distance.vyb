@@ -1,5 +1,7 @@
 // Vec<T> iteration with struct Point.
 
+import collections
+
 struct Point {
     x<Float>,
     y<Float>

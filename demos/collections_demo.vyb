@@ -1,5 +1,7 @@
 // Demo: Vec<Int> creation, push, iteration, and length.
 
+import collections
+
 main()<Int> -> {
     values<Vec<Int>> = Vec::new()
     values.push(4)
