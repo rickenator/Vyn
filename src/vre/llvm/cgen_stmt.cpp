@@ -141,6 +141,14 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
             VYB_CDBG << "DEBUG: ReturnStatement - Type: " << getTypeName(returnValue->getType())
                 << ", Function Return Type: " << (currentFunction ? getTypeName(currentFunction->getReturnType()) : "null") << std::endl;
             
+            // A `main()` whose return argument is a lit(...) call must emit its
+            // already-serialized raw JSON verbatim (no escaping, no quotes). Record
+            // it here so the JIT runner and standalone wrapper can choose
+            // raw-passthrough instead of JSON-escaping the returned String.
+            if (currentFunction && currentFunction->getName() == "main" &&
+                    isLitIntrinsicCall(node->argument.get())) {
+                m_mainReturnIsLitRaw = true;
+            }
             
 
             // Auto-serialize main() return values when the return type was changed to void.
@@ -188,11 +196,10 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                                 st->getElementType(0)->isPointerTy() &&
                                 st->getElementType(1)->isIntegerTy(64)) {
                             llvm::Value* strPtr = builder->CreateExtractValue(val, 0, "str.ptr");
-                            llvm::Function* concat = getConcatFn();
-                            llvm::Value* openQ  = builder->CreateGlobalStringPtr("\"");
-                            llvm::Value* closeQ = builder->CreateGlobalStringPtr("\"");
-                            llvm::Value* tmp = builder->CreateCall(concat, {openQ, strPtr}, "str.open");
-                            return builder->CreateCall(concat, {tmp, closeQ}, "str.json");
+                            llvm::Function* esc = getOrDeclFunc(
+                                "__vyb_json_escape_string",
+                                llvm::FunctionType::get(int8PtrType, {int8PtrType}, false));
+                            return builder->CreateCall(esc, {strPtr}, "str.json");
                         }
                     }
                     VYB_CDBG << "DEBUG: serializeOne - unsupported type: " << getTypeName(t)

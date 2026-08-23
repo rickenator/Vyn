@@ -6550,6 +6550,7 @@ void SemanticAnalyzer::visit(ast::ReturnStatement* node) {
             if (retTy) injectBareEnumConstructorType(node->argument.get(), retTy);
         }
         node->argument->accept(*this);
+        validateReturnArity(node);
 
         // A closure with mutable captures holds pointers into the enclosing
         // stack frame; returning it from a function would leave those pointers
@@ -6562,6 +6563,55 @@ void SemanticAnalyzer::visit(ast::ReturnStatement* node) {
                          node->argument.get());
             }
         }
+    }
+}
+
+void SemanticAnalyzer::validateReturnArity(ast::ReturnStatement* node) {
+    if (!node || !node->argument) return;
+    if (!currentFunction) return;
+    // Failable functions are declared `()<T, E>` where E is an error type; a
+    // successful `return x` supplies only the payload T, not the error slot. Their
+    // declared return node still lists both types, so the arity rule below would
+    // otherwise misreport every successful payload return. Skip them.
+    if (currentFunction->needsErrorReturn) return;
+
+    ast::TypeNode* retTy = currentFunction->returnTypeNode
+        ? (currentFunction->returnTypeNode->type
+               ? currentFunction->returnTypeNode->type.get()
+               : currentFunction->returnTypeNode.get())
+        : nullptr;
+    if (!retTy) return;
+
+    // Expected count = number of declared return values (1 for a plain type).
+    size_t expected = 1;
+    if (auto tt = dynamic_cast<ast::TupleTypeNode*>(retTy)) {
+        expected = tt->memberTypes.size();
+    }
+    if (expected <= 1) return;  // single-value return: nothing to misalign
+
+    // Actual count = number of values the return argument produces.
+    size_t actual = 1;
+    if (auto seq = dynamic_cast<ast::SequenceExpression*>(node->argument.get())) {
+        actual = seq->expressions.size();
+    } else {
+        // A single call/tuple expression may itself produce multiple values
+        // (e.g. `return get_values()` where get_values returns `()<A, B>`).
+        auto it = expressionTypes.find(node->argument.get());
+        if (it != expressionTypes.end() && it->second) {
+            if (auto tt = dynamic_cast<ast::TupleTypeNode*>(it->second)) {
+                actual = tt->memberTypes.size();
+            }
+        } else if (auto tt = dynamic_cast<ast::TupleTypeNode*>(node->argument->type.get())) {
+            actual = tt->memberTypes.size();
+        }
+    }
+
+    if (actual != expected) {
+        std::string fnName = currentFunction->id ? currentFunction->id->name : "(anonymous)";
+        addError("Function '" + fnName + "' is declared to return " + std::to_string(expected) +
+                 " value(s) but this return supplies " + std::to_string(actual) +
+                 "; use a comma-separated return (e.g. `return a, b`) to match all values.",
+                 node);
     }
 }
 

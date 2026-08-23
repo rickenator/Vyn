@@ -85,6 +85,8 @@ public:
     std::unique_ptr<llvm::Module> releaseModule(); // Add declaration
     std::unique_ptr<llvm::LLVMContext> releaseContext(); // Add declaration for context release
     llvm::Module* getModule() const { return module.get(); } // Add method to get module pointer without releasing
+    // True when main()'s return argument is a lit(...) call (raw JSON passthrough).
+    bool isMainReturnLitRaw() const { return m_mainReturnIsLitRaw; }
 
 private:
     Driver& driver_; // Add a Driver reference
@@ -176,6 +178,12 @@ private:
     // its LLVM return type is changed to void and the value is serialized and printed.
     // This member holds the original return type so cgen_stmt knows how to serialize.
     llvm::Type* m_mainAutoSerializeOrigRetType = nullptr;
+    // True when `main()`'s return argument is a `lit(...)` intrinsic call. `lit()`
+    // produces an already-serialized raw JSON fragment that must pass through to
+    // stdout verbatim (no JSON escaping, no surrounding quotes), unlike a genuine
+    // user String return which is escaped+quoted. The JIT runner and the standalone
+    // wrapper consult this to decide raw-passthrough vs escaped output.
+    bool m_mainReturnIsLitRaw = false;
     llvm::Type* m_asyncResultType = nullptr;  // Result type T for Future<T> in async context
     llvm::Type* m_currentCallResultType = nullptr;  // Result type from most recent function call
 

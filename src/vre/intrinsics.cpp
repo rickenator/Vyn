@@ -581,6 +581,55 @@ extern "C" int64_t __vyb_cstr_length(const char* s) {
     return s ? static_cast<int64_t>(strlen(s)) : 0;
 }
 
+// Serialize a NUL-terminated C string as a valid JSON string literal: the
+// surrounding quotes plus every control character and JSON-significant
+// byte escaped (\" \\ \b \f \n \r \t, and other control bytes as \uXXXX).
+// A null pointer serializes as the JSON literal `null`. The caller owns the
+// returned buffer (it is heap-allocated and registered with the string
+// registry so codegen's __vyb_string_free reclaims it).
+extern "C" char* __vyb_json_escape_string(const char* s) {
+    if (!s) {
+        char* nul = (char*)malloc(5);
+        if (!nul) return nullptr;
+        memcpy(nul, "null", 5);
+        __vyb_string_register(nul);
+        return nul;
+    }
+    size_t n = strlen(s);
+    if (n > (SIZE_MAX - 3) / 6) return nullptr;  // would overflow the cap below
+    // Worst case every byte expands to 6 (\uXXXX) plus 2 quotes + NUL.
+    size_t cap = n * 6 + 3;
+    char* out = (char*)malloc(cap);
+    if (!out) return nullptr;
+    size_t w = 0;
+    out[w++] = '"';
+    for (size_t i = 0; i < n; ++i) {
+        unsigned char c = (unsigned char)s[i];
+        switch (c) {
+            case '"':  out[w++] = '\\'; out[w++] = '"';  break;
+            case '\\': out[w++] = '\\'; out[w++] = '\\'; break;
+            case '\b': out[w++] = '\\'; out[w++] = 'b';  break;
+            case '\f': out[w++] = '\\'; out[w++] = 'f';  break;
+            case '\n': out[w++] = '\\'; out[w++] = 'n';  break;
+            case '\r': out[w++] = '\\'; out[w++] = 'r';  break;
+            case '\t': out[w++] = '\\'; out[w++] = 't';  break;
+            default:
+                if (c < 0x20) {
+                    static const char hex[] = "0123456789abcdef";
+                    out[w++] = '\\'; out[w++] = 'u'; out[w++] = '0'; out[w++] = '0';
+                    out[w++] = hex[(c >> 4) & 0xF]; out[w++] = hex[c & 0xF];
+                } else {
+                    out[w++] = (char)c;
+                }
+                break;
+        }
+    }
+    out[w++] = '"';
+    out[w] = '\0';
+    __vyb_string_register(out);
+    return out;
+}
+
 // JSON array context for multi-value returns
 struct JSONArrayContext {
     std::string json;

@@ -44,6 +44,7 @@ extern "C" {
     char* __vyb_convert_lit_string(const char* str);
     char* __vyb_string_concat(const char* left, const char* right);
     int64_t __vyb_cstr_length(const char* s);
+    char* __vyb_json_escape_string(const char* s);
 
     // String concatenation intrinsic function
     char* __vyb_string_concat(const char* left, const char* right);
@@ -785,7 +786,7 @@ ParsedModule parse_vyb_module(const std::string& source, const std::string& file
 // and emit a true `int main()` that runs it and exits 0 — serializing a String
 // return to stdout and reporting an untrapped failable error, mirroring the JIT
 // runner in run_vyb_code.
-static void finalizeStandaloneExecutable(llvm::Module* module) {
+static void finalizeStandaloneExecutable(llvm::Module* module, bool mainReturnIsLitRaw = false) {
     llvm::Function* progMain = module->getFunction("main");
     if (!progMain) {
         return;  // no program entry point; nothing to wrap
@@ -834,9 +835,6 @@ static void finalizeStandaloneExecutable(llvm::Module* module) {
         llvm::Function* println = getOrDecl(
             "__vyb_println",
             llvm::FunctionType::get(llvm::Type::getVoidTy(ctx), {charPtr}, false));
-        llvm::Function* concat = getOrDecl(
-            "__vyb_string_concat",
-            llvm::FunctionType::get(charPtr, {charPtr, charPtr}, false));
         llvm::Value* isNull = builder.CreateIsNull(strPtr, "main.strNull");
         llvm::BasicBlock* nullBB = llvm::BasicBlock::Create(ctx, "str.null", main);
         llvm::BasicBlock* printBB = llvm::BasicBlock::Create(ctx, "str.print", main);
@@ -845,11 +843,19 @@ static void finalizeStandaloneExecutable(llvm::Module* module) {
         builder.CreateCall(println, {builder.CreateGlobalStringPtr("null")});
         builder.CreateRet(builder.getInt32(0));
         builder.SetInsertPoint(printBB);
-        llvm::Value* openQ = builder.CreateGlobalStringPtr("\"");
-        llvm::Value* closeQ = builder.CreateGlobalStringPtr("\"");
-        llvm::Value* tmp = builder.CreateCall(concat, {openQ, strPtr}, "str.open");
-        llvm::Value* json = builder.CreateCall(concat, {tmp, closeQ}, "str.json");
-        builder.CreateCall(println, {json});
+        // A `lit()` main return is already-serialized raw JSON: pass it through
+        // verbatim. A genuine user String is serialized as a valid JSON string
+        // literal (quotes + escaping) via the runtime helper, mirroring the JIT
+        // runner in run_vyb_code.
+        if (mainReturnIsLitRaw) {
+            builder.CreateCall(println, {strPtr});
+        } else {
+            llvm::Function* jsonEscape = getOrDecl(
+                "__vyb_json_escape_string",
+                llvm::FunctionType::get(charPtr, {charPtr}, false));
+            llvm::Value* json = builder.CreateCall(jsonEscape, {strPtr}, "str.json");
+            builder.CreateCall(println, {json});
+        }
         builder.CreateRet(builder.getInt32(0));
     } else if (isFailable) {
         llvm::Value* res = builder.CreateCall(progMain);
@@ -920,7 +926,7 @@ int compile_vyb_to_object(const std::string& source, const std::string& fileName
 
         // Ensure the standalone executable returns a well-defined (0) exit status
         // regardless of the Vyb `main` return shape.
-        finalizeStandaloneExecutable(module);
+        finalizeStandaloneExecutable(module, codegen.isMainReturnLitRaw());
 
         // Verify the module
         std::cout << "Verifying module..." << std::endl;
@@ -1726,6 +1732,10 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
         // Register string replace helper (always export — codegen may emit the symbol)
         runtimeSymbols[mangle("__vyb_string_replace")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_string_replace), llvm::JITSymbolFlags::Exported);
+        // JSON string-literal escape helper (always export — codegen may emit it
+        // in the main auto-serialization path).
+        runtimeSymbols[mangle("__vyb_json_escape_string")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_json_escape_string), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_string_format")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_string_format), llvm::JITSymbolFlags::Exported);
 
@@ -2658,8 +2668,17 @@ runtimeSymbols[mangle("__vyb_strchan_free")] = llvm::orc::ExecutorSymbolDef(
                     static_cast<void*>(executorAddr.toPtr<void*>()));
                 VybStringResult result = strMainFunc();
                 if (result.ptr) {
-                    // Output as JSON-encoded string with quotes
-                    std::cout << "\"" << result.ptr << "\"" << std::endl;
+                    if (codegen.isMainReturnLitRaw()) {
+                        // A lit(...) main return is already-serialized raw JSON:
+                        // pass through verbatim (no escaping, no quotes).
+                        std::cout << result.ptr << std::endl;
+                    } else {
+                        // Genuine user String: output as a valid JSON string
+                        // literal (quotes + escaping).
+                        char* escaped = __vyb_json_escape_string(result.ptr);
+                        std::cout << (escaped ? escaped : "null") << std::endl;
+                        if (escaped) __vyb_string_free(escaped);
+                    }
                 } else {
                     std::cout << "null" << std::endl;
                 }
