@@ -2007,6 +2007,44 @@ When Qt5 is absent the module's stub shims resolve but report the GUI as
 unavailable (`qt_init()==false`), so programs and the test-suite degrade
 gracefully without an unresolved-symbol JIT failure.
 
+### 4.23 `archive` — gzip/DEFLATE decompression and tar extraction
+
+Module page: [`archive.md`](archive.md). A pure-Vyb decoder for fetching and
+unpacking `.tar.gz` sources: `inflate_gzip` fully decodes a gzip stream
+(header, DEFLATE blocks, and the CRC32 + ISIZE trailer verified byte-for-byte),
+and `extract_tar` walks a ustar archive returning its member files. Together
+they turn a fetched `.tar.gz` blob into a list of `(name, data)` entries
+byte-identical to the originals — with no C bridge and no runtime/ `src/`
+changes; the module is written entirely in stdlib.
+
+```vyb
+inflate_gzip(gz<String>)<String?>   # full .gz decode, or null on bad input
+extract_tar(tar<String>)<Vec<TarEntry>>   # ustar walk -> { name, size, data }
+crc32(data<String>)<Int>            # CRC-32 (tables + POLY), also used by inflate_gzip
+bstr(b<Int>)<String>                # single-byte String (alias of String::from_byte)
+```
+
+```vyb
+import archive::{inflate_gzip, extract_tar}
+match (inflate_gzip(gz_bytes)) {
+    plain -> { entries = extract_tar(plain) }
+    ?     -> { println("bad gzip") }
+}
+```
+
+Byte/bit work uses the String primitives the language ships plus the
+single-byte emitter `String::from_byte` (added for #180): read a byte with
+`s.char_at(i) & 0xFF`, write one with `String::from_byte(b)`, accumulate with
+`out.concat(chunk)`. The DEFLATE bit cursor is threaded functionally — each
+step returns its value plus the advanced bit position and never mutates a
+caller-owned cursor (kept even though the #178 `their`-reborrow bug is fixed,
+because it stays simpler and provably correct). Canonical Huffman decoding
+follows puff.c's DECODE(): lengths are binned per code length, then symbols are
+read most-significant-bit-first. Long GNU `'L'`/`'K'` tar member names
+(NUL-terminated data blocks) are handled. Covered by
+`test/modules/test_archive.vyb` (decodes a real embedded gzip stream and walks
+the extracted tar).
+
 ---
 ---
 
