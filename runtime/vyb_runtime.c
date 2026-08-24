@@ -2640,6 +2640,8 @@ typedef struct {
     int64_t dead_letter; // optional int-slot channel notified with the handle on failure
     int used;            // slot in use
     int done;            // worker loop has exited
+    uint64_t gen;        // generation id for this slot (bumped on each spawn)
+    _Atomic uint64_t tag; // (gen << 1) | used — authoritative liveness + generation
 } vyb_agent;
 static vyb_agent vyb_agents[VYB_AGENT_CAP];
 static pthread_mutex_t vyb_agents_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -2697,7 +2699,7 @@ static void vyb_agent_close_self(vyb_agent* a, void* err) {
     pthread_mutex_unlock(&vyb_agents_lock);
     if (a->kind == AGENT_KIND_STRING) __vyb_strchan_close(a->mailbox);
     else __vyb_chan_close(a->mailbox);
-    if (dead) __vyb_chan_send(dead, (int64_t)a->idx + 1);
+    if (dead) __vyb_chan_send(dead, (int64_t)(((uint64_t)a->gen << 20) | (uint64_t)(a->idx + 1)));
 }
 
 static void* vyb_agent_loop(void* arg) {
@@ -2789,6 +2791,8 @@ static int64_t vyb_agent_spawn(void* env, void* fn, int kind, int failable, int6
     a->fn = fn; a->env = env; a->mailbox = mailbox; a->kind = kind;
     a->failable = failable; a->failed = 0; a->error = 0; a->dead_letter = 0;
     a->used = 1; a->done = 0;
+    a->gen++;  // next generation for this slot (1-based id appears in the handle high bits)
+    atomic_store_explicit(&a->tag, ((uint64_t)a->gen << 1) | 1u, memory_order_release);
     // Retain before the worker can run so it can never be reaped before spawn
     // returns.
     if (a->env) __vyb_closure_retain(a->env);
@@ -2801,7 +2805,7 @@ static int64_t vyb_agent_spawn(void* env, void* fn, int kind, int failable, int6
         return 0;
     }
     pthread_mutex_unlock(&vyb_agents_lock);
-    return (int64_t)(idx + 1);
+    return (int64_t)(((uint64_t)a->gen << 20) | (uint64_t)(idx + 1));
 }
 
 // Start an agent running `fn`, a Vyb `fn(Payload?) -> Void` closure (as { env, fn }).
@@ -2812,41 +2816,58 @@ VYB_WEAK int64_t __vyb_agent_start_bool(void* env, void* fn, int64_t failable, i
 VYB_WEAK int64_t __vyb_agent_start_float(void* env, void* fn, int64_t failable, int64_t cap)    { return vyb_agent_spawn(env, fn, AGENT_KIND_FLOAT, (int)failable, cap); }
 VYB_WEAK int64_t __vyb_agent_start_string(void* env, void* fn, int64_t failable, int64_t cap)   { return vyb_agent_spawn(env, fn, AGENT_KIND_STRING, (int)failable, cap); }
 
+// Low 20 bits of an agent handle carry (slot_idx + 1); high bits carry the
+// slot's 1-based generation id. Slots (< VYB_AGENT_CAP = 64) never exceed 2^20.
+#define VYB_AGENT_SLOT_MASK 0xFFFFFu
+
+// Resolve `handle` to its live agent slot, or -1. The generation check rejects a
+// stale handle whose slot has been freed AND reused by a later agent: the index
+// is in range but the generation id no longer matches, so the handle is
+// diagnosed instead of silently acting on a different agent. This is what makes
+// free-vs-waiter and double-free detectable for fixed-table agent handles (#156).
+static int vyb_agent_slot(int64_t handle) {
+    if (handle <= 0) return -1;
+    uint64_t h = (uint64_t)handle;
+    int idx = (int)(h & VYB_AGENT_SLOT_MASK) - 1;
+    if (idx < 0 || idx >= VYB_AGENT_CAP) return -1;
+    uint64_t t = atomic_load_explicit(&vyb_agents[idx].tag, memory_order_acquire);
+    uint64_t gen = t >> 1;
+    return ((t & 1u) && gen == (h >> 20)) ? idx : -1;
+}
+
 // 1 while the agent's worker is running (or draining), 0 once it has exited.
 static int vyb_agent_valid(int64_t handle) {
-    int idx = (int)handle - 1;
-    if (idx < 0 || idx >= VYB_AGENT_CAP) return 0;
-    return vyb_agents[idx].used;
+    return vyb_agent_slot(handle) >= 0 ? 1 : 0;
 }
 
 // Post a message (non-blocking). 1 on accepted, 0 if closed/stopped or the
 // bounded mailbox is full. Scalar senders carry the value as an i64 slot (Int,
 // Bool's 0/1, Float's bit pattern); the String sender retains a reference.
 VYB_WEAK int64_t __vyb_agent_send(int64_t handle, int64_t v) {
-    int idx = (int)handle - 1;
-    if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return 0;
+    int idx = vyb_agent_slot(handle);
+    if (idx < 0) return 0;
     return __vyb_chan_send(vyb_agents[idx].mailbox, v);
 }
 VYB_WEAK int64_t __vyb_agent_send_bool(int64_t handle, int64_t b) {
-    int idx = (int)handle - 1;
-    if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return 0;
+    int idx = vyb_agent_slot(handle);
+    if (idx < 0) return 0;
     return __vyb_chan_send(vyb_agents[idx].mailbox, b & 1);
 }
 VYB_WEAK int64_t __vyb_agent_send_float(int64_t handle, int64_t bits) {
-    int idx = (int)handle - 1;
-    if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return 0;
+    int idx = vyb_agent_slot(handle);
+    if (idx < 0) return 0;
     return __vyb_chan_send(vyb_agents[idx].mailbox, bits);
 }
 VYB_WEAK int64_t __vyb_agent_send_string(int64_t handle, char* ptr, int64_t len) {
-    int idx = (int)handle - 1;
-    if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return 0;
+    int idx = vyb_agent_slot(handle);
+    if (idx < 0) return 0;
     return __vyb_strchan_send(vyb_agents[idx].mailbox, ptr, len);
 }
 
 // Buffered-but-unhandled message count (-1 on a bad handle).
 VYB_WEAK int64_t __vyb_agent_len(int64_t handle) {
-    int idx = (int)handle - 1;
-    if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return -1;
+    int idx = vyb_agent_slot(handle);
+    if (idx < 0) return -1;
     vyb_agent* a = &vyb_agents[idx];
     return (a->kind == AGENT_KIND_STRING)
         ? __vyb_strchan_len(a->mailbox)
@@ -2863,8 +2884,8 @@ VYB_WEAK int64_t __vyb_agent_len(int64_t handle) {
 // caller should treat this as read-only (select/len observation): consuming
 // messages here races with the behavior's own recv loop.
 VYB_WEAK int64_t __vyb_agent_mailbox(int64_t handle) {
-    int idx = (int)handle - 1;
-    if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return -1;
+    int idx = vyb_agent_slot(handle);
+    if (idx < 0) return -1;
     vyb_agent* a = &vyb_agents[idx];
     if (a->kind == AGENT_KIND_STRING) return -1;
     return a->mailbox;
@@ -2872,8 +2893,8 @@ VYB_WEAK int64_t __vyb_agent_mailbox(int64_t handle) {
 
 // 1 while the agent's worker is running (or draining), 0 once it has exited.
 VYB_WEAK int64_t __vyb_agent_alive(int64_t handle) {
-    int idx = (int)handle - 1;
-    if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return 0;
+    int idx = vyb_agent_slot(handle);
+    if (idx < 0) return 0;
     pthread_mutex_lock(&vyb_agents_lock);
     int alive = !vyb_agents[idx].done;
     pthread_mutex_unlock(&vyb_agents_lock);
@@ -2883,8 +2904,8 @@ VYB_WEAK int64_t __vyb_agent_alive(int64_t handle) {
 // Gracefully stop: close the mailbox; the worker drains buffered messages then
 // exits. Returns 1, or -1 on a bad handle.
 VYB_WEAK int64_t __vyb_agent_close(int64_t handle) {
-    int idx = (int)handle - 1;
-    if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return -1;
+    int idx = vyb_agent_slot(handle);
+    if (idx < 0) return -1;
     vyb_agent* a = &vyb_agents[idx];
     return (a->kind == AGENT_KIND_STRING)
         ? __vyb_strchan_close(a->mailbox)
@@ -2895,8 +2916,8 @@ VYB_WEAK int64_t __vyb_agent_close(int64_t handle) {
 // it was never closed), frees the mailbox, and frees the slot. Returns 0, or -1
 // on a bad handle.
 VYB_WEAK int64_t __vyb_agent_free(int64_t handle) {
-    int idx = (int)handle - 1;
-    if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return -1;
+    int idx = vyb_agent_slot(handle);
+    if (idx < 0) return -1;
     vyb_agent* a = &vyb_agents[idx];
     if (!a->done) {
         if (a->kind == AGENT_KIND_STRING) __vyb_strchan_close(a->mailbox);
@@ -2911,6 +2932,7 @@ VYB_WEAK int64_t __vyb_agent_free(int64_t handle) {
     else __vyb_chan_free(a->mailbox);
     pthread_mutex_lock(&vyb_agents_lock);
     a->used = 0; a->fn = NULL; a->env = NULL; a->mailbox = 0; a->done = 0;
+    atomic_store_explicit(&a->tag, ((uint64_t)a->gen << 1) | 0u, memory_order_release);
     pthread_mutex_unlock(&vyb_agents_lock);
     return 0;
 }
@@ -2919,8 +2941,8 @@ VYB_WEAK int64_t __vyb_agent_free(int64_t handle) {
 
 // Agent state: 0 running/draining, 1 stopped (normal), 2 failed.
 VYB_WEAK int64_t __vyb_agent_status(int64_t handle) {
-    int idx = (int)handle - 1;
-    if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return -1;
+    int idx = vyb_agent_slot(handle);
+    if (idx < 0) return -1;
     vyb_agent* a = &vyb_agents[idx];
     pthread_mutex_lock(&vyb_agents_lock);
     int failed = a->failed, done = a->done;
@@ -2933,8 +2955,8 @@ VYB_WEAK int64_t __vyb_agent_status(int64_t handle) {
 // Backlog/payload of the captured failure: the `fail<Int>(n)` value for Int
 // failures, otherwise -1 (non-Int payload or no failure).
 VYB_WEAK int64_t __vyb_agent_error_code(int64_t handle) {
-    int idx = (int)handle - 1;
-    if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return -1;
+    int idx = vyb_agent_slot(handle);
+    if (idx < 0) return -1;
     vyb_agent* a = &vyb_agents[idx];
     pthread_mutex_lock(&vyb_agents_lock);
     int failed = a->failed; int64_t err = a->error;
@@ -2950,9 +2972,9 @@ VYB_WEAK int64_t __vyb_agent_error_code(int64_t handle) {
 // Human-readable descriptor of the captured failure: "TypeName @ file:line".
 // Returns a registry-owned String buffer (empty when the agent hasn't failed).
 VYB_WEAK char* __vyb_agent_error(int64_t handle) {
-    int idx = (int)handle - 1;
+    int idx = vyb_agent_slot(handle);
     bool ok = false;
-    if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used)
+    if (idx < 0)
         return __vyb_string_from_string("", &ok);
     vyb_agent* a = &vyb_agents[idx];
     pthread_mutex_lock(&vyb_agents_lock);
@@ -2970,8 +2992,8 @@ VYB_WEAK char* __vyb_agent_error(int64_t handle) {
 // Register an int-slot channel to be notified with the agent's handle when its
 // behavior fails. Returns 1, or -1 on a bad handle.
 VYB_WEAK int64_t __vyb_agent_set_dead_letter(int64_t handle, int64_t ch) {
-    int idx = (int)handle - 1;
-    if (idx < 0 || idx >= VYB_AGENT_CAP || !vyb_agents[idx].used) return -1;
+    int idx = vyb_agent_slot(handle);
+    if (idx < 0) return -1;
     vyb_agent* a = &vyb_agents[idx];
     pthread_mutex_lock(&vyb_agents_lock);
     a->dead_letter = ch;

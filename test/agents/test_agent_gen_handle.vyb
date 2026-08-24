@@ -1,0 +1,40 @@
+// @test: generation-tagged agent handles diagnose stale handles into reused slots (#156)
+// @description: An agent handle encodes (slot generation << 20) | (slot index + 1). Freeing
+//   an agent frees its slot; the next agent spawned reuses that slot with a NEW generation.
+//   A stale handle to the reused slot no longer resolves: agent_send is rejected (and does
+//   NOT deliver into the new agent), agent_len returns -1 and agent_alive 0, instead of
+//   silently acting on a different agent. Double-free / stale-free on a reused slot is the
+//   same mechanism. Regression for #156 (generation-tagged handles).
+// @category: agents,concurrency,lifetimes,generation
+// @expect: pass
+// @expect-return: 0
+// @expect-output: gen-handle-ok
+
+import agents
+
+main()<Int> -> {
+    # 1. Spawn A (first free slot = 0).
+    a<Int> = agent_start(|m<Int?>| -> { }) else 0
+    if (a == 0) { return 1 }
+    if (agent_alive(a) != 1) { return 2 }      // A is live
+    # 2. Free A: slot 0 is released.
+    if (!(agent_free(a) else false)) { return 3 }
+    # 3. Spawn B: deterministically reuses slot 0 with a NEW generation.
+    b<Int> = agent_start(|m<Int?>| -> { }) else 0
+    if (b == 0) { return 4 }
+    if (b == a) { return 5 }                    // generation must differ the handle
+    if ((a & 0xFFFFF) != (b & 0xFFFFF)) { return 6 }   // same slot was reused
+    # 4. Stale send to A must be rejected, NOT delivered into B.
+    stale<Bool> = agent_send(a, 7) else false
+    if (stale) { return 7 }                     // bug: stale handle slipped into B
+    # 5. Stale-handle introspection is diagnosed.
+    if (agent_len(a) != -1) { return 8 }
+    if (agent_alive(a) != 0) { return 9 }
+    # 6. Live handle B still works and was untouched by the stale send.
+    live<Bool> = agent_send(b, 9) else false
+    if (!live) { return 10 }
+    # 7. Clean up B.
+    if (!(agent_free(b) else false)) { return 11 }
+    println("gen-handle-ok")
+    return 0
+}
