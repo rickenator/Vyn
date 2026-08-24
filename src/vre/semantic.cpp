@@ -3563,6 +3563,19 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                     node->type = std::shared_ptr<ast::TypeNode>(strType->clone());
                     return;
                 }
+
+                // Handle String::from_byte() static factory: 1-byte String from low byte of b.
+                if (typeName == "String" && methodName == "from_byte") {
+                    if (node->arguments.size() != 1) {
+                        addError("String::from_byte() expects exactly 1 argument (byte<Int>)", node);
+                        return;
+                    }
+                    for (auto& arg : node->arguments) arg->accept(*this);
+                    auto strType2 = new ast::TypeName(node->loc, std::make_unique<ast::Identifier>(node->loc, "String"));
+                    expressionTypes[node] = retainType(strType2);
+                    node->type = std::shared_ptr<ast::TypeNode>(strType2->clone());
+                    return;
+                }
             }
         }
 
@@ -4707,6 +4720,10 @@ void SemanticAnalyzer::visit(ast::MemberExpression* node) {
 
         // String::from_bytes() - static factory for String from raw bytes
         if (typeName == "String" && methodName == "from_bytes") {
+            return;
+        }
+        // String::from_byte() - static factory for a 1-byte String (byte 0..255)
+        if (typeName == "String" && methodName == "from_byte") {
             return;
         }
 

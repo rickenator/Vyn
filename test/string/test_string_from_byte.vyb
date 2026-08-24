@@ -1,0 +1,30 @@
+// @test: String::from_byte builds a 1-byte owned String from the low byte (NUL-safe)
+// @description: from_byte(b<Int>) allocates a fresh, owned, registry-tracked,
+//   NUL-terminated buffer holding the low byte of b (0..255). It gives byte-oriented
+//   code (decompressors, parsers, serializers, VybOS) an idiomatic single-byte emitter,
+//   replacing the byte_lut+substring workaround, and is NUL-safe: byte 0 is stored as a
+//   real byte followed by a clean terminator (#180).
+// @category: string, bytes, from_byte, primitive, NUL
+// @expect: pass
+// @expect-return: 0
+// @execute-jit: true
+
+main()<Int> -> {
+    // Low byte extraction: 65 -> 'A', 0 -> NUL byte, 0xFF -> 255.
+    a<String> = String::from_byte(65)
+    b<String> = String::from_byte(0)
+    c<String> = String::from_byte(0xFF)
+    if (a.len() != 1) { return 1 }
+    if ((a.char_at(0) & 0xFF) != 65) { return 2 }
+    if (b.len() != 1) { return 3 }
+    if ((b.char_at(0) & 0xFF) != 0) { return 4 }
+    if (c.len() != 1) { return 5 }
+    if ((c.char_at(0) & 0xFF) != 255) { return 6 }
+
+    // from_byte results are ordinary owned Strings: concatenable and byte-exact.
+    s<String> = String::from_byte(72).concat(String::from_byte(105))
+    if (s.len() != 2) { return 7 }
+    if ((s.char_at(0) & 0xFF) != 72) { return 8 }
+    if ((s.char_at(1) & 0xFF) != 105) { return 9 }
+    return 0
+}

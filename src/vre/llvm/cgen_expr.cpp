@@ -1534,6 +1534,59 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                     VYB_CDBG << "DEBUG: String::from_bytes() created successfully" << std::endl;
                     return;
                 }
+
+                // String::from_byte() - fresh 1-byte owned, registered, NUL-terminated
+                // String built from the low byte (0..255) of b. Gives byte-oriented code
+                // an idiomatic single-byte emitter instead of a lookup-table+substring
+                // workaround (#180, blocks VybOS). NUL-safe: a fresh 2-byte buffer holds
+                // the byte followed by a NUL terminator, so strlen-based paths are safe.
+                if (vecIdent->name == "String" && newIdent->name == "from_byte") {
+                    VYB_CDBG << "DEBUG: Creating String::from_byte() constructor" << std::endl;
+                    if (node->arguments.size() != 1) {
+                        logError(node->loc, "String::from_byte expects exactly 1 argument (byte<Int>)");
+                        m_currentLLVMValue = nullptr;
+                        return;
+                    }
+                    node->arguments[0]->accept(*this);
+                    llvm::Value* byteVal = m_currentLLVMValue;
+                    if (!byteVal) {
+                        logError(node->arguments[0]->loc, "Failed to evaluate byte for String::from_byte");
+                        m_currentLLVMValue = nullptr;
+                        return;
+                    }
+                    byteVal = builder->CreateAnd(byteVal,
+                        llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 0xFF, false),
+                        "from_byte.low");
+                    llvm::FunctionType* mallocType = llvm::FunctionType::get(
+                        llvm::PointerType::get(*context, 0), {llvm::Type::getInt64Ty(*context)}, false);
+                    llvm::Function* mallocFunc = module->getFunction("malloc");
+                    if (!mallocFunc) {
+                        mallocFunc = llvm::Function::Create(mallocType,
+                            llvm::Function::ExternalLinkage, "malloc", module.get());
+                    }
+                    llvm::Value* size2 = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 2, false);
+                    llvm::Value* bytePtr = builder->CreateCall(mallocFunc, {size2}, "from_byte.data");
+                    builder->CreateCall(getOrCreateVybStringRegisterFunction(), {bytePtr});
+                    llvm::Value* byte8 = builder->CreateTrunc(byteVal,
+                        llvm::Type::getInt8Ty(*context), "from_byte.b8");
+                    llvm::Value* zidx = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 0, false);
+                    builder->CreateStore(byte8,
+                        builder->CreateGEP(llvm::Type::getInt8Ty(*context), bytePtr, {zidx}));
+                    builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt8Ty(*context), 0),
+                        builder->CreateGEP(llvm::Type::getInt8Ty(*context), bytePtr,
+                            {llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 1, false)}));
+                    std::vector<llvm::Type*> strFields2 = {
+                        llvm::PointerType::get(*context, 0), llvm::Type::getInt64Ty(*context)};
+                    llvm::StructType* strStructType2 = llvm::StructType::get(*context, strFields2, false);
+                    llvm::Value* resultStr2 = llvm::UndefValue::get(strStructType2);
+                    resultStr2 = builder->CreateInsertValue(resultStr2, bytePtr, 0, "from_byte.data");
+                    resultStr2 = builder->CreateInsertValue(resultStr2,
+                        llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 1, false),
+                        1, "from_byte.len");
+                    m_currentLLVMValue = resultStr2;
+                    VYB_CDBG << "DEBUG: String::from_byte() created successfully" << std::endl;
+                    return;
+                }
             }
         }
     }
