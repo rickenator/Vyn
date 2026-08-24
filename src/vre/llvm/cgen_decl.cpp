@@ -311,6 +311,24 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
                 }
             }
         }
+        // A struct whose fields own heap data (Strings, Vecs, nested owning
+        // structs) and whose initializer is a borrow (an owning binding or a
+        // member read, both of which will be reclaimed on scope exit) must be
+        // deep-copied so this binding owns data independent of the source. This
+        // mirrors the deep-assignment gate in cgen_expr.cpp for the declarative
+        // form (`y<T> = x`); without it the store below shallow-copies the
+        // owned fields, so the source and this binding free the same buffers
+        // twice ("free(): double free detected"). Transfers (a call or
+        // constructor producing a fresh single owner) are left as-is.
+        if (initialVal && varType->isStructTy() && node->typeNode &&
+            node->init &&
+            (dynamic_cast<ast::MemberExpression*>(node->init.get()) != nullptr ||
+             dynamic_cast<ast::Identifier*>(node->init.get()) != nullptr) &&
+            isKnownStructTypeNode(node->typeNode.get()) &&
+            structTypeHasOwnedFields(node->typeNode.get())) {
+            initialVal = generateStructDeepCopy(
+                initialVal, node->typeNode.get(), llvm::cast<llvm::StructType>(varType));
+        }
         builder->CreateStore(initialVal, alloca);
         // Register the variable in namedValues
         namedValues[node->id->name] = alloca;
@@ -914,6 +932,28 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
                 }
             }
 
+            // A struct-with-owned-fields parameter (e.g. `Node { keys<Vec<Int>> }`)
+            // arrives as a shallow copy: `argVal` aliases the caller's inner owned
+            // buffers. Without a deep copy, the callee and caller both reclaim the
+            // same Vec/String data -> double-free the moment either side's buffer
+            // is reclaimed (usually the caller's on scope exit). Deep-copy so the
+            // callee owns data independent of the argument, then register the param
+            // as owning so its copied fields are reclaimed on callee scope exit.
+            bool ownedStructParam = false;
+            if (node->params[i].typeNode && paramTypes[i]->isStructTy() &&
+                isKnownStructTypeNode(node->params[i].typeNode.get()) &&
+                structTypeHasOwnedFields(node->params[i].typeNode.get())) {
+                llvm::Value* shallowStruct = builder->CreateLoad(paramTypes[i], alloca, paramNames[i] + "_shallow");
+                llvm::Value* deepStruct = generateStructDeepCopy(
+                    shallowStruct, node->params[i].typeNode.get(),
+                    llvm::cast<llvm::StructType>(paramTypes[i]));
+                if (deepStruct) {
+                    builder->CreateStore(deepStruct, alloca);
+                    ownedStructParam = true;
+                    VYB_CDBG << "DEBUG: Deep-copied owned-struct parameter '" << paramNames[i] << "'" << std::endl;
+                }
+            }
+
             // Closure-typed parameters take a reference to the shared capture env:
             // retain it here (balanced by the callee releasing it on scope exit),
             // so the callee's closure lifetime is independent of the argument.
@@ -951,7 +991,7 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
             ast::OwnershipKind paramOwnership = ast::OwnershipKind::MY;
             if (ourParam) paramOwnership = ast::OwnershipKind::OUR;
             registerVariable(paramNames[i], alloca, argVal, paramOwnership, paramTypes[i],
-                             vecParam || closureParam || stringParam || ourParam);
+                             vecParam || ownedStructParam || closureParam || stringParam || ourParam);
 
             // Create debug information for the parameter
             if (debugBuilder && !debugScopeStack.empty()) {

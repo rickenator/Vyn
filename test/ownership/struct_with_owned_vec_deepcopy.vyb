@@ -1,0 +1,86 @@
+// @test: copying a struct-with-owned-Vec deep-copies (decl-init, assign, arena)
+// @description: A struct whose field is an owned Vec<K> must be deep-copied on
+//   every copy surface: declaration-with-initializer, plain assignment, Vec
+//   push/get/set, and function-return transfer. Before the fix these aliased the
+//   inner data buffer and double-freed at scope exit (glibc "double free / invalid
+//   next size") once either copy grew. Regression for #161.
+// @category: ownership, vec, struct
+// @expect: pass
+// @expect-return: 0
+
+struct Node {
+    keys<Vec<Int>>
+}
+
+make_node(k<Int>)<Node> -> {
+    n<Node> = Node { keys = Vec() }
+    n.keys.push(k)
+    return n
+}
+
+grow(v<Node>)<Int> -> {
+    i<Int> = 0
+    while (i < 200) {
+        v.keys.push(i)
+        i = i + 1
+    }
+    return v.keys.len()
+}
+
+main()<Int> -> {
+    // 1. Decl-init copy of a return-sourced struct-with-owned-Vec, then grow the
+    //    copy past capacity (would corrupt the aliased source before the fix).
+    a<Node> = make_node(1)
+    b<Node> = a
+    a.keys.push(9)
+    i<Int> = 0
+    while (i < 200) {
+        b.keys.push(i)
+        i = i + 1
+    }
+    if (a.keys.len() != 2) {
+        return 11
+    }
+    if (b.keys.len() != 201) {
+        return 12
+    }
+    if (a.keys.get(0) != 1 || a.keys.get(1) != 9) {
+        return 13
+    }
+
+    // 2. Plain assignment copy of a return-sourced struct.
+    c<Node> = make_node(2)
+    d<Node>
+    d = c
+    d.keys.push(7)
+    if (c.keys.len() != 1 || d.keys.get(1) != 7) {
+        return 21
+    }
+
+    // 3. Arena: Vec<Node> with owned-Vec fields; push/get/set + grow. Before the
+    //    fix, get() aliased the slot buffer and a later grow/two owners double-freed.
+    arena<Vec<Node>> = Vec()
+    arena.push(make_node(3))
+    arena.push(make_node(4))
+    e<Node> = arena.get(0)
+    arena.set(1, make_node(5))
+    e.keys.push(42)
+    if (e.keys.get(0) != 3 || e.keys.get(1) != 42) {
+        return 31
+    }
+    if (arena.get(1).keys.get(0) != 5) {
+        return 32
+    }
+
+    // 4. Function-return of a grown deep-copy.
+    g<Node> = make_node(6)
+    h<Node> = a          // deep-copy grown-but-borrowed source
+    if (grow(h) != 202) {
+        return 41
+    }
+    if (g.keys.len() != 1) {
+        return 42
+    }
+
+    return 0
+}

@@ -35,6 +35,21 @@ static bool typeNodeIsVecOfString(const vyb::ast::TypeNode* tn) {
     return false;
 }
 
+// Returns the element TypeNode of a Vec<T> AST type (T), or nullptr if `tn` is
+// not a Vec type. Shared by the String and owned-struct element reclaim paths.
+static const vyb::ast::TypeNode* vecElementTypeNode(const vyb::ast::TypeNode* tn) {
+    if (!tn) return nullptr;
+    if (auto* vt = dynamic_cast<const vyb::ast::VecType*>(tn)) {
+        return vt->elementType.get();
+    }
+    if (auto* name = dynamic_cast<const vyb::ast::TypeName*>(tn)) {
+        if (name->identifier && name->identifier->name == "Vec" && !name->genericArgs.empty()) {
+            return name->genericArgs[0].get();
+        }
+    }
+    return nullptr;
+}
+
 // ============================================================================
 // CONTROL BLOCK STRUCTURE FOR our<T> AND mild<T>
 // ============================================================================
@@ -305,6 +320,22 @@ void LLVMCodegen::cleanupVariable(const ScopeVariable& var) {
                 bool vecHoldsStrings = astIt != valueTypeMap.end() &&
                     typeNodeIsVecOfString(astIt->second.get());
 
+                // A Vec<struct-with-owned-fields> owns one deep copy per element
+                // (each push/get/set deep-copied its owned fields). Before the
+                // buffer is freed, reclaim each element's owned fields so none of
+                // the deep-copied inner buffers leak.
+                const vyb::ast::TypeNode* vecElemAst = nullptr;
+                llvm::Type* vecElemLlvm = nullptr;
+                if (astIt != valueTypeMap.end()) {
+                    vecElemAst = vecElementTypeNode(astIt->second.get());
+                    if (vecElemAst && isKnownStructTypeNode(vecElemAst) &&
+                        structTypeHasOwnedFields(vecElemAst)) {
+                        vecElemLlvm = codegenType(const_cast<vyb::ast::TypeNode*>(vecElemAst));
+                    } else {
+                        vecElemAst = nullptr;
+                    }
+                }
+
                 // Create null check before freeing
                 llvm::Value* isNotNull = builder->CreateICmpNE(dataPtr,
                     llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)),
@@ -320,6 +351,39 @@ void LLVMCodegen::cleanupVariable(const ScopeVariable& var) {
                 if (vecHoldsStrings) {
                     llvm::Value* elemCount = builder->CreateExtractValue(vecPtr, 1, var.name + "_elem_count");
                     releaseStringElements(dataPtr, elemCount);
+                }
+                // Per-element reclaim of deep-copied owned struct fields before
+                // freeing the element buffer.
+                if (vecElemAst && vecElemLlvm) {
+                    llvm::Value* elemCount = builder->CreateExtractValue(vecPtr, 1, var.name + "_elem_count");
+                    llvm::Value* elemBytes = llvm::ConstantInt::get(
+                        llvm::Type::getInt64Ty(*context),
+                        (unsigned)llvm::DataLayout(module.get()).getTypeAllocSize(vecElemLlvm));
+                    // Loop i = 0..elemCount: reclaim owned fields at dataPtr + i*elemBytes.
+                    llvm::BasicBlock* rbHeader = llvm::BasicBlock::Create(
+                        *context, var.name + "_reclaim_header", currentFunction);
+                    llvm::BasicBlock* rbBody = llvm::BasicBlock::Create(
+                        *context, var.name + "_reclaim_body", currentFunction);
+                    llvm::BasicBlock* rbExit = llvm::BasicBlock::Create(
+                        *context, var.name + "_reclaim_exit", currentFunction);
+                    llvm::Value* zero = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 0);
+                    llvm::Value* idxAlloca = builder->CreateAlloca(llvm::Type::getInt64Ty(*context), nullptr, var.name + "_reclaim_idx");
+                    builder->CreateStore(zero, idxAlloca);
+                    builder->CreateBr(rbHeader);
+                    builder->SetInsertPoint(rbHeader);
+                    llvm::Value* idx = builder->CreateLoad(llvm::Type::getInt64Ty(*context), idxAlloca);
+                    llvm::Value* cmp = builder->CreateICmpULT(idx, elemCount, var.name + "_reclaim_cmp");
+                    builder->CreateCondBr(cmp, rbBody, rbExit);
+                    builder->SetInsertPoint(rbBody);
+                    llvm::Value* elemOff = builder->CreateMul(idx, elemBytes, var.name + "_reclaim_off");
+                    llvm::Value* elemPtr = builder->CreateGEP(llvm::Type::getInt8Ty(*context), dataPtr, elemOff, var.name + "_reclaim_elem");
+                    std::set<std::string> visited;
+                    reclaimStructOwnedFieldsAt(elemPtr, vecElemAst,
+                        llvm::cast<llvm::StructType>(vecElemLlvm), visited);
+                    llvm::Value* next = builder->CreateAdd(idx, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 1));
+                    builder->CreateStore(next, idxAlloca);
+                    builder->CreateBr(rbHeader);
+                    builder->SetInsertPoint(rbExit);
                 }
                 llvm::Function* freeFunc = getOrCreateFreeFunction();
                 builder->CreateCall(freeFunc, {dataPtr});
@@ -1164,12 +1228,19 @@ llvm::Value* LLVMCodegen::generateVecDeepCopy(llvm::Value* vecStructValue,
     uint64_t elemSizeBytes = dataLayout.getTypeAllocSize(elemType);
     llvm::Value* elemSizeVal = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), elemSizeBytes);
 
-    // Total bytes to copy = size * elemSize
+    // Total bytes to allocate = cap * elemSize. The deep-copied Vec advertises
+    // the original capacity (vecCap, which may exceed vecSize). Allocating only
+    // size*elemSize here left the new buffer smaller than its advertised
+    // capacity, so a later push/push-path growth wrote past the allocation
+    // ("free(): invalid next size"), corrupting the heap. We copy only vecSize
+    // elements but must carve space for vecCap of them.
+    llvm::Value* allocBytes =
+        builder->CreateMul(vecCap, elemSizeVal, "vdc.alloc_bytes");
     llvm::Value* totalBytes = builder->CreateMul(vecSize, elemSizeVal, "vdc.bytes");
 
-    // Malloc a new buffer
+    // Malloc a new buffer sized for the advertised capacity
     llvm::Function* mallocFunc = getOrCreateMallocFunction();
-    llvm::Value* newDataPtr = builder->CreateCall(mallocFunc, {totalBytes}, "vdc.new_ptr");
+    llvm::Value* newDataPtr = builder->CreateCall(mallocFunc, {allocBytes}, "vdc.new_ptr");
 
     // If size > 0, memcpy the data; otherwise leave newDataPtr (may be garbage but won't be accessed)
     llvm::BasicBlock* copyBB  = llvm::BasicBlock::Create(*context, "vdc.copy", currentFunc);

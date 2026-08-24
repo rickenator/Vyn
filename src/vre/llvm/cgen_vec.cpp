@@ -231,7 +231,29 @@ void LLVMCodegen::handleVecPush(vyb::ast::CallExpression* node, llvm::Value* vec
         if (!memcpyFunc2) {
             memcpyFunc2 = llvm::Function::Create(memcpyType2, llvm::Function::ExternalLinkage, "memcpy", module.get());
         }
-        builder->CreateCall(memcpyFunc2, {elementPtr, srcPtr, elementSize2});
+
+        // A struct element that owns heap data (a Vec/String/my field) must be
+        // deep-copied into the slot, not memcpy'd. A shallow copy makes the arena
+        // element and the source binding share one inner buffer, so when both are
+        // reclaimed on scope exit the same buffer is freed twice ("free(): double
+        // free detected"). generateStructDeepCopy clones each owned field so the
+        // slot owns data fully independent of the pushed value.
+        bool structNeedsDeepCopy =
+            elementType->isStructTy() &&
+            node->arguments[0]->type &&
+            isKnownStructTypeNode(node->arguments[0]->type.get()) &&
+            structTypeHasOwnedFields(node->arguments[0]->type.get());
+
+        if (structNeedsDeepCopy) {
+            // Generate the deep copy of the source struct value.
+            llvm::Value* deepCopy = generateStructDeepCopy(
+                builder->CreateLoad(elementType, srcPtr, "vec.push.struct_load"),
+                node->arguments[0]->type.get(),
+                llvm::cast<llvm::StructType>(elementType));
+            builder->CreateStore(deepCopy, elementPtr);
+        } else {
+            builder->CreateCall(memcpyFunc2, {elementPtr, srcPtr, elementSize2});
+        }
     } else {
         // For primitives, direct store
         builder->CreateStore(valueToAdd, elementPtr);
@@ -401,8 +423,26 @@ void LLVMCodegen::handleVecGet(vyb::ast::CallExpression* node, llvm::Value* vecP
     // Load the element value based on type. The valid path rejoins the
     // out-of-bounds default below so no invalid address is ever dereferenced.
     llvm::Value* element;
+    llvm::BasicBlock* validIncoming = validBlock;
     if (elementLLVMType->isStructTy()) {
         element = builder->CreateLoad(elementLLVMType, elementPtr, "vec.element_struct");
+        // A struct element that owns heap data is returned by shallow load, which
+        // aliases the slot's inner buffers into the caller's fresh binding. When
+        // that binding is reclaimed on scope exit it frees the same buffers the
+        // slot (and any other get() caller) still owns -> double free. Deep-copy
+        // owned fields so the returned value owns data independent of the slot.
+        if (node->type &&
+            isKnownStructTypeNode(node->type.get()) &&
+            structTypeHasOwnedFields(node->type.get())) {
+            element = generateStructDeepCopy(
+                element, node->type.get(), llvm::cast<llvm::StructType>(elementLLVMType));
+            // generateStructDeepCopy may emit new blocks (e.g. a Vec-field clone
+            // loop). The deep-copied value is defined in that last block, so the
+            // merge PHI must treat it (not the original validBlock) as the
+            // incoming predecessor, or LLVM verification fails ("PHI node entries
+            // do not match predecessors").
+            validIncoming = builder->GetInsertBlock();
+        }
     } else {
         element = builder->CreateLoad(elementLLVMType, elementPtr, "vec.element");
     }
@@ -420,7 +460,7 @@ void LLVMCodegen::handleVecGet(vyb::ast::CallExpression* node, llvm::Value* vecP
         defaultValue = llvm::Constant::getNullValue(elementLLVMType);
     }
     llvm::PHINode* result = builder->CreatePHI(elementLLVMType, 2, "vec.get.result");
-    result->addIncoming(element, validBlock);
+    result->addIncoming(element, validIncoming);
     result->addIncoming(defaultValue, boundsCheckBlock);
     m_currentLLVMValue = result;
 
@@ -490,6 +530,22 @@ void LLVMCodegen::handleVecSet(vyb::ast::CallExpression* node, llvm::Value* vecP
         if (!exprIsStringTransfer(node->arguments[1].get())) {
             retainStringValue(value);
         }
+    } else if (elementLLVMType && elementLLVMType->isStructTy() &&
+               node->arguments[1]->type &&
+               isKnownStructTypeNode(node->arguments[1]->type.get()) &&
+               structTypeHasOwnedFields(node->arguments[1]->type.get())) {
+        // Struct element owning heap data: release the overwritten slot's owned
+        // fields (it is being dropped), then store a deep copy of the new value
+        // so the slot owns data independent of the assigning source (shallow copy
+        // would alias and double-free on scope exit).
+        std::set<std::string> visited;
+        reclaimStructOwnedFieldsAt(
+            elementPtr, node->arguments[1]->type.get(),
+            llvm::cast<llvm::StructType>(elementLLVMType), visited);
+        llvm::Value* deepCopy = generateStructDeepCopy(
+            value, node->arguments[1]->type.get(),
+            llvm::cast<llvm::StructType>(elementLLVMType));
+        value = deepCopy;
     }
 
     builder->CreateStore(value, elementPtr);
