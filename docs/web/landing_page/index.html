@@ -370,7 +370,7 @@ git clone https://github.com/rickenator/Vyb.git
 cd Vyb
 mkdir -p build &amp;&amp; cd build &amp;&amp; LLVM_DIR=/usr/lib/llvm-18/cmake cmake .. &amp;&amp; make -j$(nproc) &amp;&amp; cd ..
 
-# Run the full test suite (1063 .vyb tests) with the canonical harness
+# Run the full test suite (1077 .vyb tests) with the canonical harness
 python3 test/run_tests.py --vyb build/vyb --test-dir test --execute-jit
 
 # Run your first Vyb program
@@ -3103,7 +3103,7 @@ cmake --build build --target run-milestone
 <h2 id="test-harness">Test Harness<a aria-label="Link to Test Harness" class="heading-anchor" href="#test-harness">#</a></h2>
 <p>Vyb's canonical test runner is <code>test/run_tests.py</code>, the same suite wired into
 CTest as the <code>run-tests</code> target and used for the full regression gate (currently
-<strong>1063 <code>.vyb</code> tests, all passing</strong>):</p>
+<strong>1077 <code>.vyb</code> tests, all passing</strong>):</p>
 <h3 id="quick-testing">Quick Testing<a aria-label="Link to Quick Testing" class="heading-anchor" href="#quick-testing">#</a></h3>
 <pre><code class="language-bash"># Full suite (JIT execution), from the repo root
 python3 test/run_tests.py --vyb build/vyb --test-dir test --execute-jit
@@ -3129,7 +3129,7 @@ authoritative pass/fail count is always the <code>run-tests</code> CTest target 
 </code></pre>
 <h3 id="test-features">Test Features<a aria-label="Link to Test Features" class="heading-anchor" href="#test-features">#</a></h3>
 <ul>
-<li><strong>1063 Tests, All Passing</strong>: The full <code>run_tests.py</code> suite covers parse, semantic, modules, async, agents, tls, qt, and every other feature area</li>
+<li><strong>1077 Tests, All Passing</strong>: The full <code>run_tests.py</code> suite covers parse, semantic, modules, async, agents, tls, qt, and every other feature area</li>
 <li><strong>Parallel Execution</strong>: Multi-threaded test runner for fast feedback</li>
 <li><strong>Rich Reporting</strong>: HTML, JSON, and console output with detailed metrics</li>
 <li><strong>Smart Categorization</strong>: Automatic test categorization and filtering</li>
@@ -3309,10 +3309,10 @@ python3 test_harness.py --directory test/units --timeout 30
 </ul>
 <h4><strong>Test Statistics</strong></h4>
 <ul>
-<li><strong>Total Tests</strong>: 1063 <code>.vyb</code> tests (full suite, all passing as of v0.7.3)</li>
+<li><strong>Total Tests</strong>: 1077 <code>.vyb</code> tests (full suite, all passing as of v0.7.3)</li>
 <li><strong>Coverage Areas</strong>: Language features, control flow, error handling, type system, math, strings, introspection</li>
 <li><strong>Test Types</strong>: Feature tests (with <code>@expect: pass</code>), future-feature docs (with <code>@expect: fail</code>), parser tests</li>
-<li><strong>Success Rate</strong>: 100% (1063/1063) on the current suite</li>
+<li><strong>Success Rate</strong>: 100% (1077/1077) on the current suite</li>
 </ul>
 <h3 id="syntax-migration-tools">🔧 <strong>Syntax Migration Tools</strong><a aria-label="Link to 🔧 Syntax Migration Tools" class="heading-anchor" href="#syntax-migration-tools">#</a></h3>
 <p>Automated tools ensure codebase consistency and syntax standardization:</p>
@@ -3409,7 +3409,7 @@ the interface stays responsive.</li>
 </ul>
 </li>
 <li>✅ <strong>Canonical Syntax Unification</strong>: Complete migration to unified <code>my()</code>/<code>our()</code> constructors and <code>view</code>/<code>borrow</code> operators</li>
-<li>✅ <strong>Modern Test Harness</strong>: <code>test/run_tests.py</code> running the full suite — 1063 <code>.vyb</code> tests all passing — with an auxiliary parallel/HTML/triage harness</li>
+<li>✅ <strong>Modern Test Harness</strong>: <code>test/run_tests.py</code> running the full suite — 1077 <code>.vyb</code> tests all passing — with an auxiliary parallel/HTML/triage harness</li>
 <li>✅ <strong>Syntax Migration Tools</strong>: Automated migration from legacy to canonical syntax with comprehensive reporting</li>
 <li>✅ <strong>Match Statements</strong>: Complete pattern matching with <code>-&gt;</code> arrow syntax and <code>?</code> wildcard; no-match results in NOP</li>
 <li>✅ <strong>Break/Continue</strong>: Loop control flow statements working in all loop types</li>

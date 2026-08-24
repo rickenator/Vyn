@@ -58,10 +58,10 @@ build/vyb test/path/to/test.vyb
 ## Test Coverage Overview
 
 ### Current Statistics
-- **Total Test Files:** 1061+
+- **Total Test Files:** 1077+
 - **Test Categories:** parser, semantic, codegen, runtime, types, collections, async, aspects
 - **Pass Rate Target:** 100%
-- **Current Pass Rate:** 100% (1061/1061, benchmarked 2026-08-21)
+- **Current Pass Rate:** 100% (1077/1077, benchmarked 2026-08-21)
 
 ### Test Categories
 

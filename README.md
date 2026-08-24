@@ -67,7 +67,7 @@ git clone https://github.com/rickenator/Vyb.git
 cd Vyb
 mkdir -p build && cd build && LLVM_DIR=/usr/lib/llvm-18/cmake cmake .. && make -j$(nproc) && cd ..
 
-# Run the full test suite (1063 .vyb tests) with the canonical harness
+# Run the full test suite (1077 .vyb tests) with the canonical harness
 python3 test/run_tests.py --vyb build/vyb --test-dir test --execute-jit
 
 # Run your first Vyb program
@@ -2618,7 +2618,7 @@ cmake --build build --target run-milestone
 
 Vyb's canonical test runner is `test/run_tests.py`, the same suite wired into
 CTest as the `run-tests` target and used for the full regression gate (currently
-**1063 `.vyb` tests, all passing**):
+**1077 `.vyb` tests, all passing**):
 
 ### Quick Testing
 ```bash
@@ -2649,7 +2649,7 @@ authoritative pass/fail count is always the `run-tests` CTest target output.
 ```
 
 ### Test Features
-- **1063 Tests, All Passing**: The full `run_tests.py` suite covers parse, semantic, modules, async, agents, tls, qt, and every other feature area
+- **1077 Tests, All Passing**: The full `run_tests.py` suite covers parse, semantic, modules, async, agents, tls, qt, and every other feature area
 - **Parallel Execution**: Multi-threaded test runner for fast feedback
 - **Rich Reporting**: HTML, JSON, and console output with detailed metrics
 - **Smart Categorization**: Automatic test categorization and filtering
@@ -2859,10 +2859,10 @@ python3 test_harness.py --directory test/units --timeout 30
 - **Error Context**: Detailed failure information with context and suggestions
 
 #### **Test Statistics**
-- **Total Tests**: 1063 `.vyb` tests (full suite, all passing as of v0.7.3)
+- **Total Tests**: 1077 `.vyb` tests (full suite, all passing as of v0.7.3)
 - **Coverage Areas**: Language features, control flow, error handling, type system, math, strings, introspection
 - **Test Types**: Feature tests (with `@expect: pass`), future-feature docs (with `@expect: fail`), parser tests
-- **Success Rate**: 100% (1063/1063) on the current suite
+- **Success Rate**: 100% (1077/1077) on the current suite
 
 ### 🔧 **Syntax Migration Tools**
 
@@ -2964,7 +2964,7 @@ See `doc/` directory for detailed design documents and RFCs.
   - **Type inference**: First case determines result type for entire select
   - **Pattern matching**: Exact equality patterns with wildcard `?` support
 - ✅ **Canonical Syntax Unification**: Complete migration to unified `my()`/`our()` constructors and `view`/`borrow` operators
-- ✅ **Modern Test Harness**: `test/run_tests.py` running the full suite — 1063 `.vyb` tests all passing — with an auxiliary parallel/HTML/triage harness
+- ✅ **Modern Test Harness**: `test/run_tests.py` running the full suite — 1077 `.vyb` tests all passing — with an auxiliary parallel/HTML/triage harness
 - ✅ **Syntax Migration Tools**: Automated migration from legacy to canonical syntax with comprehensive reporting
 - ✅ **Match Statements**: Complete pattern matching with `->` arrow syntax and `?` wildcard; no-match results in NOP
 - ✅ **Break/Continue**: Loop control flow statements working in all loop types

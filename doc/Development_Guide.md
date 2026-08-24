@@ -52,7 +52,7 @@ Vyb/
 │   ├── ast.cpp          # Abstract syntax tree
 │   └── vre/llvm/        # LLVM codegen and debug
 ├── include/vyb/         # Header files
-├── test/                # 1061 Vyb test files
+├── test/                # 1077 Vyb test files
 ├── doc/                 # Comprehensive documentation
 ├── examples/            # Example programs
 ├── test_harness.py      # Auxiliary parallel test runner (canonical suite: test/run_tests.py)
@@ -235,7 +235,7 @@ build/vyb --emit-llvm --debug-info test.vyb
 
 ### Modern Parallel Test Runner
 
-Vyb's canonical suite runner (`test/run_tests.py`) manages 1061+ test files; this section describes the auxiliary parallel harness:
+Vyb's canonical suite runner (`test/run_tests.py`) manages 1077+ test files; this section describes the auxiliary parallel harness:
 
 #### Basic Usage
 ```bash
@@ -554,7 +554,7 @@ valgrind --tool=memcheck build/vyb test.vyb
 
 ## Conclusion
 
-Vyb v0.4.0 represents a complete, production-ready systems programming language with advanced async programming capabilities and comprehensive debugging support. The canonical `test/run_tests.py` suite (1061 tests, all passing) ensures code quality, with auxiliary parallel/triage tooling for analysis.
+Vyb v0.4.0 represents a complete, production-ready systems programming language with advanced async programming capabilities and comprehensive debugging support. The canonical `test/run_tests.py` suite (1077 tests, all passing) ensures code quality, with auxiliary parallel/triage tooling for analysis.
 
 The combination of clean syntax, powerful async/await support, comprehensive debug infrastructure, and modern development tools makes Vyb an excellent choice for systems programming where debugging, maintainability, and performance are critical.
 
