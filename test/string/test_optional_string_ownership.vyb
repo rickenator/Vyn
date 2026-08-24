@@ -1,0 +1,32 @@
+// @test: wrapping a concat-built owned String in a String? optional must not corrupt it
+// @description: a present `String?` whose payload is a String that came from an
+//   aliased owned local (here: a loop-concatenated string) must take an
+//   independent reference to the buffer before the optional aliases it. Without
+//   this, the local's scope-exit release freed the buffer the returned optional
+//   still referenced, so the returned string had a correct length but a garbage
+//   prefix. Regression for #176.
+// @category: string, optional, ownership, refcount, return
+// @expect: pass
+// @expect-return: 0
+// @execute-jit: true
+
+build(n<Int>)<String?> -> {
+    lut<String> = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    o<String> = ""
+    for (i in 0..n - 1) {
+        o = o.concat(lut.substring(i % 26, (i % 26) + 1))
+    }
+    return String?(o)
+}
+
+main()<Int> -> {
+    s<String> = build(6) else "-"
+    if (s.len() != 6) { return 1 }
+    if ((s.char_at(0) & 0xFF) != 65) { return 2 }  // A
+    if ((s.char_at(1) & 0xFF) != 66) { return 3 }  // B
+    if ((s.char_at(2) & 0xFF) != 67) { return 4 }  // C
+    if ((s.char_at(3) & 0xFF) != 68) { return 5 }  // D
+    if ((s.char_at(4) & 0xFF) != 69) { return 6 }  // E
+    if ((s.char_at(5) & 0xFF) != 70) { return 7 }  // F
+    return 0
+}

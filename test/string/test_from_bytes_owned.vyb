@@ -1,0 +1,39 @@
+// @test: String::from_bytes produces an owned, byte-exact String safe to concatenate
+// @description: from_bytes must copy its bytes into an owned, NUL-terminated,
+//   registry-tracked buffer. It previously aliased the raw byte source without
+//   copying or registering, so concatenating the result corrupted or hung (#179):
+//   the STORE picked up the source struct as a pointer and `+`/`.concat()` sized
+//   via strlen. Now embedded NULs and lengths that differ from strlen are preserved.
+// @category: string, from_bytes, bytes, concatenation, ownership
+// @expect: pass
+// @expect-return: 0
+// @execute-jit: true
+
+main()<Int> -> {
+    // Basic: from_bytes + "+" must reproduce the byte-exact literal.
+    b<String> = String::from_bytes("ABC", 3)
+    o<String> = b + "X"
+    if (o.len() != 4) { return 1 }
+    if ((o.char_at(0) & 0xFF) != 65) { return 2 }
+    if ((o.char_at(1) & 0xFF) != 66) { return 3 }
+    if ((o.char_at(2) & 0xFF) != 67) { return 4 }
+    if ((o.char_at(3) & 0xFF) != 88) { return 5 }
+
+    // Embedded NUL must be preserved as a real byte through .concat().
+    n<String> = String::from_bytes("\x41\x00\x42", 3)
+    c<String> = n.concat("Y")
+    if (c.len() != 4) { return 6 }
+    if ((c.char_at(0) & 0xFF) != 65) { return 7 }
+    if ((c.char_at(1) & 0xFF) != 0) { return 8 }
+    if ((c.char_at(2) & 0xFF) != 66) { return 9 }
+    if ((c.char_at(3) & 0xFF) != 89) { return 10 }
+
+    // Length shorter than the source terminator: only len bytes are taken.
+    t<String> = String::from_bytes("hello world", 5)
+    p<String> = t + "!"
+    if (p.len() != 6) { return 11 }
+    if ((p.char_at(4) & 0xFF) != 111) { return 12 } // 'o'
+    if ((p.char_at(5) & 0xFF) != 33) { return 13 }  // '!'
+
+    return 0
+}

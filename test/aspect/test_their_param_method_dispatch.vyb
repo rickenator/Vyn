@@ -1,0 +1,65 @@
+// @test: aspect bind method dispatch on an ownership-borrowed (their<Counter>) receiver
+// @description: calling a bind method on a receiver that is itself an ownership
+//   borrow (a `their<T>` parameter) must resolve the bind against the base struct
+//   and pass the borrow pointer through so mutations persist on the original
+//   object. Covers (a) direct method dispatch on a their receiver and (b)
+//   re-borrowing a their param through a chain of `their` calls.
+// @category: aspect, bind, receiver, ownership, borrow, dispatch
+// @expect: pass
+// @expect-return: 0
+// @execute-jit: true
+
+import core::aspects
+
+struct Counter {
+    n<Int>
+}
+
+aspect CounterInc {
+    increment(self<their<Counter>>)<Int>
+    peek(self<their<Counter>>)<Int>
+}
+
+bind CounterInc -> Counter {
+    increment(self<their<Counter>>)<Int> -> {
+        self.n = self.n + 1
+        return self.n
+    }
+    peek(self<their<Counter>>)<Int> -> {
+        return self.n
+    }
+}
+
+// Re-borrow a `their<Counter>` parameter into another `their` bind call:
+// method dispatch on the borrowed receiver must resolve, and each mutation
+// must propagate back to the caller's object.
+run(count<their<Counter>>)<Int> -> {
+    a<Int> = count.increment()
+    b<Int> = count.increment()
+    return a + b
+}
+
+// A free function taking a `their<Counter>` mutating it through a bind method,
+// exercising method dispatch on a `their` receiver directly.
+step(r<their<Counter>>)<Int> -> {
+    r.increment()
+    return r.peek()
+}
+
+main()<Int> -> {
+    ct<Counter> = Counter { n = 5 }
+
+    first<Int> = step(view(ct))
+    second<Int> = step(view(ct))
+    if (first != 6 || second != 7 || ct.n != 7) {
+        return 1
+    }
+
+    ct2<Counter> = Counter { n = 0 }
+    total<Int> = run(view(ct2))
+    if (total != 3 || ct2.n != 2) {
+        return 2
+    }
+
+    return 0
+}

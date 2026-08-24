@@ -362,7 +362,13 @@ void LLVMCodegen::handleStringCharAt(vyb::ast::CallExpression* node, llvm::Value
     phi->addIncoming(charVal, inBoundsBlock);
 
     VYB_CDBG << "DEBUG: String::char_at() called" << std::endl;
-    m_currentLLVMValue = phi;
+    // char_at is typed Int (i64) in the semantic layer; widen the loaded i8
+    // byte to i64 with zero-extension so downstream arithmetic (e.g.
+    // `& 0xFF` masking, `<< 8`) operates at full width. Zero-extension keeps
+    // bytes >= 128 as their unsigned value (0..255), matching byte semantics
+    // and the `& 0xFF` idiom (sign-extending would yield negative Ints).
+    llvm::Value* charByte = builder->CreateZExt(phi, llvm::Type::getInt64Ty(*context), "char.int");
+    m_currentLLVMValue = charByte;
 }
 
 void LLVMCodegen::handleStringToBytes(vyb::ast::CallExpression* node, llvm::Value* strPtr, llvm::Type* strStructType) {

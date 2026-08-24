@@ -3854,6 +3854,23 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                         if (typeName->identifier) {
                             std::string typeNameStr = typeName->toString(); // Use full type with generic args
 
+                            // Ownership-wrapped receivers (their<T> / my<T> / our<T> /
+                            // view<T> / borrow<T>) dispatch aspect/bind methods against the
+                            // unwrapped base type: binds are declared on the struct, never on
+                            // the wrapper, and codegen passes the pointee through by reference.
+                            // (mild<T> is excluded -- it has its own grab()/released() handling.)
+                            if (typeNameStr.find('<') != std::string::npos) {
+                                std::string wrapKw = typeNameStr.substr(0, typeNameStr.find('<'));
+                                if (wrapKw == "their" || wrapKw == "my" || wrapKw == "our" ||
+                                    wrapKw == "view" || wrapKw == "borrow") {
+                                    size_t lt = typeNameStr.find('<');
+                                    size_t gt = typeNameStr.rfind('>');
+                                    if (gt != std::string::npos && gt > lt + 1) {
+                                        typeNameStr = typeNameStr.substr(lt + 1, gt - lt - 1);
+                                    }
+                                }
+                            }
+
                             // Handle mild<T>.grab() and mild<T>.released() intrinsic methods
                             if (typeNameStr.find("mild<") == 0) {
                                 if (methodName == "grab") {
@@ -4985,7 +5002,26 @@ void SemanticAnalyzer::visit(ast::MemberExpression* node) {
     if (structIt != structFieldTypes.end()) {
         // This is a known struct type
         // Check if propertyId is a method name (to_string, from_string, etc.)
-        if (propertyId->name == "to_string") {
+        // or an aspect/bind method bound to this struct. Method calls must not be
+        // treated as field accesses. This is what lets a by-ref `their<T>` /
+        // `my<T>` / `view<T>` receiver (which routes through this member-access
+        // path after the ownership wrapper is unwrapped above) dispatch an
+        // aspect/bind method through to CallExpression instead of erroring with
+        // "Field ... not found in struct ...".
+        bool isBindMethod = false;
+        auto methodsIt = traitImpls.find(baseStructName);
+        if (methodsIt != traitImpls.end()) {
+            for (const auto& traitEntry : methodsIt->second) {
+                for (ast::FunctionDeclaration* m : traitEntry.second) {
+                    if (m && m->id && m->id->name == propertyId->name) {
+                        isBindMethod = true;
+                        break;
+                    }
+                }
+                if (isBindMethod) break;
+            }
+        }
+        if (propertyId->name == "to_string" || isBindMethod) {
             // This is a method call, not a field access
             // Let CallExpression visitor handle it
             return;

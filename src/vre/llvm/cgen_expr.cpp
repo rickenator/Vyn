@@ -1459,17 +1459,76 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                         return;
                     }
 
-                    // Create String struct: { ptr: *i8, len: i64 }
+                    // String::from_bytes produces a fresh, owned, NUL-terminated,
+                    // registry-tracked String that COPIES the given bytes. The prior
+                    // implementation aliased the caller's byte pointer without copying,
+                    // registering, or NUL-terminating it, so the result was not a
+                    // first-class owned buffer: `+` / `.concat()` (which size buffers
+                    // via strlen and release via the string registry) over-read or
+                    // mis-released it, corrupting or hanging the program (#179).
                     std::vector<llvm::Type*> strFields = {
                         llvm::PointerType::get(*context, 0), // ptr to bytes
                         llvm::Type::getInt64Ty(*context)     // length
                     };
                     llvm::StructType* strStructType = llvm::StructType::get(*context, strFields, false);
 
-                    // Create String struct value
+                    // Clamp a (misused) negative length to zero.
+                    llvm::Value* lenVal = builder->CreateIntCast(
+                        length, llvm::Type::getInt64Ty(*context), true, "from_bytes.len");
+                    llvm::Value* lenGE0 = builder->CreateICmpSGE(lenVal,
+                        llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 0));
+                    lenVal = builder->CreateSelect(lenGE0, lenVal,
+                        llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 0),
+                        "from_bytes.len.clamp");
+
+                    llvm::Value* allocSize = builder->CreateAdd(lenVal,
+                        llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 1),
+                        "from_bytes.allocsize");
+                    llvm::FunctionType* mallocType = llvm::FunctionType::get(
+                        llvm::PointerType::get(*context, 0),
+                        {llvm::Type::getInt64Ty(*context)}, false);
+                    llvm::Function* mallocFunc = module->getFunction("malloc");
+                    if (!mallocFunc) {
+                        mallocFunc = llvm::Function::Create(mallocType,
+                            llvm::Function::ExternalLinkage, "malloc", module.get());
+                    }
+                    llvm::Value* newData = builder->CreateCall(mallocFunc, {allocSize}, "from_bytes.data");
+                    builder->CreateCall(getOrCreateVybStringRegisterFunction(), {newData});
+
+                    llvm::FunctionType* memcpyType = llvm::FunctionType::get(
+                        llvm::PointerType::get(*context, 0),
+                        {llvm::PointerType::get(*context, 0),
+                         llvm::PointerType::get(*context, 0),
+                         llvm::Type::getInt64Ty(*context)}, false);
+                    llvm::Function* memcpyFunc = module->getFunction("memcpy");
+                    if (!memcpyFunc) {
+                        memcpyFunc = llvm::Function::Create(memcpyType,
+                            llvm::Function::ExternalLinkage, "memcpy", module.get());
+                    }
+                    // Resolve the actual byte source: from_bytes accepts either a raw
+                    // byte pointer or a String (whose .data pointer is used). A String
+                    // argument evaluates to a {ptr, len} struct here, so extract its .ptr.
+                    llvm::Value* srcPtr = bytePtr;
+                    if (bytePtr->getType()->isStructTy()) {
+                        srcPtr = builder->CreateExtractValue(bytePtr, 0, "from_bytes.src_ptr");
+                    }
+                    if (!srcPtr->getType()->isPointerTy()) {
+                        logError(node->arguments[0]->loc,
+                                 "String::from_bytes byte_ptr argument must be a pointer or a String");
+                        m_currentLLVMValue = nullptr;
+                        return;
+                    }
+
+                    builder->CreateCall(memcpyFunc, {newData, srcPtr, lenVal}, "from_bytes.memcpy");
+
+                    // NUL-terminate the fresh buffer so strlen-based paths are safe.
+                    llvm::Value* termPtr = builder->CreateGEP(llvm::Type::getInt8Ty(*context),
+                        newData, lenVal, "from_bytes.term");
+                    builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt8Ty(*context), 0), termPtr);
+
                     llvm::Value* resultStr = llvm::UndefValue::get(strStructType);
-                    resultStr = builder->CreateInsertValue(resultStr, bytePtr, 0, "str.from_bytes_data");
-                    resultStr = builder->CreateInsertValue(resultStr, length, 1, "str.from_bytes_len");
+                    resultStr = builder->CreateInsertValue(resultStr, newData, 0, "str.from_bytes_data");
+                    resultStr = builder->CreateInsertValue(resultStr, lenVal, 1, "str.from_bytes_len");
 
                     m_currentLLVMValue = resultStr;
                     VYB_CDBG << "DEBUG: String::from_bytes() created successfully" << std::endl;
@@ -5884,22 +5943,19 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 if (semantic && objTy2 && (dynamic_cast<ast::TypeName*>(objTy2) ||
                                            dynamic_cast<ast::VecType*>(objTy2))) {
                     std::string concreteType = objTy2->toString();
-                    bool ownershipWrappedVec = false;
+                    bool receiverIsByRef = false;
                     if (auto objTn2 = dynamic_cast<ast::TypeName*>(objTy2)) {
                         const std::string kw = objTn2->identifier ? objTn2->identifier->name : "";
                         if ((kw == "their" || kw == "my" || kw == "our" ||
                              kw == "view" || kw == "borrow") && objTn2->genericArgs.size() == 1) {
                             ast::TypeNode* inner = objTn2->genericArgs[0].get();
-                            bool innerIsVec = dynamic_cast<ast::VecType*>(inner) != nullptr;
-                            if (!innerIsVec) {
-                                if (auto innerTN = dynamic_cast<ast::TypeName*>(inner)) {
-                                    innerIsVec = innerTN->identifier && innerTN->identifier->name == "Vec";
-                                }
-                            }
-                            if (innerIsVec) {
-                                concreteType = inner->toString();
-                                ownershipWrappedVec = true;
-                            }
+                            // Dispatch bind/aspect methods against the unwrapped base type
+                            // for ANY ownership-wrapped receiver (their<Counter> / my<X> /
+                            // our<X> / view<X> / borrow<X>), not just wrapped Vecs. The slot
+                            // of such a variable holds a by-ref borrow (a pointer to the
+                            // pointee), so the self argument must be the loaded pointer.
+                            concreteType = inner->toString();
+                            receiverIsByRef = true;
                         }
                     }
 
@@ -5955,10 +6011,11 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                                 m_currentLLVMValue = nullptr;
                                 return;
                             }
-                            // Ownership-wrapped Vec field: recvPtr is the slot address
-                            // (Vec**); load once to recover the Vec* the by-ref self expects.
+                            // Ownership-wrapped field: recvPtr is the slot address (a
+                            // pointer-to-pointer for a by-ref borrow); load once to recover
+                            // the pointee pointer the by-ref self expects.
                             llvm::Value* selfArg = recvPtr;
-                            if (ownershipWrappedVec) {
+                            if (receiverIsByRef) {
                                 selfArg = builder->CreateLoad(llvm::PointerType::get(*context, 0), recvPtr, "byref.aspect.recv.load");
                             }
                             bool selfIsByRef = implFunc->getArg(0)->getType()->isPointerTy();
@@ -8296,6 +8353,17 @@ void LLVMCodegen::visit(ast::ConstructionExpression* node) {
             if (payload->getType() != valueTy) {
                 payload = tryCast(payload, valueTy, node->loc);
                 if (!payload) { m_currentLLVMValue = nullptr; return; }
+            }
+            // A present `T?` whose payload is a String must take an independent
+            // reference to the buffer before the optional aliases it: every
+            // storage location that stores a String retains, unless it is
+            // receiving a freshly-created owned transfer (which the source owns
+            // outright, e.g. `substring`). Wrapping an aliased owned String such
+            // as `String?(o)` kept refcount 1 while the local and the optional
+            // each later released it -> premature free / UAF (#176).
+            if (isVybStringStructType(payload->getType()) &&
+                !exprIsStringTransfer(node->arguments[0].get())) {
+                retainStringValue(payload);
             }
         }
         llvm::AllocaInst* optAlloca = builder->CreateAlloca(optStruct, nullptr, "opt.tmp");

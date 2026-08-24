@@ -1,0 +1,32 @@
+// @test: chained char_at in bitwise expressions (2-byte / byte assembly)
+// @description: char_at returns a byte value; chaining it in `& 0xFF` / `<< 8`
+//   bitwise expressions must widen the byte to full width before the shift, so
+//   `<< 8` cannot poison an i8 shift (which produced garbage), and bytes >= 0x80
+//   must mask to unsigned 0..255 rather than staying a signed i8. Regression
+//   for #177 (the exact idiom used in stdlib/archive/mod.vyb).
+// @category: string, char_at, bitwise, shift, byte, assembly
+// @expect: pass
+// @expect-return: 0
+// @execute-jit: true
+
+main()<Int> -> {
+    gz<String> = "AB"  // bytes 0x41 'A', 0x42 'B'
+
+    // Chained char_at inside | and << (the archive's byte-assembly pattern).
+    lo<Int> = gz.char_at(0) & 0xFF
+    hi<Int> = (gz.char_at(1) & 0xFF) << 8
+    u16<Int> = lo | hi
+    // 'A' | ('B' << 8) = 0x41 | 0x4200 = 0x4241 = 16961
+    if (u16 != 16961) { return 1 }
+
+    // Bytes >= 0x80 must mask to unsigned 0..255 and shift without i8 poison.
+    hb<String> = "\xFF\x80"
+    b0<Int> = hb.char_at(0) & 0xFF   // 0xFF -> 255
+    b1<Int> = hb.char_at(1) & 0xFF   // 0x80 -> 128
+    u2<Int> = b0 | (b1 << 8)         // 255 | 32768 = 33023
+    if (b0 != 255) { return 2 }
+    if (b1 != 128) { return 3 }
+    if (u2 != 33023) { return 4 }
+
+    return 0
+}
