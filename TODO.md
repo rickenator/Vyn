@@ -91,7 +91,7 @@ being treated as an untracked footnote.
 | CMake `run-tests` is not a CTest test and the claimed full-suite result lacks reproducible CI evidence | [#158](https://github.com/rickenator/Vyb/issues/158) |
 | HTTP/HTTPS is not yet a general modern web stack; supported behavior needs a tested boundary | [#159](https://github.com/rickenator/Vyb/issues/159) |
 | CMake build-type defaults, optimized builds, and sanitizer profiles are not explicit/reproducible | [#160](https://github.com/rickenator/Vyb/issues/160) |
-| `BTreeMap` is a sorted-vector map with O(n) insertion, not a node-based B-tree | [#161](https://github.com/rickenator/Vyb/issues/161) |
+| `BTreeMap` is now a true node-based index-arena B-tree (O(log n) inserts); `OrderedMap` keeps the honest sorted-vector name ([#161](https://github.com/rickenator/Vyb/issues/161), fixed) |
 | String tracking can become invisible/leak-prone when its fixed registry fills | [#162](https://github.com/rickenator/Vyb/issues/162) |
 | `core::result` is retained as a source-compat façade; `Result` is a working compiler builtin ([#163](https://github.com/rickenator/Vyb/issues/163), fixed) |
 | `vyb.toml` accepts only an underspecified TOML subset | [#164](https://github.com/rickenator/Vyb/issues/164) |
@@ -434,10 +434,11 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
 - [x] **String formatting** — `.format()` method (Format strings or `fmt()` intrinsic)
 - [x] **`HashMap<K, V>`** — Hash map with `Hashable + Equatable` bounds (parallel `keys`/`vals` vectors indexed by auto-growing hash-bucket chains; `import collections`)
 - [x] **`HashSet<T>`** — Hash set (`values` vector indexed by hash-bucket chains with duplicate suppression; `import collections`)
-- [x] **`BTreeMap<K, V>`** — Ordered map with `Comparable` bounds (keys in a
-  sorted `keys` vector + parallel `vals`; `get`/`contains_key` binary search,
-  `put` inserts at the sorted position; `iter()` walks entries in ascending key
-  order via `BTreeIter` with `MapEntry<K,V>` items; `import collections`)
+- [x] **`BTreeMap<K, V>`** — True node-based ordered map with `Comparable` bounds
+  (index-arena B-tree, t=2: all nodes in one shared `Vec<BTreeNode<K,V>>`, children
+  are `Int` arena indices; `put`/`get`/`contains_key` binary-search within a node
+  with O(log n) split-on-the-way-down inserts; `iter()` walks entries in ascending
+  key order via `BTreeMapIter` with `MapEntry<K,V>` items; `import collections`)
 - [x] **File I/O** — `import io`: `File { fd, path }`, `open(path, flags)` + `open_read`/`open_write`/`open_append`, `close`, `write_str`, `read_all` (whole file into a `String`, empty on error), and the `error_code()`/`error_message()` + `FileFlag` open-mode constants (`FileFlag::READ | FileFlag::CREATE`, ...), layered on runtime `__vyb_file_*` intrinsics (`test/modules/test_file_io.vyb`)
 - [x] **Math library** — `sqrt`, `sin`, `cos`, `tan`, `exp`, `log`, `log2`, `log10`, `pow`, `floor`, `ceil`, `round`, `abs`, `min`, `max`
 - [x] **Time / clock** — `import time`: `time_epoch_secs`/`time_epoch_millis`/`time_nanos`

@@ -2208,8 +2208,10 @@ regenerates byte-identical output.
 | Pseudo-random | [`rand`](rand.md) | — |
 | External commands | [`process`](process.md) | — |
 | Regex | [`regex`](regex.md) | — |
+| archive | [`archive`](archive.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 

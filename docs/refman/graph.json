@@ -1,7 +1,8 @@
 {
-  "git_rev": "f5b792d2d89bfe4eb4f4e9a7cd881ec70e40235a",
+  "git_rev": "8060a7206a7a1ae40a26f0bb0c0ff998b7f83de0",
   "modules": [
     "agents",
+    "archive",
     "asyncs",
     "channels",
     "collections",
@@ -36,6 +37,15 @@
         "fan_out": 0
       },
       {
+        "name": "archive",
+        "files": [
+          "stdlib/archive/mod.vyb"
+        ],
+        "exported": 22,
+        "fan_in": 0,
+        "fan_out": 0
+      },
+      {
         "name": "asyncs",
         "files": [
           "stdlib/asyncs/mod.vyb"
@@ -58,7 +68,7 @@
         "files": [
           "stdlib/collections/mod.vyb"
         ],
-        "exported": 27,
+        "exported": 33,
         "fan_in": 0,
         "fan_out": 1
       },
@@ -250,6 +260,34 @@
         ]
       },
       {
+        "path": "stdlib/archive/mod.vyb",
+        "module": "archive",
+        "symbols": [
+          "bstr",
+          "trim_nul",
+          "val_at",
+          "Huff",
+          "build_huff",
+          "Decode",
+          "decode_symbol",
+          "fixed_lit_lens",
+          "fixed_dist_lens",
+          "len_extra_tbl",
+          "len_base_tbl",
+          "dist_extra_tbl",
+          "dist_base_tbl",
+          "code_order",
+          "Run",
+          "decode_run",
+          "inflate_def",
+          "crc32",
+          "inflate_gzip",
+          "TarEntry",
+          "parse_octal",
+          "extract_tar"
+        ]
+      },
+      {
         "path": "stdlib/asyncs/mod.vyb",
         "module": "asyncs",
         "symbols": [
@@ -312,9 +350,15 @@
           "Iterator->HashIter",
           "SetOps",
           "SetOps->HashSet",
+          "OrderedMap<K, V>",
+          "OrderedMapIter<K, V>",
+          "Iterator->OrderedMapIter",
+          "OrderedMapOps",
+          "OrderedMapOps->OrderedMap",
+          "BTreeNode<K, V>",
           "BTreeMap<K, V>",
-          "BTreeIter<K, V>",
-          "Iterator->BTreeIter",
+          "BTreeMapIter<K, V>",
+          "Iterator->BTreeMapIter",
           "BTreeMapOps",
           "BTreeMapOps->BTreeMap",
           "VecOps",
@@ -952,6 +996,204 @@
         "fan_in": 0
       },
       {
+        "name": "Decode",
+        "module": "archive",
+        "file": "stdlib/archive/mod.vyb",
+        "kind": "struct",
+        "signature": "struct Decode {",
+        "summary": "One decoded symbol plus the advanced bit position.",
+        "fan_in": 0
+      },
+      {
+        "name": "Huff",
+        "module": "archive",
+        "file": "stdlib/archive/mod.vyb",
+        "kind": "struct",
+        "signature": "struct Huff {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Run",
+        "module": "archive",
+        "file": "stdlib/archive/mod.vyb",
+        "kind": "struct",
+        "signature": "struct Run {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "TarEntry",
+        "module": "archive",
+        "file": "stdlib/archive/mod.vyb",
+        "kind": "struct",
+        "signature": "struct TarEntry {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "bstr",
+        "module": "archive",
+        "file": "stdlib/archive/mod.vyb",
+        "kind": "fn",
+        "signature": "bstr(b<Int>)<String> ->",
+        "summary": "One-byte String whose sole byte is the low byte of `b` (b in 0..255).",
+        "fan_in": 0
+      },
+      {
+        "name": "build_huff",
+        "module": "archive",
+        "file": "stdlib/archive/mod.vyb",
+        "kind": "fn",
+        "signature": "build_huff(lens<Vec<Int>>)<Huff> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "code_order",
+        "module": "archive",
+        "file": "stdlib/archive/mod.vyb",
+        "kind": "fn",
+        "signature": "code_order()<Vec<Int>> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "crc32",
+        "module": "archive",
+        "file": "stdlib/archive/mod.vyb",
+        "kind": "fn",
+        "signature": "crc32(data<String>)<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "decode_run",
+        "module": "archive",
+        "file": "stdlib/archive/mod.vyb",
+        "kind": "fn",
+        "signature": "decode_run(lh<Huff>, dh<Huff>, data<String>, pos<Int>, out<String>)<Run> ->",
+        "summary": "Decode literal/length codes (lh) and distance codes (dh), appending output,",
+        "fan_in": 0
+      },
+      {
+        "name": "decode_symbol",
+        "module": "archive",
+        "file": "stdlib/archive/mod.vyb",
+        "kind": "fn",
+        "signature": "decode_symbol(data<String>, pos<Int>, h<Huff>)<Decode> ->",
+        "summary": "Decode and return one Huffman symbol (MSB-first), carrying the bit position.",
+        "fan_in": 0
+      },
+      {
+        "name": "dist_base_tbl",
+        "module": "archive",
+        "file": "stdlib/archive/mod.vyb",
+        "kind": "fn",
+        "signature": "dist_base_tbl()<Vec<Int>> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "dist_extra_tbl",
+        "module": "archive",
+        "file": "stdlib/archive/mod.vyb",
+        "kind": "fn",
+        "signature": "dist_extra_tbl()<Vec<Int>> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "extract_tar",
+        "module": "archive",
+        "file": "stdlib/archive/mod.vyb",
+        "kind": "fn",
+        "signature": "extract_tar(tar<String>)<Vec<TarEntry>> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "fixed_dist_lens",
+        "module": "archive",
+        "file": "stdlib/archive/mod.vyb",
+        "kind": "fn",
+        "signature": "fixed_dist_lens()<Vec<Int>> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "fixed_lit_lens",
+        "module": "archive",
+        "file": "stdlib/archive/mod.vyb",
+        "kind": "fn",
+        "signature": "fixed_lit_lens()<Vec<Int>> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "inflate_def",
+        "module": "archive",
+        "file": "stdlib/archive/mod.vyb",
+        "kind": "fn",
+        "signature": "inflate_def(src<String>)<String> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "inflate_gzip",
+        "module": "archive",
+        "file": "stdlib/archive/mod.vyb",
+        "kind": "fn",
+        "signature": "inflate_gzip(gz<String>)<String?> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "len_base_tbl",
+        "module": "archive",
+        "file": "stdlib/archive/mod.vyb",
+        "kind": "fn",
+        "signature": "len_base_tbl()<Vec<Int>> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "len_extra_tbl",
+        "module": "archive",
+        "file": "stdlib/archive/mod.vyb",
+        "kind": "fn",
+        "signature": "len_extra_tbl()<Vec<Int>> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "parse_octal",
+        "module": "archive",
+        "file": "stdlib/archive/mod.vyb",
+        "kind": "fn",
+        "signature": "parse_octal(s<String>)<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "trim_nul",
+        "module": "archive",
+        "file": "stdlib/archive/mod.vyb",
+        "kind": "fn",
+        "signature": "trim_nul(s<String>)<String> ->",
+        "summary": "Trim a String at its first NUL byte (used for NUL-terminated header fields).",
+        "fan_in": 0
+      },
+      {
+        "name": "val_at",
+        "module": "archive",
+        "file": "stdlib/archive/mod.vyb",
+        "kind": "fn",
+        "signature": "val_at(data<String>, pos<Int>, n<Int>)<Int> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
         "name": "async_accept",
         "module": "asyncs",
         "file": "stdlib/asyncs/mod.vyb",
@@ -1222,21 +1464,21 @@
         "fan_in": 0
       },
       {
-        "name": "BTreeIter<K, V>",
-        "module": "collections",
-        "file": "stdlib/collections/mod.vyb",
-        "kind": "struct",
-        "signature": "struct BTreeIter<K, V> {",
-        "summary": "",
-        "fan_in": 0
-      },
-      {
         "name": "BTreeMap<K, V>",
         "module": "collections",
         "file": "stdlib/collections/mod.vyb",
         "kind": "struct",
         "signature": "struct BTreeMap<K, V> {",
-        "summary": "BTreeMap<K, V> - an ordered map keyed by `Comparable`, bound to `BTreeMapOps`.",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "BTreeMapIter<K, V>",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "struct",
+        "signature": "struct BTreeMapIter<K, V> {",
+        "summary": "",
         "fan_in": 0
       },
       {
@@ -1253,8 +1495,17 @@
         "module": "collections",
         "file": "stdlib/collections/mod.vyb",
         "kind": "bind",
-        "signature": "bind<K<Comparable, Equatable>, V> BTreeMapOps -> BTreeMap<K, V> {",
+        "signature": "bind<K<Comparable>, V> BTreeMapOps -> BTreeMap<K, V> {",
         "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "BTreeNode<K, V>",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "struct",
+        "signature": "struct BTreeNode<K, V> {",
+        "summary": "True B-tree: `BTreeMap<K, V>` is an index-arena B-tree with O(log n) inserts.",
         "fan_in": 0
       },
       {
@@ -1285,11 +1536,11 @@
         "fan_in": 0
       },
       {
-        "name": "Iterator->BTreeIter",
+        "name": "Iterator->BTreeMapIter",
         "module": "collections",
         "file": "stdlib/collections/mod.vyb",
         "kind": "bind",
-        "signature": "bind<K<Comparable, Equatable>, V> Iterator -> BTreeIter<K, V> {",
+        "signature": "bind<K<Comparable>, V> Iterator -> BTreeMapIter<K, V> {",
         "summary": "",
         "fan_in": 0
       },
@@ -1308,6 +1559,15 @@
         "file": "stdlib/collections/mod.vyb",
         "kind": "bind",
         "signature": "bind<K<Hashable, Equatable>, V> Iterator -> MapIter<K, V> {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "Iterator->OrderedMapIter",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "bind",
+        "signature": "bind<K<Comparable, Equatable>, V> Iterator -> OrderedMapIter<K, V> {",
         "summary": "",
         "fan_in": 0
       },
@@ -1353,6 +1613,42 @@
         "file": "stdlib/collections/mod.vyb",
         "kind": "bind",
         "signature": "bind<K<Hashable, Equatable>, V> MapOps -> HashMap<K, V> {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "OrderedMap<K, V>",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "struct",
+        "signature": "struct OrderedMap<K, V> {",
+        "summary": "OrderedMap<K, V> - an ordered map keyed by `Comparable`, bound to `OrderedMapOps`.",
+        "fan_in": 0
+      },
+      {
+        "name": "OrderedMapIter<K, V>",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "struct",
+        "signature": "struct OrderedMapIter<K, V> {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "OrderedMapOps",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "aspect",
+        "signature": "aspect OrderedMapOps {",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
+        "name": "OrderedMapOps->OrderedMap",
+        "module": "collections",
+        "file": "stdlib/collections/mod.vyb",
+        "kind": "bind",
+        "signature": "bind<K<Comparable, Equatable>, V> OrderedMapOps -> OrderedMap<K, V> {",
         "summary": "",
         "fan_in": 0
       },
@@ -4862,6 +5158,132 @@
   "edges": [
     {
       "type": "call",
+      "from_module": "archive",
+      "from_symbol": "decode_run",
+      "to_module": "archive",
+      "to_symbol": "decode_symbol"
+    },
+    {
+      "type": "call",
+      "from_module": "archive",
+      "from_symbol": "decode_run",
+      "to_module": "archive",
+      "to_symbol": "dist_base_tbl"
+    },
+    {
+      "type": "call",
+      "from_module": "archive",
+      "from_symbol": "decode_run",
+      "to_module": "archive",
+      "to_symbol": "dist_extra_tbl"
+    },
+    {
+      "type": "call",
+      "from_module": "archive",
+      "from_symbol": "decode_run",
+      "to_module": "archive",
+      "to_symbol": "len_base_tbl"
+    },
+    {
+      "type": "call",
+      "from_module": "archive",
+      "from_symbol": "decode_run",
+      "to_module": "archive",
+      "to_symbol": "len_extra_tbl"
+    },
+    {
+      "type": "call",
+      "from_module": "archive",
+      "from_symbol": "decode_run",
+      "to_module": "archive",
+      "to_symbol": "val_at"
+    },
+    {
+      "type": "call",
+      "from_module": "archive",
+      "from_symbol": "decode_symbol",
+      "to_module": "archive",
+      "to_symbol": "val_at"
+    },
+    {
+      "type": "call",
+      "from_module": "archive",
+      "from_symbol": "extract_tar",
+      "to_module": "archive",
+      "to_symbol": "parse_octal"
+    },
+    {
+      "type": "call",
+      "from_module": "archive",
+      "from_symbol": "extract_tar",
+      "to_module": "archive",
+      "to_symbol": "trim_nul"
+    },
+    {
+      "type": "call",
+      "from_module": "archive",
+      "from_symbol": "inflate_def",
+      "to_module": "archive",
+      "to_symbol": "build_huff"
+    },
+    {
+      "type": "call",
+      "from_module": "archive",
+      "from_symbol": "inflate_def",
+      "to_module": "archive",
+      "to_symbol": "code_order"
+    },
+    {
+      "type": "call",
+      "from_module": "archive",
+      "from_symbol": "inflate_def",
+      "to_module": "archive",
+      "to_symbol": "decode_run"
+    },
+    {
+      "type": "call",
+      "from_module": "archive",
+      "from_symbol": "inflate_def",
+      "to_module": "archive",
+      "to_symbol": "decode_symbol"
+    },
+    {
+      "type": "call",
+      "from_module": "archive",
+      "from_symbol": "inflate_def",
+      "to_module": "archive",
+      "to_symbol": "fixed_dist_lens"
+    },
+    {
+      "type": "call",
+      "from_module": "archive",
+      "from_symbol": "inflate_def",
+      "to_module": "archive",
+      "to_symbol": "fixed_lit_lens"
+    },
+    {
+      "type": "call",
+      "from_module": "archive",
+      "from_symbol": "inflate_def",
+      "to_module": "archive",
+      "to_symbol": "val_at"
+    },
+    {
+      "type": "call",
+      "from_module": "archive",
+      "from_symbol": "inflate_gzip",
+      "to_module": "archive",
+      "to_symbol": "crc32"
+    },
+    {
+      "type": "call",
+      "from_module": "archive",
+      "from_symbol": "inflate_gzip",
+      "to_module": "archive",
+      "to_symbol": "inflate_def"
+    },
+    {
+      "type": "call",
       "from_module": "http",
       "from_symbol": "http_accept",
       "to_module": "network",
@@ -5612,7 +6034,7 @@
     {
       "type": "implement",
       "from_module": "collections",
-      "from_symbol": "Iterator->BTreeIter",
+      "from_symbol": "Iterator->BTreeMapIter",
       "to_module": "collections",
       "to_symbol": "Iterator"
     },
@@ -5633,6 +6055,13 @@
     {
       "type": "implement",
       "from_module": "collections",
+      "from_symbol": "Iterator->OrderedMapIter",
+      "to_module": "collections",
+      "to_symbol": "Iterator"
+    },
+    {
+      "type": "implement",
+      "from_module": "collections",
       "from_symbol": "Iterator->VecIter",
       "to_module": "collections",
       "to_symbol": "Iterator"
@@ -5643,6 +6072,13 @@
       "from_symbol": "MapOps->HashMap",
       "to_module": "collections",
       "to_symbol": "MapOps"
+    },
+    {
+      "type": "implement",
+      "from_module": "collections",
+      "from_symbol": "OrderedMapOps->OrderedMap",
+      "to_module": "collections",
+      "to_symbol": "OrderedMapOps"
     },
     {
       "type": "implement",
@@ -5843,9 +6279,9 @@
     {
       "type": "implementOn",
       "from_module": "collections",
-      "from_symbol": "Iterator->BTreeIter",
+      "from_symbol": "Iterator->BTreeMapIter",
       "to_module": "collections",
-      "to_symbol": "BTreeIter"
+      "to_symbol": "BTreeMapIter"
     },
     {
       "type": "implementOn",
@@ -5864,6 +6300,13 @@
     {
       "type": "implementOn",
       "from_module": "collections",
+      "from_symbol": "Iterator->OrderedMapIter",
+      "to_module": "collections",
+      "to_symbol": "OrderedMapIter"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "collections",
       "from_symbol": "Iterator->VecIter",
       "to_module": "collections",
       "to_symbol": "VecIter"
@@ -5874,6 +6317,13 @@
       "from_symbol": "MapOps->HashMap",
       "to_module": "collections",
       "to_symbol": "HashMap"
+    },
+    {
+      "type": "implementOn",
+      "from_module": "collections",
+      "from_symbol": "OrderedMapOps->OrderedMap",
+      "to_module": "collections",
+      "to_symbol": "OrderedMap"
     },
     {
       "type": "implementOn",
@@ -6612,14 +7062,28 @@
     {
       "type": "proseRef",
       "from_module": "collections",
-      "from_symbol": "BTreeMap<K, V>",
-      "to_module": "collections",
-      "to_symbol": "BTreeMapOps"
+      "from_symbol": "BTreeNode<K, V>",
+      "to_module": "core",
+      "to_symbol": "Comparable"
     },
     {
       "type": "proseRef",
       "from_module": "collections",
-      "from_symbol": "BTreeMap<K, V>",
+      "from_symbol": "BTreeNode<K, V>",
+      "to_module": "core",
+      "to_symbol": "Equatable"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "collections",
+      "from_symbol": "OrderedMap<K, V>",
+      "to_module": "collections",
+      "to_symbol": "OrderedMapOps"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "collections",
+      "from_symbol": "OrderedMap<K, V>",
       "to_module": "core",
       "to_symbol": "Comparable"
     },
@@ -8756,6 +9220,55 @@
       "from_module": "utf8",
       "from_symbol": "utf8_valid",
       "to_symbol": "vyb_utf8_valid"
+    },
+    {
+      "type": "usesType",
+      "from_module": "archive",
+      "from_symbol": "build_huff",
+      "to_module": "archive",
+      "to_symbol": "Huff"
+    },
+    {
+      "type": "usesType",
+      "from_module": "archive",
+      "from_symbol": "decode_run",
+      "to_module": "archive",
+      "to_symbol": "Huff"
+    },
+    {
+      "type": "usesType",
+      "from_module": "archive",
+      "from_symbol": "decode_run",
+      "to_module": "archive",
+      "to_symbol": "Huff"
+    },
+    {
+      "type": "usesType",
+      "from_module": "archive",
+      "from_symbol": "decode_run",
+      "to_module": "archive",
+      "to_symbol": "Run"
+    },
+    {
+      "type": "usesType",
+      "from_module": "archive",
+      "from_symbol": "decode_symbol",
+      "to_module": "archive",
+      "to_symbol": "Decode"
+    },
+    {
+      "type": "usesType",
+      "from_module": "archive",
+      "from_symbol": "decode_symbol",
+      "to_module": "archive",
+      "to_symbol": "Huff"
+    },
+    {
+      "type": "usesType",
+      "from_module": "archive",
+      "from_symbol": "extract_tar",
+      "to_module": "archive",
+      "to_symbol": "TarEntry"
     },
     {
       "type": "usesType",

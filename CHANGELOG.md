@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`BTreeMap<K, V>` is now a true node-based map** — an index-arena B-tree
+  (minimum degree t=2) with O(log n) inserts. All nodes share one `Vec<BTreeNode<K,V>>`
+  and children are `Int` arena indices, so inserts never reallocate peers and never
+  recurse: `put` uses split-on-the-way-down descent, `get`/`contains_key` binary-search
+  within a node, and `iter()` walks entries in ascending order via `BTreeMapIter`
+  (`import collections`; `test/modules/test_collections_btreemap.vyb`). The previous
+  sorted-vector implementation lives on under the honest name `OrderedMap`.
+- **Compiler ownership fix enabling the above** — structs whose fields own heap data
+  (`Vec<K>`, `String`, nested owning structs) are now deep-copied on every copy surface:
+  declaration-with-initializer, plain copy-assignment, `Vec` push/get/set of struct
+  elements, by-value struct parameters, and `Vec<Struct>` teardown per-element reclaim.
+  Previously these shallow-copied inner buffers (aliasing → double-free/corruption on
+  scope exit) and `generateVecDeepCopy` under-allocated relative to its advertised
+  capacity. Deep-copied arenas (incl. a `BTreeMap`) are now safe to mutate.
+
 ---
 
 ## [0.7.3] - 2026-08-19
