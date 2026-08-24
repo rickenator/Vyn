@@ -109,6 +109,45 @@ static vyb_str_ref vyb_str_reg[VYB_STR_REG_CAP] = {0};
 // (atomic RMW on `refs`); the mutex only guards publishing/retiring a slot.
 static pthread_mutex_t vyb_str_reg_lock = PTHREAD_MUTEX_INITIALIZER;
 
+// Effective probing capacity, overridable at startup for testing via
+// VYB_STR_REG_CAP (a power of 2 >= 4, clamped to the fixed array size). It is
+// fixed after the first register: lookup() probes lock-free, so the bound must
+// not change once any buffer is tracked.
+static size_t vyb_str_eff_cap = VYB_STR_REG_CAP;
+static int vyb_str_eff_cap_ready = 0;
+
+static void vyb_str_maybe_init_eff_cap(void) {
+    if (vyb_str_eff_cap_ready) return;
+    size_t c = VYB_STR_REG_CAP;
+    const char* e = getenv("VYB_STR_REG_CAP");
+    if (e && *e) {
+        unsigned long v = strtoul(e, NULL, 0);
+        if (v >= 4) {
+            size_t x = 1;
+            while ((x << 1) <= (size_t)v) x <<= 1;   // round down to a power of two
+            if (x > VYB_STR_REG_CAP) x = VYB_STR_REG_CAP;
+            c = x;
+        }
+    }
+    vyb_str_eff_cap = c;
+    vyb_str_eff_cap_ready = 1;
+}
+
+// Deterministic failure when the registry is exhausted. Growing an
+// open-addressing table whose readers probe lock-free is not safe (a grow would
+// rehash into a new array; a concurrent reader scanning the old array could
+// miss an entry and mis-reference-count a String), so instead of silently
+// leaving the allocation untracked -- which leaks and corrupts ref counts
+// downstream -- fail loudly and deterministically.
+static void vyb_str_reg_exhausted(void) {
+    static const char msg[] =
+        "Vyb runtime fatal: string reference-count registry exhausted. Unable "
+        "to track an allocation safely; aborting rather than leaving it "
+        "untracked. Set VYB_STR_REG_CAP (power of 2, >= 4) to size the registry.\n";
+    (void)!!vyb_raw_write(2, msg, sizeof(msg) - 1);
+    exit(1);
+}
+
 // An open-addressing hash table with linear probing. Freed buffers leave a
 // tombstone marker (VYB_STR_TOMB) in their slot instead of NULL so a still-live
 // entry that sat *behind* a freed slot stays reachable. Treating deletions as
@@ -123,13 +162,13 @@ static pthread_mutex_t vyb_str_reg_lock = PTHREAD_MUTEX_INITIALIZER;
 // already holds `p`. Used only by register() under the registry lock.
 static vyb_str_ref* vyb_str_insert_slot(void* p) {
     size_t h = (size_t)((uintptr_t)p / 16) ^ ((size_t)(uintptr_t)p / 4096);
-    h &= VYB_STR_REG_CAP - 1;
-    for (size_t i = 0; i < VYB_STR_REG_CAP; ++i) {
-        size_t idx = (h + i) & (VYB_STR_REG_CAP - 1);
+    h &= vyb_str_eff_cap - 1;
+    for (size_t i = 0; i < vyb_str_eff_cap; ++i) {
+        size_t idx = (h + i) & (vyb_str_eff_cap - 1);
         void* slotP = atomic_load_explicit(&vyb_str_reg[idx].p, memory_order_acquire);
         if (slotP == VYB_STR_TOMB || slotP == NULL || slotP == p) return &vyb_str_reg[idx];
     }
-    return NULL; // table full — buffer becomes invisible to reference counting
+    return NULL; // table full — callers must fail deterministically (#162)
 }
 
 // Lookup probe: walk past tombstones and unrelated live pointers until the slot
@@ -138,9 +177,9 @@ static vyb_str_ref* vyb_str_insert_slot(void* p) {
 static vyb_str_ref* vyb_str_lookup_slot(void* p) {
     if (!p) return NULL;
     size_t h = (size_t)((uintptr_t)p / 16) ^ ((size_t)(uintptr_t)p / 4096);
-    h &= VYB_STR_REG_CAP - 1;
-    for (size_t i = 0; i < VYB_STR_REG_CAP; ++i) {
-        size_t idx = (h + i) & (VYB_STR_REG_CAP - 1);
+    h &= vyb_str_eff_cap - 1;
+    for (size_t i = 0; i < vyb_str_eff_cap; ++i) {
+        size_t idx = (h + i) & (vyb_str_eff_cap - 1);
         void* slotP = atomic_load_explicit(&vyb_str_reg[idx].p, memory_order_acquire);
         if (slotP == p) return &vyb_str_reg[idx];
         if (slotP == NULL) return NULL; // end of cluster, not present
@@ -152,9 +191,17 @@ static vyb_str_ref* vyb_str_lookup_slot(void* p) {
 VYB_WEAK void __vyb_string_register(void* p) {
     if (!p) return;
     pthread_mutex_lock(&vyb_str_reg_lock);
+    vyb_str_maybe_init_eff_cap();
     vyb_str_ref* s = vyb_str_insert_slot(p);
-    void* slotP = s ? atomic_load_explicit(&s->p, memory_order_relaxed) : NULL;
-    if (s && (slotP == NULL || slotP == VYB_STR_TOMB)) {
+    if (!s) {
+        // Registry exhausted: fail deterministically instead of silently
+        // tracking nothing (that would leak / corrupt reference counts).
+        pthread_mutex_unlock(&vyb_str_reg_lock);
+        vyb_str_reg_exhausted();   // does not return
+        return;
+    }
+    void* slotP = atomic_load_explicit(&s->p, memory_order_relaxed);
+    if (slotP == NULL || slotP == VYB_STR_TOMB) {
         // Publish refs(1) before the pointer so a concurrent retain that sees the
         // pointer also sees the initialized refcount (release/acquire pairing).
         atomic_store_explicit(&s->refs, 1, memory_order_relaxed);
