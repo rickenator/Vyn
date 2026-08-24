@@ -574,6 +574,364 @@ bind<K<Comparable, Equatable>, V> OrderedMapOps -> OrderedMap<K, V> {
 }
 
 # ---------------------------------------------------------------------------
+# True B-tree: `BTreeMap<K, V>` is an index-arena B-tree with O(log n) inserts.
+#
+# Unlike `OrderedMap` (parallel sorted Vecs, binary-search get but O(n)
+# insert), this is a real minimum-degree-2 B-tree: each node holds 1-3 sorted
+# keys (and parallel values) plus up to 4 child indices into a single shared
+# arena `Vec<BTreeNode<K,V>>`, so no node ever shifts more than a constant
+# number of elements. Inserts split full nodes on the way down (preventively),
+# guaranteeing the descent always lands in a leaf with spare capacity — no
+# back-propagating splits (each split is local to one parent/child pair).
+#
+# `root` is an arena index, or -1 for an empty map. Because all children are
+# plain `Int` arena indices (never pointers/shares), the tree is safe to
+# copy: every `BTreeNode` owns its `Vec`s outright and the ownership fix
+# (deep-copy of a struct-with-owned-Vec on push/get/set/param-copy) makes an
+# arena `Vec<BTreeNode<K,V>>` safe to grow.
+#
+# Build one with `BTreeMap<K, V>()`. `MapEntry<K, V>` (reused from `HashMap`)
+# is the iterator item, so `for (kv in bt.iter())` reads `kv.key` / `kv.value`.
+# A B-tree key type only needs `Comparable` (order); no `Equatable` required,
+# since membership is decided by ordering, not an `equals` probe.
+share(all)
+struct BTreeNode<K, V> {
+    keys<Vec<K>>,
+    vals<Vec<V>>,
+    children<Vec<Int>>
+}
+
+share(all)
+struct BTreeMap<K, V> {
+    nodes<Vec<BTreeNode<K, V>>>,
+    root<Int>,
+    size<Int>
+
+    # Empty B-tree.
+    constructor() {
+        return BTreeMap<K, V> { nodes = Vec<BTreeNode<K, V>>(), root = -1, size = 0 }
+    }
+}
+
+share(all)
+struct BTreeMapIter<K, V> {
+    map<their<BTreeMap<K, V>>>,
+    stk<Vec<Int>>,
+    pos<Vec<Int>>
+}
+
+share(all)
+bind<K<Comparable>, V> Iterator -> BTreeMapIter<K, V> {
+    type Item = MapEntry<K, V>
+    next(self<their<BTreeMapIter<K, V>>>)<MapEntry<K, V>?> -> {
+        gg<Bool> = true
+        while (gg) {
+            if (self.stk.len() == 0) {
+                return MapEntry<K, V>?()
+            }
+            ndx<Int> = self.stk.len() - 1
+            nid<Int> = self.stk.get(ndx)
+            nd<BTreeNode<K, V>> = self.map.nodes.get(nid)
+            pp<Int> = self.pos.get(ndx)
+            if (nd.children.len() == 0) {
+                # Leaf: emit keys[pp] then advance.
+                if (pp < nd.keys.len()) {
+                    e<MapEntry<K, V>> = MapEntry<K, V> { key = nd.keys.get(pp), value = nd.vals.get(pp) }
+                    self.pos.set(ndx, pp + 1)
+                    return MapEntry<K, V>?(e)
+                }
+                self.stk.pop()
+                self.pos.pop()
+                gg = true
+            } else {
+                # Internal: children.len() = keys.len()+1. The in-order output is
+                # the interleaved sequence child0,key0,child1,key1,...,child(k-1),
+                # key(k-1),child(k) -- 2k+1 items (k keys, k+1 children). Encode
+                # the position as an index into that sequence: even pp => child
+                # index pp/2; odd pp => key index pp/2.
+                cc<Int> = nd.children.len()
+                if (pp % 2 == 0) {
+                    ci<Int> = pp / 2
+                    if (ci < cc) {
+                        # Descend into child `ci`; resume at pp+1 afterwards.
+                        self.pos.set(ndx, pp + 1)
+                        cid<Int> = nd.children.get(ci)
+                        self.stk.push(cid)
+                        self.pos.push(0)
+                        gg = true
+                    } else {
+                        self.stk.pop()
+                        self.pos.pop()
+                        gg = true
+                    }
+                } else {
+                    ki<Int> = pp / 2
+                    if (ki < nd.keys.len()) {
+                        e2<MapEntry<K, V>> = MapEntry<K, V> { key = nd.keys.get(ki), value = nd.vals.get(ki) }
+                        self.pos.set(ndx, pp + 1)
+                        return MapEntry<K, V>?(e2)
+                    }
+                    # Past the last key (the trailing pp odd position after the
+                    # final child) -- this internal node is complete.
+                    self.stk.pop()
+                    self.pos.pop()
+                    gg = true
+                }
+            }
+        }
+        return MapEntry<K, V>?()
+    }
+
+    # Iterators are themselves iterable over the same underlying map.
+    iter(self<their<BTreeMapIter<K, V>>>)<BTreeMapIter<K, V>> -> {
+        return BTreeMapIter<K, V> { map = self.map, stk = self.stk, pos = self.pos }
+    }
+}
+
+share(all)
+aspect BTreeMapOps {
+    put(self<their<BTreeMap<K, V>>>, key<K>, val<V>)<Bool>
+    get(self<their<BTreeMap<K, V>>>, key<K>)<V?>
+    contains_key(self<their<BTreeMap<K, V>>>, key<K>)<Bool>
+    size(self<their<BTreeMap<K, V>>>)<Int>
+    iter(self<their<BTreeMap<K, V>>>)<BTreeMapIter<K, V>>
+}
+
+share(all)
+bind<K<Comparable>, V> BTreeMapOps -> BTreeMap<K, V> {
+    # Split the full child at `parent.child[i]`: its median key/value rises into
+    # `parent` and its right half becomes a brand-new sibling node in the arena.
+    # `parent` MUST be non-full (guaranteed by split-on-the-way-down descent).
+    # The child had exactly 2t-1 == 3 keys and up to 4 children (t = 2).
+    put(self<their<BTreeMap<K, V>>>, key<K>, val<V>)<Bool> -> {
+        # Empty tree: make a single-leaf root.
+        if (self.root == -1) {
+            rt<BTreeNode<K, V>> = BTreeNode<K, V> { keys = Vec<K>(), vals = Vec<V>(), children = Vec<Int>() }
+            rt.keys.push(key)
+            rt.vals.push(val)
+            self.nodes.push(rt)
+            self.root = 0
+            self.size = 1
+            return true
+        }
+        # If the root is full, grow a new root: rise the old root's median into a
+        # fresh root, which then has two non-full children (standard B-tree).
+        rootNode<BTreeNode<K, V>> = self.nodes.get(self.root)
+        if (rootNode.keys.len() == 3) {
+            fullIdx<Int> = self.root
+            full<BTreeNode<K, V>> = self.nodes.get(fullIdx)
+            midKey<K> = full.keys.get(1)
+            midVal<V> = full.vals.get(1)
+            # Right sibling takes the high key (index 2) and high children (2,3).
+            right<BTreeNode<K, V>> = BTreeNode<K, V> { keys = Vec<K>(), vals = Vec<V>(), children = Vec<Int>() }
+            right.keys.push(full.keys.get(2))
+            right.vals.push(full.vals.get(2))
+            if (full.children.len() > 0) {
+                right.children.push(full.children.get(2))
+                right.children.push(full.children.get(3))
+                full.children.remove_at(3)
+                full.children.remove_at(2)
+            }
+            full.keys.remove_at(2)
+            full.keys.remove_at(1)
+            full.vals.remove_at(2)
+            full.vals.remove_at(1)
+            self.nodes.set(fullIdx, full)
+            rightIdx<Int> = self.nodes.len()
+            self.nodes.push(right)
+            # New root holds the median and the two (now non-full) children.
+            newRoot<BTreeNode<K, V>> = BTreeNode<K, V> { keys = Vec<K>(), vals = Vec<V>(), children = Vec<Int>() }
+            newRoot.keys.push(midKey)
+            newRoot.vals.push(midVal)
+            newRoot.children.push(fullIdx)
+            newRoot.children.push(rightIdx)
+            self.nodes.push(newRoot)
+            self.root = self.nodes.len() - 1
+        }
+        # Descend, splitting any full child before stepping into it, so we always
+        # reach a leaf with spare room.
+        cur<Int> = self.root
+        keepGoing<Bool> = true
+        while (keepGoing) {
+            nd<BTreeNode<K, V>> = self.nodes.get(cur)
+            # Binary search for the first key >= `key`.
+            lo<Int> = 0
+            hi<Int> = nd.keys.len()
+            while (lo < hi) {
+                mid<Int> = lo + (hi - lo) / 2
+                if (cmp_lt(nd.keys.get(mid), key)) {
+                    lo = mid + 1
+                } else {
+                    hi = mid
+                }
+            }
+            # Exact match -> overwrite the value in place.
+            if (lo < nd.keys.len()) {
+                if (!cmp_lt(key, nd.keys.get(lo))) {
+                    nd.vals.set(lo, val)
+                    self.nodes.set(cur, nd)
+                    return true
+                }
+            }
+            if (nd.children.len() == 0) {
+                # Leaf with capacity: insert the new key value at sorted `lo`.
+                nd.keys.push(key)
+                nd.vals.push(val)
+                pp<Int> = nd.keys.len() - 1
+                while (pp > lo) {
+                    kk<K> = nd.keys.get(pp - 1)
+                    nd.keys.set(pp - 1, nd.keys.get(pp))
+                    nd.keys.set(pp, kk)
+                    vv<V> = nd.vals.get(pp - 1)
+                    nd.vals.set(pp - 1, nd.vals.get(pp))
+                    nd.vals.set(pp, vv)
+                    pp = pp - 1
+                }
+                self.nodes.set(cur, nd)
+                self.size = self.size + 1
+                return true
+            }
+            # Internal node: descend into the child at `lo`, splitting it first
+            # if full. After a split the child seat may have moved, so re-search.
+            if (self.nodes.get(nd.children.get(lo)).keys.len() == 3) {
+                pnode<BTreeNode<K, V>> = nd
+                fullIdx2<Int> = pnode.children.get(lo)
+                full2<BTreeNode<K, V>> = self.nodes.get(fullIdx2)
+                midKey2<K> = full2.keys.get(1)
+                midVal2<V> = full2.vals.get(1)
+                right2<BTreeNode<K, V>> = BTreeNode<K, V> { keys = Vec<K>(), vals = Vec<V>(), children = Vec<Int>() }
+                right2.keys.push(full2.keys.get(2))
+                right2.vals.push(full2.vals.get(2))
+                if (full2.children.len() > 0) {
+                    right2.children.push(full2.children.get(2))
+                    right2.children.push(full2.children.get(3))
+                    full2.children.remove_at(3)
+                    full2.children.remove_at(2)
+                }
+                full2.keys.remove_at(2)
+                full2.keys.remove_at(1)
+                full2.vals.remove_at(2)
+                full2.vals.remove_at(1)
+                self.nodes.set(fullIdx2, full2)
+                rightIdx2<Int> = self.nodes.len()
+                self.nodes.push(right2)
+                # Rise the median into `cur` at key index lo; then add the new
+                # sibling at child seat lo+1.
+                pnode.keys.push(midKey2)
+                pnode.vals.push(midVal2)
+                qq2<Int> = pnode.keys.len() - 1
+                while (qq2 > lo) {
+                    kk2<K> = pnode.keys.get(qq2 - 1)
+                    pnode.keys.set(qq2 - 1, pnode.keys.get(qq2))
+                    pnode.keys.set(qq2, kk2)
+                    vv2<V> = pnode.vals.get(qq2 - 1)
+                    pnode.vals.set(qq2 - 1, pnode.vals.get(qq2))
+                    pnode.vals.set(qq2, vv2)
+                    qq2 = qq2 - 1
+                }
+                pnode.children.push(rightIdx2)
+                rr2<Int> = pnode.children.len() - 1
+                while (rr2 > lo + 1) {
+                    ii2<Int> = pnode.children.get(rr2 - 1)
+                    pnode.children.set(rr2 - 1, pnode.children.get(rr2))
+                    pnode.children.set(rr2, ii2)
+                    rr2 = rr2 - 1
+                }
+                self.nodes.set(cur, pnode)
+                nd = self.nodes.get(cur)
+                lo = 0
+                hi = nd.keys.len()
+                while (lo < hi) {
+                    mid<Int> = lo + (hi - lo) / 2
+                    if (cmp_lt(nd.keys.get(mid), key)) {
+                        lo = mid + 1
+                    } else {
+                        hi = mid
+                    }
+                }
+                if (lo < nd.keys.len()) {
+                    if (!cmp_lt(key, nd.keys.get(lo))) {
+                        nd.vals.set(lo, val)
+                        self.nodes.set(cur, nd)
+                        return true
+                    }
+                }
+            }
+            cur = nd.children.get(lo)
+            keepGoing = true
+        }
+        return true
+    }
+    get(self<their<BTreeMap<K, V>>>, key<K>)<V?> -> {
+        cur<Int> = self.root
+        while (cur != -1) {
+            if (cur >= self.nodes.len()) {
+                return V?()
+            }
+            nd<BTreeNode<K, V>> = self.nodes.get(cur)
+            lo<Int> = 0
+            hi<Int> = nd.keys.len()
+            while (lo < hi) {
+                mid<Int> = lo + (hi - lo) / 2
+                if (cmp_lt(nd.keys.get(mid), key)) {
+                    lo = mid + 1
+                } else {
+                    hi = mid
+                }
+            }
+            if (lo < nd.keys.len()) {
+                if (!cmp_lt(key, nd.keys.get(lo))) {
+                    return V?(nd.vals.get(lo))
+                }
+            }
+            if (nd.children.len() == 0) {
+                return V?()
+            }
+            cur = nd.children.get(lo)
+        }
+        return V?()
+    }
+    contains_key(self<their<BTreeMap<K, V>>>, key<K>)<Bool> -> {
+        cur<Int> = self.root
+        while (cur != -1 && cur < self.nodes.len()) {
+            nd<BTreeNode<K, V>> = self.nodes.get(cur)
+            lo<Int> = 0
+            hi<Int> = nd.keys.len()
+            while (lo < hi) {
+                mid<Int> = lo + (hi - lo) / 2
+                if (cmp_lt(nd.keys.get(mid), key)) {
+                    lo = mid + 1
+                } else {
+                    hi = mid
+                }
+            }
+            if (lo < nd.keys.len()) {
+                if (!cmp_lt(key, nd.keys.get(lo))) {
+                    return true
+                }
+            }
+            if (nd.children.len() == 0) {
+                return false
+            }
+            cur = nd.children.get(lo)
+        }
+        return false
+    }
+    size(self<their<BTreeMap<K, V>>>)<Int> -> {
+        return self.size
+    }
+    iter(self<their<BTreeMap<K, V>>>)<BTreeMapIter<K, V>> -> {
+        stk<Vec<Int>> = Vec<Int>()
+        pos<Vec<Int>> = Vec<Int>()
+        if (self.root != -1) {
+            stk.push(self.root)
+            pos.push(0)
+        }
+        return BTreeMapIter<K, V> { map = self, stk = stk, pos = pos }
+    }
+}
+
+# ---------------------------------------------------------------------------
 # Pure-Vyb `Vec<T>` extension operations.
 #
 # The built-in `Vec<T>` already ships the mutation/access primitives (`push`,

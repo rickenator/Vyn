@@ -1,0 +1,99 @@
+// @test: collections BTreeMap (index-arena B-tree keyed by Comparable)
+// @description: `import collections` ships `BTreeMap<K,V>`, a true B-tree bound to
+//   `BTreeMapOps` and keyed by `Comparable`. Nodes live in one shared arena
+//   `Vec<BTreeNode<K,V>>`; children are plain `Int` arena indices (never pointers),
+//   so inserts are O(log n) with constant-size node splits (t=2, on-the-way-down
+//   splitting, no recursion). Verifies many inserts force root splits, exact get of
+//   every key, absent-key via `else` default, contains_key both ways, size against
+//   duplicates/overwrite, ascending in-order iteration via `BTreeMapIter`
+//   (Item = `MapEntry<K,V>`), and iteration over a stored `BTreeMapIter` identifier.
+// @category: collections, iterator, stdlib, map, btree, btreemap, tree, for
+// @expect: pass
+// @expect-output: btreemap-ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+import collections
+
+main()<Int> -> {
+    bt<BTreeMap<Int, String>> = BTreeMap<Int, String>()
+    # 15 keys in non-ascending order force multiple root/grandparent splits.
+    bt.put(50, "fifty")
+    bt.put(10, "ten")
+    bt.put(30, "thirty")
+    bt.put(20, "twenty")
+    bt.put(40, "forty")
+    bt.put(60, "sixty")
+    bt.put(70, "seventy")
+    bt.put(80, "eighty")
+    bt.put(90, "ninety")
+    bt.put(15, "fifteen")
+    bt.put(25, "twenty-five")
+    bt.put(35, "thirty-five")
+    bt.put(45, "forty-five")
+    bt.put(55, "fifty-five")
+    bt.put(65, "sixty-five")
+    if (bt.size() != 15) { println("fail-size " + bt.size()); return 1 }
+    # Exact gets across leaf and internal nodes.
+    g10<String> = bt.get(10) else "?"
+    if (g10 != "ten") { println("fail-get10 " + g10); return 2 }
+    g55<String> = bt.get(55) else "?"
+    if (g55 != "fifty-five") { println("fail-get55 " + g55); return 3 }
+    g90<String> = bt.get(90) else "?"
+    if (g90 != "ninety") { println("fail-get90 " + g90); return 4 }
+    # Absent keys default via `else`.
+    gHi<String> = bt.get(100) else "?"
+    if (gHi != "?") { println("fail-miss-hi " + gHi); return 5 }
+    gLo<String> = bt.get(5) else "?"
+    if (gLo != "?") { println("fail-miss-lo " + gLo); return 6 }
+    # contains_key both directions.
+    if (!bt.contains_key(40)) { println("fail-has40"); return 7 }
+    if (bt.contains_key(41)) { println("fail-has41"); return 8 }
+    # Overwrite an existing key: value changes, size does not.
+    bt.put(50, "FIFTY")
+    if (bt.size() != 15) { println("fail-overwrite-size " + bt.size()); return 9 }
+    g50b<String> = bt.get(50) else "?"
+    if (g50b != "FIFTY") { println("fail-overwrite-val " + g50b); return 10 }
+    # Ascending in-order iteration over a stored BTreeMapIter identifier.
+    it<BTreeMapIter<Int, String>> = bt.iter()
+    prev<Int> = -1
+    first<Bool> = true
+    ok<Bool> = true
+    for (e in it) {
+        k<Int> = e.key
+        if (!first) { if (k < prev) { ok = false } }
+        first = false
+        prev = k
+    }
+    if (!ok) { println("fail-order"); return 11 }
+    if (prev != 90) { println("fail-last " + prev); return 12 }
+    # Size-sensitive stress: 400 shuffled inserts force many root splits and a
+    # tree several levels deep; verify exact get of every key, running sum, and
+    # sorted iteration (O(n log n) vs the old ordered-vec's O(n^2) bubble shifts).
+    big<BTreeMap<Int, Int>> = BTreeMap<Int, Int>()
+    ix<Int> = 0
+    while (ix < 400) {
+        big.put((ix * 7 + 13) % 400, ix)
+        ix = ix + 1
+    }
+    if (big.size() != 400) { println("fail-big-size " + big.size()); return 13 }
+    cx<Int> = 0
+    while (cx < 400) {
+        # key (cx*7+13)%400 holds value ix; with the +13 offset mapping is a
+        # bijection on 0..399, so get((cx*7+13)%400) must equal cx.
+        gotv<Int> = big.get((cx * 7 + 13) % 400) else -1
+        if (gotv != cx) { println("fail-big-get " + cx + " got " + gotv); return 14 }
+        cx = cx + 1
+    }
+    prevBig<Int> = -1
+    bigOrder<Bool> = true
+    firstBig<Bool> = true
+    for (e2 in big.iter()) {
+        if (!firstBig) { if (e2.key < prevBig) { bigOrder = false } }
+        firstBig = false
+        prevBig = e2.key
+    }
+    if (!bigOrder) { println("fail-big-order"); return 15 }
+    if (prevBig != 399) { println("fail-big-last " + prevBig); return 16 }
+    println("btreemap-ok")
+    return 0
+}
