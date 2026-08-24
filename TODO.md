@@ -93,7 +93,7 @@ being treated as an untracked footnote.
 | CMake build-type defaults, optimized builds, and sanitizer profiles are not explicit/reproducible | [#160](https://github.com/rickenator/Vyb/issues/160) |
 | `BTreeMap` is a sorted-vector map with O(n) insertion, not a node-based B-tree | [#161](https://github.com/rickenator/Vyb/issues/161) |
 | String tracking can become invisible/leak-prone when its fixed registry fills | [#162](https://github.com/rickenator/Vyb/issues/162) |
-| `core::result` says `Result` is unimplemented despite the tested compiler builtin | [#163](https://github.com/rickenator/Vyb/issues/163) |
+| `core::result` is retained as a source-compat façade; `Result` is a working compiler builtin ([#163](https://github.com/rickenator/Vyb/issues/163), fixed) |
 | `vyb.toml` accepts only an underspecified TOML subset | [#164](https://github.com/rickenator/Vyb/issues/164) |
 | Git and version dependency declarations parse but do not resolve | [#165](https://github.com/rickenator/Vyb/issues/165) |
 | Generic/aspect validation and codegen contain special-case paths without a clear conformance boundary | [#166](https://github.com/rickenator/Vyb/issues/166) |

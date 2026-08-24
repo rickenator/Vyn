@@ -46,4 +46,6 @@ work is still evolving.
   via `else` or a `match`/`?` arm). `Result<T,E>` (`Ok` / `Err`) remains a
   built-in generic data enum registered directly in the compiler; it needs no
   `import`.
-- `core::result` is a placeholder module that documents future `Result<T,E>`.
+- `core::result` is a source-compat façade module retained for `import
+  core::result` compatibility; the real `Result<T,E>` is the compiler builtin
+  (see above) and takes precedence.

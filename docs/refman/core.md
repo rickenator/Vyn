@@ -529,8 +529,28 @@ prelude_ok()<Int> ->
 
 core::result
 
-Placeholder module. Canonical `Result<T,E>` with `Ok(value)` / `Err(error)`
-depends on generic enum payload variants that are not implemented yet.
+Source-compatibility façade for the built-in `Result<T,E>` generic enum.
+
+The Rust-shaped `Result<T,E>` (`Ok(value)` / `Err(error)`) is a compiler
+built-in generic data enum: it is registered directly in the compiler and is
+usable WITHOUT any import. Construct it with `Result<A,B>::Ok(v)` /
+`Result<A,B>::Err(e)` or the inferred bare `Ok(e)` / `Err(e)` forms, and
+dispatch it with `match` (exhaustiveness is enforced -- both variants must be
+covered). See `test/future_features/test_result_type.vyb` and
+`test/units/test_result_non_exhaustive.vyb`.
+
+This module is retained purely for source compatibility with code that wrote
+`import core::result`. It declares no behavioural functionality of its own --
+the real `Result` lives in the compiler. Prefer the builtin directly.
+
+Example:
+  import core::result
+  fn fallible(ok<Bool>)<Result<Int, String>> -> {
+      if (ok) { return Result<Int, String>::Ok(42) }
+      return Result<Int, String>::Err("failed")
+  }
+  r<Result<Int, String>> = fallible(true)
+  match (r) { Ok(v) -> { ... }, Err(m) -> { ... } }
 
 <a id="sym-result_status_message"></a>
 ### `result_status_message` · fn

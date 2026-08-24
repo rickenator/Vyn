@@ -1,0 +1,35 @@
+// @test: core::result source-compat façade coexists with the built-in Result
+// @description: stdlib/core/result is a retained source-compat module; importing
+//   it must still resolve, and its status helper must describe the real builtin
+//   (not claim Result is unimplemented). The compiler-built-in Result<T,E> is used
+//   as normal with Ok/Err + match after that import.
+// @category: modules, result, error_handling
+// @expect: pass
+// @expect-return: 0
+
+import core::result::{result_status_message}
+
+main()<Int> -> {
+    // The compat module still resolves and reports the builtin exists.
+    msg<String> = result_status_message()
+    if (!msg.contains("built-in")) {
+        return 1
+    }
+    // The built-in generic Result is fully usable alongside that import.
+    r<Result<Int, String>> = Ok(42)
+    e<Result<Int, String>> = Err("bad")
+    got<Int> = 0
+    gotErr<Int> = 0
+    match (r) {
+        Ok(v) -> { got = v },
+        Err(m) -> { got = -1 }
+    }
+    match (e) {
+        Ok(v) -> { gotErr = v },
+        Err(m) -> { gotErr = -1 }
+    }
+    if (got == 42 && gotErr == -1) {
+        return 0
+    }
+    return 2
+}
