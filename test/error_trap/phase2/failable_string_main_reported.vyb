@@ -1,0 +1,14 @@
+// @test: failing main()<String,E> reports untrapped failure instead of being swallowed
+// @description: A failable main whose payload is a String lowers to a struct whose
+//   payload element is itself a String ({ {ptr,len}, i8* }), which a fixed 2-element
+//   shape heuristic misclassified as neither failable nor String — so the failure
+//   was silently swallowed with exit 0. Detection now keys on the trailing error
+//   pointer, so the untrapped failure is reported and the process exits non-zero.
+// @category: error,main,failable,return
+// @expect: fail
+// @expect-error: UNTRAPPED FAILURE
+
+main()<String> -> {
+    fail<String>("boom")
+    return "never"
+}

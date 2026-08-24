@@ -809,15 +809,22 @@ static void finalizeStandaloneExecutable(llvm::Module* module, bool mainReturnIs
     llvm::PointerType* charPtr = llvm::PointerType::getUnqual(ctx);
     bool isFailable = false;
     bool isString = false;
+    unsigned failableErrIdx = 0;
     if (retTy->isStructTy()) {
         auto* st = llvm::cast<llvm::StructType>(retTy);
-        if (st->getNumElements() == 2) {
-            if (st->getElementType(1)->isPointerTy()) {
-                isFailable = true;
-            } else if (st->getElementType(0)->isPointerTy() &&
-                       st->getElementType(1)->isIntegerTy(64)) {
-                isString = true;
-            }
+        unsigned n = st->getNumElements();
+        // The failable ABI is `{ data..., error }` where the LAST element is the
+        // error pointer (i8*). Detecting on the final element (instead of a fixed
+        // 2-element shape) uniformly covers Int/Void payloads ({i64,i8*}/{i1,i8*})
+        // AND String payloads ({{ptr,i64}, i8*}, 3 elements) — the latter was
+        // previously missed, so a failing main()<String,E> was silently swallowed
+        // with exit status 0 (#170).
+        if (n >= 2 && st->getElementType(n - 1)->isPointerTy()) {
+            isFailable = true;
+            failableErrIdx = n - 1;
+        } else if (n == 2 && st->getElementType(0)->isPointerTy() &&
+                   st->getElementType(1)->isIntegerTy(64)) {
+            isString = true;
         }
     }
 
@@ -859,7 +866,7 @@ static void finalizeStandaloneExecutable(llvm::Module* module, bool mainReturnIs
         builder.CreateRet(builder.getInt32(0));
     } else if (isFailable) {
         llvm::Value* res = builder.CreateCall(progMain);
-        llvm::Value* err = builder.CreateExtractValue(res, 1, "main.err");
+        llvm::Value* err = builder.CreateExtractValue(res, failableErrIdx, "main.err");
         llvm::Value* hasErr = builder.CreateIsNotNull(err, "main.hasErr");
         llvm::Function* untrapped = getOrDecl(
             "__vyb_runtime_untrapped_error",
@@ -2562,6 +2569,7 @@ runtimeSymbols[mangle("__vyb_strchan_free")] = llvm::orc::ExecutorSymbolDef(
         bool mainReturnsFailableStruct = false; // { T, i8* }
         bool mainFailablePayloadIsInt = false;
         bool mainFailablePayloadIsVoidDummy = false;
+        bool mainFailablePayloadIsStruct = false;
 
         if (mainFuncForTypeCheck) {
             llvm::Type* returnType = mainFuncForTypeCheck->getReturnType();
@@ -2569,18 +2577,42 @@ runtimeSymbols[mangle("__vyb_strchan_free")] = llvm::orc::ExecutorSymbolDef(
             // Detect if this is a Vyb string struct: { ptr, i64 } with 2 elements
             if (mainReturnsStruct) {
                 llvm::StructType* st = llvm::cast<llvm::StructType>(returnType);
-                if (st->getNumElements() == 2) {
-                    if (st->getElementType(1)->isPointerTy()) {
-                        // Failable return ABI { payload, error_ptr }.
-                        mainReturnsFailableStruct = true;
-                        mainFailablePayloadIsInt = st->getElementType(0)->isIntegerTy(64);
-                        mainFailablePayloadIsVoidDummy = st->getElementType(0)->isIntegerTy(1);
-                    } else if (st->getElementType(0)->isPointerTy() &&
-                               st->getElementType(1)->isIntegerTy(64)) {
-                        mainReturnsString = true;
-                    }
+                unsigned n = st->getNumElements();
+                // The failable ABI is `{ data..., error }` where the LAST element is
+                // the error pointer. Detecting on the final element (rather than a
+                // fixed 2-element shape) also catches a failable main with a String
+                // payload ({{ptr,i64}, i8*}, 3 elements) which was previously missed
+                // and silently swallowed with exit 0 (#170).
+                if (n >= 2 && st->getElementType(n - 1)->isPointerTy()) {
+                    mainReturnsFailableStruct = true;
+                    mainFailablePayloadIsInt = st->getElementType(0)->isIntegerTy(64);
+                    mainFailablePayloadIsVoidDummy = st->getElementType(0)->isIntegerTy(1);
+                    mainFailablePayloadIsStruct = st->getElementType(0)->isStructTy();
+                } else if (n == 2 && st->getElementType(0)->isPointerTy() &&
+                           st->getElementType(1)->isIntegerTy(64)) {
+                    mainReturnsString = true;
                 }
             }
+        }
+
+        // For a failable main with a non-scalar (String) payload, inject a small
+        // LLVM wrapper that calls main and returns ONLY the trailing error
+        // pointer. This avoids reconstructing the (sret) calling convention of the
+        // multi-eightbyte aggregate by hand, which misread the error slot and let a
+        // failing main()<String,E> exit 0 silently (#170).
+        if (mainReturnsFailableStruct && mainFailablePayloadIsStruct) {
+            llvm::StructType* _st = llvm::cast<llvm::StructType>(
+                mainFuncForTypeCheck->getReturnType());
+            unsigned _n = _st->getNumElements();
+            llvm::Type* _errTy = _st->getElementType(_n - 1);
+            llvm::FunctionType* _wrapTy = llvm::FunctionType::get(_errTy, /*isVarArg=*/false);
+            llvm::Function* _wrap = llvm::Function::Create(
+                _wrapTy, llvm::Function::ExternalLinkage, "__vyb_jit_failable_error", module.get());
+            llvm::BasicBlock* _bb = llvm::BasicBlock::Create(module->getContext(), "e", _wrap);
+            llvm::IRBuilder<> _wb(_bb);
+            llvm::Value* _res = _wb.CreateCall(mainFuncForTypeCheck);
+            llvm::Value* _err = _wb.CreateExtractValue(_res, _n - 1, "failable.err");
+            _wb.CreateRet(_err);
         }
 
         // Apply IR optimizations before JIT execution (default -O2 for JIT)
@@ -2655,6 +2687,24 @@ runtimeSymbols[mangle("__vyb_strchan_free")] = llvm::orc::ExecutorSymbolDef(
                     FailableIntMainResult result = fMain();
                     if (result.error != nullptr) {
                         __vyb_runtime_untrapped_error(result.error);
+                    }
+                    return 0;
+                }
+                if (mainFailablePayloadIsStruct) {
+                    // A failable main with a non-scalar (String) payload returns a
+                    // multi-eightbyte aggregate whose calling convention is hard to
+                    // reconstruct by hand (the fragility behind #170). Instead call
+                    // the LLVM-level wrapper we injected below (which returns just the
+                    // error pointer and lets LLVM handle the sret ABI correctly).
+                    auto errRes = jit->lookup("__vyb_jit_failable_error");
+                    if (errRes) {
+                        typedef char* (*FailableErrorFuncType)();
+                        FailableErrorFuncType fErr = reinterpret_cast<FailableErrorFuncType>(
+                            static_cast<void*>(errRes->toPtr<void*>()));
+                        char* err = fErr();
+                        if (err != nullptr) {
+                            __vyb_runtime_untrapped_error(err);
+                        }
                     }
                     return 0;
                 }
