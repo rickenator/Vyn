@@ -166,6 +166,14 @@ def run_test(test, vyb_executable, verbose=False, execute_jit=False):
 
         # Check return code matches expectations
         expected_return_code = 0 if test.expect == "pass" else 1
+        # @expect-return overrides the exit code for FAIL tests, letting a test
+        # assert one of Vyb's defined, reserved runtime exit statuses
+        # (e.g. the hard-assert status 219, distinct from panic/untrapped = 1).
+        if test.expect == "fail" and test.expect_return and test.expect_return != "n/a":
+            try:
+                expected_return_code = int(test.expect_return)
+            except ValueError:
+                pass
         success = (result.returncode == expected_return_code)
         failure_reasons = []
         if not success:

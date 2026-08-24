@@ -502,6 +502,7 @@ extern "C" {
 
     // Error handling runtime functions (from error_handling.cpp)
     void __vyb_runtime_panic(const char* message) __attribute__((noreturn));
+    void __vyb_assert_fail(const char* message, const char* location) __attribute__((noreturn));
     void __vyb_runtime_untrapped_error(void* error) __attribute__((noreturn));
     void* __vyb_runtime_create_error_ex(const char* type_name, void* type_id, void* data, uint64_t data_size, void (*destructor)(void*), const char* file, uint32_t line, uint32_t column);
     void __vyb_runtime_free_error(void* error);
@@ -1670,6 +1671,8 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
         // Register error handling runtime functions
         runtimeSymbols[mangle("__vyb_runtime_panic")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr((void*)&__vyb_runtime_panic), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_assert_fail")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr((void*)&__vyb_assert_fail), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_runtime_untrapped_error")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr((void*)&__vyb_runtime_untrapped_error), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_runtime_create_error_ex")] = llvm::orc::ExecutorSymbolDef(

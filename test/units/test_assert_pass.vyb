@@ -1,0 +1,15 @@
+// @test: hard assert with a true condition is a no-op and execution continues
+// @description: assert(<true cond>) compiles to a conditional runtime check that
+//   does nothing when the condition holds; the program continues normally. A
+//   hard assert is a keyword-level invariant check, not a catchable error.
+// @category: assert, control-flow, invariant
+// @expect: pass
+// @expect-return: 0
+// @execute-jit: true
+
+main()<Int> -> {
+    assert(1 + 1 == 2)
+    assert(true)
+    assert(2 > 0, "two should be positive")
+    return 0
+}

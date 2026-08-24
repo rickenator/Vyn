@@ -645,6 +645,7 @@ vyb::TokenType Lexer::get_keyword_type(const std::string& word) {
         {"ensure", vyb::TokenType::KEYWORD_ENSURE},
         {"panic", vyb::TokenType::KEYWORD_PANIC},
         {"exit", vyb::TokenType::KEYWORD_EXIT},
+        {"assert", vyb::TokenType::KEYWORD_ASSERT},
         {"typeof", vyb::TokenType::KEYWORD_TYPEOF},
         {"typename", vyb::TokenType::KEYWORD_TYPENAME}
     };

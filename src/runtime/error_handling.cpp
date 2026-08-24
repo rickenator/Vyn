@@ -471,6 +471,32 @@ void __vyb_runtime_panic(const char* message) {
     exit(1);
 }
 
+// ===== Hard Assertion Failure =====
+// Reserved, documented exit status for a failed hard assert, distinct from the
+// exit-1 used by untrapped failures and panics so CI/@expect-return tests can
+// tell an invariant failure from a recoverable-path failure.
+#define VYB_ASSERT_EXIT_STATUS 219
+
+void __vyb_assert_fail(const char* message, const char* location) {
+    fprintf(stderr, "\n");
+    fprintf(stderr, "┌─ ASSERTION FAILED ────────────────────────────────────────────┐\n");
+    fprintf(stderr, "│ A hard, non-catchable assert failed. The program's model of │\n");
+    fprintf(stderr, "│ itself is wrong, so it stops loud rather than continuing.   │\n");
+    fprintf(stderr, "└──────────────────────────────────────────────────────────────┘\n");
+    fprintf(stderr, "\n");
+    if (message && *message) {
+        fprintf(stderr, "Message: %s\n", message);
+    } else {
+        fprintf(stderr, "Message: <no message>\n");
+    }
+    if (location && *location) {
+        fprintf(stderr, "At: %s\n", location);
+    }
+    fprintf(stderr, "\nABORTING (assert)\n");
+    fflush(stderr);
+    exit(VYB_ASSERT_EXIT_STATUS);
+}
+
 // ===== Untrapped Error Handler =====
 
 void __vyb_runtime_untrapped_error(VybError* error) {

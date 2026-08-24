@@ -1,0 +1,15 @@
+// @test: hard assert failure prints message + location and exits with a reserved status
+// @description: assert(false[, msg]) is non-catchable: it prints "ASSERTION FAILED"
+//   plus the message and source location to stderr and exits with the reserved,
+//   documented status 219 (distinct from panic/untrapped, both of which exit 1).
+//   Regression for #168.
+// @category: assert, error, invariant, exit-status
+// @expect: fail
+// @expect-return: 219
+// @expect-error: ASSERTION FAILED
+// @execute-jit: true
+
+main()<Int> -> {
+    assert(false, "the world is broken")
+    return 0
+}

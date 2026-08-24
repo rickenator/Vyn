@@ -161,6 +161,8 @@ vyb::ast::StmtPtr StatementParser::parse() {
             return parse_panic();
         case vyb::TokenType::KEYWORD_EXIT:
             return parse_exit();
+        case vyb::TokenType::KEYWORD_ASSERT:
+            return parse_assert();
         case vyb::TokenType::KEYWORD_REFAIL:
             return parse_refail();
         default:
@@ -1392,6 +1394,7 @@ bool StatementParser::is_statement_start(vyb::TokenType type) const {
         case vyb::TokenType::KEYWORD_PANIC:
         case vyb::TokenType::KEYWORD_EXIT:
         case vyb::TokenType::KEYWORD_REFAIL:
+        case vyb::TokenType::KEYWORD_ASSERT:
         case vyb::TokenType::KEYWORD_DEFER:
         case vyb::TokenType::IDENTIFIER: // Added identifier for relaxed syntax
             return true;
@@ -1849,6 +1852,29 @@ std::unique_ptr<vyb::ast::ExitStatement> StatementParser::parse_exit() {
     match(vyb::TokenType::SEMICOLON);
 
     return std::make_unique<vyb::ast::ExitStatement>(loc, std::move(codeExpr));
+}
+
+// Parses a hard, non-catchable assert statement:
+//   assert(condition)
+//   assert(condition, "message")
+// Produces a deterministic, reserved-exit-status failure on a false condition.
+std::unique_ptr<vyb::ast::AssertStatement> StatementParser::parse_assert() {
+    SourceLocation loc = expect(vyb::TokenType::KEYWORD_ASSERT, "Expected 'assert'").location;
+    expect(vyb::TokenType::LPAREN, "Expected '(' after 'assert'");
+    auto cond = expr_parser_.parse_expression();
+    if (!cond) {
+        throw std::runtime_error("Expected assert condition at " + location_to_string(loc));
+    }
+    vyb::ast::ExprPtr msg = nullptr;
+    if (match(vyb::TokenType::COMMA)) {
+        msg = expr_parser_.parse_expression();
+        if (!msg) {
+            throw std::runtime_error("Expected assert message at " + location_to_string(loc));
+        }
+    }
+    expect(vyb::TokenType::RPAREN, "Expected ')' after assert");
+    match(vyb::TokenType::SEMICOLON);  // Semicolon optional (Vyb style), like exit().
+    return std::make_unique<vyb::ast::AssertStatement>(loc, std::move(cond), std::move(msg));
 }
 
 // Parses a refail statement: 'refail' or 'refail NewError { cause = e }'.

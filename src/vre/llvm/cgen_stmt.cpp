@@ -1872,52 +1872,48 @@ void LLVMCodegen::visit(vyb::ast::AssertStatement* node) {
     // Generate assert failure handling
     builder->SetInsertPoint(assertFailBB);
 
-    // Get the message if provided, or create a default one
+    // Get the message if provided, or create a default one.
     llvm::Value* messageValue;
     if (node->message) {
         node->message->accept(*this);
         messageValue = m_currentLLVMValue;
-
-        // If the message isn't a string, convert it to a string
-        if (!messageValue || !messageValue->getType()->isPointerTy()) {
-            // Create a default message
+        if (!messageValue) {
+            // Fall back to a default rather than crashing in codegen.
+            messageValue = builder->CreateGlobalStringPtr("assertion failed", "assert.msg");
+        } else if (messageValue->getType()->isStructTy()) {
+            // A Vyb String is { ptr, len }: hand the runtime the byte pointer.
+            messageValue = builder->CreateExtractValue(messageValue, 0, "assert.msg.ptr");
+        }
+        if (!messageValue->getType()->isPointerTy()) {
+            // Non-stringifiable message value: use a default.
             messageValue = builder->CreateGlobalStringPtr(
-                "Assertion failed at " + node->loc.toString(),
-                "assert.msg"
-            );
+                "Assertion failed at " + node->loc.toString(), "assert.msg");
         }
     } else {
-        // Create a default message
-        messageValue = builder->CreateGlobalStringPtr(
-            "Assertion failed at " + node->loc.toString(),
-            "assert.msg"
-        );
+        messageValue = builder->CreateGlobalStringPtr("assertion failed", "assert.msg");
     }
 
-    // Call the assert failure handler function
+    // Always pass the source location so the runtime can report where.
+    llvm::Value* locValue = builder->CreateGlobalStringPtr(
+        node->loc.toString(), "assert.loc");
+
+    // __vyb_assert_fail(const char* message, const char* location)
     std::vector<llvm::Type*> handlerParamTypes = {
-        llvm::PointerType::get(*context, 0) // Message as char*
+        llvm::PointerType::get(*context, 0), // message
+        llvm::PointerType::get(*context, 0)  // location
     };
-
     llvm::FunctionType* handlerFuncType = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*context),
-        handlerParamTypes,
-        false
-    );
+        llvm::Type::getVoidTy(*context), handlerParamTypes, false);
 
-    // Get or create the assert handler function
+    // Get or create the assert handler function.
     llvm::Function* assertHandlerFunc = module->getFunction("__vyb_assert_fail");
     if (!assertHandlerFunc) {
-        assertHandlerFunc = llvm::Function::Create(
-            handlerFuncType,
-            llvm::Function::ExternalLinkage,
-            "__vyb_assert_fail",
-            module.get()
-        );
+        assertHandlerFunc = llvm::Function::Create(handlerFuncType,
+            llvm::Function::ExternalLinkage, "__vyb_assert_fail", module.get());
     }
 
-    // Call the handler with the message
-    std::vector<llvm::Value*> args = { messageValue };
+    // Call the handler with the message and location.
+    std::vector<llvm::Value*> args = { messageValue, locValue };
     builder->CreateCall(assertHandlerFunc, args);
 
     // Terminate execution after assertion failure (this will be unreachable in practice)

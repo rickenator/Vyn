@@ -218,6 +218,7 @@ namespace vyb { // Changed Vyb to vyb
         std::unique_ptr<vyb::ast::FailStatement> parse_fail();
         std::unique_ptr<vyb::ast::PanicStatement> parse_panic();
         std::unique_ptr<vyb::ast::ExitStatement> parse_exit();
+        std::unique_ptr<vyb::ast::AssertStatement> parse_assert();
         std::unique_ptr<vyb::ast::RefailStatement> parse_refail();
         vyb::ast::StmtPtr parse_var_decl();
         bool looks_like_generic_call();

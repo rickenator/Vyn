@@ -83,6 +83,7 @@ std::string token_type_to_string(vyb::TokenType type) { // Corrected namespace f
         {vyb::TokenType::KEYWORD_REFAIL, "KEYWORD_REFAIL"},
         {vyb::TokenType::KEYWORD_ENSURE, "KEYWORD_ENSURE"},
         {vyb::TokenType::KEYWORD_PANIC, "KEYWORD_PANIC"},
+        {vyb::TokenType::KEYWORD_ASSERT, "KEYWORD_ASSERT"},
         {vyb::TokenType::KEYWORD_TYPEOF, "KEYWORD_TYPEOF"},
         {vyb::TokenType::KEYWORD_TYPENAME, "KEYWORD_TYPENAME"},
 

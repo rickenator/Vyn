@@ -6711,7 +6711,18 @@ void SemanticAnalyzer::visit(ast::UnsafeStatement* node) {
     node->block->accept(*this);
     exitScope();
 }
-void SemanticAnalyzer::visit(ast::AssertStatement* node) {}
+void SemanticAnalyzer::visit(ast::AssertStatement* node) {
+    // A hard assert carries an invariant-check condition and an optional
+    // message. Visit both: identifiers resolve and expression types register.
+    // The Bool-ness of the condition is coerced in codegen, consistent with
+    // how if/while conditions are treated that way.
+    if (node->condition) {
+        node->condition->accept(*this);
+    }
+    if (node->message) {
+        node->message->accept(*this);
+    }
+}
 void SemanticAnalyzer::visit(ast::MatchStatement* node) {
     // Visit the expression being matched
     if (node->expr) {
