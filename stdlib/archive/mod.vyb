@@ -15,10 +15,11 @@
 #
 # Design note: the DEFLATE bit cursor is threaded *functionally* — each decode
 # step returns a value plus the advanced bit position, and never mutates a
-# caller-owned cursor. (Vyb's by-ref `their` receivers cannot be re-borrowed
-# into further `their` calls, so a mutable reader passed through nested decode
-# helpers doesn't propagate; threading position through return values sidesteps
-# that entirely and is provably correct.)
+# caller-owned cursor. (This shape was first forced by a now-fixed Vyb bug
+# where re-borrowing a `their` receiver into further `their` calls did not
+# propagate mutation — see #178; a mutable `their` cursor is now viable, but
+# threading the position through return values stays simpler and provably
+# correct, so it is kept.)
 #
 # Usage:
 #   import archive::{inflate_gzip, extract_tar}
@@ -414,25 +415,11 @@ inflate_gzip(gz<String>)<String?> -> {
     if (pos > n - 8) { return String?() }
     src<String> = gz.substring(pos, n - 8)
     out<String> = inflate_def(src)
-    # NOTE: bind char_at results to temps before combining — inline char_at
-    # chained inside a `|`/`<<` bitwise expression hits a Vyb codegen
-    # recursion bug ("Call stack depth limit reached"); temps sidestep it.
-    c0<Int> = gz.char_at(n - 8)
-    c1<Int> = gz.char_at(n - 7)
-    c2<Int> = gz.char_at(n - 6)
-    c3<Int> = gz.char_at(n - 5)
-    crc<Int> = (c0 & 0xFF) | ((c1 & 0xFF) << 8) | ((c2 & 0xFF) << 16) | ((c3 & 0xFF) << 24)
-    i0<Int> = gz.char_at(n - 4)
-    i1<Int> = gz.char_at(n - 3)
-    i2<Int> = gz.char_at(n - 2)
-    i3<Int> = gz.char_at(n - 1)
-    isize<Int> = (i0 & 0xFF) | ((i1 & 0xFF) << 8) | ((i2 & 0xFF) << 16) | ((i3 & 0xFF) << 24)
+    crc<Int> = (gz.char_at(n - 8) & 0xFF) | ((gz.char_at(n - 7) & 0xFF) << 8) | ((gz.char_at(n - 6) & 0xFF) << 16) | ((gz.char_at(n - 5) & 0xFF) << 24)
+    isize<Int> = (gz.char_at(n - 4) & 0xFF) | ((gz.char_at(n - 3) & 0xFF) << 8) | ((gz.char_at(n - 2) & 0xFF) << 16) | ((gz.char_at(n - 1) & 0xFF) << 24)
     if (crc32(out) != (crc & 0xFFFFFFFF)) { return String?() }
     if ((out.len() & 0xFFFFFFFF) != (isize & 0xFFFFFFFF)) { return String?() }
-    # NOTE: wrap a fresh substring copy, not `out` directly — returning a
-    # concat-built String through a `String?` wrapper corrupts its prefix in
-    # the current Vyb runtime; copying via substring first is correct.
-    return String?(out.substring(0, out.len()))
+    return String?(out)
 }
 
 # --- tar (ustar / POSIX) extraction ---------------------------------------
