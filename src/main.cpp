@@ -495,6 +495,7 @@ extern "C" {
 
     // Type metadata registration
     void __vyb_register_type(void* metadata);
+    void __vyb_register_enum(void* metadata);
 
     // Type identity registry (id -> name)
     void __vyb_register_typename(uint64_t type_id, const char* type_name);
@@ -2549,6 +2550,8 @@ runtimeSymbols[mangle("__vyb_strchan_free")] = llvm::orc::ExecutorSymbolDef(
         // Register type metadata functions
         runtimeSymbols[mangle("__vyb_register_type")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_register_type), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_register_enum")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_register_enum), llvm::JITSymbolFlags::Exported);
 
         // Register the type identity registry
         runtimeSymbols[mangle("__vyb_register_typename")] = llvm::orc::ExecutorSymbolDef(

@@ -382,29 +382,59 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                     // Single primitive value (Bool or Float)
                     jsonStr = serializeOne(returnValue, origType);
                 } else {
-                    // Struct (single-element or multi-value tuple): always use JSON array
-                    auto* st = llvm::cast<llvm::StructType>(origType);
-                    unsigned numElems = st->getNumElements();
-                    llvm::Function* concat = getConcatFn();
-                    jsonStr = builder->CreateGlobalStringPtr("[");
-                    for (unsigned i = 0; i < numElems; i++) {
-                        // If returnValue is not actually a struct (type mismatch), serialize directly
-                        llvm::Value* elem;
-                        if (returnValue->getType()->isStructTy()) {
-                            elem = builder->CreateExtractValue(returnValue, {i}, "elem" + std::to_string(i));
+                    // A struct return is either a *named user struct* (e.g.
+                    // `main()<Spec>`) or an anonymous multi-value tuple (e.g.
+                    // `main() -> (Int, String)`). Named structs should serialize
+                    // as a proper JSON **object** with the struct's own field
+                    // names (and Vec/nested fields intact) by routing through the
+                    // metadata-driven serializer that `struct.to_string()` uses —
+                    // the previous positional-array emission dropped field names
+                    // AND fell back to `null` for any Vec field (issue #182).
+                    // Anonymous tuples have no field names to emit, so they keep
+                    // the positional-array form. `monomorphizedStructs` holds only
+                    // named user structs, which is exactly how we tell them apart.
+                    bool namedUserStruct = false;
+                    if (currentFunctionAST && currentFunctionAST->returnTypeNode) {
+                        namedUserStruct = monomorphizedStructs.count(
+                            currentFunctionAST->returnTypeNode->toString()) > 0;
+                    }
+                    if (namedUserStruct) {
+                        // generateToStringCall returns a Vyb String struct
+                        // { char*, i64 }; extract the data pointer to feed the
+                        // already-registered buffer into the println path below.
+                        llvm::Value* serializedStruct = generateToStringCall(
+                            returnValue, origType,
+                            currentFunctionAST->returnTypeNode.get(), node->loc);
+                        if (serializedStruct && serializedStruct->getType()->isStructTy()) {
+                            jsonStr = builder->CreateExtractValue(serializedStruct, 0,
+                                                                  "struct.json.data");
                         } else {
-                            elem = i == 0 ? returnValue : llvm::ConstantInt::get(st->getElementType(0), 0);
+                            jsonStr = builder->CreateGlobalStringPtr("null");
                         }
-                        llvm::Value* elemJson = serializeOne(elem, st->getElementType(i));
-                        if (i > 0) {
-                            llvm::Value* sep = builder->CreateGlobalStringPtr(", ");
-                            jsonStr = builder->CreateCall(concat, {jsonStr, sep}, "arr.sep");
+                    } else {
+                        // Anonymous multi-value tuple: JSON array by position.
+                        auto* st = llvm::cast<llvm::StructType>(origType);
+                        unsigned numElems = st->getNumElements();
+                        llvm::Function* concat = getConcatFn();
+                        jsonStr = builder->CreateGlobalStringPtr("[");
+                        for (unsigned i = 0; i < numElems; i++) {
+                            llvm::Value* elem;
+                            if (returnValue->getType()->isStructTy()) {
+                                elem = builder->CreateExtractValue(returnValue, {i}, "elem" + std::to_string(i));
+                            } else {
+                                elem = i == 0 ? returnValue : llvm::ConstantInt::get(st->getElementType(0), 0);
+                            }
+                            llvm::Value* elemJson = serializeOne(elem, st->getElementType(i));
+                            if (i > 0) {
+                                llvm::Value* sep = builder->CreateGlobalStringPtr(", ");
+                                jsonStr = builder->CreateCall(concat, {jsonStr, sep}, "arr.sep");
+                            }
+                            jsonStr = builder->CreateCall(concat, {jsonStr, elemJson}, "arr.elem");
                         }
-                        jsonStr = builder->CreateCall(concat, {jsonStr, elemJson}, "arr.elem");
+                        llvm::Value* close = builder->CreateGlobalStringPtr("]");
+                        jsonStr = builder->CreateCall(concat, {jsonStr, close}, "arr.close");
                     }
-                    llvm::Value* close = builder->CreateGlobalStringPtr("]");
-                    jsonStr = builder->CreateCall(concat, {jsonStr, close}, "arr.close");
-                    }
+                }
                 }
 
                 // Print the JSON output

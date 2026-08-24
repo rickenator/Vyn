@@ -701,6 +701,19 @@ void LLVMCodegen::visit(vyb::ast::BinaryExpression *node) {
         return;
     }
 
+    // Tagged-union enum equality (`==` / `!=`): compare the i64 tag and, when
+    // tags match, the matched variant's payload fields via a switch (structs
+    // cannot be fed into ICmp directly — see generateTaggedEnumEquality, #181).
+    if ((node->op.type == vyb::TokenType::EQEQ || node->op.type == vyb::TokenType::NOTEQ) &&
+        L->getType()->isStructTy() && R->getType()->isStructTy() &&
+        L->getType() == R->getType()) {
+        const TaggedEnumInfo* enInfo = findTaggedEnum(L->getType());
+        if (enInfo) {
+            m_currentLLVMValue = generateTaggedEnumEquality(L, R, node->op.type, *enInfo);
+            return;
+        }
+    }
+
     switch (node->op.type) {
         case vyb::TokenType::PLUS: // Reverted to vyb::TokenType::PLUS
             if (isFloatOp) {
@@ -11109,4 +11122,92 @@ llvm::Value* LLVMCodegen::generateOptionalEquality(llvm::Value* L, llvm::Value* 
     llvm::Value* eq = builder->CreateAnd(presentEq, payloadTerm, "optcmp.eq");
     if (op == vyb::TokenType::NOTEQ) eq = builder->CreateNot(eq, "optcmp.neq");
     return eq;
+}
+
+// Equality for tagged-union enum values (`==` / `!=`). A data enum is the
+// struct { i64 tag, [N x i8] data }, so two values are equal when their tags
+// match AND (for a data-carrying variant) every payload field matches. Unit
+// variants compare by tag alone. This used to feed the whole struct into
+// ICmp, which LLVM rejects (assert abort, exit 134) — the crash half of #181.
+llvm::Value* LLVMCodegen::generateTaggedEnumEquality(llvm::Value* L, llvm::Value* R, vyb::TokenType op,
+                                                     const TaggedEnumInfo& info) {
+    if (!L || !R) return llvm::ConstantInt::getFalse(*context);
+
+    // Scalar (C-like) enum values are plain i64 tags: plain integer compare.
+    if (info.isScalar) {
+        llvm::Value* eq = builder->CreateICmpEQ(L, R, "enumcmp.scalar.eq");
+        if (op == vyb::TokenType::NOTEQ) eq = builder->CreateNot(eq, "enumcmp.scalar.neq");
+        return eq;
+    }
+
+    llvm::Function* curFn = builder->GetInsertBlock()->getParent();
+    llvm::BasicBlock* origBB = builder->GetInsertBlock();
+
+    llvm::Value* tagL = builder->CreateExtractValue(L, 0, "enumcmp.l.tag");
+    llvm::Value* tagR = builder->CreateExtractValue(R, 0, "enumcmp.r.tag");
+    llvm::Value* tagEq = builder->CreateICmpEQ(tagL, tagR, "enumcmp.tag.eq");
+
+    llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(*context, "enumcmp.merge", curFn);
+    builder->SetInsertPoint(mergeBB);
+    llvm::PHINode* resultPhi = builder->CreatePHI(builder->getInt1Ty(), info.variantTags.size() + 1,
+                                                  "enumcmp.result");
+    builder->SetInsertPoint(origBB);
+
+    std::map<unsigned, llvm::BasicBlock*> tagToBB;
+    for (const auto& vt : info.variantTags) {
+        llvm::BasicBlock* bb = llvm::BasicBlock::Create(*context, "enumcmp.case." + vt.first, curFn);
+        tagToBB[vt.second] = bb;
+    }
+    llvm::BasicBlock* defaultBB = llvm::BasicBlock::Create(*context, "enumcmp.unknown", curFn);
+
+    // Compare one payload field of the matched variant; falls back to "equal"
+    // for types we cannot structurally compare.
+    auto fieldEq = [&](llvm::Value* lv, llvm::Value* rv) -> llvm::Value* {
+        if (!lv || !rv) return llvm::ConstantInt::getTrue(*context);
+        llvm::Type* t = lv->getType();
+        if (t->isIntegerTy()) return builder->CreateICmpEQ(lv, rv, "enumcmp.field.eq");
+        if (t->isFloatingPointTy()) return builder->CreateFCmpOEQ(lv, rv, "enumcmp.field.eq");
+        if (isVybStringStructType(t)) return generateStringComparison(lv, rv, vyb::TokenType::EQEQ);
+        return llvm::ConstantInt::getTrue(*context);
+    };
+
+    for (const auto& vt : info.variantTags) {
+        const std::string& variantName = vt.first;
+        builder->SetInsertPoint(tagToBB[vt.second]);
+        llvm::Value* eq = tagEq;  // tags already matched; compare payload if any
+        auto pit = info.variantPayloadTypes.find(variantName);
+        if (pit != info.variantPayloadTypes.end() && pit->second) {
+            llvm::StructType* payloadTy = pit->second;
+            for (unsigned i = 0; i < payloadTy->getNumElements(); ++i) {
+                llvm::Value* lf = extractEnumVariantField(L, payloadTy, i);
+                llvm::Value* rf = extractEnumVariantField(R, payloadTy, i);
+                eq = builder->CreateAnd(eq, fieldEq(lf, rf), "enumcmp.payload.and");
+            }
+        }
+        // The terminal block may differ from the case block: a String payload's
+        // generateStringComparison builds its own blocks and leaves the builder
+        // in its merge block, which is where `eq` is computed. Branch from and
+        // record that actual block so the PHI predecessors stay consistent.
+        llvm::BasicBlock* termBB = builder->GetInsertBlock();
+        builder->CreateBr(mergeBB);
+        resultPhi->addIncoming(eq, termBB);
+    }
+
+    builder->SetInsertPoint(defaultBB);
+    // Tags were already compared upfront; the "default" arm can only be reached
+    // for a tag not present on both sides, so it is unequal.
+    builder->CreateBr(mergeBB);
+    resultPhi->addIncoming(llvm::ConstantInt::getFalse(*context), defaultBB);
+
+    builder->SetInsertPoint(origBB);
+    llvm::SwitchInst* sw = builder->CreateSwitch(tagL, defaultBB, static_cast<unsigned>(tagToBB.size()));
+    for (const auto& kv : tagToBB) {
+        auto* tc = llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(int64Type, kv.first, true));
+        sw->addCase(tc, kv.second);
+    }
+
+    builder->SetInsertPoint(mergeBB);
+    llvm::Value* res = resultPhi;
+    if (op == vyb::TokenType::NOTEQ) res = builder->CreateNot(res, "enumcmp.neq");
+    return res;
 }

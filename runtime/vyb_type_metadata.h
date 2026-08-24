@@ -35,9 +35,31 @@ typedef struct VybAspectBinding {
     VybAspectMethod* methods;   // Array of methods
 } VybAspectBinding;
 
+// Enum variant payload field: one associated-type field of a tagged-union variant.
+typedef struct VybEnumField {
+    const char* type_name;      // Payload field type (e.g. "Int", "String")
+    size_t offset;              // Byte offset of the field within the enum's data area
+} VybEnumField;
+
+// A single variant of a tagged-union enum.
+typedef struct VybEnumVariant {
+    const char* name;           // Variant name (e.g. "Runtime")
+    uint64_t tag;               // Discriminator value
+    size_t num_fields;          // Number of payload fields (0 = unit variant)
+    VybEnumField* fields;       // Payload field metadata (NULL if num_fields == 0)
+} VybEnumVariant;
+
+// Enum metadata - describes a tagged-union enum for JSON round-trip.
+typedef struct VybEnumMetadata {
+    const char* type_name;      // Enum name (e.g. "KindP")
+    size_t payload_size;        // Size of the enum's data payload area (N bytes)
+    size_t num_variants;        // Number of variants
+    VybEnumVariant* variants;   // Array of variant metadata
+} VybEnumMetadata;
+
 // Type metadata - complete description of a struct type
 typedef struct VybTypeMetadata {
-    const char* type_name;      // Type name (e.g., "Counter", "Person")
+    const char* type_name;      // Type name (e.g. "Counter", "Person")
     size_t struct_size;         // Total size of struct in bytes
     size_t num_fields;          // Number of fields
     VybFieldMetadata* fields;   // Array of field metadata
@@ -49,6 +71,8 @@ typedef struct VybTypeMetadata {
 // This will be populated at program startup by generated registration code
 void __vyb_register_type(VybTypeMetadata* metadata);
 VybTypeMetadata* __vyb_lookup_type(const char* type_name);
+void __vyb_register_enum(VybEnumMetadata* metadata);
+VybEnumMetadata* __vyb_lookup_enum(const char* type_name);
 
 // JSON serialization using type metadata
 char* __vyb_complex_to_json_with_metadata(void* instance, VybTypeMetadata* metadata);

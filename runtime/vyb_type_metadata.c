@@ -15,6 +15,12 @@ extern void __vyb_string_register(void* p);
 static VybTypeMetadata* g_type_registry[MAX_TYPES];
 static size_t g_num_types = 0;
 
+// Enum registry (parallel to the type registry): holds tagged-union enum
+// layouts so struct fields of enum type can round-trip through JSON instead of
+// collapsing to `null` (which silently dropped the value).
+static VybEnumMetadata* g_enum_registry[MAX_TYPES];
+static size_t g_num_enums = 0;
+
 // Register a type in the global registry
 void __vyb_register_type(VybTypeMetadata* metadata) {
     if (g_num_types >= MAX_TYPES) {
@@ -29,6 +35,25 @@ VybTypeMetadata* __vyb_lookup_type(const char* type_name) {
     for (size_t i = 0; i < g_num_types; i++) {
         if (strcmp(g_type_registry[i]->type_name, type_name) == 0) {
             return g_type_registry[i];
+        }
+    }
+    return NULL;
+}
+
+// Register a tagged-union enum in the enum registry
+void __vyb_register_enum(VybEnumMetadata* metadata) {
+    if (g_num_enums >= MAX_TYPES) {
+        fprintf(stderr, "Error: Enum registry full\n");
+        return;
+    }
+    g_enum_registry[g_num_enums++] = metadata;
+}
+
+// Lookup enum metadata by name
+VybEnumMetadata* __vyb_lookup_enum(const char* type_name) {
+    for (size_t i = 0; i < g_num_enums; i++) {
+        if (strcmp(g_enum_registry[i]->type_name, type_name) == 0) {
+            return g_enum_registry[i];
         }
     }
     return NULL;
@@ -101,10 +126,45 @@ static size_t type_size(const char* tn) {
     if (strncmp(tn, "Vec<", 4) == 0) return 24;           // { void*, int64, int64 }
     VybTypeMetadata* m = __vyb_lookup_type(tn);
     if (m) return m->struct_size;
+    VybEnumMetadata* e = __vyb_lookup_enum(tn);
+    if (e) return sizeof(int64_t) + e->payload_size; // { i64 tag, [N x i8] data }
     return 8;
 }
 
 static void push_json_struct(JsonBuf* b, void* inst, VybTypeMetadata* m);
+static void push_json_value(JsonBuf* b, void* p, const char* tn);
+static void push_json_enum(JsonBuf* b, void* p, VybEnumMetadata* e);
+
+// Serialize a tagged-union enum value located at \p p as a single-key object
+// `{"<Variant>": <payload>}` (the variant name is the key, so it round-trips
+// losslessly). The enum is stored as `{ i64 tag, [N x i8] data }`; payload
+// fields live inside the data area at the returned offsets.
+static void push_json_enum(JsonBuf* b, void* p, VybEnumMetadata* e) {
+    int64_t tag = *(int64_t*)p;
+    const unsigned char* data = (const unsigned char*)p + sizeof(int64_t);
+    for (size_t vi = 0; vi < e->num_variants; vi++) {
+        VybEnumVariant* v = &e->variants[vi];
+        if ((int64_t)v->tag != tag) continue;
+        jb_s(b, "{\"");
+        jb_s(b, v->name);
+        jb_s(b, "\": ");
+        if (v->num_fields == 0) {
+            jb_s(b, "null");
+        } else if (v->num_fields == 1) {
+            push_json_value(b, (void*)(data + v->fields[0].offset), v->fields[0].type_name);
+        } else {
+            jb_s(b, "[");
+            for (size_t fi = 0; fi < v->num_fields; fi++) {
+                if (fi) jb_s(b, ", ");
+                push_json_value(b, (void*)(data + v->fields[fi].offset), v->fields[fi].type_name);
+            }
+            jb_s(b, "]");
+        }
+        jb_s(b, "}");
+        return;
+    }
+    jb_s(b, "null"); // unknown/uninitialized tag
+}
 
 // Serialize the value located at \p p whose type is \p tn (Int/Float/Bool/String
 // scalar, a Vec<T> array, or a nested struct) to \p b.
@@ -142,7 +202,11 @@ static void push_json_value(JsonBuf* b, void* p, const char* tn) {
     } else {
         VybTypeMetadata* m = __vyb_lookup_type(tn);
         if (m) push_json_struct(b, p, m);
-        else jb_s(b, "null");
+        else {
+            VybEnumMetadata* e = __vyb_lookup_enum(tn);
+            if (e) push_json_enum(b, p, e);
+            else jb_s(b, "null");
+        }
     }
 }
 
@@ -240,6 +304,50 @@ static char* json_read_string(const char** p) {
     return buf;
 }
 static void json_fill_value(void* slot, const char* tn, const char** p);
+static void json_fill_enum(void* slot, VybEnumMetadata* e, const char** p);
+
+// Deserialize `{"<Variant>": <payload>}` into an enum slot `{ i64 tag, [N x i8] data }`.
+// Sets the tag from the matched variant name, then fills the payload fields into
+// the data area at their recorded offsets (mirrors push_json_enum).
+static void json_fill_enum(void* slot, VybEnumMetadata* e, const char** p) {
+    json_skip_ws(p);
+    if (**p == '{') (*p)++; else return;
+    json_skip_ws(p);
+    char* name = json_read_string(p);
+    if (!name) return;
+    json_skip_ws(p);
+    if (**p == ':') (*p)++;
+    json_skip_ws(p);
+
+    VybEnumVariant* v = NULL;
+    for (size_t vi = 0; vi < e->num_variants; vi++)
+        if (!strcmp(e->variants[vi].name, name)) { v = &e->variants[vi]; break; }
+
+    char* data = (char*)slot + sizeof(int64_t);
+    if (v) {
+        *(int64_t*)slot = (int64_t)v->tag;
+        if (v->num_fields == 0) {
+            if (!strncmp(*p, "null", 4)) (*p) += 4;
+        } else if (v->num_fields == 1) {
+            json_fill_value(data + v->fields[0].offset, v->fields[0].type_name, p);
+        } else {
+            json_skip_ws(p);
+            if (**p == '[') {
+                (*p)++; json_skip_ws(p);
+                for (size_t fi = 0; fi < v->num_fields; fi++) {
+                    json_fill_value(data + v->fields[fi].offset, v->fields[fi].type_name, p);
+                    json_skip_ws(p);
+                    if (**p == ',') { (*p)++; json_skip_ws(p); }
+                    else break;
+                }
+                if (**p == ']') (*p)++;
+            }
+        }
+    }
+    json_skip_ws(p);
+    if (**p == '}') (*p)++;
+    free(name);
+}
 
 static void json_fill_object(void* inst, VybTypeMetadata* m, const char** p) {
     json_skip_ws(p);
@@ -304,6 +412,9 @@ static void json_fill_value(void* slot, const char* tn, const char** p) {
         if (m) {
             void* tmp = calloc(1, m->struct_size);
             if (tmp) { json_fill_object(tmp, m, p); memcpy(slot, tmp, m->struct_size); free(tmp); }
+        } else {
+            VybEnumMetadata* e = __vyb_lookup_enum(tn);
+            if (e) json_fill_enum(slot, e, p);
         }
     }
 }

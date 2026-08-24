@@ -1,0 +1,22 @@
+// @test: struct-typed main() return auto-serialises to keyed JSON object (#182)
+// @description: returning a struct from main() (after the return-value wrapper) emits a
+//   keyed JSON object with field names and intact Vec fields, instead of a positional
+//   array with null for collection fields. The last stdout line is the JSON itself.
+// @category: main, structs, json, serialization
+// @expect: pass
+// @expect-output: {"system": "x86_64-linux", "hostname": "hera", "packages": ["bash", "coreutils"]}
+
+import collections
+
+struct Spec {
+    system<String>,
+    hostname<String>,
+    packages<Vec<String>>
+}
+
+main()<Spec> -> {
+    pkgs<Vec<String>> = Vec<String>()
+    pkgs.push("bash")
+    pkgs.push("coreutils")
+    return Spec { system = "x86_64-linux", hostname = "hera", packages = pkgs }
+}

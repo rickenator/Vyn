@@ -240,6 +240,7 @@ private:
     std::map<std::string, llvm::StructType*> monomorphizedStructs; // Cache instantiated types (e.g., "Box<Int>" -> Box_Int LLVM type)
     std::map<std::string, vyb::ast::EnumDeclaration*> genericEnumTemplates;   // Generic data-enum AST nodes (enum Box<T> { ... })
     std::map<std::string, llvm::GlobalVariable*> typeMetadataGlobals; // Type metadata for JSON serialization
+    std::map<std::string, llvm::GlobalVariable*> enumMetadataGlobals; // Enum metadata for JSON serialization
 
     // Generic function templates
     std::map<std::string, vyb::ast::FunctionDeclaration*> genericFunctionTemplates; // Store generic function AST nodes (e.g., printItem<T>)
@@ -274,6 +275,12 @@ private:
     llvm::Value* buildTaggedEnumValue(const std::string& enumName, const std::string& variantName,
                                       std::vector<llvm::Value*> payloadVals);
     llvm::Value* extractEnumVariantField(llvm::Value* enumVal, llvm::StructType* payloadTy, unsigned fieldIdx);
+    // Equality for tagged-union enum values (`==` / `!=`): compare the i64 tag
+    // and, when the tags match, the payload fields of the matched variant.
+    // Previously the EQEQ/NOTEQ path fed a `{ i64 tag, [N x i8] data }` struct
+    // straight into ICmp, which LLVM rejects with an assert crash (#181).
+    llvm::Value* generateTaggedEnumEquality(llvm::Value* L, llvm::Value* R, vyb::TokenType op,
+                                            const TaggedEnumInfo& info);
     // Emit a Vec value for the builtin Vec constructor (`Vec()`, `Vec(n)`), sharing
     // the codegen between the bare `Vec(...)` and legacy `Vec::new(...)` forms.
     void emitVecConstructor(vyb::ast::CallExpression* node);
@@ -282,6 +289,7 @@ private:
     llvm::StructType* monomorphizeEnum(const std::string& baseName, const std::vector<vyb::ast::TypeNodePtr>& typeArgs);   // Generate specialized tagged-union enum
     std::vector<vyb::ast::TypeNodePtr> applyTypeSubstitutions(const std::vector<vyb::ast::TypeNodePtr>& typeArgs);
     void generateTypeMetadata(const std::string& typeName, vyb::ast::StructDeclaration* structDecl); // Generate type metadata for JSON/reflection
+    void generateEnumTypeMetadata(const std::string& typeName, vyb::ast::EnumDeclaration* enumDecl);  // Generate enum metadata for JSON round-trip
     void registerTypeMetadata(); // Register all type metadata at program startup
     void registerTypeNames(); // Register all compile-time-known type names in the runtime type registry
     llvm::Function* getCurrentFunction();

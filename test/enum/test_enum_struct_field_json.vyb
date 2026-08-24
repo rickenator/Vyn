@@ -1,0 +1,47 @@
+// @test: enums as struct-field types serialise + round-trip losslessly (#181)
+// @description: a tagged-union enum as a struct field compiles, is sized, serialises to
+//   keyed JSON ({"Runtime": 4}) without collapsing to null, and round-trips through
+//   Holder::from_string() with the payload intact; == / != works on enum values
+// @category: enums, structs, json, serialization
+// @expect: pass
+// @expect-output: {"name": "openssl", "kindP": {"Runtime": 4}, "tag": "lib"}
+// roundtrip name=openssl tag=lib runtime=true
+// shape-ok
+// rect-ok
+// neq
+// @expect-return: 0
+
+import collections
+
+enum KindP { Build(Int), Runtime(Int) }
+enum Shape { Unit, Circle(Float), Rect(Float, Float), Label(String) }
+
+struct Rec {
+    name<String>,
+    kindP<KindP>,
+    tag<String>
+}
+
+struct Holder {
+    name<String>,
+    shape<Shape>,
+    count<Int>
+}
+
+main()<Int> -> {
+    r<Rec> = Rec { name = "openssl", kindP = KindP::Runtime(4), tag = "lib" }
+    json = r.to_string()
+    println(json)
+    back<Rec> = Rec::from_string(json)
+    if (back.kindP == KindP::Runtime(4)) { println("runtime=true") } else { println("runtime=false") }
+    if (back.kindP == KindP::Build(1)) { println("build") }
+
+    a<Holder> = Holder { name = "s1", shape = Shape::Circle(2.5), count = 7 }
+    b<Holder> = Holder::from_string(a.to_string())
+    if (b.shape == Shape::Circle(2.5)) { println("shape-ok") } else { println("shape-FAIL") }
+    c<Holder> = Holder { name = "s2", shape = Shape::Rect(1.0, 2.0), count = 3 }
+    d<Holder> = Holder::from_string(c.to_string())
+    if (d.shape == Shape::Rect(1.0, 2.0)) { println("rect-ok") } else { println("rect-FAIL") }
+    if (Shape::Circle(1.0) != Shape::Circle(2.0)) { println("neq") }
+    return 0
+}

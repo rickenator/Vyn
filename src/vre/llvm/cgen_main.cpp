@@ -178,6 +178,24 @@ void LLVMCodegen::visit(vyb::ast::Module* node) {
     vyb::ast::Module* previousModule = m_currentVybModule;
     m_currentVybModule = node;
 
+    // TYPE PASS 0 (enums): Register enum declarations BEFORE structs. Struct
+    // field types may reference an enum (e.g. `struct Rec { kindP<KindP> }`),
+    // and struct-field LLVM types are resolved during the struct pass below, so
+    // the enum must already be in userTypeMap/taggedEnumInfo by then. Previously
+    // enums were processed after structs, so any struct field whose type was an
+    // enum failed to resolve ("Unknown type identifier") and, worse, cascaded
+    // into an unsized struct that crashed the compiler on the error path (#181).
+    // Enum payloads only carry scalars (Int/Float/String) in current usage, so
+    // this reorder cannot regress enum-payload -> struct references.
+    VYB_CDBG << "DEBUG: Type pass 0 - processing enum declarations" << std::endl;
+    for (size_t i = 0; i < node->body.size(); ++i) {
+        const auto& stmt = node->body[i];
+        if (stmt && stmt->getType() == vyb::ast::NodeType::ENUM_DECLARATION) {
+            VYB_CDBG << "DEBUG: Type pass 0 - processing enum declaration statement " << i << std::endl;
+            stmt->accept(*this);
+        }
+    }
+
     // FIRST PASS: Process all struct declarations to establish type information
     VYB_CDBG << "DEBUG: First pass - processing struct declarations" << std::endl;
     for (size_t i = 0; i < node->body.size(); ++i) {
@@ -196,16 +214,6 @@ void LLVMCodegen::visit(vyb::ast::Module* node) {
         const auto& stmt = node->body[i];
         if (stmt && stmt->getType() == vyb::ast::NodeType::TYPE_ALIAS_DECLARATION) {
             VYB_CDBG << "DEBUG: Processing type alias declaration statement " << i << std::endl;
-            stmt->accept(*this);
-        }
-    }
-
-    // Also process enum declarations (they may be referenced in function signatures)
-    VYB_CDBG << "DEBUG: First-enum pass - processing enum declarations" << std::endl;
-    for (size_t i = 0; i < node->body.size(); ++i) {
-        const auto& stmt = node->body[i];
-        if (stmt && stmt->getType() == vyb::ast::NodeType::ENUM_DECLARATION) {
-            VYB_CDBG << "DEBUG: Processing enum declaration statement " << i << std::endl;
             stmt->accept(*this);
         }
     }

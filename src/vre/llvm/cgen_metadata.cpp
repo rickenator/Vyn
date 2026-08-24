@@ -236,6 +236,17 @@ void LLVMCodegen::registerTypeMetadata() {
         );
     }
 
+    // Declare __vyb_register_enum function
+    llvm::Function* registerEnumFunc = module->getFunction("__vyb_register_enum");
+    if (!registerEnumFunc) {
+        registerEnumFunc = llvm::Function::Create(
+            registerFuncType,
+            llvm::Function::ExternalLinkage,
+            "__vyb_register_enum",
+            module.get()
+        );
+    }
+
     // Create a global constructor function to register all types at startup
     llvm::FunctionType* ctorType = llvm::FunctionType::get(
         llvm::Type::getVoidTy(*context),
@@ -257,6 +268,13 @@ void LLVMCodegen::registerTypeMetadata() {
         llvm::Value* metadataPtr = ctorBuilder.CreateBitCast(pair.second, int8PtrType);
         ctorBuilder.CreateCall(registerFunc, {metadataPtr});
         VYB_CDBG << "DEBUG: Added registration call for type: " << pair.first << std::endl;
+    }
+
+    // Call __vyb_register_enum for each enum
+    for (const auto& pair : enumMetadataGlobals) {
+        llvm::Value* metadataPtr = ctorBuilder.CreateBitCast(pair.second, int8PtrType);
+        ctorBuilder.CreateCall(registerEnumFunc, {metadataPtr});
+        VYB_CDBG << "DEBUG: Added enum registration call for: " << pair.first << std::endl;
     }
 
     ctorBuilder.CreateRetVoid();
@@ -294,6 +312,125 @@ void LLVMCodegen::registerTypeMetadata() {
     );
 
     VYB_CDBG << "DEBUG: Type metadata registration complete" << std::endl;
+}
+
+// Generate enum metadata for a tagged-union enum. Emits a VybEnumMetadata
+// constant (type_name, payload_size, variant array) so struct fields of an enum
+// type can round-trip through JSON (runtime/vyb_type_metadata.c) instead of
+// collapsing to null. Each variant records its name, tag, and payload field
+// metadata (type_name + byte offset within the { i64, [N x i8] } data area).
+void LLVMCodegen::generateEnumTypeMetadata(const std::string& typeName, vyb::ast::EnumDeclaration* enumDecl) {
+    if (!enumDecl) return;
+
+    auto it = taggedEnumInfo.find(typeName);
+    if (it == taggedEnumInfo.end()) {
+        VYB_CDBG << "DEBUG: No tagged-enum info for " << typeName << "; skipping enum metadata" << std::endl;
+        return;
+    }
+    const TaggedEnumInfo& info = it->second;
+    if (info.isScalar) {
+        // C-like scalar enums are just an i64 tag with no struct/payload layout;
+        // they carry no serializable payload, so nothing to register.
+        return;
+    }
+
+    VYB_CDBG << "DEBUG: Generating enum metadata for: " << typeName << std::endl;
+
+    llvm::PointerType* int8PtrType = llvm::PointerType::get(llvm::Type::getInt8Ty(*context), 0);
+    llvm::Type* int64Type = llvm::Type::getInt64Ty(*context);
+    const llvm::DataLayout& dataLayout = module->getDataLayout();
+
+    // VybEnumField = { const char* type_name; size_t offset; }
+    llvm::StructType* enumFieldType = llvm::StructType::get(
+        *context, {int8PtrType, int64Type}, false);
+    // VybEnumVariant = { const char* name; uint64 tag; size_t num_fields; VybEnumField* fields; }
+    llvm::StructType* enumVariantType = llvm::StructType::get(
+        *context, {int8PtrType, int64Type, int64Type, int8PtrType}, false);
+    // VybEnumMetadata = { const char* type_name; size_t payload_size; size_t num_variants; VybEnumVariant* variants; }
+    llvm::StructType* enumMetaType = llvm::StructType::get(
+        *context, {int8PtrType, int64Type, int64Type, int8PtrType}, false);
+
+    std::vector<llvm::Constant*> variantConstants;
+
+    for (const auto& variantNode : enumDecl->variants) {
+        if (!variantNode || !variantNode->name) continue;
+        const std::string vname = variantNode->name->name;
+
+        unsigned tag = 0;
+        auto tagIt = info.variantTags.find(vname);
+        if (tagIt != info.variantTags.end()) tag = tagIt->second;
+
+        // Build the payload field metadata (type_name + byte offset in data area).
+        std::vector<llvm::Constant*> fieldConstants;
+        auto payIt = info.variantPayloadTypes.find(vname);
+        if (payIt != info.variantPayloadTypes.end() && payIt->second) {
+            llvm::StructType* payloadTy = payIt->second;
+            const llvm::StructLayout* layout = dataLayout.getStructLayout(payloadTy);
+            for (size_t fi = 0; fi < variantNode->associatedTypes.size() && fi < payloadTy->getNumElements(); ++fi) {
+                std::string ftype = variantNode->associatedTypes[fi]->toString();
+                llvm::Constant* ftypeConst = llvm::ConstantDataArray::getString(*context, ftype, true);
+                llvm::GlobalVariable* ftypeGlobal = new llvm::GlobalVariable(
+                    *module, ftypeConst->getType(), true, llvm::GlobalValue::PrivateLinkage,
+                    ftypeConst, "enum_field_type_" + typeName + "_" + vname + "_" + std::to_string(fi));
+                llvm::Constant* ftypeStr = llvm::ConstantExpr::getBitCast(ftypeGlobal, int8PtrType);
+                llvm::Constant* offsetConst = llvm::ConstantInt::get(
+                    int64Type, layout->getElementOffset(fi));
+                fieldConstants.push_back(llvm::ConstantStruct::get(enumFieldType, {ftypeStr, offsetConst}));
+            }
+        }
+
+        llvm::GlobalVariable* fieldArrayGlobal = nullptr;
+        if (!fieldConstants.empty()) {
+            llvm::ArrayType* fieldArrayType = llvm::ArrayType::get(enumFieldType, fieldConstants.size());
+            llvm::Constant* fieldArrayInit = llvm::ConstantArray::get(fieldArrayType, fieldConstants);
+            fieldArrayGlobal = new llvm::GlobalVariable(
+                *module, fieldArrayType, true, llvm::GlobalValue::PrivateLinkage,
+                fieldArrayInit, "__vyb_enum_fields_" + typeName + "_" + vname);
+        }
+
+        llvm::Constant* nameConst = llvm::ConstantDataArray::getString(*context, vname, true);
+        llvm::GlobalVariable* nameGlobal = new llvm::GlobalVariable(
+            *module, nameConst->getType(), true, llvm::GlobalValue::PrivateLinkage,
+            nameConst, "enum_variant_name_" + typeName + "_" + vname);
+        llvm::Constant* nameStr = llvm::ConstantExpr::getBitCast(nameGlobal, int8PtrType);
+
+        variantConstants.push_back(llvm::ConstantStruct::get(enumVariantType, {
+            nameStr,
+            llvm::ConstantInt::get(int64Type, (uint64_t)tag),
+            llvm::ConstantInt::get(int64Type, (uint64_t)fieldConstants.size()),
+            fieldArrayGlobal ? llvm::ConstantExpr::getBitCast(fieldArrayGlobal, int8PtrType)
+                             : llvm::ConstantPointerNull::get(int8PtrType)
+        }));
+    }
+
+    if (variantConstants.empty()) return;
+
+    llvm::ArrayType* variantArrayType = llvm::ArrayType::get(enumVariantType, variantConstants.size());
+    llvm::Constant* variantArrayInit = llvm::ConstantArray::get(variantArrayType, variantConstants);
+    llvm::GlobalVariable* variantArrayGlobal = new llvm::GlobalVariable(
+        *module, variantArrayType, true, llvm::GlobalValue::PrivateLinkage,
+        variantArrayInit, "__vyb_enum_variants_" + typeName);
+
+    llvm::Constant* typeNameConst = llvm::ConstantDataArray::getString(*context, typeName, true);
+    llvm::GlobalVariable* typeNameGlobal = new llvm::GlobalVariable(
+        *module, typeNameConst->getType(), true, llvm::GlobalValue::PrivateLinkage,
+        typeNameConst, "enum_type_name_" + typeName);
+    llvm::Constant* typeNameStr = llvm::ConstantExpr::getBitCast(typeNameGlobal, int8PtrType);
+
+    llvm::Constant* enumMetaInit = llvm::ConstantStruct::get(enumMetaType, {
+        typeNameStr,
+        llvm::ConstantInt::get(int64Type, (uint64_t)info.payloadBytes),
+        llvm::ConstantInt::get(int64Type, (uint64_t)variantConstants.size()),
+        llvm::ConstantExpr::getBitCast(variantArrayGlobal, int8PtrType)
+    });
+
+    llvm::GlobalVariable* enumMetaGlobal = new llvm::GlobalVariable(
+        *module, enumMetaType, true, llvm::GlobalValue::ExternalLinkage,
+        enumMetaInit, "__vyb_enum_metadata_" + typeName);
+
+    enumMetadataGlobals[typeName] = enumMetaGlobal;
+    VYB_CDBG << "DEBUG: Generated enum metadata for " << typeName
+             << " with " << variantConstants.size() << " variants" << std::endl;
 }
 
 // Register every compile-time-known type name in the runtime type identity

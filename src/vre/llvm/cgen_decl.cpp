@@ -1510,6 +1510,10 @@ void LLVMCodegen::visit(vyb::ast::EnumDeclaration* node) {
     userTypeMap[enumName] = typeInfo;
     taggedEnumInfo[enumName] = info;
 
+    // Emit runtime enum metadata so struct fields of this enum type can
+    // round-trip losslessly through JSON (instead of collapsing to null).
+    generateEnumTypeMetadata(enumName, node);
+
     VYB_CDBG << "DEBUG: Registered tagged union enum " << enumName << " as " << getTypeName(enumStruct)
              << " with max payload " << payloadBytes << " bytes" << std::endl;
     m_currentLLVMValue = nullptr;
