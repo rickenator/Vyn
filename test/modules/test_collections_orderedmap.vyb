@@ -1,0 +1,99 @@
+// @test: collections OrderedMap (ordered map keyed by Comparable)
+// @description: `import collections` ships `OrderedMap<K,V>`, an ordered map bound
+//   to `OrderedMapOps` and keyed by `Comparable`. Keys live in a `keys` vector kept
+//   sorted ascending (parallel `vals`), so `get` / `contains_key` binary search and
+//   `for (kv in om.iter())` walks entries in ascending key order via `OrderedMapIter`
+//   (Item = `MapEntry<K,V>`, like `MapIter`). Verifies insert/update/get/size,
+//   absent-key via `else` default, ordered iteration over Int and String keys, and
+//   iteration over a stored `OrderedMapIter` identifier.
+// @category: collections, iterator, stdlib, map, orderedmap, ordered, for
+// @expect: pass
+// @expect-output: orderedmap-ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import collections
+
+main()<Int> -> {
+    # 1) Insert out of order, then confirm size / membership / reads.
+    bt<OrderedMap<Int, String>> = OrderedMap<Int, String>()
+    bt.put(30, "thirty")
+    bt.put(10, "ten")
+    bt.put(50, "fifty")
+    bt.put(20, "twenty")
+    if (bt.size() != 4) {
+        println("btree-size-fail " + bt.size())
+        return 1
+    }
+    if (!bt.contains_key(10) || !bt.contains_key(50) || bt.contains_key(99)) {
+        println("btree-contains-fail")
+        return 2
+    }
+    if ((bt.get(20) else "") != "twenty" || (bt.get(30) else "") != "thirty") {
+        println("btree-get-fail")
+        return 3
+    }
+    absent<String> = bt.get(999) else "absent-marker"
+    if (absent != "absent-marker") {
+        println("btree-absent-fail")
+        return 4
+    }
+
+    # 2) Updating an existing key keeps the size and changes the value.
+    bt.put(20, "twenty-updated")
+    if (bt.size() != 4 || (bt.get(20) else "") != "twenty-updated") {
+        println("btree-update-fail")
+        return 5
+    }
+
+    # 3) Iteration is in ascending key order.
+    sum<Int> = 0
+    n<Int> = 0
+    prev<Int> = -1
+    for (kv in bt.iter()) {
+        if (n > 0 && kv.key <= prev) {
+            println("btree-order-fail")
+            return 6
+        }
+        prev = kv.key
+        sum = sum + kv.key
+        n = n + 1
+    }
+    if (n != 4 || sum != 110) {
+        println("btree-iter-fail n=" + n + " sum=" + sum)
+        return 7
+    }
+
+    # 4) String keys order lexicographically.
+    si<OrderedMap<String, Int>> = OrderedMap<String, Int>()
+    si.put("cherry", 3)
+    si.put("apple", 1)
+    si.put("banana", 2)
+    keys<String> = ""
+    prv<Int> = 0
+    for (kv in si.iter()) {
+        if (prv > 0 && kv.value < prv) {
+            println("btree-str-order-fail")
+            return 8
+        }
+        prv = kv.value
+    }
+    if ((si.get("apple") else -1) != 1 || (si.get("banana") else -1) != 2 || (si.get("cherry") else -1) != 3) {
+        println("btree-str-get-fail")
+        return 9
+    }
+
+    # 5) A stored OrderedMapIter identifier is iterable (self-`iter`), like the others.
+    it<OrderedMapIter<Int, String>> = bt.iter()
+    s2<Int> = 0
+    for (kv in it) {
+        s2 = s2 + kv.key
+    }
+    if (s2 != 110) {
+        println("btree-stored-iter-fail s2=" + s2)
+        return 10
+    }
+
+    println("orderedmap-ok")
+    return 0
+}

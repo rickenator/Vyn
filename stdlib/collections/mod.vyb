@@ -24,12 +24,12 @@
 #     `contains` and `size`. Build one with `HashSet<K>()`, `HashSet<K>(cap)`,
 #     or the fixed `HashSet<K>(cap, true)`.
 #
-#   - `BTreeMap<K, V>`: an ordered map keyed by `Comparable`. Keys live in a
+#   - `OrderedMap<K, V>`: an ordered map keyed by `Comparable`. Keys live in a
 #     `keys` vector kept sorted ascending (with a parallel `vals` vector), so
 #     iteration walks entries in key order and `get` / `contains_key` binary
 #     search (O(log n)); `put` inserts at the sorted position (O(n) shift).
 #     Keyed methods (`put` / `get` / `contains_key` / `size` / `iter`) are bound
-#     as `BTreeMapOps`. Build one with `BTreeMap<K, V>()`.
+#     as `OrderedMapOps`. Build one with `OrderedMap<K, V>()`.
 #
 #   - `VecOps` (on the built-in `Vec<T>`): non-mutating view helpers written in
 #     Vyb over the Vec primitives — `first` / `last` (head/tail element),
@@ -439,36 +439,36 @@ bind<K<Hashable, Equatable>> SetOps -> HashSet<K> {
     }
 }
 
-# BTreeMap<K, V> - an ordered map keyed by `Comparable`, bound to `BTreeMapOps`.
+# OrderedMap<K, V> - an ordered map keyed by `Comparable`, bound to `OrderedMapOps`.
 # Keys are held in a `keys` vector that is kept sorted ascending (with a
 # parallel `vals` vector of the same indices), so `iter()` walks the entries in
 # ascending key order and `get` / `contains_key` binary search (O(log n));
 # `put` inserts at the sorted position (O(n) shift). Ordering goes through the
 # `Comparable`-bounded `cmp_lt` helper (mirroring `samekey` for equality), which
 # works for any keys that bind `Comparable` (Int, Float, Bool, String, ...).
-# Build one with `BTreeMap<K, V>()`. `MapEntry<K, V>` (reused from `HashMap`) is
+# Build one with `OrderedMap<K, V>()`. `MapEntry<K, V>` (reused from `HashMap`) is
 # the iterator item, so `for (kv in bt.iter())` reads `kv.key` / `kv.value`.
 share(all)
-struct BTreeMap<K, V> {
+struct OrderedMap<K, V> {
     keys<Vec<K>>,
     vals<Vec<V>>
 
     # Empty ordered map.
     constructor() {
-        return BTreeMap<K, V> { keys = Vec<K>(), vals = Vec<V>() }
+        return OrderedMap<K, V> { keys = Vec<K>(), vals = Vec<V>() }
     }
 }
 
 share(all)
-struct BTreeIter<K, V> {
-    map<their<BTreeMap<K, V>>>,
+struct OrderedMapIter<K, V> {
+    map<their<OrderedMap<K, V>>>,
     index<Int>
 }
 
 share(all)
-bind<K<Comparable, Equatable>, V> Iterator -> BTreeIter<K, V> {
+bind<K<Comparable, Equatable>, V> Iterator -> OrderedMapIter<K, V> {
     type Item = MapEntry<K, V>
-    next(self<their<BTreeIter<K, V>>>)<MapEntry<K, V>?> -> {
+    next(self<their<OrderedMapIter<K, V>>>)<MapEntry<K, V>?> -> {
         if (self.index < self.map.keys.len()) {
             e<MapEntry<K, V>> = MapEntry<K, V> { key = self.map.keys.get(self.index), value = self.map.vals.get(self.index) }
             self.index = self.index + 1
@@ -478,23 +478,23 @@ bind<K<Comparable, Equatable>, V> Iterator -> BTreeIter<K, V> {
     }
 
     # Iterators are themselves iterable over the same underlying map.
-    iter(self<their<BTreeIter<K, V>>>)<BTreeIter<K, V>> -> {
-        return BTreeIter<K, V> { map = self.map, index = self.index }
+    iter(self<their<OrderedMapIter<K, V>>>)<OrderedMapIter<K, V>> -> {
+        return OrderedMapIter<K, V> { map = self.map, index = self.index }
     }
 }
 
 share(all)
-aspect BTreeMapOps {
-    put(self<their<BTreeMap<K, V>>>, key<K>, val<V>)<Bool>
-    get(self<their<BTreeMap<K, V>>>, key<K>)<V?>
-    contains_key(self<their<BTreeMap<K, V>>>, key<K>)<Bool>
-    size(self<their<BTreeMap<K, V>>>)<Int>
-    iter(self<their<BTreeMap<K, V>>>)<BTreeIter<K, V>>
+aspect OrderedMapOps {
+    put(self<their<OrderedMap<K, V>>>, key<K>, val<V>)<Bool>
+    get(self<their<OrderedMap<K, V>>>, key<K>)<V?>
+    contains_key(self<their<OrderedMap<K, V>>>, key<K>)<Bool>
+    size(self<their<OrderedMap<K, V>>>)<Int>
+    iter(self<their<OrderedMap<K, V>>>)<OrderedMapIter<K, V>>
 }
 
 share(all)
-bind<K<Comparable, Equatable>, V> BTreeMapOps -> BTreeMap<K, V> {
-    put(self<their<BTreeMap<K, V>>>, key<K>, val<V>)<Bool> -> {
+bind<K<Comparable, Equatable>, V> OrderedMapOps -> OrderedMap<K, V> {
+    put(self<their<OrderedMap<K, V>>>, key<K>, val<V>)<Bool> -> {
         # Binary search for the insertion point: keys[lo] is the first key >= `key`.
         lo<Int> = 0
         hi<Int> = self.keys.len()
@@ -529,7 +529,7 @@ bind<K<Comparable, Equatable>, V> BTreeMapOps -> BTreeMap<K, V> {
         }
         return true
     }
-    get(self<their<BTreeMap<K, V>>>, key<K>)<V?> -> {
+    get(self<their<OrderedMap<K, V>>>, key<K>)<V?> -> {
         lo<Int> = 0
         hi<Int> = self.keys.len()
         while (lo < hi) {
@@ -547,7 +547,7 @@ bind<K<Comparable, Equatable>, V> BTreeMapOps -> BTreeMap<K, V> {
         }
         return V?()
     }
-    contains_key(self<their<BTreeMap<K, V>>>, key<K>)<Bool> -> {
+    contains_key(self<their<OrderedMap<K, V>>>, key<K>)<Bool> -> {
         lo<Int> = 0
         hi<Int> = self.keys.len()
         while (lo < hi) {
@@ -565,11 +565,11 @@ bind<K<Comparable, Equatable>, V> BTreeMapOps -> BTreeMap<K, V> {
         }
         return false
     }
-    size(self<their<BTreeMap<K, V>>>)<Int> -> {
+    size(self<their<OrderedMap<K, V>>>)<Int> -> {
         return self.keys.len()
     }
-    iter(self<their<BTreeMap<K, V>>>)<BTreeIter<K, V>> -> {
-        return BTreeIter<K, V> { map = self, index = 0 }
+    iter(self<their<OrderedMap<K, V>>>)<OrderedMapIter<K, V>> -> {
+        return OrderedMapIter<K, V> { map = self, index = 0 }
     }
 }
 
@@ -801,5 +801,5 @@ bind<T> VecHigherOps -> Vec<T> {
 
 share(all)
 collections_status_message()<String> -> {
-    return "collections: HashMap / HashSet (hash-bucket) + BTreeMap (ordered, Comparable) + VecIter (v.iter()) + MapIter (m.iter()) / HashIter (s.iter()) + BTreeIter (bt.iter())"
+    return "collections: HashMap / HashSet (hash-bucket) + OrderedMap (ordered, sorted-vector, Comparable) + VecIter (v.iter()) + MapIter (m.iter()) / HashIter (s.iter()) + OrderedMapIter (om.iter())"
 }
