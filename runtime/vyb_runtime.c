@@ -475,7 +475,15 @@ void* __vyb_complex_from_json(const char* json_str, const char* type_name) {
 
 typedef struct { char* ptr; int64_t len; } vyb_file_str;
 
-static int vyb_file_err = 0;
+// #147: last-error / peer diagnostic state is THREAD-LOCAL so that concurrent
+// workers each observe their own operation results. This policy covers the file
+// slot (vyb_file_err), the network slot (vyb_net_err), the UDP peer slot
+// (vyb_net_from_ip / vyb_net_from_port) and the TLS slot (vyb_tls_err): a runtime
+// operation and its matching __vyb_*_error_code()/__vyb_*_error_message()/peer
+// getter must run on the same thread (the idiomatic pattern). A thread never
+// observes another thread's diagnostic; UDP peer reporting is isolated per
+// calling thread accordingly.
+static __thread int vyb_file_err = 0;
 
 VYB_WEAK int64_t __vyb_file_open(const char* path, int64_t flags) {
     int oflags = 0;
@@ -941,7 +949,7 @@ VYB_WEAK int64_t __vyb_curses_hide_cursor(void) { return -1; }
 // port byte order internally, so the Vyb surface stays allocation/pointer-free.
 // ============================================================================
 
-static int vyb_net_err = 0;
+static __thread int vyb_net_err = 0;
 
 // Parse an IP literal (IPv4 dotted-quad or IPv6 colon-hex) into a sockaddr
 // storage, handling byte order internally. An empty/`*` ip binds any address
@@ -1140,8 +1148,8 @@ VYB_WEAK char* __vyb_net_error_message(void) {
 // recvfrom in `vyb_net_from_*` so the Vyb layer can report where a datagram
 // came from (mirroring the return-code + diagnostic idiom of this module).
 
-static char vyb_net_from_ip[INET6_ADDRSTRLEN] = "";
-static int vyb_net_from_port = -1;
+static __thread char vyb_net_from_ip[INET6_ADDRSTRLEN] = "";
+static __thread int vyb_net_from_port = -1;
 
 VYB_WEAK int64_t __vyb_net_sendto(int64_t fd, const char* data, int64_t len,
                                   const char* ip, int64_t port) {
@@ -1784,7 +1792,7 @@ hand_back_original:
 // __vyb_tls_error_code() / __vyb_tls_error_message().
 // ============================================================================
 
-static int vyb_tls_err = 0;
+static __thread int vyb_tls_err = 0;
 
 // TLS context construction drives OpenSSL's one-time lazy init and loads the
 // system CA store (X509/pkey decoder spin-up). That path is not safe to run

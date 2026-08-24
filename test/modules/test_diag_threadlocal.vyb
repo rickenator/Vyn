@@ -1,0 +1,52 @@
+// @test: file/network/TLS/UDP diagnostics are thread-local (#147)
+// @description: Two concurrent workers run 3000 iterations each of a failing file
+//   operation with a DISTINCT errno (ENOENT=2 from a missing path; EISDIR=21 from
+//   open_write of a directory). Each worker asserts it always observes ITS OWN
+//   diagnostic code. With process-global last-error state the workers would clobber
+//   each other's diagnostics; with thread-local state each worker's observation stays
+//   correct. Regression for #147.
+// @category: runtime, threads, diagnostics, concurrency, errno
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @execute-jit: true
+
+import threads
+import io::{open_read, open_write, error_code}
+
+main()<Int> -> {
+    // Worker A: ENOENT (2) from a missing path.
+    a<Int> = thread_spawn(|| -> {
+        i<Int> = 0
+        while (i < 3000) {
+            match (open_read("/definitely_missing_vyb_147_xyz")) {
+                f -> { return 10 }
+                ? -> {
+                    if (error_code() != 2) { return 11 }
+                }
+            }
+            i = i + 1
+        }
+        return 0
+    }) else -1
+    // Worker B: EISDIR (21) from open_write of a directory.
+    b<Int> = thread_spawn(|| -> {
+        i<Int> = 0
+        while (i < 3000) {
+            match (open_write("/")) {
+                f -> { return 20 }
+                ? -> {
+                    if (error_code() != 21) { return 21 }
+                }
+            }
+            i = i + 1
+        }
+        return 0
+    }) else -1
+    ra<Int> = thread_join(a) else -2
+    rb<Int> = thread_join(b) else -2
+    if (ra != 0) { return 1 }
+    if (rb != 0) { return 2 }
+    println("ok")
+    return 0
+}
