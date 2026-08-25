@@ -441,6 +441,36 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                 llvm::Function* printlnFunc = getVybPrintlnFunction();
                 if (jsonStr) builder->CreateCall(printlnFunc, {jsonStr});
 
+                // A struct main()-return was auto-serialized above. The returned
+                // struct's OWNED fields (Vec<String>/String buffers) are dead after
+                // emission, but the struct is the *return value*, not a local
+                // binding, so exitToFunctionBaseline()'s scope teardown can't reach
+                // them -- reclaim them here or they leak (#192; test_struct_main_return_json
+                // leaked the returned Spec.packages Vec<String> buffer).
+                if (m_mainAutoSerializeOrigRetType &&
+                    m_mainAutoSerializeOrigRetType->isStructTy() &&
+                    node->argument && node->argument->type &&
+                    returnValue) {
+                    const vyb::ast::TypeNode* retAst = node->argument->type.get();
+                    if (isKnownStructTypeNode(retAst) && structTypeHasOwnedFields(retAst)) {
+                        auto* st = llvm::dyn_cast<llvm::StructType>(
+                            m_mainAutoSerializeOrigRetType);
+                        if (st) {
+                            llvm::Value* specPtr = returnValue;
+                            if (returnValue->getType()->isStructTy()) {
+                                specPtr = builder->CreateAlloca(st, nullptr, "mainret.spec");
+                                builder->CreateStore(returnValue, specPtr);
+                            } else if (!returnValue->getType()->isPointerTy()) {
+                                specPtr = nullptr;
+                            }
+                            if (specPtr) {
+                                std::set<std::string> visited;
+                                reclaimStructOwnedFieldsAt(specPtr, retAst, st, visited);
+                            }
+                        }
+                    }
+                }
+
                 // Clean up the function's scopes and pop call frame, then return void.
                 // The standalone-executable path wraps this function (see
                 // finalizeStandaloneExecutable in main.cpp) so the process still exits 0
