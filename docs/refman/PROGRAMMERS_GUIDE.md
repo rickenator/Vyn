@@ -1937,94 +1937,64 @@ qt_run()<Int>                  qt_run_stop()<Int>            qt_active()<Bool>
 qt_on_event(handler<fn(Int, Int) -> Void>)<Int>
 ```
 
-The public API + stub, codegen dispatch, semantic lists, JIT registrations, and
-wrappers/enums are generated from `tools/gen_qt.py` (one table row per function);
-add a widget by adding a row and writing the bridge implementation, then run
-`python3 tools/gen_qt.py` (or `--check` to verify no drift). QtWidgetKind now tops
-out at `rich` (20) — list/tabs/web/group/textEdit/radio/rich join window/label/button/
-edit/checkbox/progress/combo/spin/slider/dial. A multi-line `text_edit` enqueues
-`QtEvent::TextChanged`; radio and checkbox enqueue `QtEvent::Toggled`;
-combo/spin/slider/dial enqueue `QtEvent::IndexChanged`/`ValueChanged`; a tab or
-list selection change enqueues `QtEvent::CurrentChanged`. A main window
-(`qt_main_window_create`) adds menubar/menu/action/statusbar/toolbar support on
-top of the plain `QWidget` window — `qt_menubar`/`qt_menu_add`/`qt_action_add`
-build the menu tree, `qt_statusbar_message`/`qt_statusbar_text` show a status
-message, `qt_toolbar_create` adds a toolbar. An action's trigger enqueues
-`QtEvent::Click` carrying the action handle, so a `qt_on_event` handler replies
-to menu picks (action handles are not widgets — don't pass them to widget APIs).
-`qt_grid` is
-`QGridLayout` (`qt_grid_add` takes a row/col); `qt_group_create` is a titled
-`QGroupBox` container; `qt_tabs_*` is a `QTabWidget` (`qt_tabs_add` returns a page
-handle you lay out on) and `qt_list_*` a `QListWidget`; `qt_widget_set_enabled`/
-`qt_widget_enabled` and `qt_widget_set_visible`/`qt_widget_visible` work on any
-widget. The `qt_web_*` surface is an optional `QWebEngineView` that only works
-when QtWebEngine is linked (CMake finds `Qt5WebEngineWidgets`); otherwise it
-degrades to stubs (`qt_web_create()==0`). Loading is async — `loadFinished`/
-`titleChanged`/`loadProgress` are `QtEvent`s that flow through `qt_on_event` and
-the `qt_event_*` poll. `qt_post_event(h, kind)` enqueues a synthetic event from
-any thread (the queue is mutex-guarded) — a background `asyncs` fiber uses it to
-signal the UI loop without touching a QWidget off the main thread, and the
-`qt_run` handler or `qt_event_*` poll resolves it on the main thread. Box
-layouts nest: `qt_layout_add_layout(parent, sub)` adopts a sub-`QBoxLayout`
-inside another (a browser column can host a horizontal toolbar row), and
-`qt_layout_set_stretch(layout, index, stretch)` makes a child (e.g. the web
-view) fill the leftover space while the toolbar stays thin. `demos/VybWeb/` is a
-small native browser built on this — it drops on `https://www.google.com/`
-with back/forward/reload, a live address bar, Go, and Quit.
+#### How the Qt surface is maintained
 
-The modal dialog tier adds native `QMessageBox`/`QFileDialog` pickers
-(`qt_msg_info`/`qt_msg_warn`/`qt_msg_error`/`qt_msg_about`/`qt_msg_question` and
-`qt_file_open`/`qt_file_save`/`qt_dir_select`) that block the main thread for
-user input. Their results follow the native-optional idiom: the info/warn/error/
-about boxes and `qt_msg_question` (`Int?`: present holding 1 for Yes / 0 for No)
-are absent when the GUI is not running; the file/dir pickers return `String?` —
-present holding the chosen path (or the present `""` on user cancel), absent
-when the GUI is not running — so a cancel is never conflated with failure. A `QTextEdit` rich-text editor
-(`qt_rich_*`, kind `rich`) carries HTML (`qt_rich_set_html`/`qt_rich_html`, with
-`<b>`/`<i>`/`<font color>` etc.), plain text (`qt_rich_set_plain`/`qt_rich_plain`),
-appending/clearing, and a whole-body text color (`qt_rich_set_text_color(r,g,b)`);
-its edits enqueue `QtEvent::TextChanged`. Generic `QFont`/`QPalette` helpers style
-any widget: `qt_widget_set_font_size(pt)`, `qt_widget_set_font_bold(on)`, and
-`qt_widget_set_text_color(r,g,b)`. Modal dialogs have an opt-in
-`VYB_QT_DIALOG_AUTO=1` env seam that auto-answers them once shown (Ok/Yes/accept),
-so GUI tests stay deterministic under `offscreen`; with it unset the box blocks
-until the user responds. A non-blocking *async* tier (`qt_dlg_*`) pairs with the
-event loop instead: create + show the dialog and return its `Int` handle at
-once, and when the user finishes it a `QtEvent::dialog` record is enqueued whose
-result (`qt_event_result()`: 1 for Yes/Accepted, else 0) a `qt_on_event` handler
-or the `qt_event_*` poll reads. File/dir pickers also record the chosen path, readable via
-`qt_dlg_selected(handle)` — `String?`, present once a result is recorded (on
-Accepted), absent when there is no result yet (another kind of dialog or a
-dialog not yet finished); `qt_dlg_close(handle)` finishes a dialog as rejected. This is the friendly path for a `qt_run`-driven app — dialogs
-no longer block the handler with a nested `exec()`.
+`tools/gen_qt.py` generates the public declarations and stubs, codegen dispatch,
+semantic and JIT registrations, and the wrapper enums from one function table.
+To add a widget, add its table entry, implement the bridge, then run
+`python3 tools/gen_qt.py`; use `--check` in CI to detect drift.
 
-Call `qt_init()` once. `QApplication` must live on the main thread (a Vyb
-program's `main`), and construction needs a Qt platform — xcb under a display,
-`offscreen` for headless/CI (`QT_QPA_PLATFORM=offscreen`), etc; with neither a
-QPA platform nor a `$DISPLAY` the bridge falls back to `offscreen`. Two event-loop models coexist. The default is *polled*:
-`qt_process_events` pumps once, the repeat timer is a steady-clock deadline
-(`qt_set_timer(ms)` + `qt_timer_fired()`, which clears on read), and control
-signals are captured on a FIFO event queue (`qt_button_create`/`qt_checkbox_create`/
-`qt_edit_set_text` enqueue `QtEvent::Click|Toggled|TextChanged` records, drained
-via `qt_event_count`/`qt_event_handle`/`qt_event_kind`/`qt_event_pop`), so GUI
-tests stay deterministic under `offscreen`. For a GUI app, the *native* model
-enters Qt's own loop with `qt_run()` and routes control events through the
-callback registered by `qt_on_event(handler<fn(Int, Int) -> Void>)`, so a handler
-replies to clicks/edits/toggles the idiomatic way; the loop keeps running until a
-handler calls `qt_run_stop()` (graceful; GUI survives) or `qt_quit()` (full
-teardown once the loop returns). `qt_kind(h)` reports a widget's static
-`QtWidgetKind` (window/label/button/edit/checkbox/progress/combo/spin/slider) so
-typed wrappers can validate handles. `qt_wait_event(timeout)` pumps the Qt loop
-until a control event or timeout arrives, so a main-thread UI loop blocks without
-busy-spinning while the `asyncs` fiber pool runs background work concurrently (a
-worker fiber can set a widget, enqueueing a record that wakes a blocked
-`qt_wait_event`, or is picked up by `qt_run`'s queue-draining tick and handed to
-the handler). Combo (`qt_combo_*`), spin (`qt_spin_*`), and slider
-(`qt_slider_*`) enqueue `QtEvent::IndexChanged`/`ValueChanged` records. Handles
-are opaque; closing a window deletes it and its children.
-When Qt5 is absent the module's stub shims resolve but report the GUI as
-unavailable (`qt_init()==false`), so programs and the test-suite degrade
-gracefully without an unresolved-symbol JIT failure.
+#### Windows, widgets, and layouts
+
+`qt_main_window_create` adds menus, actions, a status bar, and toolbars to a
+plain `QWidget` window. Actions report `QtEvent::Click` with the action handle;
+actions are not widgets and must not be passed to widget APIs. `qt_grid` creates
+a `QGridLayout`; `qt_group_create` creates a titled `QGroupBox`; `qt_tabs_*` and
+`qt_list_*` wrap `QTabWidget` and `QListWidget`. The generic enabled/visible
+helpers work on every widget handle.
+
+Box layouts can nest with `qt_layout_add_layout(parent, sub)`. Use
+`qt_layout_set_stretch(layout, index, stretch)` to let a child such as a web view
+take remaining space while a toolbar stays compact. `demos/VybWeb/` is a complete
+example: a small browser with navigation controls, an address bar, and a web
+view. The optional `qt_web_*` API needs `Qt5WebEngineWidgets`; without it the
+stubs remain available and `qt_web_create()` returns `0`.
+
+#### Events and event loops
+
+Use the *polled* model for deterministic tests: call `qt_process_events`, use
+`qt_set_timer(ms)` with `qt_timer_fired()`, and drain the FIFO queue through
+`qt_event_count`, `qt_event_handle`, `qt_event_kind`, and `qt_event_pop`.
+`qt_wait_event(timeout)` blocks efficiently until an event arrives or the timeout
+expires. Text edits emit `TextChanged`; checkboxes and radios emit `Toggled`;
+combo boxes, spin boxes, sliders, and dials emit `IndexChanged` or
+`ValueChanged`; tabs and lists emit `CurrentChanged`.
+
+For an application, `qt_run()` enters Qt's native loop and dispatches queued
+events to the callback registered with `qt_on_event(handler<fn(Int, Int) -> Void>)`.
+Call `qt_run_stop()` for a graceful return to the caller, or `qt_quit()` for full
+teardown. `qt_post_event(h, kind)` is thread-safe: background `asyncs` work can
+notify the main-thread UI without touching a QWidget directly.
+
+#### Dialogs, styling, and headless operation
+
+The modal `qt_msg_*`, `qt_file_*`, and `qt_dir_select` calls use native Qt
+dialogs and block for input. `qt_msg_question` returns `Int?` (1 for Yes, 0 for
+No); file and directory pickers return `String?`, using a present empty string
+for a user cancellation and absence when the GUI is unavailable. Set
+`VYB_QT_DIALOG_AUTO=1` to auto-answer modal dialogs during offscreen tests.
+
+The non-blocking `qt_dlg_*` family instead returns a dialog handle and emits a
+`QtEvent::dialog` when finished. Read its result with `qt_event_result()` and a
+picker path with `qt_dlg_selected(handle)`; use `qt_dlg_close(handle)` to reject
+it programmatically. `qt_rich_*` supports HTML and plain text in a `QTextEdit`,
+while the font and palette helpers style any widget.
+
+Call `qt_init()` once from the main thread. Qt uses xcb under a display and
+`QT_QPA_PLATFORM=offscreen` for headless runs; when neither a platform nor
+`$DISPLAY` is set, the bridge falls back to `offscreen`. If Qt5 is not linked,
+the stubs still resolve and `qt_init()` returns `false`, so programs can degrade
+cleanly without unresolved JIT symbols.
 
 ### 4.23 `archive` — gzip/DEFLATE decompression and tar extraction
 
@@ -2051,23 +2021,21 @@ match (inflate_gzip(gz_bytes)) {
 }
 ```
 
-Byte/bit work uses the String primitives the language ships plus the
-single-byte emitter `String::from_byte` (added for #180): read a byte with
-`s.char_at(i) & 0xFF`, write one with `String::from_byte(b)`, accumulate with
-`out.concat(chunk)`. The DEFLATE bit cursor is threaded functionally — each
-step returns its value plus the advanced bit position and never mutates a
-caller-owned cursor (kept even though the #178 `their`-reborrow bug is fixed,
-because it stays simpler and provably correct). Canonical Huffman decoding
-follows puff.c's DECODE(): lengths are binned per code length, then symbols are
-read most-significant-bit-first. Long GNU `'L'`/`'K'` tar member names
-(NUL-terminated data blocks) are handled. Covered by
-`test/modules/test_archive.vyb` (decodes a real embedded gzip stream and walks
-the extracted tar).
+#### Implementation notes
 
----
----
+The decoder uses Vyb's existing `String` primitives throughout. Read a byte with
+`s.char_at(i) & 0xFF`, create one with `String::from_byte(b)`, and accumulate
+output with `out.concat(chunk)`.
 
----
+The DEFLATE bit cursor is functional: every step returns both its result and the
+advanced cursor position, rather than mutating a caller-owned value. Canonical
+Huffman decoding follows puff.c's `DECODE()` approach, binning lengths by code
+width before reading symbols most-significant bit first. The tar reader also
+handles GNU `L` and `K` long-name records.
+
+`test/modules/test_archive.vyb` covers the complete path by decoding an embedded
+gzip payload and walking the resulting tar archive.
+
 ---
 
 ## 5. Concurrency and async model
