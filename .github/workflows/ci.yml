@@ -104,13 +104,14 @@ jobs:
         run: cmake --build build --parallel 2
 
       - name: Run full suite under ASan
-        # halt_on_error aborts on the first real memory error (reporting it as a
-        # test failure); detect_leaks=0 avoids LLVM/JIT-internal leak noise.
-        # VYB_ASAN=1 makes the harness honor @skip-asan on the ucontext-fiber
-        # async tests (ASan's documented makecontext/swapcontext false positives,
-        # tracked by #155) — they are not counted as pass or fail.
+        # halt_on_error aborts on the first real memory error; detect_leaks=1 runs
+        # LeakSanitizer too so any retained/unreachable allocation fails the job.
+        # The suite is leak-clean end to end, so LSan gates on regressions: the old
+        # "@skip-asan" tests were real bugs (async_pump_main UAF #155, our/mild
+        # control-block leaks #193), all fixed, and none remain. LSan covers the
+        # whole tree exactly as it runs here.
         env:
-          ASAN_OPTIONS: "halt_on_error=1:detect_leaks=0"
+          ASAN_OPTIONS: "halt_on_error=1:detect_leaks=1"
           VYB_ASAN: "1"
         run: python3 test/run_tests.py --vyb build/vyb --test-dir test --execute-jit --json /tmp/asan-suite.json
 
