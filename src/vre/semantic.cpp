@@ -912,6 +912,16 @@ void SemanticAnalyzer::recordBorrow(const std::string& rootName, ast::BorrowKind
     borrowScopes.back()[rootName].immutableBorrows++;
 }
 
+// record the borrow-lifetime of a `their<T>` variable: it was created by borrowing
+// `root` at the current scope depth, so it is only valid within (or nested under)
+// the current scope. Later code that uses it at a shallower depth (after this
+// scope has exited) is a dangling-reference escape.
+void SemanticAnalyzer::recordTheirBorrowInto(const std::string& varName, const std::string& root) {
+    if (varName.empty() || root.empty()) return;
+    theirVarDepth_[varName] = static_cast<int>(borrowScopes.size());
+    theirVarRoot_[varName] = root;
+}
+
 // Move tracking helpers
 bool SemanticAnalyzer::hasOwnershipKindMY(SymbolInfo* sym) const {
     if (!sym || !sym->type) return false;
@@ -930,6 +940,12 @@ static bool isMyOwnershipType(const ast::TypeNode* type) {
     if (!type) return false;
     std::string typeStr = type->toString();
     return typeStr.rfind("my<", 0) == 0;
+}
+
+// True if a type node denotes a `their<T>` borrowed reference type.
+static bool isTheirType(const ast::TypeNode* type) {
+    if (!type) return false;
+    return type->toString().rfind("their<", 0) == 0;
 }
 
 void SemanticAnalyzer::recordMove(const std::string& varName) {
@@ -1072,6 +1088,19 @@ void SemanticAnalyzer::visit(ast::Identifier* node) {
         addError("Use after move: '" + node->name + "' has been moved and is no longer valid.", node);
         expressionTypes[node] = nullptr;
         return;
+    }
+    // Borrow-lifetime: a `their<T>` created from a borrow()/view() initializer is
+    // only valid while the scope that recorded the borrow is still open. Using it
+    // at a shallower scope depth (after that scope exited) means the borrow
+    // escaped and the referred-to value may be dead.
+    auto bdIt = theirVarDepth_.find(node->name);
+    if (bdIt != theirVarDepth_.end()) {
+        if (static_cast<int>(borrowScopes.size()) < bdIt->second) {
+            const std::string& root = theirVarRoot_[node->name];
+            addError("Borrow of '" + (root.empty() ? node->name : root) + "' escapes its scope; the referred-to value may be dead.", node);
+            expressionTypes[node] = nullptr;
+            return;
+        }
     }
     if (readType) {
         node->type = std::shared_ptr<ast::TypeNode>(readType->clone());
@@ -1363,6 +1392,7 @@ void SemanticAnalyzer::visit(ast::FunctionDeclaration* node) {
     }
 
     enterScope();
+    fnParamNamesStack_.emplace_back();
 
     // Handle generic parameters if present (e.g., fn printItem<T<Display>>)
     bool hasGenericParams = !node->genericParams.empty();
@@ -1437,6 +1467,7 @@ void SemanticAnalyzer::visit(ast::FunctionDeclaration* node) {
     std::vector<std::unique_ptr<ast::TypeNode>> paramTypesVec;
     for (auto& param : node->params) {
         if (param.name) {
+            if (!fnParamNamesStack_.empty()) fnParamNamesStack_.back().insert(param.name->name);
             if (!processingTraitOrBindMethod &&
                 param.name->name == "self" &&
                 isSelfReceiverType(param.typeNode.get())) {
@@ -1504,6 +1535,7 @@ void SemanticAnalyzer::visit(ast::FunctionDeclaration* node) {
 
     if (node->body) {
         node->body->accept(*this);
+        if (!fnParamNamesStack_.empty()) fnParamNamesStack_.pop_back();
 
         // Phase 1: Detect if this function contains fail statements
         // This enables automatic error propagation across function boundaries
@@ -1696,6 +1728,8 @@ void SemanticAnalyzer::visit(ast::VariableDeclaration* node) {
 
         if (auto* borrowExpr = dynamic_cast<ast::BorrowExpression*>(node->init.get())) {
             recordBorrow(borrowedRootName(borrowExpr->expression.get()), borrowExpr->kind, borrowExpr);
+            if (node->typeNode && isTheirType(node->typeNode.get()))
+                recordTheirBorrowInto(node->id->name, borrowedRootName(borrowExpr->expression.get()));
         } else if (auto* callExpr = dynamic_cast<ast::CallExpression*>(node->init.get())) {
             if (auto* callee = dynamic_cast<ast::Identifier*>(callExpr->callee.get())) {
                 if ((callee->name == "borrow" || callee->name == "view") && callExpr->arguments.size() == 1) {
@@ -1703,6 +1737,8 @@ void SemanticAnalyzer::visit(ast::VariableDeclaration* node) {
                         ? ast::BorrowKind::MUTABLE_BORROW
                         : ast::BorrowKind::IMMUTABLE_VIEW;
                     recordBorrow(borrowedRootName(callExpr->arguments[0].get()), kind, callExpr);
+                    if (node->typeNode && isTheirType(node->typeNode.get()))
+                        recordTheirBorrowInto(node->id->name, borrowedRootName(callExpr->arguments[0].get()));
                 }
             }
         }
@@ -2360,6 +2396,28 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
     // Visit arguments
     for (auto& arg : node->arguments) {
         if (arg) arg->accept(*this);
+    }
+
+    // Thread-send boundary (#149): a `thread_spawn` closure must not capture
+    // uniquely-owned (`my<T>`) or borrowed (`their<T>`) state. The closure env
+    // would share the caller's heap owner, or hold a borrow of its frame, across
+    // threads — a data race / use-after-free by construction. Ref-counted `our<T>`
+    // and by-value copies are fine (mutation on them is the caller's concern).
+    if (auto calleeIdent = dynamic_cast<ast::Identifier*>(node->callee.get())) {
+        if (calleeIdent->name == "thread_spawn" && !node->arguments.empty()) {
+            if (auto* fe = dynamic_cast<ast::FunctionExpression*>(node->arguments[0].get())) {
+                for (const std::string& cap : fe->capturedVariables) {
+                    SymbolInfo* csym = currentScope->lookup(cap);
+                    if (!csym || !csym->type) continue;
+                    std::string ts = csym->type->toString();
+                    if (ts.rfind("my<", 0) == 0 || ts.rfind("their<", 0) == 0) {
+                        addError("thread_spawn closure captures '" + cap + "' of type " + ts +
+                                 ", which is not safe to share across threads (no Send boundary).",
+                                 node->arguments[0].get());
+                    }
+                }
+            }
+        }
     }
 
 
@@ -5134,6 +5192,27 @@ void SemanticAnalyzer::visit(ast::AssignmentExpression* node) {
     inAssignmentLHS = savedInAssignmentLHS;
     node->right->accept(*this);
 
+    // Borrow-lifetime: `v = borrow(x)` on a their<T> variable rebinds the borrow;
+    // record its new creation depth + root so escape is still caught.
+    if (auto* lhsIdent = dynamic_cast<ast::Identifier*>(node->left.get())) {
+        std::string rhsRoot;
+        if (auto* be = dynamic_cast<ast::BorrowExpression*>(node->right.get())) {
+            rhsRoot = borrowedRootName(be->expression.get());
+        } else if (auto* rhsCall = dynamic_cast<ast::CallExpression*>(node->right.get())) {
+            if (auto* callee = dynamic_cast<ast::Identifier*>(rhsCall->callee.get())) {
+                if ((callee->name == "borrow" || callee->name == "view") &&
+                    rhsCall->arguments.size() == 1) {
+                    rhsRoot = borrowedRootName(rhsCall->arguments[0].get());
+                }
+            }
+        }
+        if (!rhsRoot.empty()) {
+            SymbolInfo* lhsSym = currentScope->lookup(lhsIdent->name);
+            if (lhsSym && isTheirType(lhsSym->type))
+                recordTheirBorrowInto(lhsIdent->name, rhsRoot);
+        }
+    }
+
     // Mutable-capture detection: a lambda body that assigns to an identifier
     // resolves it as an l-value against an enclosing scope (so it is not one of
     // the lambda's own locals/params), mark that name as written in the current
@@ -5664,10 +5743,12 @@ void SemanticAnalyzer::visit(ast::FunctionExpression* node) {
 
     // Enter a new scope for the lambda body
     enterScope();
+    fnParamNamesStack_.emplace_back();
 
     // Register each parameter in the lambda's scope
     for (const auto& param : node->params) {
         if (param.name) {
+            if (!fnParamNamesStack_.empty()) fnParamNamesStack_.back().insert(param.name->name);
             ast::TypeNode* paramTypeRaw = param.typeNode ? param.typeNode.get() : nullptr;
             currentScope->add(SymbolInfo{
                 SymbolInfo::Kind::Variable,
@@ -5686,6 +5767,7 @@ void SemanticAnalyzer::visit(ast::FunctionExpression* node) {
     }
     lambdaStack.pop_back();
 
+    if (!fnParamNamesStack_.empty()) fnParamNamesStack_.pop_back();
     exitScope();
 
     // Re-acquire the capture context. Visiting the body above may push nested
@@ -6616,6 +6698,43 @@ void SemanticAnalyzer::visit(ast::ReturnStatement* node) {
         }
         node->argument->accept(*this);
         validateReturnArity(node);
+
+        // Borrow-lifetime (return): a `their<T>` returned from a function must not
+        // borrow a function-local that dies on return. Allowed: a `their<T>`
+        // parameter passed through, or a borrow of a parameter (the caller owns it).
+        {
+            ast::Expression* retArg = node->argument.get();
+            bool isTheirReturn = false;
+            std::string retRoot;
+            if (auto* bre = dynamic_cast<ast::BorrowExpression*>(retArg)) {
+                isTheirReturn = true;
+                retRoot = borrowedRootName(bre->expression.get());
+            } else if (auto* rc = dynamic_cast<ast::CallExpression*>(retArg)) {
+                if (auto* callee = dynamic_cast<ast::Identifier*>(rc->callee.get())) {
+                    if ((callee->name == "borrow" || callee->name == "view") &&
+                        rc->arguments.size() == 1) {
+                        isTheirReturn = true;
+                        retRoot = borrowedRootName(rc->arguments[0].get());
+                    }
+                }
+            } else if (auto* retIdent = dynamic_cast<ast::Identifier*>(retArg)) {
+                auto rit = theirVarRoot_.find(retIdent->name);
+                if (rit != theirVarRoot_.end() && !rit->second.empty()) {
+                    isTheirReturn = true;
+                    retRoot = rit->second;
+                }
+            }
+            if (isTheirReturn) {
+                bool isParam = false;
+                if (!fnParamNamesStack_.empty())
+                    isParam = fnParamNamesStack_.back().count(retRoot) > 0;
+                if (!isParam) {
+                    addError("Borrow of '" + (retRoot.empty() ? std::string("?") : retRoot) +
+                             "' escapes its scope: cannot return a borrow of a function-local; the value dies on return.",
+                             retArg);
+                }
+            }
+        }
 
         // A closure with mutable captures holds pointers into the enclosing
         // stack frame; returning it from a function would leave those pointers

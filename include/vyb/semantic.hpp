@@ -625,6 +625,20 @@ private:
     };
     std::vector<std::unordered_map<std::string, MoveState>> moveScopes;
 
+    // Borrow-lifetime (escape) tracking. For a `their<T>` variable created from a
+    // `borrow()/view()` initializer, record the scope-stack depth at which the borrow
+    // was recorded and the root identifier it borrows. The variable is only valid
+    // while that scope is still open: using it at a shallower depth means the borrow
+    // escaped and the pointee may be dead. Parameters are never recorded here and are
+    // therefore valid for the whole function body.
+    std::unordered_map<std::string, int> theirVarDepth_;
+    std::unordered_map<std::string, std::string> theirVarRoot_;
+
+    // Current function's parameter names (a stack for nested closures). A `their<T>`
+    // borrowed from a parameter may be returned (the caller owns the pointee); a
+    // borrow of a function-local must not be.
+    std::vector<std::unordered_set<std::string>> fnParamNamesStack_;
+
     // Closure capture detection: while visiting a FunctionExpression body, record
     // the identifiers it references and the names it declares locally, so free
     // variables (resolved from an enclosing scope) can be copied into the
@@ -661,6 +675,10 @@ private:
     BorrowState aggregateBorrowState(const std::string& rootName) const;
     void recordBorrow(const std::string& rootName, ast::BorrowKind kind, const ast::Node* node);
     bool hasActiveBorrow(const std::string& rootName) const;
+    // Borrow-lifetime helpers: record that `varName` (a their<T>) was created by
+    // borrowing `root` at the current scope depth, and reject any later use at a
+    // shallower depth (escape).
+    void recordTheirBorrowInto(const std::string& varName, const std::string& root);
 
     // Template management methods
     void registerTemplate(std::unique_ptr<ast::TemplateDeclaration> templateDecl);

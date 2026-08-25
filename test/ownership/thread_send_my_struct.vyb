@@ -2,8 +2,8 @@
 // @description: `thread_spawn` closures must not capture a `my<T>` (unique owner
 //   of a heap allocation) — there is no Send-like boundary, so the worker shares
 //   the caller's owned `my<Node>` (heap String) and a concurrent
-//   mutate/free on main is a data race / UAF. Currently ACCEPTED (worker reads
-//   `main-owns`, rc=0) — KNOWN-GAP until a Send-style check lands (#149).
+//   mutate/free on main is a data race / UAF. The compiler now rejects it: `thread_spawn` closure captures of `my<T>` cross
+//   the thread boundary with no Send check, so this is a compile error.
 // @category: ownership, threads, Send, concurrency
 // @expect: fail
 // @expect-error: thread

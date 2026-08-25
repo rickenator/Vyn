@@ -1,11 +1,10 @@
 // @test: struct-field read through an escaped borrow is rejected (#149)
 // @description: A `their<Struct>` borrowed from a block-local, read after the
-//   local dies, dispatches through freed stack. Currently ACCEPTED (rc=0; reads
-//   "correct by luck" until the slot is reused) — KNOWN-GAP until the escape
-//   check lands (#149).
+//   local dies, dispatches through freed stack. The compiler now rejects this lexically, so the escaped field read is a
+//   borrow-escape error.
 // @category: ownership, borrow, escape, lifetime
 // @expect: fail
-// @expect-error: borrow
+// @expect-error: escapes its scope
 
 struct Counter { c<Int>, name<String> }
 

@@ -1,8 +1,8 @@
 // @test: borrowing an owner across a thread boundary is rejected (#149)
 // @description: A `their<T>` borrow of a main-frame value captured by a
 //   `thread_spawn` closure is a cross-thread borrowed reference that can dangle
-//   when the main frame is torn down. Currently ACCEPTED — KNOWN-GAP until a
-//   Send-style check on `thread_spawn` capture lands (#149).
+//   when the main frame is torn down. The compiler now rejects it: a `their<T>` borrow of a caller frame cannot be
+//   handed to another thread.
 // @category: ownership, threads, borrow, concurrency
 // @expect: fail
 // @expect-error: thread

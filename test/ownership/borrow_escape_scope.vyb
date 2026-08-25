@@ -1,12 +1,11 @@
 // @test: borrow escape via an inner scope is rejected (#149)
 // @description: A `their<T>` borrowed from a block-local that goes out of scope
-//   must not be readable afterward. Currently the compiler ACCEPTS this (the
-//   borrow registration is discarded at scope exit without tethering the
-//   `their<T>` value's lifetime), so `v = r` reads freed stack — ASLR-varying
-//   garbage. KNOWN-GAP: this test is RED until the escape check lands (#149).
+//   must not be readable afterward. The compiler now rejects it lexically: a `their<T>` value is only valid while
+//   the scope that recorded its `borrow()` is still open, so using `r` after the
+//   block has gone out of scope is a borrow-escape error.
 // @category: ownership, borrow, escape, lifetime
 // @expect: fail
-// @expect-error: borrow
+// @expect-error: escapes its scope
 
 main()<Int> -> {
     r<their<Int>> = my(0)

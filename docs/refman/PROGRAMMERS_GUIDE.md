@@ -710,6 +710,19 @@ if (shadow.released()) { … }                # true once destroyed
   is done through `their` receivers so no copies occur —
   e.g. `map_in_place(self<their<Vec<T>>>, …)`.
 
+**Lexical enforcement (what the compiler actually checks).** These rules are
+lexical and scope-based, not a general lifetime/region model:
+- **Borrows do not escape.** A `their<T>` value is valid only while the scope
+  that recorded its `borrow()`/`view()` is still open. Reading or reassigning it
+  outside that scope — or returning a borrow of a function-local (as opposed to
+  a parameter the caller owns) — is rejected as a borrow-escape error.
+- **No mutation while borrowed.** Assigning to a value with an active borrow is
+  rejected, as are overlapping mutable borrows.
+- **`my<T>` moves; use-after-move is rejected.**
+- **Thread boundary.** A `thread_spawn` closure must not capture `my<T>` or
+  `their<T>` state; only ref-counted `our<T>` or by-value copies may cross a
+  thread boundary.
+
 `mild<T>` exists to break reference cycles (tree parents, observer
 registries, caches) without preventing cleanup — see
 `doc/OWNERSHIP_MILD.md` and `test/ownership/mild_test.vyb`.

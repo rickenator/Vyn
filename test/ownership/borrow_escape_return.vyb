@@ -1,10 +1,10 @@
 // @test: returning a borrow of a dead local is rejected (#149)
 // @description: A function must not return a `their<T>` that borrows a local
-//   destroyed on return. Currently ACCEPTED (compiles, rc=0) — KNOWN-GAP until
-//   the escape check lands (#149). The returned reference dangles at the caller.
+//   destroyed on return. The compiler now rejects this: a function returns a borrow of a function-local,
+//   which dies on return (a borrow of a parameter is allowed).
 // @category: ownership, borrow, escape, lifetime
 // @expect: fail
-// @expect-error: borrow
+// @expect-error: escapes its scope
 
 make()<their<Int>> -> {
     x<Int> = 5
