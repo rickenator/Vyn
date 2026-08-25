@@ -405,7 +405,6 @@ private:
     llvm::Value* createErrorValue(ast::Expression* errorExpr, ast::TypeNode* errorType);
     llvm::Value* buildRuntimeErrorFromValue(const std::string& typeName, llvm::Value* errorValue, const SourceLocation& loc);
     void forwardError(llvm::Value* errorPtr, const SourceLocation& loc);
-    void preCreateTrapAllocas(ast::Statement* stmt, llvm::Function* func, llvm::Instruction** lastAllocaInsertPt = nullptr);
     void emitDeferredStatementsForCurrentFunction();
     void emitPropagatingErrorReturn(llvm::Value* errorPtr);
 
