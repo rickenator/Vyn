@@ -1,0 +1,114 @@
+// @test: http client follows same-scheme redirects (bounded), refuses cross-scheme
+// @description: 501. A 302 with an absolute Location is followed to the target
+//   (status 200 + final body). An http->https Location is NOT followed (the plain
+//   client has no TLS) -- it returns the 302 with Location exposed via http_location.
+//   A self-redirect loop terminates at the hop cap instead of hanging.
+// @category: http, redirect
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import http::{http_get_full, http_location, http_redir_max, http_listen, http_accept,
+              http_local_port, http_read_head, http_send_all, http_close, HttpResponse}
+import network::{TcpListener, TcpStream}
+import threads::{thread_spawn, thread_join, thread_detach}
+
+# Accept one connection, read its head, and reply with `status` + an optional
+# `loc` (Location header) + `body`. Closes the connection.
+serve_once(srv<TcpListener>, status<Int>, tid<String>, body<String>)<Int> -> {
+    match (http_accept(srv)) {
+        c -> {
+            http_read_head(c.fd, 65536)
+            pk<String> = "HTTP/1.1 " + status.to_string() + " R\r\n" +
+                         "Location: " + tid + "\r\n" +
+                         "Content-Length: " + body.len().to_string() + "\r\nConnection: close\r\n\r\n" + body
+            http_send_all(c.fd, pk)
+            http_close(c.fd)
+            return 0
+        }
+        ? -> { return 1 }
+    }
+}
+
+# Accept connections until the listener is closed, answering each with a
+# self-redirecting 302 (for the hop-cap loop). Exits when accept fails (the
+# listener was closed after the fetch finished).
+serve_loop(srv<TcpListener>)<Int> -> {
+    while (true) {
+        match (http_accept(srv)) {
+            c -> {
+                http_read_head(c.fd, 65536)
+                pk<String> = "HTTP/1.1 302 Found\r\nLocation: /loop\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                http_send_all(c.fd, pk)
+                http_close(c.fd)
+            }
+            ? -> { return 0 }
+        }
+    }
+    return 0
+}
+
+main()<Int> -> {
+    # --- 1. Follow an absolute http redirect to the final server ---
+    match (http_listen(0, 4)) {
+        srvB -> {
+            pb<Int> = http_local_port(srvB)
+            hb<Int> = thread_spawn(|| -> { return serve_once(srvB, 200, "", "landed") }) else -1
+            match (http_listen(0, 4)) {
+                srvA -> {
+                    pa<Int> = http_local_port(srvA)
+                    redir<String> = "http://127.0.0.1:" + pb.to_string() + "/final"
+                    ha<Int> = thread_spawn(|| -> { return serve_once(srvA, 302, redir, "") }) else -1
+                    r<HttpResponse> = http_get_full("127.0.0.1", pa, "/start")
+                    thread_join(hb)
+                    thread_join(ha)
+                    if (!(r.status == 200 && r.body == "landed")) {
+                        println("redirect follow failed: " + r.status.to_string() + " " + r.body)
+                        return 1
+                    }
+                    http_close(srvA.fd)
+                    http_close(srvB.fd)
+                }
+                ? -> { return 10 }
+            }
+        }
+        ? -> { return 11 }
+    }
+
+    # --- 2. Cross-scheme Location (http->https) is NOT followed; exposed ---
+    match (http_listen(0, 4)) {
+        srvC -> {
+            pc<Int> = http_local_port(srvC)
+            hc<Int> = thread_spawn(|| -> { return serve_once(srvC, 302, "https://example.com/x", "") }) else -1
+            rc<HttpResponse> = http_get_full("127.0.0.1", pc, "/go")
+            thread_join(hc)
+            if (rc.status != 302 || http_location(rc) != "https://example.com/x") {
+                println("cross-scheme not refused: " + rc.status.to_string() + " " + http_location(rc))
+                return 2
+            }
+            http_close(srvC.fd)
+        }
+        ? -> { return 12 }
+    }
+
+    # --- 3. Self-redirect loop terminates at the hop cap (no hang) ---
+    match (http_listen(0, 4)) {
+        srvD -> {
+            pd<Int> = http_local_port(srvD)
+            hd<Int> = thread_spawn(|| -> { return serve_loop(srvD) }) else -1
+            thread_detach(hd)
+            rd<HttpResponse> = http_get_full("127.0.0.1", pd, "/loop")
+            # Closing the listener unblocks the loop responder's accept.
+            http_close(srvD.fd)
+            if (rd.status != 302 || http_location(rd) != "/loop") {
+                println("hop cap not reached: " + rd.status.to_string())
+                return 3
+            }
+        }
+        ? -> { return 13 }
+    }
+
+    println("ok")
+    return 0
+}

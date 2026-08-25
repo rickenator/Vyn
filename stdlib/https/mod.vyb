@@ -32,6 +32,7 @@ import tls::{tls_client_context, tls_client_context_verified, tls_server_context
 share(all) import http::{HttpResponse, http_err}
 import http::{http_status_code, http_header_value, http_index_of, http_parse_int,
               http_parse_hex}
+import http::{http_header, http_resolve_location, http_is_redirect, http_redir_max, HttpTarget}
 
 # Read one CRLF-terminated line (without the CRLF) from a TLS stream. One byte
 # per read, stopping exactly at the line end, mirroring http's reader but over
@@ -179,17 +180,45 @@ https_fetch(verify_host<String>, connect_ip<String>, port<Int>, path<String>,
     }
 }
 
+# One HTTPS GET round-trip with redirect following (#194). Resolves `host`, makes a
+# TLS client context (verified/unverified per `verified`), fetches, and -- when the
+# response is a redirect with a `Location` -- re-fetches on the resolved target up
+# to http_redir_max() hops (bounded, so a redirect loop terminates). Only
+# same-scheme (https) redirects are followed; a downgrade Location to `http://` is
+# NOT followed and the 3xx response (with its Location exposed via http_location)
+# is returned so the caller can decide.
+share(all)
+https_get_hops(host<String>, port<Int>, path<String>, ca_pem<String>, verified<Bool>, hops<Int>)<HttpResponse> -> {
+    ip<String> = socket_resolve(host) else ""
+    if (ip.len() == 0) { return http_err("resolve failed: " + host) }
+    R2<HttpResponse> = http_err("tls client context failed")
+    if (verified) {
+        match (tls_client_context_verified(ca_pem)) {
+            c -> { R2 = https_fetch(host, ip, port, path, c) }
+            ? -> { return http_err("tls client context failed") }
+        }
+    } else {
+        match (tls_client_context()) {
+            c -> { R2 = https_fetch(host, ip, port, path, c) }
+            ? -> { return http_err("tls client context failed") }
+        }
+    }
+    lv<String> = http_header(R2, "location")
+    if (http_is_redirect(R2.status) && hops < http_redir_max() && lv.len() > 0) {
+        tg<HttpTarget> = http_resolve_location(lv, "https", host, port, path)
+        if (tg.scheme == "https") {
+            return https_get_hops(tg.host, tg.port, tg.path, ca_pem, verified, hops + 1)
+        }
+    }
+    return R2
+}
+
 # Full HTTPS/1.1 GET round-trip over an unverified client context (self-signed
 # / loopback). `host` is a hostname: resolved to an IPv4 for the connection
 # while kept as the SNI / `Host:` header. Does not verify the peer's CA chain.
 share(all)
 https_get_full(host<String>, port<Int>, path<String>)<HttpResponse> -> {
-    ip<String> = socket_resolve(host) else ""
-    if (ip.len() == 0) { return http_err("resolve failed: " + host) }
-    match (tls_client_context()) {
-        ctx -> { return https_fetch(host, ip, port, path, ctx) }
-        ? -> { return http_err("tls client context failed") }
-    }
+    return https_get_hops(host, port, path, "", false, 0)
 }
 
 # Full HTTPS/1.1 GET round-trip with peer verification. `host` is a hostname:
@@ -198,14 +227,8 @@ https_get_full(host<String>, port<Int>, path<String>)<HttpResponse> -> {
 # the system default CA paths.
 share(all)
 https_get_full_verified(host<String>, port<Int>, path<String>, ca_pem<String>)<HttpResponse> -> {
-    ip<String> = socket_resolve(host) else ""
-    if (ip.len() == 0) { return http_err("resolve failed: " + host) }
-    match (tls_client_context_verified(ca_pem)) {
-        ctx -> { return https_fetch(host, ip, port, path, ctx) }
-        ? -> { return http_err("tls client context failed") }
-    }
+    return https_get_hops(host, port, path, ca_pem, true, 0)
 }
-
 
 # Convenience wrapper returning just the response body as a `String?` (absent on
 # failure, so an empty body is still a valid present value). Full failure reasons

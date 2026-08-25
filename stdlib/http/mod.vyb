@@ -419,12 +419,147 @@ http_read_chunked(fd<Int>)<String> -> {
     return body
 }
 
-# Full HTTP/1.1 GET round-trip. Returns a present `HttpResponse`: on success
-# `status` is the parsed code and `error` is absent; on failure `status` is -1
-# and `error` carries a lossless reason ("resolve failed: <host>", "connect
-# <ip>:<port> failed", "bad response: no status line").
+# Resolved redirect target: scheme (http/https), host, port, and path. Port
+# defaults are applied for a fresh authority (http=80, https=443).
 share(all)
-http_get_full(host<String>, port<Int>, path<String>)<HttpResponse> -> {
+struct HttpTarget {
+    scheme<String>,
+    host<String>,
+    port<Int>,
+    path<String>
+}
+
+# Last index of `sub` in `s`, or -1 (index_of returns the first occurrence).
+share(all)
+http_rindex_of(s<String>, sub<String>)<Int> -> {
+    m<Int> = sub.len()
+    if (m == 0) { return -1 }
+    n<Int> = s.len()
+    i<Int> = n - m
+    while (i >= 0) {
+        j<Int> = 0
+        ok<Bool> = true
+        while (ok && j < m) {
+            if (s.char_at(i + j) != sub.char_at(j)) { ok = false }
+            j = j + 1
+        }
+        if (ok) { return i }
+        i = i - 1
+    }
+    return -1
+}
+
+# Resolve a redirect `Location` value against the current request target. Handles
+# absolute ("https://host:8443/a/b"), protocol-relative ("//host:port/x"),
+# root-relative ("/x"), and same-directory relative ("x", "./x", "../x" resolved
+# against the current path's directory). The returned `scheme` may differ from the
+# input `scheme` -- the caller decides whether to follow (clients never cross
+# schemes silently).
+share(all)
+http_resolve_location(loc0<String>, scheme<String>, host<String>, port<Int>, path<String>)<HttpTarget> -> {
+    lv<String> = loc0.trim()
+    os<String> = scheme
+    oh<String> = host
+    op<Int> = port
+    b<String> = lv
+
+    # Absolute ("scheme://host"): swap the scheme and continue on the authority.
+    has_authority<Bool> = false
+    sp<Int> = b.index_of("://")
+    if (sp >= 0) {
+        os = b.substring(0, sp)
+        b = b.substring(sp + 3)
+        has_authority = true
+    } else if (b.index_of("//") == 0) {
+        # Protocol-relative ("//host"): same scheme, new authority.
+        b = b.substring(2)
+        has_authority = true
+    }
+
+    if (has_authority) {
+        si<Int> = b.index_of("/")
+        auth<String> = b
+        if (si >= 0) {
+            auth = b.substring(0, si)
+            b = b.substring(si)
+        } else {
+            b = "/"
+        }
+        co<Int> = auth.index_of(":")
+        if (co >= 0) {
+            oh = auth.substring(0, co)
+            op = http_parse_int(auth.substring(co + 1))
+        } else {
+            oh = auth
+            # Fresh authority without an explicit port: use the scheme default.
+            if (os == "https") { op = 443 } else { op = 80 }
+        }
+        return HttpTarget { scheme = os, host = oh, port = op, path = b }
+    }
+
+    # Root-relative.
+    if (b.index_of("/") == 0) {
+        return HttpTarget { scheme = os, host = oh, port = op, path = b }
+    }
+
+    # Same-directory relative: strip "./" prefixes, resolve "../" against the
+    # current path's directory (which always carries a trailing slash).
+    while (b.index_of("./") == 0) { b = b.substring(2) }
+    dir<String> = "/"
+    lastSlash<Int> = http_rindex_of(path, "/")
+    if (lastSlash >= 0) {
+        dir = path.substring(0, lastSlash + 1)
+        if (dir.len() == 0) { dir = "/" }
+    }
+    while (b.index_of("../") == 0) {
+        b = b.substring(3)
+        if (dir == "/") { continue }
+        r1<Int> = http_rindex_of(dir, "/")
+        first<String> = dir.substring(0, r1)
+        r2<Int> = http_rindex_of(first, "/")
+        if (r2 > 0) { dir = first.substring(0, r2 + 1) } else { dir = "/" }
+    }
+    return HttpTarget { scheme = os, host = oh, port = op, path = dir + b }
+}
+
+# Is `code` a GET-followable redirect status?
+share(all)
+http_is_redirect(code<Int>)<Bool> -> {
+    if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) { return true }
+    return false
+}
+
+# Look a header up by (case-insensitive) name across a parsed response's headers.
+share(all)
+http_header(resp<HttpResponse>, name<String>)<String> -> {
+    i<Int> = 0
+    while (i < resp.headers.len()) {
+        v<String> = http_header_value(resp.headers.get(i), name)
+        if (v.len() > 0) { return v }
+        i = i + 1
+    }
+    return ""
+}
+
+# Expose the `Location` header of a response ("" when absent). The clients follow
+# same-scheme redirects, but a cross-scheme Location (or one past the hop cap) is
+# left here so a caller can resolve the chain itself.
+share(all)
+http_location(resp<HttpResponse>)<String> -> {
+    return http_header(resp, "location")
+}
+
+# Hop budget for redirect following (#194). Bounded so a redirect loop terminates.
+share(all)
+http_redir_max()<Int> -> {
+    return 10
+}
+
+# One GET round-trip with redirect following. `hops` is the number of redirects
+# already taken. Only same-scheme redirects (scheme == "http"/"https") are
+# followed; cross-scheme returns the 3xx response with its Location exposed.
+share(all)
+http_get_hops(host<String>, port<Int>, path<String>, hops<Int>, scheme<String>)<HttpResponse> -> {
     # Resolve the host to an IPv4 address first (exactly like the https client),
     # then connect by IP. The sockets are AF_INET only, and a bare hostname can
     # resolve to an IPv6 address first, which would make the connect fail - even
@@ -481,19 +616,35 @@ http_get_full(host<String>, port<Int>, path<String>)<HttpResponse> -> {
         }
     }
     socket_close(fd)
-    return HttpResponse { status = code, reason = reason, headers = hs, body = body, error = String?() }
+    resp<HttpResponse> = HttpResponse { status = code, reason = reason, headers = hs, body = body, error = String?() }
+
+    # Follow a same-scheme redirect (bounded). A cross-scheme Location (http<->https)
+    # is NOT followed silently -- the response is returned with its Location header
+    # exposed so the caller can resolve it via the matching client (e.g. https).
+    lv<String> = http_header(resp, "location")
+    if (http_is_redirect(resp.status) && hops < http_redir_max() && lv.len() > 0) {
+        tg<HttpTarget> = http_resolve_location(lv, scheme, host, port, path)
+        if (tg.scheme == scheme) {
+            return http_get_hops(tg.host, tg.port, tg.path, hops + 1, scheme)
+        }
+    }
+    return resp
 }
 
-# Look a header up by (case-insensitive) name across a parsed response's headers.
+# Full HTTP/1.1 GET round-trip. Returns a present `HttpResponse`: on success
+# `status` is the parsed code and `error` is absent; on failure `status` is -1
+# and `error` carries a lossless reason ("resolve failed: <host>", "connect
+# <ip>:<port> failed", "bad response: no status line").
+#
+# Redirects are followed automatically (bounded): a 301/302/303/307/308 with a
+# `Location` header is re-fetched on the resolved target, up to http_redir_max()
+# hops. Only same-scheme redirects are followed -- an http->https Location is left
+# for the caller (this client has no TLS), and the response (with its Location
+# header, see http_location) is returned as-is so the caller can resolve it via the
+# https client. The hop budget prevents redirect loops from hanging the fetch.
 share(all)
-http_header(resp<HttpResponse>, name<String>)<String> -> {
-    i<Int> = 0
-    while (i < resp.headers.len()) {
-        v<String> = http_header_value(resp.headers.get(i), name)
-        if (v.len() > 0) { return v }
-        i = i + 1
-    }
-    return ""
+http_get_full(host<String>, port<Int>, path<String>)<HttpResponse> -> {
+    return http_get_hops(host, port, path, 0, "http")
 }
 
 # Convenience full-GET returning just the response body as a `String?` (absent
