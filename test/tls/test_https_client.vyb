@@ -1,9 +1,11 @@
 // @test: https client - TLS-secured HTTP GET against a local TLS server
 // @description: A worker thread stands up a TLS server (in-line PEM cert/key)
 //   that answers a request over TLS, while the client fetches it via
-//   https_get_full and validates the parsed status, reason, Content-Length, and
-//   body - proving the https module layers network + tls + http cleanly. The
-//   round-trip runs inside https_selfhost so the test needs only one import.
+//   https_get_full by a resolvable hostname (localhost) and validates the
+//   parsed status, reason, Content-Length, and body - proving the https module
+//   layers network + tls + http cleanly AND that the unverified client resolves
+//   hostnames before connecting (#188). The round-trip runs inside
+//   https_selfhost so the test needs only one import.
 // @category: modules, https, tls, http, network, threads, stdlib
 // @expect: pass
 // @expect-output: ok

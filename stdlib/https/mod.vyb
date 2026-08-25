@@ -177,11 +177,14 @@ https_fetch(verify_host<String>, connect_ip<String>, port<Int>, path<String>,
 }
 
 # Full HTTPS/1.1 GET round-trip over an unverified client context (self-signed
-# / loopback). `host` must be an IP literal (connect target == verify name).
+# / loopback). `host` is a hostname: resolved to an IPv4 for the connection
+# while kept as the SNI / `Host:` header. Does not verify the peer's CA chain.
 share(all)
 https_get_full(host<String>, port<Int>, path<String>)<HttpResponse?> -> {
+    ip<String> = socket_resolve(host) else ""
+    if (ip.len() == 0) { return HttpResponse?() }
     match (tls_client_context()) {
-        ctx -> { return https_fetch(host, host, port, path, ctx) }
+        ctx -> { return https_fetch(host, ip, port, path, ctx) }
         ? -> { return HttpResponse?() }
     }
 }
@@ -263,7 +266,7 @@ https_selfhost(cert_pem<String>, key_pem<String>)<Bool?> -> {
             code<Int> = 0
             got<String> = ""
             rs<String> = ""
-            match (https_get_full("127.0.0.1", port, "/secure")) {
+            match (https_get_full("localhost", port, "/secure")) {
                 resp -> { code = resp.status; got = resp.body; rs = resp.reason }
                 ? -> { }
             }
