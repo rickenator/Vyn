@@ -1,5 +1,5 @@
 {
-  "git_rev": "8060a7206a7a1ae40a26f0bb0c0ff998b7f83de0",
+  "git_rev": "7ac9bd6ac5de5ddbfcfe96fef1da8bae4a46ae20",
   "modules": [
     "agents",
     "archive",
@@ -108,7 +108,7 @@
         "files": [
           "stdlib/http/mod.vyb"
         ],
-        "exported": 28,
+        "exported": 29,
         "fan_in": 1,
         "fan_out": 3
       },
@@ -488,12 +488,12 @@
           "http_response",
           "http_request",
           "http_read_rest",
-          "http_get",
           "http_serve_conn",
           "http_serve",
           "HttpResponse",
           "HttpError",
           "http_error",
+          "http_err",
           "http_index_of",
           "http_key_eq",
           "http_parse_int",
@@ -505,7 +505,8 @@
           "http_parse_hex",
           "http_read_chunked",
           "http_get_full",
-          "http_header"
+          "http_header",
+          "http_get"
         ]
       },
       {
@@ -2351,7 +2352,7 @@
         "file": "stdlib/http/mod.vyb",
         "kind": "struct",
         "signature": "struct HttpResponse {",
-        "summary": "A parsed HTTP response. `headers` holds the raw response header lines (minus",
+        "summary": "A completed HTTP round-trip. On success `status` is the parsed code and",
         "fan_in": 1
       },
       {
@@ -2373,6 +2374,15 @@
         "fan_in": 0
       },
       {
+        "name": "http_err",
+        "module": "http",
+        "file": "stdlib/http/mod.vyb",
+        "kind": "fn",
+        "signature": "http_err(msg<String>)<HttpResponse> ->",
+        "summary": "Build a failed-round-trip result for the full clients: still **present**, with",
+        "fan_in": 1
+      },
+      {
         "name": "http_error",
         "module": "http",
         "file": "stdlib/http/mod.vyb",
@@ -2387,7 +2397,7 @@
         "file": "stdlib/http/mod.vyb",
         "kind": "fn",
         "signature": "http_get(host<String>, port<Int>, path<String>)<String?> ->",
-        "summary": "Full GET round-trip against `host`:`port` for `path`. Returns the body as a",
+        "summary": "Convenience full-GET returning just the response body as a `String?` (absent",
         "fan_in": 0
       },
       {
@@ -2395,8 +2405,8 @@
         "module": "http",
         "file": "stdlib/http/mod.vyb",
         "kind": "fn",
-        "signature": "http_get_full(host<String>, port<Int>, path<String>)<HttpResponse?> ->",
-        "summary": "Full HTTP/1.1 GET round-trip. Returns an HttpResponse with the parsed status,",
+        "signature": "http_get_full(host<String>, port<Int>, path<String>)<HttpResponse> ->",
+        "summary": "Full HTTP/1.1 GET round-trip. Returns a present `HttpResponse`: on success",
         "fan_in": 0
       },
       {
@@ -2602,7 +2612,7 @@
         "module": "https",
         "file": "stdlib/https/mod.vyb",
         "kind": "fn",
-        "signature": "https_get_full(host<String>, port<Int>, path<String>)<HttpResponse?> ->",
+        "signature": "https_get_full(host<String>, port<Int>, path<String>)<HttpResponse> ->",
         "summary": "Full HTTPS/1.1 GET round-trip over an unverified client context (self-signed",
         "fan_in": 0
       },
@@ -2611,7 +2621,7 @@
         "module": "https",
         "file": "stdlib/https/mod.vyb",
         "kind": "fn",
-        "signature": "https_get_full_verified(host<String>, port<Int>, path<String>, ca_pem<String>)<HttpResponse?> ->",
+        "signature": "https_get_full_verified(host<String>, port<Int>, path<String>, ca_pem<String>)<HttpResponse> ->",
         "summary": "Full HTTPS/1.1 GET round-trip with peer verification. `host` is a hostname:",
         "fan_in": 0
       },
@@ -5301,56 +5311,14 @@
       "from_module": "http",
       "from_symbol": "http_get",
       "to_module": "http",
-      "to_symbol": "http_read_head"
+      "to_symbol": "http_get_full"
     },
     {
       "type": "call",
       "from_module": "http",
-      "from_symbol": "http_get",
+      "from_symbol": "http_get_full",
       "to_module": "http",
-      "to_symbol": "http_read_rest"
-    },
-    {
-      "type": "call",
-      "from_module": "http",
-      "from_symbol": "http_get",
-      "to_module": "http",
-      "to_symbol": "http_request"
-    },
-    {
-      "type": "call",
-      "from_module": "http",
-      "from_symbol": "http_get",
-      "to_module": "http",
-      "to_symbol": "http_send_all"
-    },
-    {
-      "type": "call",
-      "from_module": "http",
-      "from_symbol": "http_get",
-      "to_module": "https",
-      "to_symbol": "socket_open"
-    },
-    {
-      "type": "call",
-      "from_module": "http",
-      "from_symbol": "http_get",
-      "to_module": "network",
-      "to_symbol": "socket_close"
-    },
-    {
-      "type": "call",
-      "from_module": "http",
-      "from_symbol": "http_get",
-      "to_module": "network",
-      "to_symbol": "socket_connect"
-    },
-    {
-      "type": "call",
-      "from_module": "http",
-      "from_symbol": "http_get",
-      "to_module": "network",
-      "to_symbol": "socket_open"
+      "to_symbol": "http_err"
     },
     {
       "type": "call",
@@ -5692,8 +5660,29 @@
       "type": "call",
       "from_module": "https",
       "from_symbol": "https_get_full",
+      "to_module": "http",
+      "to_symbol": "http_err"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_get_full",
+      "to_module": "network",
+      "to_symbol": "socket_resolve"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_get_full",
       "to_module": "tls",
       "to_symbol": "tls_client_context"
+    },
+    {
+      "type": "call",
+      "from_module": "https",
+      "from_symbol": "https_get_full_verified",
+      "to_module": "http",
+      "to_symbol": "http_err"
     },
     {
       "type": "call",
@@ -6744,6 +6733,15 @@
       "from_module": "https",
       "from_symbol": "",
       "to_module": "http",
+      "to_symbol": "http_err",
+      "reexport": true,
+      "resolved": true
+    },
+    {
+      "type": "import",
+      "from_module": "https",
+      "from_symbol": "",
+      "to_module": "http",
       "to_symbol": "http_header_value",
       "reexport": false,
       "resolved": true
@@ -7149,6 +7147,27 @@
       "from_symbol": "http_error",
       "to_module": "http",
       "to_symbol": "HttpError"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "http",
+      "from_symbol": "http_get",
+      "to_module": "http",
+      "to_symbol": "http_get_full"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "http",
+      "from_symbol": "http_get_full",
+      "to_module": "http",
+      "to_symbol": "HttpResponse"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "https",
+      "from_symbol": "https_get",
+      "to_module": "https",
+      "to_symbol": "https_get_full"
     },
     {
       "type": "proseRef",
@@ -9283,6 +9302,13 @@
       "from_symbol": "http_accept",
       "to_module": "network",
       "to_symbol": "TcpStream"
+    },
+    {
+      "type": "usesType",
+      "from_module": "http",
+      "from_symbol": "http_err",
+      "to_module": "http",
+      "to_symbol": "HttpResponse"
     },
     {
       "type": "usesType",

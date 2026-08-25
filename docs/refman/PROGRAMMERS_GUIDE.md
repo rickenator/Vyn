@@ -931,7 +931,7 @@ programmer-facing failure surface to native optionals:
 | `io` | `open*` -> `File?`; `read_all` -> `String?`; `write_str` -> `Int?`; `close` -> `Bool?` |
 | `term`, `env` | enabling/`set` ops -> `Bool?`; stderr writers -> `Int?`; ANSI emitters `term_clear`/`term_move_cursor`/`term_hide_cursor`/`term_show_cursor` -> `Bool?` |
 | `network` (incl. oracle output) | acquisition -> `TcpStream?`/`TcpListener?`/`UdpSocket?`; `socket_*` (`Int?`/`Bool?`/`Int?`-bytes); recv surfaces `udp_recv_from`/`recv_from`/`async_tcp_read`/`async_udp_recv_from` and wrapper `TcpStreamOps::read` -> `String?`; last-peer probes `udp_last_peer_ip`/`udp_last_peer_port` -> `String?`/`Int?` |
-| `tls`, `https` | `tls_stream`/`tls_client_context` -> `TlsStream?`/`TlsContext?`; `https_get*` -> `HttpResponse?`; diagnostics `https_selfhost`/`https_selfhost_verified` -> `Bool?` |
+| `tls`, `https` | `tls_stream`/`tls_client_context` -> `TlsStream?`/`TlsContext?`; `https_get_full*` -> a **present** `HttpResponse` whose `error<String?>` carries the lossless failure reason (`status -1` on failure); body wrappers `https_get`/`https_get_verified` -> `String?`; diagnostics `https_selfhost`/`https_selfhost_verified` -> `Bool?` |
 | `asyncs` | `async_sleep_ms`/`async_connect` -> `Bool?`; `async_recv` -> `String?`; `async_send` -> `Int?`; `async_spawn`/`async_poll`/`async_accept` -> `Int?` |
 | `curses` | `curses_init` -> `Int?`; draw/attr/window ops -> `Bool?`; `curses_rows`/`curses_cols` -> `Int?`; `curses_getch` + color/attr probes stay `Int` |
 | `agents` | `agent_start*` -> `Int?` (absent on spawn failure); `agent_send*`/`agent_close`/`agent_free`/`agent_dead_letter` -> `Bool?`; probes stay `Int`/`String` |
@@ -1657,18 +1657,22 @@ at startup if you need write-to-closed-pipe to terminate instead of erroring.
 ### 4.13 `http` — pure-Vyb HTTP/1.1 client and server
 
 Module page: [`http.md`](http.md). Layered over `network`/`threads` (not raw
-runtime calls). Fallible ops expose the File?/net shape: `HttpResponse` holds
-`status`, `headers`, `body`; `http_listen` returns a `TcpListener?`,
-`http_accept` a `TcpStream?`, `http_get` a `String?`, and `http_get_full` an
-`HttpResponse?` — absence *is* failure (no `-1`/`""` sentinels). Unwrap with
-`match`/`else` and escalate with `fail http_error(op, target)` (a shared
-`HttpError { op, target, message }`).
+runtime calls). Acquisition ops keep the File?/net shape: `http_listen` returns a
+`TcpListener?` and `http_accept` a `TcpStream?` — absence *is* failure. The full
+client `http_get_full` returns a **present** `HttpResponse { status, reason,
+headers, body, error<String?> }`: on success `error` is absent and `status` is the
+parsed code; on failure `status` is `-1` and `error` carries the lossless phase
+reason (`"resolve failed: <host>"`, `"connect <ip>:<port> failed"`,
+`"bad response: no status line"`) — a failed round-trip is **never a silent
+absent** and never a sentinel passed off as data. The body convenience `http_get`
+returns `String?` (absent when `status < 0`).
 
 ```vyb
-# client -- an absent HttpResponse? is a failed round-trip
-match (http_get_full(host, port, path)) {   # HttpResponse?
-    resp -> { http_header(resp, "content-type") }
-    ?     -> { fail http_error("get", host) }
+# client -- http_get_full always returns a response; match `error` for the reason
+resp = http_get_full(host, port, path)          # HttpResponse
+match (resp.error) {
+    err -> { fail http_error("get", host) }     # failed round-trip; reason in err
+    ?    -> { http_header(resp, "content-type") }  # success
 }
 
 # server
@@ -1684,7 +1688,7 @@ match (http_listen(port, backlog)) {        # TcpListener? (0 = ephemeral)
 # helpers (unchanged)
 http_response(status, body)<String>         # well-formed response
 http_request(method, path, host)<String>
-http_get(host, port, path)<String?>          # body or absent
+http_get(host, port, path)<String?>          # body, or absent when status < 0
 http_status_code(line)<Int>
 http_index_of(s, needle)<Int>
 http_header_value(header, name)<String>
@@ -1700,18 +1704,20 @@ here before layering TLS.
 
 Module page: [`https.md`](https.md). A client that runs the `http` request
 state machine over a `TlsStream` (reusing `http`'s parsers and the shared
-`HttpResponse` type, which it re-exports). Like `http`, the fallible client
-surface returns optionals: `http_get_full`-style calls now yield `HttpResponse?`
-(absent on a failed round-trip) and the body wrappers yield `String?`; escalate
-with `fail http_error(...)` and interpret a `-1` status as a genuine protocol
-result rather than a transport sentinel.
+`HttpResponse` type, which it re-exports). Like `http_get_full`,
+`https_get_full*` return a **present** `HttpResponse` whose `error<String?>`
+carries the lossless reason on a failed round-trip (`"resolve failed"`,
+`"connect ... failed"`, `"tls handshake failed"`, `"tls stream failed"`,
+`"bad response: no status line"`) with `status -1`; the body wrappers yield
+`String?` (absent when `status < 0`). Escalate with `fail http_error(...)`.
 
 ```vyb
-match (https_get_full(host, port, path)) {   # HttpResponse? (unverified ctx)
-    resp -> { http_header(resp, "content-type") }
-    ?     -> { fail http_error("get", host) }
+resp = https_get_full(host, port, path)      # present HttpResponse (unverified ctx)
+match (resp.error) {
+    err -> { fail http_error("get", host) }  # failed round-trip; reason in err
+    ?    -> { http_header(resp, "content-type") }
 }
-https_get_full_verified(host, port, path, ca_pem)<HttpResponse?>
+https_get_full_verified(host, port, path, ca_pem)<HttpResponse>
 https_get(host, port, path)<String?>
 https_get_verified(host, port, path, ca_pem)<String?>
 
@@ -2262,6 +2268,8 @@ regenerates byte-identical output.
 | archive | [`archive`](archive.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
+
 
 
 
