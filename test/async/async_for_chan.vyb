@@ -57,6 +57,9 @@ main()<Int> -> {
     if (scount != 3) { return 5 }
     if (saw_empty != 1) { return 6 }
 
+    chan_free(ch)
+    strchan_free(sch)
+
     println("ok")
     return 0
 }
