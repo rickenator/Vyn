@@ -218,18 +218,17 @@ code_order()<Vec<Int>> -> {
 
 # --- DEFLATE literal/length+distance run ----------------------------------
 
+# Decode literal/length codes (lh) and distance codes (dh), appending output
+# into the caller-owned growable byte buffer `out` (a mutable borrow, mutated in
+# place), until end-of-block (symbol 256). Returns the advanced bit position.
+# Appends are O(1) amortized on a Vec<Int>: a literal pushes one byte, a
+# length/distance back-ref pushes `len` bytes read (via get) from the already-
+# built buffer -- self-referencing overlaps (dist < len) read the just-pushed
+# bytes, which is correct LZ. This is linear in the inflated byte count, not the
+# old O(N^2) one-byte String.concat accumulation (#191).
 share(all)
-struct Run {
-    out<String>,
-    pos<Int>
-}
-
-# Decode literal/length codes (lh) and distance codes (dh), appending output,
-# until end-of-block (symbol 256).
-share(all)
-decode_run(lh<Huff>, dh<Huff>, data<String>, pos<Int>, out<String>)<Run> -> {
+decode_run(lh<Huff>, dh<Huff>, data<String>, pos<Int>, out<their<Vec<Int>>>)<Int> -> {
     p<Int> = pos
-    o<String> = out
     le<Vec<Int>> = len_extra_tbl()
     lb<Vec<Int>> = len_base_tbl()
     de<Vec<Int>> = dist_extra_tbl()
@@ -242,7 +241,7 @@ decode_run(lh<Huff>, dh<Huff>, data<String>, pos<Int>, out<String>)<Run> -> {
         if (sym == 256) {
             done = true
         } else if (sym < 256) {
-            o = o.concat(String::from_byte(sym))
+            out.push(sym)
         } else {
             li<Int> = sym - 257
             len<Int> = lb.get(li) + val_at(data, p, le.get(li))
@@ -252,23 +251,22 @@ decode_run(lh<Huff>, dh<Huff>, data<String>, pos<Int>, out<String>)<Run> -> {
             p = ds.pos
             dist<Int> = db.get(dsym) + val_at(data, p, de.get(dsym))
             p = p + de.get(dsym)
-            n<Int> = o.len()
+            n<Int> = out.len()
             for (k in 0..len - 1) {
-                src<Int> = n - dist + k
-                o = o.concat(o.substring(src, src + 1))
+                out.push(out.get(n - dist + k))
             }
         }
     }
-    return Run { out = o, pos = p }
+    return p
 }
 
 # --- DEFLATE block/section decode -----------------------------------------
 # Inflate a raw DEFLATE stream (no gzip framing) starting at bit 0.
 
 share(all)
-inflate_def(src<String>)<String> -> {
+inflate_def(src<String>)<Vec<Int>> -> {
     bitpos<Int> = 0
-    out<String> = ""
+    out<Vec<Int>> = Vec<Int>()
     done<Bool> = false
     while (!done) {
         bfinal<Int> = val_at(src, bitpos, 1)
@@ -282,16 +280,14 @@ inflate_def(src<String>)<String> -> {
             nlen<Int> = val_at(src, bitpos, 16)
             bitpos = bitpos + 16
             if ((len ^ 0xFFFF) != nlen) {
-                return ""
+                return out
             }
             for (k in 0..len - 1) {
-                out = out.concat(String::from_byte(val_at(src, bitpos, 8)))
+                out.push(val_at(src, bitpos, 8))
                 bitpos = bitpos + 8
             }
         } else if (btype == 1) {
-            r<Run> = decode_run(build_huff(fixed_lit_lens()), build_huff(fixed_dist_lens()), src, bitpos, out)
-            out = r.out
-            bitpos = r.pos
+            bitpos = decode_run(build_huff(fixed_lit_lens()), build_huff(fixed_dist_lens()), src, bitpos, borrow(out))
         } else if (btype == 2) {
             hl<Int> = val_at(src, bitpos, 5) + 257
             bitpos = bitpos + 5
@@ -335,11 +331,9 @@ inflate_def(src<String>)<String> -> {
             for (i in 0..hl - 1) { llens.push(lens.get(i)) }
             dlens<Vec<Int>> = Vec<Int>()
             for (i in 0..hd - 1) { dlens.push(lens.get(hl + i)) }
-            r<Run> = decode_run(build_huff(llens), build_huff(dlens), src, bitpos, out)
-            out = r.out
-            bitpos = r.pos
+            bitpos = decode_run(build_huff(llens), build_huff(dlens), src, bitpos, borrow(out))
         } else {
-            return ""
+            return out
         }
         if (bfinal == 1) {
             done = true
@@ -365,6 +359,49 @@ crc32(data<String>)<Int> -> {
         }
     }
     return crc ^ 0xFFFFFFFF
+}
+
+# --- byte buffer -> String flatten (#191) ---------------------------------
+# The inflate decoder accumulates output into a growable Vec<Int> of bytes so
+# appends are O(1) amortized. Flattening that back to a String is done in O(N):
+# build bounded pieces (each from `SS` bytes, so the per-byte copy stays small)
+# and then merge them pairwise (balanced join) so no step re-copies the whole
+# accumulator more than O(log #pieces) times -- instead of the old per-byte
+# String.concat that was O(N^2).
+
+share(all)
+join_pieces(p<Vec<String>>)<String> -> {
+    if (p.len() == 0) { return "" }
+    if (p.len() == 1) { return p.get(0) }
+    m<Vec<String>> = Vec<String>()
+    i<Int> = 0
+    while (i + 1 < p.len()) {
+        m.push(p.get(i).concat(p.get(i + 1)))
+        i = i + 2
+    }
+    if (i < p.len()) { m.push(p.get(i)) }
+    return join_pieces(m)
+}
+
+share(all)
+flat_bytes(buf<Vec<Int>>)<String> -> {
+    if (buf.len() == 0) { return "" }
+    pieces<Vec<String>> = Vec<String>()
+    SS<Int> = 64
+    i<Int> = 0
+    while (i < buf.len()) {
+        e<Int> = i + SS
+        if (e > buf.len()) { e = buf.len() }
+        c<String> = ""
+        j<Int> = i
+        while (j < e) {
+            c = c.concat(String::from_byte(buf.get(j) & 0xFF))
+            j = j + 1
+        }
+        pieces.push(c)
+        i = e
+    }
+    return join_pieces(pieces)
 }
 
 # --- gzip framing ---------------------------------------------------------
@@ -394,7 +431,8 @@ inflate_gzip(gz<String>)<String?> -> {
     if ((flg & 2) != 0) { pos = pos + 2 }    # FHCRC
     if (pos > n - 8) { return String?() }
     src<String> = gz.substring(pos, n - 8)
-    out<String> = inflate_def(src)
+    buf<Vec<Int>> = inflate_def(src)
+    out<String> = flat_bytes(buf)
     crc<Int> = (gz.char_at(n - 8) & 0xFF) | ((gz.char_at(n - 7) & 0xFF) << 8) | ((gz.char_at(n - 6) & 0xFF) << 16) | ((gz.char_at(n - 5) & 0xFF) << 24)
     isize<Int> = (gz.char_at(n - 4) & 0xFF) | ((gz.char_at(n - 3) & 0xFF) << 8) | ((gz.char_at(n - 2) & 0xFF) << 16) | ((gz.char_at(n - 1) & 0xFF) << 24)
     if (crc32(out) != (crc & 0xFFFFFFFF)) { return String?() }
