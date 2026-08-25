@@ -1,0 +1,32 @@
+// @test: string reference-count registry grows on demand (heap-backed COW, #189)
+// @description: the runtime string registry used to be a fixed 262144-slot array
+//   that VYB_STR_REG_CAP could not raise, so memory-heavy workloads aborted with
+//   "registry exhausted". It is now heap-backed and grows (copy-on-write) when it
+//   fills. This test keeps 300000 distinct LIVE Strings resident (exceeding the
+//   old default cap), so the table must auto-grow; then scope exit releases all of
+//   them through the grown table(s), so any ref-count divergence across a grow
+//   would surface as a double-free/UAF/crash. No VYB_STR_REG_CAP is set -- growth
+//   must be automatic.
+// @category: runtime, strings, memory, registry
+// @expect: pass
+// @expect-output: reg-grow-ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+main()<Int> -> {
+    v<Vec<String>> = Vec<String>()
+    i<Int> = 0
+    n<Int> = 300000
+    while (i < n) {
+        v.push("g" + i.to_string())
+        i = i + 1
+    }
+    if (v.len() != n) { println("reg: bad len"); return 2 }
+    # A retained element's data is still correct after growth. Scope-exit release
+    # of all 300k then exercises ref-counts through the grown table, so any
+    # divergence across a grow would surface as a double-free/UAF/crash.
+    head<String> = v.get(0)
+    if (head != "g0") { println("reg: bad head"); return 3 }
+    println("reg-grow-ok")
+    return 0
+}

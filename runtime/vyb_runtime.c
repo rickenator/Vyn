@@ -104,52 +104,97 @@ static ssize_t vyb_raw_write(int fd, const void* buf, size_t count) {
 // __vyb_string_release() when it drops one (freeing only when the last
 // reference goes away). Pointers we never allocated (string literals in
 // .rodata) are not in the registry, so retain/release are safe no-ops for them.
-// The table has a large fixed capacity — fine for desktop/lifetime-of-program
-// use; swap in a dynamic table when scaling memory-heavy workloads later.
-#define VYB_STR_REG_CAP 262144
+// The registry backs itself with a heap table that GROWS ON DEMAND. It starts
+// at a modest floor (262144 slots / ~4 MiB, so we don't allocate big up front)
+// and doubles into a fresh copy -- with the accumulated tombstones dropped --
+// whenever it fills, so memory-heavy workloads (multi-MB HTTP/TLS/tar bodies)
+// just work instead of aborting (#189). Readers (retain/release) probe lock-free
+// against a table whose size never changes mid-probe: growth is copy-on-write
+// under the registry lock with a brief single-threaded drain window, so a resize
+// never frees a table a reader is still scanning. VYB_STR_REG_CAP, when set, is
+// a hard maximum capacity: it bounds growth (small values make deterministic
+// exhaustion reachable, as the #162 test relies on; large values pre-size and
+// bound memory). When unset -- the normal case -- growth is unbounded and
+// memory-heavy workloads (multi-MB HTTP/TLS/tar bodies) just work (#189).
+#define VYB_STR_REG_CAP 262144                     // startup floor (2^18 slots)
 typedef struct { _Atomic(void*) p; _Atomic(int64_t) refs; } vyb_str_ref;
-static vyb_str_ref vyb_str_reg[VYB_STR_REG_CAP] = {0};
+static _Atomic(vyb_str_ref*) vyb_str_reg;          // heap table (republished on grow)
+static _Atomic(size_t) vyb_str_eff_cap;            // power of two; grows on demand
+static size_t vyb_str_max_cap;                     // hard growth ceiling; set once in init
+                                                   // (SIZE_MAX = unbounded when env unset)
 
-// Serializes slot claiming in register() and the slot reset after the last
-// release. retain()/release() of a live, already-registered buffer are lock-free
-// (atomic RMW on `refs`); the mutex only guards publishing/retiring a slot.
+// Serializes slot claiming in register(), grows, and the slot reset after the
+// last release. retain()/release() of a live, already-registered buffer stay
+// lock-free (atomic RMW on `refs`, plus the reader guard below); the mutex only
+// guards publishing/retiring a slot and the grow window.
 static pthread_mutex_t vyb_str_reg_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_once_t vyb_str_reg_once = PTHREAD_ONCE_INIT;
+// Lock-free readers (retain/release probes) increment `vyb_str_rdrs`; a grow
+// sets `vyb_str_growing` and drains readers to zero before rehashing, so no
+// reader is ever probing a table that is about to be freed.
+static _Atomic(uint64_t) vyb_str_rdrs = 0;
+static _Atomic(int) vyb_str_growing = 0;
 
-// Effective probing capacity, overridable at startup for testing via
-// VYB_STR_REG_CAP (a power of 2 >= 4, clamped to the fixed array size). It is
-// fixed after the first register: lookup() probes lock-free, so the bound must
-// not change once any buffer is tracked.
-static size_t vyb_str_eff_cap = VYB_STR_REG_CAP;
-static int vyb_str_eff_cap_ready = 0;
-
-static void vyb_str_maybe_init_eff_cap(void) {
-    if (vyb_str_eff_cap_ready) return;
-    size_t c = VYB_STR_REG_CAP;
+static void vyb_str_reg_init(void) {
+    // Start at the modest floor (so we don't allocate big up front) and grow on
+    // demand. VYB_STR_REG_CAP, when set, is a HARD MAXIMUM capacity: the table
+    // grows toward it and then fails deterministically on exhaustion -- this is
+    // the knob that makes the #162 deterministic-exhaustion test reachable AND
+    // lets a workload bound its memory. When unset (the normal case), growth is
+    // unbounded and multi-MB workloads just work (#189).
+    size_t start = VYB_STR_REG_CAP;
+    size_t maxcap = (size_t)-1;                  // unbounded by default
     const char* e = getenv("VYB_STR_REG_CAP");
     if (e && *e) {
         unsigned long v = strtoul(e, NULL, 0);
         if (v >= 4) {
+            // Round DOWN to a power of two.
             size_t x = 1;
-            while ((x << 1) <= (size_t)v) x <<= 1;   // round down to a power of two
-            if (x > VYB_STR_REG_CAP) x = VYB_STR_REG_CAP;
-            c = x;
+            while ((x << 1) <= (size_t)v) x <<= 1;
+            maxcap = x;                          // bound growth at the env value
+            start = (maxcap < VYB_STR_REG_CAP) ? maxcap : VYB_STR_REG_CAP;
         }
     }
-    vyb_str_eff_cap = c;
-    vyb_str_eff_cap_ready = 1;
+    vyb_str_ref* t = (vyb_str_ref*)calloc(start, sizeof(vyb_str_ref));
+    if (!t) {
+        static const char msg[] =
+            "Vyb runtime fatal: cannot allocate the string reference-count "
+            "registry (calloc failed). Lower VYB_STR_REG_CAP. Aborting.\n";
+        (void)!!vyb_raw_write(2, msg, sizeof(msg) - 1);
+        exit(1);
+    }
+    vyb_str_max_cap = maxcap;
+    atomic_store_explicit(&vyb_str_eff_cap, start, memory_order_relaxed);
+    atomic_store_explicit(&vyb_str_reg, t, memory_order_release);
 }
 
-// Deterministic failure when the registry is exhausted. Growing an
-// open-addressing table whose readers probe lock-free is not safe (a grow would
-// rehash into a new array; a concurrent reader scanning the old array could
-// miss an entry and mis-reference-count a String), so instead of silently
-// leaving the allocation untracked -- which leaks and corrupts ref counts
-// downstream -- fail loudly and deterministically.
+static void vyb_str_maybe_init(void) { pthread_once(&vyb_str_reg_once, vyb_str_reg_init); }
+
+// Reader guard. retain()/release() enter before probing and leave after; a grow
+// drains them to zero (rdrs == 0) before it swaps the table, and blocks new
+// readers with `vyb_str_growing` until the swap + free are done. After the first
+// call the hot path is two uncontended atomic RMWs and one branch.
+static void vyb_str_rdr_enter(void) {
+    for (;;) {
+        atomic_fetch_add_explicit(&vyb_str_rdrs, 1, memory_order_acquire);
+        if (!atomic_load_explicit(&vyb_str_growing, memory_order_acquire)) return;
+        atomic_fetch_sub_explicit(&vyb_str_rdrs, 1, memory_order_release);
+        // A grow is draining: spin (brief) until the swap completes, then retry.
+        while (atomic_load_explicit(&vyb_str_growing, memory_order_acquire)) { }
+    }
+}
+static void vyb_str_rdr_leave(void) {
+    atomic_fetch_sub_explicit(&vyb_str_rdrs, 1, memory_order_release);
+}
+
+// Fatal: the table is full and a grow could not allocate (out of memory).
+// Because the registry auto-grows, exhaustion here means calloc failed, not a
+// tunable limit -- so the message no longer promises an impossible env fix.
 static void vyb_str_reg_exhausted(void) {
     static const char msg[] =
-        "Vyb runtime fatal: string reference-count registry exhausted. Unable "
-        "to track an allocation safely; aborting rather than leaving it "
-        "untracked. Set VYB_STR_REG_CAP (power of 2, >= 4) to size the registry.\n";
+        "Vyb runtime fatal: string reference-count registry exhausted and could "
+        "not grow (out of memory). Aborting rather than leaving an allocation "
+        "untracked.\n";
     (void)!!vyb_raw_write(2, msg, sizeof(msg) - 1);
     exit(1);
 }
@@ -164,17 +209,29 @@ static void vyb_str_reg_exhausted(void) {
 // NULL (end of a cluster) or at the matching pointer.
 #define VYB_STR_TOMB ((void*)(uintptr_t)1)
 
+// The current table and its capacity, loaded atomically. Safe to call from the
+// reader guard (retain/release, where the size never changes mid-probe) or under
+// the registry lock (register / release-last reset / grow).
+static size_t vyb_str_capacity(void) {
+    return atomic_load_explicit(&vyb_str_eff_cap, memory_order_acquire);
+}
+static vyb_str_ref* vyb_str_table(void) {
+    return atomic_load_explicit(&vyb_str_reg, memory_order_acquire);
+}
+
 // Insertion probe: first slot that is an empty tombstone, a real NULL, or
 // already holds `p`. Used only by register() under the registry lock.
 static vyb_str_ref* vyb_str_insert_slot(void* p) {
+    size_t cap = vyb_str_capacity();
+    vyb_str_ref* reg = vyb_str_table();
     size_t h = (size_t)((uintptr_t)p / 16) ^ ((size_t)(uintptr_t)p / 4096);
-    h &= vyb_str_eff_cap - 1;
-    for (size_t i = 0; i < vyb_str_eff_cap; ++i) {
-        size_t idx = (h + i) & (vyb_str_eff_cap - 1);
-        void* slotP = atomic_load_explicit(&vyb_str_reg[idx].p, memory_order_acquire);
-        if (slotP == VYB_STR_TOMB || slotP == NULL || slotP == p) return &vyb_str_reg[idx];
+    h &= cap - 1;
+    for (size_t i = 0; i < cap; ++i) {
+        size_t idx = (h + i) & (cap - 1);
+        void* slotP = atomic_load_explicit(&reg[idx].p, memory_order_relaxed);
+        if (slotP == VYB_STR_TOMB || slotP == NULL || slotP == p) return &reg[idx];
     }
-    return NULL; // table full — callers must fail deterministically (#162)
+    return NULL; // table full — caller grows
 }
 
 // Lookup probe: walk past tombstones and unrelated live pointers until the slot
@@ -182,29 +239,83 @@ static vyb_str_ref* vyb_str_insert_slot(void* p) {
 // not in the table (an untracked literal or foreign pointer — a safe no-op).
 static vyb_str_ref* vyb_str_lookup_slot(void* p) {
     if (!p) return NULL;
+    size_t cap = vyb_str_capacity();
+    vyb_str_ref* reg = vyb_str_table();
     size_t h = (size_t)((uintptr_t)p / 16) ^ ((size_t)(uintptr_t)p / 4096);
-    h &= vyb_str_eff_cap - 1;
-    for (size_t i = 0; i < vyb_str_eff_cap; ++i) {
-        size_t idx = (h + i) & (vyb_str_eff_cap - 1);
-        void* slotP = atomic_load_explicit(&vyb_str_reg[idx].p, memory_order_acquire);
-        if (slotP == p) return &vyb_str_reg[idx];
+    h &= cap - 1;
+    for (size_t i = 0; i < cap; ++i) {
+        size_t idx = (h + i) & (cap - 1);
+        void* slotP = atomic_load_explicit(&reg[idx].p, memory_order_acquire);
+        if (slotP == p) return &reg[idx];
         if (slotP == NULL) return NULL; // end of cluster, not present
     }
     return NULL;
+}
+
+// Copy-on-write grow. Runs under the registry lock (register's caller holds it).
+// Drains lock-free readers (rdrs == 0), rehashes live entries + tombstones into a
+// fresh 2x table, publishes it, then frees the old table. Because readers are
+// drained before the copy and new readers are blocked by `vyb_str_growing` until
+// after the free, no reader ever touches the freed table and refcounts never
+// diverge across a swap (the #162 correctness property is preserved). Growth is
+// capped at vyb_str_max_cap (unbounded unless VYB_STR_REG_CAP bounds it).
+// Returns 1 if the table grew; 0 if already at the ceiling (or out of memory) so
+// the caller can fail deterministically.
+static int vyb_str_reg_grow(void) {
+    size_t oldcap = vyb_str_capacity();
+    size_t newcap;
+    if (oldcap >= vyb_str_max_cap || oldcap > SIZE_MAX / 2) newcap = vyb_str_max_cap;
+    else { newcap = oldcap * 2; if (newcap > vyb_str_max_cap) newcap = vyb_str_max_cap; }
+    if (newcap <= oldcap) return 0;                // at ceiling; cannot grow
+    vyb_str_ref* old = vyb_str_table();
+    vyb_str_ref* nw = (vyb_str_ref*)calloc(newcap, sizeof(vyb_str_ref));
+    if (!nw) return 0;                             // out of memory; caller aborts
+    atomic_store_explicit(&vyb_str_growing, 1, memory_order_release);
+    while (atomic_load_explicit(&vyb_str_rdrs, memory_order_acquire) != 0) { }
+    for (size_t i = 0; i < oldcap; ++i) {
+        void* p = atomic_load_explicit(&old[i].p, memory_order_relaxed);
+        if (p == NULL) continue;                   // empty slot
+        int64_t refs = atomic_load_explicit(&old[i].refs, memory_order_relaxed);
+        size_t h = (size_t)((uintptr_t)p / 16) ^ ((size_t)(uintptr_t)p / 4096);
+        h &= newcap - 1;
+        for (size_t j = 0; j < newcap; ++j) {
+            size_t k = (h + j) & (newcap - 1);
+            void* sp = atomic_load_explicit(&nw[k].p, memory_order_relaxed);
+            if (sp == NULL || sp == VYB_STR_TOMB) {
+                atomic_store_explicit(&nw[k].refs, refs, memory_order_relaxed);
+                atomic_store_explicit(&nw[k].p, p, memory_order_relaxed);
+                break;
+            }
+        }
+    }
+    atomic_store_explicit(&vyb_str_eff_cap, newcap, memory_order_release);
+    atomic_store_explicit(&vyb_str_reg, nw, memory_order_release);
+    atomic_store_explicit(&vyb_str_growing, 0, memory_order_release);
+    free(old);
+    return 1;
 }
 
 // Register a just-created heap buffer with an initial reference count of 1.
 VYB_WEAK void __vyb_string_register(void* p) {
     if (!p) return;
     pthread_mutex_lock(&vyb_str_reg_lock);
-    vyb_str_maybe_init_eff_cap();
+    vyb_str_maybe_init();
     vyb_str_ref* s = vyb_str_insert_slot(p);
     if (!s) {
-        // Registry exhausted: fail deterministically instead of silently
-        // tracking nothing (that would leak / corrupt reference counts).
-        pthread_mutex_unlock(&vyb_str_reg_lock);
-        vyb_str_reg_exhausted();   // does not return
-        return;
+        // Table full: grow (copy-on-write) and retry. If growth is impossible --
+        // at the VYB_STR_REG_CAP ceiling or out of memory -- fail deterministically
+        // instead of silently tracking nothing.
+        if (!vyb_str_reg_grow()) {
+            pthread_mutex_unlock(&vyb_str_reg_lock);
+            vyb_str_reg_exhausted();   // does not return
+            return;
+        }
+        s = vyb_str_insert_slot(p);
+        if (!s) {
+            pthread_mutex_unlock(&vyb_str_reg_lock);
+            vyb_str_reg_exhausted();   // does not return
+            return;
+        }
     }
     void* slotP = atomic_load_explicit(&s->p, memory_order_relaxed);
     if (slotP == NULL || slotP == VYB_STR_TOMB) {
@@ -218,25 +329,40 @@ VYB_WEAK void __vyb_string_register(void* p) {
 
 // Take one reference on a buffer (untracked = literal/foreign -> no-op).
 VYB_WEAK void* __vyb_string_retain(void* p) {
+    if (!p) return p;
+    vyb_str_maybe_init();
+    vyb_str_rdr_enter();
     vyb_str_ref* s = vyb_str_lookup_slot(p);
-    if (!s || atomic_load_explicit(&s->p, memory_order_acquire) != p) return p;
-    atomic_fetch_add_explicit(&s->refs, 1, memory_order_relaxed);
+    if (s && atomic_load_explicit(&s->p, memory_order_acquire) == p)
+        atomic_fetch_add_explicit(&s->refs, 1, memory_order_relaxed);
+    vyb_str_rdr_leave();
     return p;
 }
 
 // Drop one reference; free the buffer when the last reference is released.
 VYB_WEAK void __vyb_string_release(void* p) {
     if (!p) return;
+    vyb_str_maybe_init();
+    vyb_str_rdr_enter();
     vyb_str_ref* s = vyb_str_lookup_slot(p);
-    if (!s || atomic_load_explicit(&s->p, memory_order_acquire) != p) return;
+    if (!s || atomic_load_explicit(&s->p, memory_order_acquire) != p) {
+        vyb_str_rdr_leave();
+        return;
+    }
     int64_t old = atomic_fetch_sub_explicit(&s->refs, 1, memory_order_acq_rel);
+    vyb_str_rdr_leave();
     if (old == 1) {
         // Last reference: retire the slot under the register lock so a concurrent
-        // register can't claim a slot that reset() is about to wipe.
+        // register or grow can't claim a slot we are about to wipe. Re-locate `p`
+        // under the lock because a grow may have rehashed its entry since we
+        // dropped the reader guard.
         pthread_mutex_lock(&vyb_str_reg_lock);
-        free(p);
-        atomic_store_explicit(&s->refs, 0, memory_order_relaxed);
-        atomic_store_explicit(&s->p, VYB_STR_TOMB, memory_order_relaxed);
+        vyb_str_ref* home = vyb_str_lookup_slot(p);
+        if (home && atomic_load_explicit(&home->p, memory_order_acquire) == p) {
+            free(p);
+            atomic_store_explicit(&home->refs, 0, memory_order_relaxed);
+            atomic_store_explicit(&home->p, VYB_STR_TOMB, memory_order_relaxed);
+        }
         pthread_mutex_unlock(&vyb_str_reg_lock);
     }
 }
