@@ -47,6 +47,10 @@ jobs:
       - name: Build
         run: cmake --build build --parallel "$(nproc)"
 
+      - name: Verify build identity (#160)
+        # The binary must report build=Release (never silently Debug) + no sanitizer.
+        run: test "$(./build/vyb --version)" = "Vyb $(grep '^project' CMakeLists.txt | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+') (build=Release, sanitize=none)"
+
       - name: Full JIT test suite
         run: python3 test/run_tests.py --vyb build/vyb --test-dir test --execute-jit --json /tmp/suite.json
 
@@ -95,13 +99,15 @@ jobs:
           -DVYB_USE_QT5=OFF
           -DVYB_USE_OPENSSL=ON
           -DVYB_BINDGEN_LIBCLANG=OFF
-          -DCMAKE_CXX_FLAGS="-fsanitize=address -fno-omit-frame-pointer"
-          -DCMAKE_C_FLAGS="-fsanitize=address"
-          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address"
-          -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address"
+          -DVYB_SANITIZE="address,undefined"
 
       - name: Build (ASan)
         run: cmake --build build --parallel 2
+
+      - name: Verify build identity (#160)
+        # The ASan binary must report sanitize=address,undefined so coverage is
+        # unambiguously part of the artifact.
+        run: ./build/vyb --version | grep -E "sanitize=address,undefined"
 
       - name: Run full suite under ASan
         # halt_on_error aborts on the first real memory error; detect_leaks=1 runs
