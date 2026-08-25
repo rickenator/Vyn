@@ -105,9 +105,10 @@ share(all)
 https_fetch(verify_host<String>, connect_ip<String>, port<Int>, path<String>,
             ctx<TlsContext>)<HttpResponse> -> {
     fd<Int> = socket_open(2, 1, 6) else -1
-    if (fd < 0) { return http_err("socket open failed") }
+    if (fd < 0) { tls_free_context(ctx); return http_err("socket open failed") }
     if (!(socket_connect(fd, connect_ip, port) else false)) {
         socket_close(fd)
+        tls_free_context(ctx)
         return http_err("connect " + connect_ip + ":" + port.to_string() + " failed")
     }
     match (tls_stream(ctx, fd, verify_host)) {
