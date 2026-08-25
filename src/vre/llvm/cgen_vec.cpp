@@ -258,15 +258,42 @@ void LLVMCodegen::handleVecPush(vyb::ast::CallExpression* node, llvm::Value* vec
         // For primitives, direct store
         builder->CreateStore(valueToAdd, elementPtr);
     }
+    // A fresh owned-struct TEMP argument (e.g. `v.push(make_node(3))`) was deep-
+    // copied into the slot above, so its ORIGINAL owned buffers are now dead and
+    // must be reclaimed or they leak (#192). A named/borrow arg owns its own
+    // cleanup and is intentionally left alone.
+    reclaimFreshStructArgTemp(node, 0, valueToAdd, elementType);
 
     // Increment size
     llvm::Value* newSize = builder->CreateAdd(reloadedSize, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 1), "vec.new_size");
     builder->CreateStore(newSize, sizeFieldPtr);
-
     VYB_CDBG << "DEBUG: Vec::push() called - element stored, returning Vec for chaining" << std::endl;
 
     // Return the Vec pointer to enable method chaining
     m_currentLLVMValue = vecPtr;
+}
+
+void LLVMCodegen::reclaimFreshStructArgTemp(vyb::ast::CallExpression* node, unsigned argIdx,
+                                            llvm::Value* value, llvm::Type* elementType) {
+    if (!node || argIdx >= node->arguments.size() || !value || !elementType) return;
+    // Only a fresh owned-struct TEMP (a call or object literal created at this
+    // site) is reclaimed here; a named/borrowed source is owned by its own
+    // cleanup and must NOT be touched (mirrors pendingStructTempReclaims).
+    bool fresh = dynamic_cast<ast::CallExpression*>(node->arguments[argIdx].get()) != nullptr ||
+                 dynamic_cast<ast::ObjectLiteral*>(node->arguments[argIdx].get()) != nullptr;
+    if (!fresh || !node->arguments[argIdx]->type) return;
+    const vyb::ast::TypeNode* at = node->arguments[argIdx]->type.get();
+    if (!isKnownStructTypeNode(at) || !structTypeHasOwnedFields(at)) return;
+    auto* st = llvm::dyn_cast<llvm::StructType>(elementType);
+    if (!st) return;
+    llvm::Value* src = value;
+    if (!value->getType()->isPointerTy()) {
+        llvm::Value* tA = builder->CreateAlloca(st, nullptr, "vecarg.tmp");
+        builder->CreateStore(value, tA);
+        src = tA;
+    }
+    std::set<std::string> visited;
+    reclaimStructOwnedFieldsAt(src, at, st, visited);
 }
 
 void LLVMCodegen::handleVecPop(vyb::ast::CallExpression* node, llvm::Value* vecPtr, llvm::Type* vecStructType) {
@@ -545,6 +572,10 @@ void LLVMCodegen::handleVecSet(vyb::ast::CallExpression* node, llvm::Value* vecP
         llvm::Value* deepCopy = generateStructDeepCopy(
             value, node->arguments[1]->type.get(),
             llvm::cast<llvm::StructType>(elementLLVMType));
+        // A fresh owned-struct TEMP new-value (e.g. `v.set(i, make_node(5))`)
+        // was deep-copied above; reclaim its original buffers (#192). A named
+        // source owns its own cleanup and is intentionally left alone.
+        reclaimFreshStructArgTemp(node, 1, value, elementLLVMType);
         value = deepCopy;
     }
 

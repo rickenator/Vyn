@@ -561,6 +561,13 @@ private:
     void reclaimStructOwnedFieldsAt(llvm::Value* structPtr, const vyb::ast::TypeNode* astType,
                                     llvm::StructType* llvmTy, std::set<std::string>& visited);
 
+    // Reclaim the ORIGINAL owned buffers of a fresh owned-struct TEMP argument
+    // after it was deep-copied into a Vec slot (Vec.push/set). Same leak class as
+    // pendingStructTempReclaims in cgen_expr (#192) but on the Vec special-case
+    // handler. A named/binding source is owned by its own cleanup and untouched.
+    void reclaimFreshStructArgTemp(vyb::ast::CallExpression* node, unsigned argIdx,
+                                   llvm::Value* value, llvm::Type* elementType);
+
     bool isOurRefType(const vyb::ast::TypeNode* tn) const;   // `our<...>` wrapper type node
     bool isMildRefType(const vyb::ast::TypeNode* tn) const;  // `mild<...>` wrapper type node
 
