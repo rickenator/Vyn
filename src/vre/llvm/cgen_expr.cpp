@@ -7845,6 +7845,34 @@ void LLVMCodegen::visit(ast::MemberExpression* node) {
         m_currentLLVMValue = nullptr;
         return;
     }
+    // A fresh owned-struct receiver temp -- the object is a call/literal whose
+    // result is a struct with owned Vec/String fields, e.g. `arena.get(idx).keys
+    // .len()` where get() deep-copies an owned Node. Used only as a member base
+    // and discarded, such a temp's deep-copied buffers are otherwise never
+    // reclaimed (BTreeMap put/get leaked ~1 x 64B per inline `.get().field`,
+    // #192). Register a reclaim-copy in the current scope so the existing
+    // scope-exit teardown (cleanupVariable -> reclaimOwnedStructAt) frees its
+    // owned fields -- the same durable mechanism named structs use. `objectValue`
+    // is left untouched so the field/method access below is unaffected; this copy
+    // merely shares the same owned buffers and is reclaimed once the enclosing
+    // scope exits (after every use of the chain has completed). Not gated on
+    // m_isLHSOfAssignment (spuriously true on RHS member chains); reclaim at
+    // scope exit is safe for both sides. Named-variable bases are excluded (their
+    // binding owns the data).
+    if (objectValue && objectValue->getType() &&
+        objectValue->getType()->isStructTy() && node->object &&
+        (dynamic_cast<ast::CallExpression*>(node->object.get()) != nullptr ||
+         dynamic_cast<ast::ObjectLiteral*>(node->object.get()) != nullptr) &&
+        node->object->type && isKnownStructTypeNode(node->object->type.get()) &&
+        structTypeHasOwnedFields(node->object->type.get())) {
+        if (auto* st = llvm::dyn_cast<llvm::StructType>(objectValue->getType())) {
+            llvm::Value* tmp = builder->CreateAlloca(st, nullptr, "recvstruct.tmp");
+            builder->CreateStore(objectValue, tmp);
+            valueTypeMap[tmp] = std::shared_ptr<vyb::ast::TypeNode>(node->object->type->clone());
+            std::string nm = "__recv_struct_tmp_" + std::to_string(m_recvStructTempCounter++);
+            registerVariable(nm, tmp, objectValue, ast::OwnershipKind::MY, st, /*needsCleanup=*/true);
+        }
+    }
 
     // `.tag` accessor on an enum value: returns the raw positional i64 tag as an Int.
     // Works for C-like scalar enums (the value already IS the tag) and for

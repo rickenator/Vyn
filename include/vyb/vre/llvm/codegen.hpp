@@ -199,6 +199,8 @@ private:
         bool isOwnedStruct;       // Tracks if this is a struct binding owning Vec/String fields
     };
     std::vector<std::vector<ScopeVariable>> scopeStack;
+    // Counter for synthetic owned-struct receiver-temp alloca names (#192).
+    int m_recvStructTempCounter = 0;
     std::map<std::string, uint32_t> refCounts; // For our<T> reference counting
     std::map<std::string, llvm::Value*> refCountStorage; // Storage for refcount variables
 
