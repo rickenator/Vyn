@@ -338,6 +338,34 @@ add_custom_target(run-tests
     COMMENT "Running Vyb test suite"
 )
 
+# CTest registration (#158): the canonical language suite (JIT) and the AOT/native
+# build test are registered so `ctest` runs them reproducibly and their results are
+# machine-readable (JSON + release evidence under the build dir). Focused category
+# runs stay available via `run_tests.py --category <name>` / `ctest -L lang`.
+include(CTest)
+if(BUILD_TESTING)
+    file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/test-results)
+    add_test(NAME lang-jit
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/run_tests.py
+                --vyb $<TARGET_FILE:vyb>
+                --test-dir ${CMAKE_SOURCE_DIR}/test
+                --execute-jit
+                --json ${CMAKE_BINARY_DIR}/test-results/jit.json
+                --evidence ${CMAKE_BINARY_DIR}/test-results/jit-evidence.json)
+    set_tests_properties(lang-jit PROPERTIES
+        TIMEOUT 1800
+        LABELS "lang;jit"
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+    add_test(NAME aot-native
+        COMMAND bash ${CMAKE_SOURCE_DIR}/test_compilation.sh
+                --json ${CMAKE_BINARY_DIR}/test-results/aot-evidence.json)
+    set_tests_properties(aot-native PROPERTIES
+        TIMEOUT 600
+        LABELS "lang;aot"
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endif()
+
 add_custom_target(run-examples
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/run_examples.py --vyb $<TARGET_FILE:vyb>
     DEPENDS vyb

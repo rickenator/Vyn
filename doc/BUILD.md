@@ -63,3 +63,30 @@ binary was built with. The identity comes from CMake-provided macros
 - **Memory-safety gate**: `asan` preset; the LeakSanitizer output is CI's
   authoritative signal. CI runs the full suite under ASan+LSan on main push and
   nightly (see `.github/workflows/ci.yml`).
+
+## Testing: CTest + reproducible release evidence (#158)
+
+The canonical language suite is registered with **CTest**:
+
+    ctest --test-dir build            # lang-jit (full JIT suite) + aot-native
+    ctest --test-dir build -L jit     # just the JIT language suite
+    ctest --test-dir build -L aot     # just the AOT/native compile test
+
+Both registered tests write machine-readable JSON **and** a reproducible
+`*-evidence.json` under `<build>/test-results/`:
+
+- `jit.json` / `jit-evidence.json` — per-test + summary from `test/run_tests.py`.
+- `aot-evidence.json` — per-test + summary from `test_compilation.sh --json`.
+
+The evidence JSON records the exact compiler **revision** (`git rev-parse HEAD`),
+the compiler `--version` (build type + sanitizer), the command line, totals
+(total/passed/failed), wall duration, and each failing test with its reasons and
+stderr — so release validation is reproducible from CI, not narrative. CI publishes
+these as upload artifacts.
+
+Focused local runs stay available on the harness directly:
+
+    python3 test/run_tests.py --test-dir test --execute-jit          # all
+    python3 test/run_tests.py --test-dir test/units --category parser # one category
+    python3 test/run_tests.py --test-dir test --pattern "test_http*"  # pattern
+

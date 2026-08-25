@@ -52,21 +52,24 @@ jobs:
         run: test "$(./build/vyb --version)" = "Vyb $(grep '^project' CMakeLists.txt | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+') (build=Release, sanitize=none)"
 
       - name: Full JIT test suite
-        run: python3 test/run_tests.py --vyb build/vyb --test-dir test --execute-jit --json /tmp/suite.json
+        run: python3 test/run_tests.py --vyb build/vyb --test-dir test --execute-jit --json /tmp/suite.json --evidence /tmp/release-evidence.json
 
       - name: AOT / native-link coverage
         run: |
-          ./test_compilation.sh
+          ./test_compilation.sh --json /tmp/aot-evidence.json
           # test_compilation emits per-test outputs + .o at the repo root; remove
           # them so the tree stays clean even if a later step fails.
           rm -f test_output_* ./*.o 2>/dev/null || true
 
-      - name: Upload failing-test diagnostics
-        if: failure()
+      - name: Upload release evidence (#158)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: suite-json
-          path: /tmp/suite.json
+          name: release-evidence
+          path: |
+            /tmp/suite.json
+            /tmp/release-evidence.json
+            /tmp/aot-evidence.json
           if-no-files-found: ignore
 
   asan:
@@ -119,12 +122,14 @@ jobs:
         env:
           ASAN_OPTIONS: "halt_on_error=1:detect_leaks=1"
           VYB_ASAN: "1"
-        run: python3 test/run_tests.py --vyb build/vyb --test-dir test --execute-jit --json /tmp/asan-suite.json
+        run: python3 test/run_tests.py --vyb build/vyb --test-dir test --execute-jit --json /tmp/asan-suite.json --evidence /tmp/asan-evidence.json
 
-      - name: Upload ASan diagnostics
-        if: failure()
+      - name: Upload ASan release evidence (#158)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: asan-suite-json
-          path: /tmp/asan-suite.json
+          name: asan-evidence
+          path: |
+            /tmp/asan-suite.json
+            /tmp/asan-evidence.json
           if-no-files-found: ignore
