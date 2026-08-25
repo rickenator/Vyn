@@ -3922,9 +3922,14 @@ static void* async_pump_main(void* arg) {
                     if (w->active) {
                         w->active = 0;
                         w->revents = (int64_t)pfds[i].revents;
+                        // Capture the task BEFORE unlink+free: iowait_unlink(w)
+                        // frees `w`, so touching `w->task` afterwards is a
+                        // use-after-free (ASan caught it via the ucontext-fiber
+                        // async tests; real bug, not a fiber false-positive).
+                        vyb_async_task* task = w->task;
                         iowait_unlink(w);
-                        w->task->state = 0;
-                        async_ready_push(w->task);   // requeue on home worker
+                        task->state = 0;
+                        async_ready_push(task);   // requeue on home worker
                     }
                 }
             }

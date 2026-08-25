@@ -4,7 +4,6 @@
 // worker thread ever blocks on a socket. The high-level wrappers return native
 // optionals; the `?` match arm is the failed op.
 // @expect: pass
-// @skip-asan: true # ucontext-fiber (ASan false-positive; #155, #150)
 // @expect-output: ok
 // @expect-return: 0
 // @env: VYB_STDLIB=stdlib
