@@ -289,9 +289,12 @@ Examples:
     parser.add_argument('--pattern', default='*.vyb', help='File pattern for test files')
     parser.add_argument('--verbose', '-v', action='count', default=0, help='Increase verbosity')
     parser.add_argument('--category', help='Only run tests in this category')
-    parser.add_argument('--json', help='Save results to JSON file')
+    parser.add_argument('--json', help='Save per-test results to JSON file')
+    parser.add_argument('--evidence', help='Save a reproducible run-evidence JSON file (revision, version, command, totals, duration, failures)')
     parser.add_argument('--execute-jit', action='store_true', help='Execute code using the JIT compiler (default)')
     args = parser.parse_args()
+
+    _wall_t0 = time.time()
 
     # Set default paths relative to the repository root
     if args.vyb is None:
@@ -391,6 +394,56 @@ Examples:
             json.dump(results, f, indent=2)
             if args.verbose:
                 print(f"Results saved to {json_path}")
+
+    # Save a reproducible run-evidence JSON (#158): exact compiler revision,
+    # version, command line, totals, wall duration, and the failing tests with
+    # their reasons/stderr -- so release validation is reproducible from CI rather
+    # than narrative alone.
+    if args.evidence:
+        ev_path = args.evidence
+        if not os.path.isabs(ev_path):
+            ev_path = os.path.join(os.getcwd(), ev_path)
+        revision = ""
+        try:
+            revision = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=str(vyb_root), text=True).strip()
+        except Exception:
+            revision = ""
+        version = ""
+        try:
+            version = subprocess.check_output(
+                [vyb_executable, "--version"], cwd=str(vyb_root), text=True).strip()
+        except Exception:
+            version = ""
+        failures = []
+        for e in results:
+            if not e["result"]["success"]:
+                failures.append({
+                    "filename": e["test"]["filename"],
+                    "category": e["test"]["category"],
+                    "reasons": e["result"]["failure_reasons"],
+                    "stderr": e["result"]["stderr"],
+                    "execution_time": e["result"]["execution_time"],
+                })
+        evidence = {
+            "revision": revision,
+            "version": version,
+            "command": " ".join(sys.argv),
+            "compiler": os.path.basename(vyb_executable),
+            "test_dir": str(test_dir),
+            "pattern": args.pattern,
+            "category": args.category,
+            "execute_jit": bool(args.execute_jit),
+            "total": len(results),
+            "passed": pass_count,
+            "failed": fail_count,
+            "wall_time_seconds": round(time.time() - _wall_t0, 3),
+            "failures": failures,
+        }
+        with open(ev_path, "w") as f:
+            json.dump(evidence, f, indent=2)
+        if args.verbose:
+            print(f"Run evidence saved to {ev_path}")
 
     # Return non-zero exit code if any tests failed
     if fail_count > 0:
