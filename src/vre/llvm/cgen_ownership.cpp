@@ -823,6 +823,7 @@ void LLVMCodegen::reclaimStructOwnedFieldsAt(llvm::Value* structPtr,
     size_t n = std::min(fields.size(), (size_t)llvmTy->getNumElements());
     llvm::PointerType* rawPtr = llvm::PointerType::get(*context, 0);
     llvm::Constant* zero = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 0);
+    llvm::Constant* one = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 1);
     llvm::Constant* nullPtr = llvm::ConstantPointerNull::get(rawPtr);
     for (size_t i = 0; i < n; ++i) {
         const vyb::ast::TypeNode* f = fields[i].get();
@@ -837,6 +838,40 @@ void LLVMCodegen::reclaimStructOwnedFieldsAt(llvm::Value* structPtr,
             if (isVecOfStringTypeNode(f)) {
                 llvm::Value* sz = builder->CreateExtractValue(sl, 1, "reclaim.size");
                 releaseStringElements(data, sz);
+            }
+            // A Vec<struct-with-owned-fields> field owns a DEEP COPY per element
+            // (each push/set deep-copied the element's owned Vec/String fields).
+            // Reclaim each element's owned fields before freeing the array buffer,
+            // otherwise every nested buffer leaks (#190: BTreeMap's node arena,
+            // Vec<Node> with Node{keys<Vec<Int>>, vals<Vec<String>>, ...}, leaked
+            // one ~32B block per leaked node -- the array was freed but not the
+            // elements). Mirrors the isVecWithMallocData teardown in cleanupVariable.
+            const vyb::ast::TypeNode* eAst = vecElementTypeNode(f);
+            if (eAst && isKnownStructTypeNode(eAst) && structTypeHasOwnedFields(eAst)) {
+                llvm::Type* eLlvm = codegenType(const_cast<vyb::ast::TypeNode*>(eAst));
+                if (eLlvm && llvm::isa<llvm::StructType>(eLlvm)) {
+                    llvm::Value* cnt = builder->CreateExtractValue(sl, 1, "reclaim.elemcount");
+                    llvm::Value* elemBytes = llvm::ConstantInt::get(
+                        llvm::Type::getInt64Ty(*context),
+                        (unsigned)llvm::DataLayout(module.get()).getTypeAllocSize(eLlvm));
+                    llvm::BasicBlock* hdr = llvm::BasicBlock::Create(*context, "reclaim.elem.hdr", currentFunction);
+                    llvm::BasicBlock* bdy = llvm::BasicBlock::Create(*context, "reclaim.elem.bdy", currentFunction);
+                    llvm::BasicBlock* ext = llvm::BasicBlock::Create(*context, "reclaim.elem.ext", currentFunction);
+                    llvm::Value* idxA = builder->CreateAlloca(llvm::Type::getInt64Ty(*context), nullptr, "reclaim.elem.idx");
+                    builder->CreateStore(zero, idxA);
+                    builder->CreateBr(hdr);
+                    builder->SetInsertPoint(hdr);
+                    llvm::Value* idx = builder->CreateLoad(llvm::Type::getInt64Ty(*context), idxA);
+                    builder->CreateCondBr(builder->CreateICmpULT(idx, cnt, "reclaim.elem.cmp"), bdy, ext);
+                    builder->SetInsertPoint(bdy);
+                    llvm::Value* off = builder->CreateMul(idx, elemBytes, "reclaim.elem.off");
+                    llvm::Value* ep = builder->CreateGEP(llvm::Type::getInt8Ty(*context), data, off, "reclaim.elem.ptr");
+                    std::set<std::string> v2;
+                    reclaimStructOwnedFieldsAt(ep, eAst, llvm::cast<llvm::StructType>(eLlvm), v2);
+                    builder->CreateStore(builder->CreateAdd(idx, one, "reclaim.elem.next"), idxA);
+                    builder->CreateBr(hdr);
+                    builder->SetInsertPoint(ext);
+                }
             }
             llvm::Value* isNull = builder->CreateICmpEQ(
                 data, llvm::ConstantPointerNull::get(rawPtr), "reclaim.isnull");
