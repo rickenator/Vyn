@@ -362,6 +362,14 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
             } else {
                 valueTypeMap[alloca] = node->id->type;
             }
+        } else if (node->init && node->init->type) {
+            // Type-less `var` (e.g. the for-in desugar's `__it_<item> = <iterable>
+            // .iter()`): node->id->type is unset, so record the initializer's resolved
+            // type. Without this, a type-less var holding an owned struct (BTreeMapIter
+            // with Vec fields) had no valueTypeMap entry, so scope-exit reclaim
+            // (scopeVarIsOwnedStruct) could not find its type and its owned Vec fields
+            // leaked -- #192 generator tail.
+            valueTypeMap[alloca] = node->init->type;
         }
 
         // Determine ownership kind from variable's type annotation
@@ -443,11 +451,20 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
         // An owning (`my`) struct may hold owned fields (Vec data buffers,
         // String references, or a nested owning struct). Mark it for scope-exit
         // reclaim so those fields are freed / released when the binding drops.
-        if (!needsCleanup && ownership == ast::OwnershipKind::MY && node->typeNode &&
-            structTypeHasOwnedFields(node->typeNode.get())) {
-            needsCleanup = true;
-            VYB_CDBG << "DEBUG: Variable '" << node->id->name
-                      << "' is a struct with owned fields - needs cleanup" << std::endl;
+        // The type may come from the annotation OR, for a type-less `var`, from
+        // the initializer's resolved type (the for-in desugar declares its
+        // iterator `__it_<item> = <iterable>.iter()` with no annotation; without
+        // this fallback such an owned-struct binding was never marked for
+        // cleanup and its owned Vec fields leaked -- #192 generator tail).
+        if (!needsCleanup && ownership == ast::OwnershipKind::MY) {
+            const vyb::ast::TypeNode* ownedTy =
+                node->typeNode ? node->typeNode.get()
+                               : (node->init && node->init->type ? node->init->type.get() : nullptr);
+            if (ownedTy && structTypeHasOwnedFields(ownedTy)) {
+                needsCleanup = true;
+                VYB_CDBG << "DEBUG: Variable '" << node->id->name
+                          << "' is a struct with owned fields - needs cleanup" << std::endl;
+            }
         }
 
         // A data-carrying enum (Result<..., our<T>>) owns a
