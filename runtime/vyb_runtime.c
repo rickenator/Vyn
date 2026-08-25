@@ -134,6 +134,25 @@ static pthread_once_t vyb_str_reg_once = PTHREAD_ONCE_INIT;
 // reader is ever probing a table that is about to be freed.
 static _Atomic(uint64_t) vyb_str_rdrs = 0;
 static _Atomic(int) vyb_str_growing = 0;
+// Number of tombstone slots currently in the table. Freed strings leave a
+// tombstone in their slot (see VYB_STR_TOMB); tombstones are dropped on every
+// rehash (grow or compaction). Guarded by vyb_str_reg_lock (only register() and
+// the release-last reset mutate it), and read by register() to decide when a
+// compaction is needed so lookups never degrade to O(table) under tombstone
+// churn (#191: multi-MB strings built via many small concats were superlinear).
+static size_t vyb_str_tombs = 0;
+// Number of live (non-tombstone) entries currently in the table. Together with
+// vyb_str_tombs this gives the occupancy that drives the bounded-probe rehash
+// in vyb_str_reg_maybe_resize() (#191). Guarded by vyb_str_reg_lock.
+static size_t vyb_str_live = 0;
+// Cumulative tombstone-creating churn since the last rehash. Tombstones are
+// reused by subsequent inserts so fast that the instantaneous tombstone count
+// stays tiny, but every reused slot fills a gap a lookup would otherwise stop
+// at (a real NULL), so linear-probe clusters grow with the CUMULATIVE churn --
+// not the instantaneous tombstone count. This counter is what actually bounds
+// whether a rebuild is overdue (#191). Guarded by vyb_str_reg_lock, reset to 0
+// on every rehash.
+static unsigned long long vyb_str_churn = 0;
 
 static void vyb_str_reg_init(void) {
     // Start at the modest floor (so we don't allocate big up front) and grow on
@@ -219,12 +238,26 @@ static vyb_str_ref* vyb_str_table(void) {
     return atomic_load_explicit(&vyb_str_reg, memory_order_acquire);
 }
 
+// Avalanched pointer hash. Sequential mallocs return nearby addresses; a raw
+// (addr/16 ^ addr/4096) hashes them into adjacent slots, so open addressing
+// with linear probing degrades to O(N) primary clusters whenever many short
+// strings are built in sequence -- exactly what building a multi-MB String via
+// per-byte concat does (#191: ~100us/byte). SplitMix64's finalizer avalanches
+// the pointer so sequential addresses land pseudo-uniformly.
+static inline size_t vyb_str_hash_from(void* p) {
+    uint64_t h = (uint64_t)(uintptr_t)p;
+    h ^= h >> 30; h *= 0xbf58476d1ce4e5b9ULL;
+    h ^= h >> 27; h *= 0x94d049bb133111ebULL;
+    h ^= h >> 31;
+    return (size_t)h;
+}
+
 // Insertion probe: first slot that is an empty tombstone, a real NULL, or
 // already holds `p`. Used only by register() under the registry lock.
 static vyb_str_ref* vyb_str_insert_slot(void* p) {
     size_t cap = vyb_str_capacity();
     vyb_str_ref* reg = vyb_str_table();
-    size_t h = (size_t)((uintptr_t)p / 16) ^ ((size_t)(uintptr_t)p / 4096);
+    size_t h = vyb_str_hash_from(p);
     h &= cap - 1;
     for (size_t i = 0; i < cap; ++i) {
         size_t idx = (h + i) & (cap - 1);
@@ -241,7 +274,7 @@ static vyb_str_ref* vyb_str_lookup_slot(void* p) {
     if (!p) return NULL;
     size_t cap = vyb_str_capacity();
     vyb_str_ref* reg = vyb_str_table();
-    size_t h = (size_t)((uintptr_t)p / 16) ^ ((size_t)(uintptr_t)p / 4096);
+    size_t h = vyb_str_hash_from(p);
     h &= cap - 1;
     for (size_t i = 0; i < cap; ++i) {
         size_t idx = (h + i) & (cap - 1);
@@ -252,31 +285,33 @@ static vyb_str_ref* vyb_str_lookup_slot(void* p) {
     return NULL;
 }
 
-// Copy-on-write grow. Runs under the registry lock (register's caller holds it).
-// Drains lock-free readers (rdrs == 0), rehashes live entries + tombstones into a
-// fresh 2x table, publishes it, then frees the old table. Because readers are
-// drained before the copy and new readers are blocked by `vyb_str_growing` until
-// after the free, no reader ever touches the freed table and refcounts never
-// diverge across a swap (the #162 correctness property is preserved). Growth is
-// capped at vyb_str_max_cap (unbounded unless VYB_STR_REG_CAP bounds it).
-// Returns 1 if the table grew; 0 if already at the ceiling (or out of memory) so
-// the caller can fail deterministically.
-static int vyb_str_reg_grow(void) {
+// Copy-on-write rehash into a fresh table of `newcap` slots, DROPPING all
+// tombstones (only live entries are re-inserted). Runs under the registry lock
+// (register's caller holds it). Drains lock-free readers (rdrs == 0), rehashes
+// live entries into the fresh table, publishes it, then frees the old table.
+// Because readers are drained before the copy and new readers are blocked by
+// `vyb_str_growing` until after the free, no reader ever touches the freed
+// table and refcounts never diverge across a swap (the #162 correctness
+// property is preserved).
+//
+// Used for both growth (doubling, so more capacity) and compaction (same-size
+// rehash that reclaims tombstone churn so linear-probe lookups stay short even
+// when strings are created and freed rapidly -- #191). Returns 1 on success,
+// 0 on allocation failure (or newcap <= current) so the caller can fail
+// deterministically.
+static int vyb_str_reg_rehash(size_t newcap) {
     size_t oldcap = vyb_str_capacity();
-    size_t newcap;
-    if (oldcap >= vyb_str_max_cap || oldcap > SIZE_MAX / 2) newcap = vyb_str_max_cap;
-    else { newcap = oldcap * 2; if (newcap > vyb_str_max_cap) newcap = vyb_str_max_cap; }
-    if (newcap <= oldcap) return 0;                // at ceiling; cannot grow
+    if (newcap < oldcap) return 0;   // 0 on error; newcap == oldcap = same-size compaction
     vyb_str_ref* old = vyb_str_table();
     vyb_str_ref* nw = (vyb_str_ref*)calloc(newcap, sizeof(vyb_str_ref));
-    if (!nw) return 0;                             // out of memory; caller aborts
+    if (!nw) return 0;                             // out of memory; caller handles
     atomic_store_explicit(&vyb_str_growing, 1, memory_order_release);
     while (atomic_load_explicit(&vyb_str_rdrs, memory_order_acquire) != 0) { }
     for (size_t i = 0; i < oldcap; ++i) {
         void* p = atomic_load_explicit(&old[i].p, memory_order_relaxed);
-        if (p == NULL) continue;                   // empty slot
+        if (p == NULL || p == VYB_STR_TOMB) continue;   // empty slot or stale tombstone
         int64_t refs = atomic_load_explicit(&old[i].refs, memory_order_relaxed);
-        size_t h = (size_t)((uintptr_t)p / 16) ^ ((size_t)(uintptr_t)p / 4096);
+        size_t h = vyb_str_hash_from(p);
         h &= newcap - 1;
         for (size_t j = 0; j < newcap; ++j) {
             size_t k = (h + j) & (newcap - 1);
@@ -292,7 +327,53 @@ static int vyb_str_reg_grow(void) {
     atomic_store_explicit(&vyb_str_reg, nw, memory_order_release);
     atomic_store_explicit(&vyb_str_growing, 0, memory_order_release);
     free(old);
+    vyb_str_tombs = 0;                              // drop all tombstones
+    vyb_str_churn = 0;                              // fresh cluster structure
     return 1;
+}
+
+// Grow (double, capped at vyb_str_max_cap) when the table fills. Even when
+// insertion still finds a tombstone slot, register() calls a same-size
+// compaction below once tombstones exceed half the table, so growth alone is
+// not the only repair for tombstone churn. Returns 1 if the table grew.
+static int vyb_str_reg_grow(void) {
+    size_t oldcap = vyb_str_capacity();
+    size_t newcap;
+    if (oldcap >= vyb_str_max_cap || oldcap > SIZE_MAX / 2) newcap = vyb_str_max_cap;
+    else { newcap = oldcap * 2; if (newcap > vyb_str_max_cap) newcap = vyb_str_max_cap; }
+    if (newcap <= oldcap) return 0;                // at ceiling; cannot grow
+    if (!vyb_str_reg_rehash(newcap)) return 0;
+    return 1;
+}
+
+// Bounded-probe rehash guard, called under the registry lock from register().
+// With open addressing + linear probing, lookup cost is driven by table
+// occupancy (live entries + tombstones) AND by the cumulative tombstone churn
+// since the last rebuild. Tombstones are reused by later inserts so fast that
+// the instantaneous count stays tiny, but each reuse fills a gap a lookup would
+// otherwise stop at (a real NULL), so clusters grow with cumulative churn, not
+// the instantaneous tombstone count. Left unchecked, a workload that creates
+// and frees strings rapidly -- building a multi-MB String via many tiny
+// concats -- degrades every retain/release to O(table) (#191). This routine
+// rehashes (dropping tombstones) when occupancy nears 3/4 OR tombstones exceed
+// ~1/8 OR cumulative churn since the last rebuild reaches ~1/16 of capacity,
+// sizing so live load is ~<= 1/2. Bounded probe chains at every instant, so
+// builds amortize to O(N).
+static void vyb_str_reg_maybe_resize(void) {
+    size_t cap = vyb_str_capacity();
+    int crowded = ((vyb_str_live + vyb_str_tombs) * 4 >= cap * 3);
+    int tombHeavy = (vyb_str_tombs * 8 > cap);
+    int churned = (vyb_str_churn >= cap / 16);
+    if (!crowded && !tombHeavy && !churned) return;
+    size_t want = cap;
+    size_t tgt = vyb_str_live * 2;
+    if (tgt > cap) {
+        want = 1;
+        while (want < tgt && want < vyb_str_max_cap) want <<= 1;
+        if (want > vyb_str_max_cap) want = vyb_str_max_cap;
+        if (want < cap) want = cap;
+    }
+    vyb_str_reg_rehash(want);
 }
 
 // Register a just-created heap buffer with an initial reference count of 1.
@@ -300,6 +381,9 @@ VYB_WEAK void __vyb_string_register(void* p) {
     if (!p) return;
     pthread_mutex_lock(&vyb_str_reg_lock);
     vyb_str_maybe_init();
+    // Keep occupancy bounded so linear-probe lookups never degrade (see above);
+    // failure (OOM) is non-fatal -- the grow below still repairs full tables.
+    vyb_str_reg_maybe_resize();
     vyb_str_ref* s = vyb_str_insert_slot(p);
     if (!s) {
         // Table full: grow (copy-on-write) and retry. If growth is impossible --
@@ -323,6 +407,11 @@ VYB_WEAK void __vyb_string_register(void* p) {
         // pointer also sees the initialized refcount (release/acquire pairing).
         atomic_store_explicit(&s->refs, 1, memory_order_relaxed);
         atomic_store_explicit(&s->p, p, memory_order_release);
+        if (slotP == VYB_STR_TOMB && vyb_str_tombs > 0) {
+            vyb_str_tombs--;        // a freed slot just became live again
+        } else if (slotP == NULL) {
+            vyb_str_live++;         // a brand-new live entry
+        }
     }
     pthread_mutex_unlock(&vyb_str_reg_lock);
 }
@@ -362,6 +451,9 @@ VYB_WEAK void __vyb_string_release(void* p) {
             free(p);
             atomic_store_explicit(&home->refs, 0, memory_order_relaxed);
             atomic_store_explicit(&home->p, VYB_STR_TOMB, memory_order_relaxed);
+            vyb_str_tombs++;
+            if (vyb_str_live > 0) vyb_str_live--;   // a live entry became a tombstone
+            vyb_str_churn++;
         }
         pthread_mutex_unlock(&vyb_str_reg_lock);
     }
