@@ -1,0 +1,123 @@
+name: ci
+
+# Vyb CI (#150): build the compiler, run the canonical suite in JIT mode, add
+# AOT/native-link coverage, and run a memory-safety (ASan) validation on a
+# schedule and on push to main. The refman consistency check remains a separate
+# documentation gate (refman-check.yml).
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 6 * * *"   # 06:00 UTC daily memory-safety run
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  suite:
+    name: Build + JIT suite + AOT/native-link
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake \
+            llvm-18-dev libclang-18-dev \
+            libcatch2-dev
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DLLVM_DIR=/usr/lib/llvm-18/cmake
+          -DVYB_USE_QT5=OFF
+          -DVYB_USE_OPENSSL=ON
+          -DVYB_BINDGEN_LIBCLANG=ON
+
+      - name: Build
+        run: cmake --build build --parallel "$(nproc)"
+
+      - name: Full JIT test suite
+        run: python3 test/run_tests.py --vyb build/vyb --test-dir test --execute-jit --json /tmp/suite.json
+
+      - name: AOT / native-link coverage
+        run: |
+          ./test_compilation.sh
+          # test_compilation emits per-test outputs + .o at the repo root; remove
+          # them so the tree stays clean even if a later step fails.
+          rm -f test_output_* ./*.o 2>/dev/null || true
+
+      - name: Upload failing-test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: suite-json
+          path: /tmp/suite.json
+          if-no-files-found: ignore
+
+  asan:
+    name: Memory-safety (ASan full suite)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    # Memory-safety on main push + the daily schedule; not on every PR to keep
+    # PR feedback fast (ASan+JIT is slow).
+    if: ${{ github.event_name != 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake \
+            llvm-18-dev libclang-18-dev \
+            libcatch2-dev
+
+      - name: Configure (ASan)
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DLLVM_DIR=/usr/lib/llvm-18/cmake
+          -DVYB_USE_QT5=OFF
+          -DVYB_USE_OPENSSL=ON
+          -DVYB_BINDGEN_LIBCLANG=OFF
+          -DCMAKE_CXX_FLAGS="-fsanitize=address -fno-omit-frame-pointer"
+          -DCMAKE_C_FLAGS="-fsanitize=address"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address"
+          -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address"
+
+      - name: Build (ASan)
+        run: cmake --build build --parallel 2
+
+      - name: Run full suite under ASan
+        # halt_on_error aborts on the first real memory error (reporting it as a
+        # test failure); detect_leaks=0 avoids LLVM/JIT-internal leak noise.
+        # VYB_ASAN=1 makes the harness honor @skip-asan on the ucontext-fiber
+        # async tests (ASan's documented makecontext/swapcontext false positives,
+        # tracked by #155) — they are not counted as pass or fail.
+        env:
+          ASAN_OPTIONS: "halt_on_error=1:detect_leaks=0"
+          VYB_ASAN: "1"
+        run: python3 test/run_tests.py --vyb build/vyb --test-dir test --execute-jit --json /tmp/asan-suite.json
+
+      - name: Upload ASan diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: asan-suite-json
+          path: /tmp/asan-suite.json
+          if-no-files-found: ignore

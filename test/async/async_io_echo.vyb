@@ -5,6 +5,7 @@
 // worker thread, while async_sleep_ms keeps the pool busy on its own timeline.
 // @env: VYB_STDLIB=stdlib
 // @expect: pass
+// @skip-asan: true # ucontext-fiber (ASan false-positive; #155, #150)
 
 import network::{socket_open, socket_bind, socket_listen, socket_local_port,
                  socket_close, socket_error_code, Socket}

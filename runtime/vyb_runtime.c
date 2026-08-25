@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdatomic.h>
+#include <limits.h>
 #include <pthread.h>
 #include <errno.h>
 #include <unistd.h>
@@ -32,11 +33,16 @@
 #include <openssl/x509.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
+#endif
+
+// ncurses/curses are independent of OpenSSL: the stdlib `curses` module must be
+// compilable even in a no-OpenSSL configuration (e.g. an ASan build with
+// VYB_USE_OPENSSL=OFF). These were previously nested inside the OpenSSL guard,
+// which broke the curses module's compilation once OpenSSL was turned off.
 #if defined(VYB_HAVE_NCURSES)
 #include <ncursesw/curses.h>
 #include <locale.h>
 #include <wchar.h>
-#endif
 #endif
 
 #if defined(__GNUC__) || defined(__clang__)

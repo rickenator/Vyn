@@ -61,6 +61,7 @@ class TestCase:
     expect_return: Optional[str] = None
     parse_only: bool = False
     semantic_only: bool = False
+    skip_asan: bool = False  # When True, skipped when VYB_ASAN=1 (ASan can't instrument this test, e.g. ucontext fibers)
     execute_jit: bool = False  # When True, run with JIT execution regardless of global flag
     vyb_args: List[str] = field(default_factory=list)
     env: dict = field(default_factory=dict)
@@ -113,6 +114,12 @@ def parse_directives(file_path):
         semantic_match = re.search(r'// @semantic-only:\s*(.*?)$', content, re.MULTILINE)
         if semantic_match and semantic_match.group(1).strip().lower() in ('true', 'yes', '1'):
             test.semantic_only = True
+
+        skip_asan_match = re.search(r'// @skip-asan:\s*(.*?)$', content, re.MULTILINE)
+        # Take the first token so an inline trailing comment (`@skip-asan: true # why`)
+        # does not prevent matching.
+        if skip_asan_match and skip_asan_match.group(1).strip().split()[0].lower() in ('true', 'yes', '1'):
+            test.skip_asan = True
 
         jit_match = re.search(r'// @execute-jit:\s*(.*?)$', content, re.MULTILINE)
         if jit_match and jit_match.group(1).strip().lower() in ('true', 'yes', '1'):
@@ -331,6 +338,15 @@ Examples:
 
         # Skip tests that don't match the category filter
         if args.category and args.category not in test.category:
+            continue
+
+        # Under an ASan run (VYB_ASAN=1), skip tests marked @skip-asan — e.g.
+        # ucontext-fiber async tests that ASan cannot instrument and flags as
+        # false positives (tracked by #155). They are not run, so they are not
+        # counted as pass or fail.
+        if test.skip_asan and os.environ.get("VYB_ASAN") == "1":
+            if args.verbose:
+                print(f"SKIP (asan): {test.filename}")
             continue
 
         test_result = run_test(test, vyb_executable,
