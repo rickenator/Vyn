@@ -639,7 +639,7 @@ void LLVMCodegen::visit(vyb::ast::ReturnStatement *node) {
                         if (elemNode) {
                             if (llvm::Type* elemLLVM = codegenType(const_cast<ast::TypeNode*>(elemNode))) {
                                 auto* vecTy = llvm::cast<llvm::StructType>(returnValue->getType());
-                                returnValue = generateVecDeepCopy(returnValue, elemLLVM, vecTy);
+                                returnValue = generateVecDeepCopy(returnValue, elemLLVM, vecTy, elemNode);
                                 branchVecCopied = true;
                                 VYB_CDBG << "DEBUG: Branch (select/match) Vec return deep-copied for safe cleanup" << std::endl;
                             }

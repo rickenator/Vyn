@@ -374,7 +374,7 @@ void LLVMCodegen::visit(vyb::ast::ObjectLiteral* node) {
                 if (const vyb::ast::TypeNode* elem = objFieldVecElement(fieldAst)) {
                     if (llvm::Type* elemT = codegenType(const_cast<vyb::ast::TypeNode*>(elem))) {
                         if (auto* vecTy = llvm::dyn_cast<llvm::StructType>(fieldValue->getType())) {
-                            llvm::Value* copy = generateVecDeepCopy(fieldValue, elemT, vecTy);
+                            llvm::Value* copy = generateVecDeepCopy(fieldValue, elemT, vecTy, elem);
                             fieldValue = copy ? copy : fieldValue;
                         }
                     }

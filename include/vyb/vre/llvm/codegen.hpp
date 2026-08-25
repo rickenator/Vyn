@@ -523,7 +523,12 @@ private:
     bool exprIsMildTransfer(vyb::ast::Expression* expr);  // `soft(...)` value whose fresh weak ref transfers on stow
     // Deep-copy a Vec struct value (clones malloc'd data so caller and callee are independent).
     // Returns an updated Vec struct value with a freshly malloc'd data buffer.
-    llvm::Value* generateVecDeepCopy(llvm::Value* vecStructValue, llvm::Type* elemType, llvm::Type* vecStructType);
+    // When `astElemType` is supplied and names a struct that owns heap data, each
+    // element is deep-copied individually (retaining String buffers, cloning inner
+    // Vecs) instead of a shallow memcpy, so the clone's owned fields never alias the
+    // source (which would double-free when both are reclaimed).
+    llvm::Value* generateVecDeepCopy(llvm::Value* vecStructValue, llvm::Type* elemType, llvm::Type* vecStructType,
+                                     const vyb::ast::TypeNode* astElemType = nullptr);
     // Deep-copy a struct value into an independent owned copy: retain String
     // buffers and our/mild control blocks, clone Vec buffers and `my<Struct>`
     // heap blocks, and recurse into nested structs (scalars copied by value).

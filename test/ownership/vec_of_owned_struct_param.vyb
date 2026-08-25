@@ -1,0 +1,107 @@
+// @test: Vec-of-struct-that-owns-String+Vec passed by value deep-copies elements
+// @description: A Vec whose element is a struct owning Strings and a nested Vec
+//   must deep-copy each element when the Vec is passed by value. Before the fix,
+//   generateVecDeepCopy memcpy'd the element structs shallowly, so the callee
+//   param and the caller aliased the same String buffers / inner Vec data and
+//   both reclaimed them -> "free(): double free detected in tcache 2" (exit 134)
+//   while walking g.get(i).<field> in reset-resolver style loops. Regression for #184.
+// @category: ownership, vec, struct
+// @expect: pass
+// @expect-return: 0
+
+struct Dep { name<String>, kind<String> }
+struct Pkg { name<String>, version<String>, source<String>, deps<Vec<Dep>>, storePath<String> }
+
+order_count(ord<String>)<Int> -> {
+    if (ord.len() == 0) { return 0 }
+    c<Int> = 1
+    l<Int> = ord.len()
+    for (i in 0..l-1) { if (ord.char_at(i) == 44) { c = c + 1 } }
+    return c
+}
+
+token_has(ord<String>, name<String>)<Bool> -> {
+    c<Int> = order_count(ord)
+    if (c > 0) {
+        for (i in 0..c-1) {
+            k<String> = ""
+            tidx<Int> = 0
+            l<Int> = ord.len()
+            for (j in 0..l-1) {
+                ci<Int> = ord.char_at(j)
+                if (ci == 44) {
+                    if (tidx == i) { break }
+                    tidx = tidx + 1
+                    k = ""
+                } else {
+                    if (tidx == i) { k = k + String::from_byte(ci & 255) }
+                }
+            }
+            if (k == name) { return true }
+        }
+    }
+    return false
+}
+
+// Resolver walking a by-value Vec<Pkg>: repeated g.get(i).<field> reads while a
+// String accumulator (ps) is concatenated in the same scope. The exact #184
+// crash surface (walking a Vec whose element owns a String + a nested Vec).
+// Uses empty deps so the dependency graph is trivially resolvable.
+resolve(g<Vec<Pkg>>)<String> -> {
+    n<Int> = g.len()
+    if (n == 0) { return "" }
+    ps<String> = ""
+    order<String> = ""
+    for (pp in 0..n-1) {
+        for (i in 0..n-1) {
+            if (token_has(ps, g.get(i).name)) { continue }
+            ps = ps + g.get(i).name
+            if (order.len() > 0) { order = order + "," }
+            order = order + g.get(i).name
+            break
+        }
+    }
+    return order
+}
+
+// Walk NON-empty nested Vec<Dep> elements off the same by-value Vec<Pkg> to also
+// exercise the recursive nested-Vec element deep copy inside the copied elements.
+walk_deps(g<Vec<Pkg>>)<String> -> {
+    ps<String> = ""
+    n<Int> = g.len()
+    for (i in 0..n-1) {
+        dm<Int> = g.get(i).deps.len()
+        for (k in 0..dm-1) {
+            if (ps.len() > 0) { ps = ps + "," }
+            ps = ps + g.get(i).deps.get(k).name
+        }
+    }
+    return ps
+}
+
+main()<Int> -> {
+    // resolve() over a Vec<Pkg> with (empty) deps — exact #184 repro.
+    zg<Vec<Dep>> = Vec()
+    bc<Vec<Dep>> = Vec()
+    g<Vec<Pkg>> = Vec()
+    g.push(Pkg { name = "zlib", version = "1.3", source = "z.tar.gz", deps = zg, storePath = "" })
+    g.push(Pkg { name = "gzip", version = "2.0", source = "gz.tar.gz", deps = bc, storePath = "" })
+    o<String> = resolve(g)
+    if (o != "zlib,gzip") { return 11 }
+
+    // Non-empty nested Vec<Dep> deep copy + caller stays intact after reclaim.
+    dc<Vec<Dep>> = Vec()
+    dc.push(Dep { name = "libc", kind = "base" })
+    dc.push(Dep { name = "kernel", kind = "base" })
+    g2<Vec<Pkg>> = Vec()
+    g2.push(Pkg { name = "alpha", version = "1.0", source = "a", deps = dc, storePath = "" })
+    g2.push(Pkg { name = "beta",  version = "2.0", source = "b", deps = dc, storePath = "" })
+    rd<String> = walk_deps(g2)
+    if (rd != "libc,kernel,libc,kernel") { return 21 }
+
+    // Caller's data must remain fully intact (deep copies were independent).
+    if (g.get(0).name != "zlib" || g.get(1).name != "gzip") { return 31 }
+    if (g2.get(0).deps.len() != 2 || g2.get(1).deps.get(1).name != "kernel") { return 32 }
+
+    return 0
+}

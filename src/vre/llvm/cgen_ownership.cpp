@@ -1210,9 +1210,12 @@ bool LLVMCodegen::enumInitIsOurTransfer(vyb::ast::Expression* init) {
 // Generate a deep copy of a Vec struct value.
 // Returns an updated Vec struct value whose data field points to freshly malloc'd memory.
 // The caller's original Vec is unmodified; each function invocation owns independent data.
+// When `astElemType` is a struct that owns heap data, individual elements are
+// deep-copied (see below) rather than shallow-memcpy'd.
 llvm::Value* LLVMCodegen::generateVecDeepCopy(llvm::Value* vecStructValue,
                                                llvm::Type* elemType,
-                                               llvm::Type* vecStructType) {
+                                               llvm::Type* vecStructType,
+                                               const vyb::ast::TypeNode* astElemType) {
     if (!vecStructValue || !elemType || !vecStructType) return vecStructValue;
 
     llvm::Function* currentFunc = builder->GetInsertBlock()->getParent();
@@ -1242,25 +1245,78 @@ llvm::Value* LLVMCodegen::generateVecDeepCopy(llvm::Value* vecStructValue,
     llvm::Function* mallocFunc = getOrCreateMallocFunction();
     llvm::Value* newDataPtr = builder->CreateCall(mallocFunc, {allocBytes}, "vdc.new_ptr");
 
-    // If size > 0, memcpy the data; otherwise leave newDataPtr (may be garbage but won't be accessed)
-    llvm::BasicBlock* copyBB  = llvm::BasicBlock::Create(*context, "vdc.copy", currentFunc);
-    llvm::BasicBlock* doneBB  = llvm::BasicBlock::Create(*context, "vdc.done", currentFunc);
-    llvm::Value* hasData = builder->CreateICmpSGT(
-        vecSize, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 0), "vdc.has_data");
-    builder->CreateCondBr(hasData, copyBB, doneBB);
+    // If the element type is a struct that owns heap data (String buffers, inner
+    // Vecs, nested owning structs), a raw memcpy of the element *structs* would copy
+    // the pointers to the source's owned fields verbatim. Reclaiming the clone then
+    // releases the *source's* buffers (its reclaim drops into them unchanged) ->
+    // "free(): double free detected" when the caller tears down. Instead deep-copy
+    // each element independently so the clone owns data disjoint from the source,
+    // mirroring generateStructDeepCopy's per-field handling (String retain, Vec
+    // clone, nested-struct recursion, scalars by value).
+    bool elementOwnsHeap =
+        astElemType && elemType && llvm::isa<llvm::StructType>(elemType) &&
+        isKnownStructTypeNode(astElemType) && structTypeHasOwnedFields(astElemType);
 
-    builder->SetInsertPoint(copyBB);
-    llvm::Function* memcpyFunc = getOrCreateMemcpyFunction();
-    builder->CreateCall(memcpyFunc, {newDataPtr, srcDataPtr, totalBytes});
-    // String elements are shallow { ptr, len } values whose buffers are reference
-    // counted. The deep-copied Vec is an independent holder, so it must retain
-    // each element it now references (its own cleanup will release them).
-    if (elemType && isVybStringStructType(elemType)) {
-        retainStringElements(newDataPtr, vecSize);
+    if (elementOwnsHeap) {
+        auto* structElemTy = llvm::cast<llvm::StructType>(elemType);
+        llvm::Type* int64Ty = llvm::Type::getInt64Ty(*context);
+        llvm::Value* idxZero = llvm::ConstantInt::get(int64Ty, 0);
+        llvm::Value* idxOne  = llvm::ConstantInt::get(int64Ty, 1);
+
+        llvm::BasicBlock* headBB = llvm::BasicBlock::Create(*context, "vdce.head", currentFunc);
+        llvm::BasicBlock* bodyBB = llvm::BasicBlock::Create(*context, "vdce.body", currentFunc);
+        llvm::BasicBlock* incBB  = llvm::BasicBlock::Create(*context, "vdce.inc", currentFunc);
+        llvm::BasicBlock* elemDoneBB = llvm::BasicBlock::Create(*context, "vdce.done", currentFunc);
+
+        // Induction variable in an alloca so per-element deep copies (which may
+        // create their own clone blocks) never interleave with a PHI.
+        llvm::Value* idxAlloca = builder->CreateAlloca(int64Ty, nullptr, "vdce.i");
+        builder->CreateStore(idxZero, idxAlloca);
+        builder->CreateBr(headBB);
+
+        builder->SetInsertPoint(headBB);
+        llvm::Value* idx = builder->CreateLoad(int64Ty, idxAlloca, "vdce.cur");
+        llvm::Value* inRange = builder->CreateICmpULT(idx, vecSize, "vdce.cmp");
+        builder->CreateCondBr(inRange, bodyBB, elemDoneBB);
+
+        builder->SetInsertPoint(bodyBB);
+        llvm::Value* srcElem = builder->CreateInBoundsGEP(structElemTy, srcDataPtr, {idx}, "vdce.src");
+        llvm::Value* dstElem = builder->CreateInBoundsGEP(structElemTy, newDataPtr, {idx}, "vdce.dst");
+        llvm::Value* elemVal = builder->CreateLoad(structElemTy, srcElem, "vdce.elem");
+        llvm::Value* copied = generateStructDeepCopy(elemVal, astElemType, structElemTy);
+        // generateStructDeepCopy may leave the builder in a clone block; store the
+        // copy where it now sits, then route back to the increment.
+        if (builder->GetInsertBlock() && !builder->GetInsertBlock()->getTerminator()) {
+            builder->CreateStore(copied, dstElem);
+        }
+        builder->CreateBr(incBB);
+
+        builder->SetInsertPoint(incBB);
+        builder->CreateStore(builder->CreateAdd(idx, idxOne, "vdce.next"), idxAlloca);
+        builder->CreateBr(headBB);
+
+        builder->SetInsertPoint(elemDoneBB);
+    } else {
+        // If size > 0, memcpy the data; otherwise leave newDataPtr (may be garbage but won't be accessed)
+        llvm::BasicBlock* copyBB  = llvm::BasicBlock::Create(*context, "vdc.copy", currentFunc);
+        llvm::BasicBlock* doneBB  = llvm::BasicBlock::Create(*context, "vdc.done", currentFunc);
+        llvm::Value* hasData = builder->CreateICmpSGT(
+            vecSize, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 0), "vdc.has_data");
+        builder->CreateCondBr(hasData, copyBB, doneBB);
+
+        builder->SetInsertPoint(copyBB);
+        llvm::Function* memcpyFunc = getOrCreateMemcpyFunction();
+        builder->CreateCall(memcpyFunc, {newDataPtr, srcDataPtr, totalBytes});
+        // String elements are shallow { ptr, len } values whose buffers are reference
+        // counted. The deep-copied Vec is an independent holder, so it must retain
+        // each element it now references (its own cleanup will release them).
+        if (elemType && isVybStringStructType(elemType)) {
+            retainStringElements(newDataPtr, vecSize);
+        }
+        builder->CreateBr(doneBB);
+
+        builder->SetInsertPoint(doneBB);
     }
-    builder->CreateBr(doneBB);
-
-    builder->SetInsertPoint(doneBB);
 
     // Build a new Vec struct with the cloned data pointer
     llvm::Value* newVecStruct = llvm::UndefValue::get(vecStructType);
@@ -1307,14 +1363,22 @@ llvm::Value* LLVMCodegen::generateStructDeepCopy(llvm::Value* structValue,
             auto* vt = llvm::dyn_cast<llvm::StructType>(fLLVM);
             if (vt && isVecStructType(vt)) {
                 llvm::Type* elemType = nullptr;
-                if (const auto* vnode = dynamic_cast<const vyb::ast::VecType*>(f))
-                    elemType = vnode->elementType
-                        ? codegenType(const_cast<vyb::ast::TypeNode*>(vnode->elementType.get())) : nullptr;
-                else if (const auto* nn = dynamic_cast<const vyb::ast::TypeName*>(f))
-                    if (!nn->genericArgs.empty())
+                const vyb::ast::TypeNode* elemAst = nullptr;
+                if (const auto* vnode = dynamic_cast<const vyb::ast::VecType*>(f)) {
+                    elemAst = vnode->elementType.get();
+                    if (vnode->elementType)
+                        elemType = codegenType(const_cast<vyb::ast::TypeNode*>(vnode->elementType.get()));
+                } else if (const auto* nn = dynamic_cast<const vyb::ast::TypeName*>(f)) {
+                    if (!nn->genericArgs.empty()) {
+                        elemAst = nn->genericArgs[0].get();
                         elemType = codegenType(const_cast<vyb::ast::TypeNode*>(nn->genericArgs[0].get()));
+                    }
+                }
                 if (elemType) {
-                    if (llvm::Value* dc = generateVecDeepCopy(fv, elemType, vt)) {
+                    // Pass the AST element type so a Vec of owning structs clones its
+                    // elements independently (not a shallow memcpy that would alias
+                    // the source's owned fields).
+                    if (llvm::Value* dc = generateVecDeepCopy(fv, elemType, vt, elemAst)) {
                         outVal = builder->CreateInsertValue(outVal, dc, i, "sdc.vec");
                         continue;
                     }

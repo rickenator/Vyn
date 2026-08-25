@@ -307,7 +307,7 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
             if (elemNode) {
                 if (llvm::Type* elemT = codegenType(const_cast<vyb::ast::TypeNode*>(elemNode))) {
                     initialVal = generateVecDeepCopy(initialVal, elemT,
-                        llvm::cast<llvm::StructType>(varType));
+                        llvm::cast<llvm::StructType>(varType), elemNode);
                 }
             }
         }
@@ -922,7 +922,7 @@ void LLVMCodegen::visit(vyb::ast::FunctionDeclaration* node) {
                         // Load the struct stored so far (the shallow copy)
                         llvm::Value* shallowVec = builder->CreateLoad(paramTypes[i], alloca, paramNames[i] + "_shallow");
                         // Clone the data
-                        llvm::Value* deepVec = generateVecDeepCopy(shallowVec, elemLLVMType, paramTypes[i]);
+                        llvm::Value* deepVec = generateVecDeepCopy(shallowVec, elemLLVMType, paramTypes[i], elemTypeNode);
                         if (deepVec) {
                             builder->CreateStore(deepVec, alloca);
                             VYB_CDBG << "DEBUG: Deep-copied Vec parameter '" << paramNames[i] << "'" << std::endl;
@@ -1795,6 +1795,7 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
     std::vector<AsyncEnvField> ownedFields;
     std::vector<bool> vecParam(n, false);
     std::vector<llvm::Type*> vecElemType(n, nullptr);
+    std::vector<const vyb::ast::TypeNode*> vecElemAst(n, nullptr);
     std::vector<const vyb::ast::TypeNode*> structParamAst(n, nullptr);
     for (size_t i = 0; i < n; ++i) {
         const vyb::ast::TypeNode* ptn = node->params[i].typeNode.get();
@@ -1816,8 +1817,10 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
             f.vecIsString = isVecOfStringTypeNode(ptn);
             ownedFields.push_back(f);
             vecParam[i] = true;
-            if (const vyb::ast::TypeNode* en = asyncParamVecElement(ptn))
+            if (const vyb::ast::TypeNode* en = asyncParamVecElement(ptn)) {
+                vecElemAst[i] = en;
                 vecElemType[i] = codegenType(const_cast<vyb::ast::TypeNode*>(en));
+            }
         } else if (ptn && isKnownStructTypeNode(ptn)) {
             // Inline struct param: the launcher deep-copies it into an
             // independent owned snapshot; the env dtor reclaims its owned fields.
@@ -2007,7 +2010,7 @@ void LLVMCodegen::codegenAsyncTask(vyb::ast::FunctionDeclaration* node) {
             // capture environment so it stays alive while the task runs.
             retainClosureValue(av);
         } else if (vecParam[i] && vecElemType[i] && paramTypes[i]) {
-            llvm::Value* copy = generateVecDeepCopy(av, vecElemType[i], paramTypes[i]);
+            llvm::Value* copy = generateVecDeepCopy(av, vecElemType[i], paramTypes[i], vecElemAst[i]);
             av = copy ? copy : av;
         } else if (structParamAst[i] && paramTypes[i]) {
             if (auto* sot = llvm::dyn_cast<llvm::StructType>(paramTypes[i])) {
@@ -2137,6 +2140,7 @@ void LLVMCodegen::codegenAsyncLambda(ast::FunctionExpression* node) {
     std::vector<AsyncEnvField> ownedFields;
     std::vector<bool> vecParam(n, false);
     std::vector<llvm::Type*> vecElemType(n, nullptr);
+    std::vector<const ast::TypeNode*> vecElemAst(n, nullptr);
     std::vector<const ast::TypeNode*> structParamAst(n, nullptr);
     AsyncEnvField innerField; innerField.fieldIx = 2; innerField.isClosure = true;
     innerField.isString = false; innerField.isVec = false; innerField.isOur = false;
@@ -2157,8 +2161,10 @@ void LLVMCodegen::codegenAsyncLambda(ast::FunctionExpression* node) {
             f.vecIsString = isVecOfStringTypeNode(ptn);
             ownedFields.push_back(f);
             vecParam[i] = true;
-            if (const ast::TypeNode* en = asyncParamVecElement(ptn))
+            if (const ast::TypeNode* en = asyncParamVecElement(ptn)) {
+                vecElemAst[i] = en;
                 vecElemType[i] = codegenType(const_cast<ast::TypeNode*>(en));
+            }
         } else if (ptn && isKnownStructTypeNode(ptn)) {
             AsyncEnvField f; f.fieldIx = i + 3; f.isString = false; f.isVec = false; f.vecIsString = false; f.isOur = false;
             f.isStruct = true; f.structType = ptn;
@@ -2273,7 +2279,7 @@ void LLVMCodegen::codegenAsyncLambda(ast::FunctionExpression* node) {
                        isFnTypeNode(node->params[i].typeNode.get()) && isClosureStructType(paramTypes[i])) {
                 retainClosureValue(av);
             } else if (vecParam[i] && vecElemType[i] && paramTypes[i]) {
-                llvm::Value* copy = generateVecDeepCopy(av, vecElemType[i], paramTypes[i]);
+                llvm::Value* copy = generateVecDeepCopy(av, vecElemType[i], paramTypes[i], vecElemAst[i]);
                 av = copy ? copy : av;
             } else if (structParamAst[i] && paramTypes[i]) {
                 if (auto* sot = llvm::dyn_cast<llvm::StructType>(paramTypes[i])) {
