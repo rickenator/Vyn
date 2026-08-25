@@ -13,20 +13,20 @@ main()<Int> -> {
     fc<chan<Float>> = chan<Float>()
     if (fc == 0) { return 1 }
     if (fc.send(2.5) != 1) { return 2 }
-    f<Float> = fc.recv()
+    f<Float> = fc.recv() else -999.0
     if (f != 2.5) { return 3 }
     if ((fc.poll() else -999.0) != -999.0) { return 4 }   # empty -> absent
     if (fc.send(-1.25) != 1) { return 5 }
     fo<Float> = fc.poll() else -999.0
     if (fo != -1.25) { return 6 }                          # present -> payload
     if (fc.send(0.0) != 1) { return 7 }
-    if (fc.recv() != 0.0) { return 8 }
+    if ((fc.recv() else -999.0) != 0.0) { return 8 }
     if (fc.free() != 0) { return 9 }
 
     bc<chan<Bool>> = chan<Bool>()
     if (bc == 0) { return 10 }
     if (bc.send(true) != 1) { return 11 }
-    if (bc.recv() != true) { return 12 }
+    if ((bc.recv() else false) != true) { return 12 }
     # Empty poll is absent: the default is used and nothing is consumed.
     if (bc.len() != 0) { return 13 }
     if ((bc.poll() else true) != true) { return 14 }
@@ -36,13 +36,13 @@ main()<Int> -> {
     bo<Bool> = bc.poll() else true
     if (bo != false) { return 17 }
     if (bc.send(true) != 1) { return 18 }
-    if (bc.recv() != true) { return 19 }
+    if ((bc.recv() else false) != true) { return 19 }
     if (bc.free() != 0) { return 20 }
 
     cc<chan<Char>> = chan<Char>()
     if (cc == 0) { return 21 }
     if (cc.send(65) != 1) { return 22 }
-    if (cc.recv() != 65) { return 23 }
+    if ((cc.recv() else 0) != 65) { return 23 }
     if ((cc.poll() else 0) != 0) { return 24 }             # empty -> absent
     if (cc.send(66) != 1) { return 25 }
     co<Char> = cc.poll() else 0

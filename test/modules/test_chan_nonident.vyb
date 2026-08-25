@@ -34,7 +34,7 @@ main()<Int> -> {
     r<chan<Int>> = makeint()
     if (r.send(40) != 1) { return 4 }
     if (r.send(2) != 1) { return 5 }
-    if (r.recv() != 40) { return 6 }
+    if ((r.recv() else 0) != 40) { return 6 }
     p<Int> = r.poll() else 0
     if (p != 2) { return 7 }
     if (r.free() != 0) { return 8 }
@@ -44,7 +44,7 @@ main()<Int> -> {
     hi.ch = chan<Int>()
     if (hi.ch == 0) { return 9 }
     if (hi.ch.send(7) != 1) { return 10 }
-    if (hi.ch.recv() != 7) { return 11 }
+    if ((hi.ch.recv() else 0) != 7) { return 11 }
     oi<Int> = hi.ch.poll() else 0
     if (oi != 0) { return 12 }                        # empty -> absent
     if (hi.ch.free() != 0) { return 13 }

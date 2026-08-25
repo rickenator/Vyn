@@ -60,8 +60,20 @@ void SemanticAnalyzer::handleChanMethod(ast::CallExpression* node, ast::TypeNode
             addError("chan<T>.recv expects no arguments", node);
             return;
         }
-        expressionTypes[node] = retainType(elem->clone().release());
-        node->type = std::shared_ptr<ast::TypeNode>(elem->clone());
+        bool elemIsString = chanElementIsString(elem);
+        if (elemIsString) {
+            // String payloads use the refcounted string-channel runtime; recv
+            // returns the String (blocking).
+            expressionTypes[node] = retainType(elem->clone().release());
+            node->type = std::shared_ptr<ast::TypeNode>(elem->clone());
+        } else {
+            // Scalar payloads: blocking, lossless recv reports presence explicitly
+            // (a genuine -1 payload is data; only "closed and drained" is absent),
+            // returning the native `T?` like poll(). Consumed via `recv() else default`.
+            auto* optTy = new ast::OptionalType(node->loc, elem->clone());
+            expressionTypes[node] = retainType(optTy);
+            node->type = std::shared_ptr<ast::TypeNode>(optTy->clone());
+        }
         return;
     }
     if (methodName == "poll") {
@@ -9388,7 +9400,24 @@ void SemanticAnalyzer::handleVecMethodCall(ast::CallExpression* node, const std:
             addError("Cannot call mutating method 'pop' on const Vec: " + objectName, node);
             return;
         }
-        // Return element type
+        // Return element type (resolve T from Vec<T> receiver; mirrors get())
+        if (vecTypeNode) {
+            if (auto* vty = dynamic_cast<ast::VecType*>(vecTypeNode)) {
+                if (vty->elementType) {
+                    std::shared_ptr<ast::TypeNode> et = cloneTypeNode(vty->elementType.get());
+                    expressionTypes[node] = et.get();
+                    node->type = et;
+                    return;
+                }
+            } else if (auto* tny = dynamic_cast<ast::TypeName*>(vecTypeNode)) {
+                if (tny->identifier && tny->identifier->name == "Vec" && !tny->genericArgs.empty()) {
+                    std::shared_ptr<ast::TypeNode> et = tny->genericArgs[0]->clone();
+                    expressionTypes[node] = et.get();
+                    node->type = et;
+                    return;
+                }
+            }
+        }
         auto intId = std::make_unique<ast::Identifier>(node->loc, "Int");
         auto intType = std::make_unique<ast::TypeName>(node->loc, std::move(intId));
         expressionTypes[node] = intType.get();
@@ -9534,10 +9563,18 @@ void SemanticAnalyzer::handleVecMethodCall(ast::CallExpression* node, const std:
             addError("Vec::concat expects exactly 1 argument (other Vec)", node);
             return;
         }
-        // TODO: Validate argument is compatible Vec<T> type
-        auto intId = std::make_unique<ast::Identifier>(node->loc, "Int");
-        auto intType = std::make_unique<ast::TypeName>(node->loc, std::move(intId));
-        auto vecType = std::make_unique<ast::VecType>(node->loc, std::move(intType));
+        // Return Vec<T> (element type taken from Vec<T> receiver; mirrors get()).
+        ast::TypeNodePtr elemType = nullptr;
+        if (auto vty = dynamic_cast<ast::VecType*>(vecTypeNode)) {
+            elemType = vty->elementType ? vty->elementType->clone() : nullptr;
+        } else if (auto tny = dynamic_cast<ast::TypeName*>(vecTypeNode)) {
+            if (tny->identifier && tny->identifier->name == "Vec" && !tny->genericArgs.empty())
+                elemType = tny->genericArgs[0]->clone();
+        }
+        if (!elemType)
+            elemType = std::make_unique<ast::TypeName>(
+                node->loc, std::make_unique<ast::Identifier>(node->loc, "Int"));
+        auto vecType = std::make_unique<ast::VecType>(node->loc, std::move(elemType));
         expressionTypes[node] = vecType.get();
         node->type = std::shared_ptr<ast::TypeNode>(std::move(vecType));
 
@@ -9564,8 +9601,24 @@ void SemanticAnalyzer::handleVecMethodCall(ast::CallExpression* node, const std:
             addError("Cannot call mutating method 'remove_at' on const Vec: " + objectName, node);
             return;
         }
-        // TODO: Validate index is Int type
-        // Return element type
+        // Return element type (resolve T from Vec<T> receiver; mirrors get())
+        if (vecTypeNode) {
+            if (auto* vty = dynamic_cast<ast::VecType*>(vecTypeNode)) {
+                if (vty->elementType) {
+                    std::shared_ptr<ast::TypeNode> et = cloneTypeNode(vty->elementType.get());
+                    expressionTypes[node] = et.get();
+                    node->type = et;
+                    return;
+                }
+            } else if (auto* tny = dynamic_cast<ast::TypeName*>(vecTypeNode)) {
+                if (tny->identifier && tny->identifier->name == "Vec" && !tny->genericArgs.empty()) {
+                    std::shared_ptr<ast::TypeNode> et = tny->genericArgs[0]->clone();
+                    expressionTypes[node] = et.get();
+                    node->type = et;
+                    return;
+                }
+            }
+        }
         auto intId = std::make_unique<ast::Identifier>(node->loc, "Int");
         auto intType = std::make_unique<ast::TypeName>(node->loc, std::move(intId));
         expressionTypes[node] = intType.get();

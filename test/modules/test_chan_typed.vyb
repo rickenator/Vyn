@@ -16,7 +16,7 @@ main()<Int> -> {
     if (ch.len() != 0) { return 2 }
     if (ch.send(42) != 1) { return 3 }
     if (ch.len() != 1) { return 4 }
-    v<Int> = ch.recv()
+    v<Int> = ch.recv() else -1
     if (v != 42) { return 5 }
     if (ch.send(7) != 1) { return 6 }
     te<Int> = ch.poll() else 0
@@ -31,7 +31,7 @@ main()<Int> -> {
     if (bc.send(2) != 1) { return 12 }
     if (bc.send(3) != 0) { return 13 }        # full
     if (bc.len() != 2) { return 14 }
-    if (bc.recv() != 1) { return 15 }
+    if ((bc.recv() else -1) != 1) { return 15 }
     if ((bc.poll() else 0) != 2) { return 16 }
     if (bc.send(9) != 1) { return 17 }        # space freed by recv/poll
     if ((bc.poll() else 0) != 9) { return 18 }

@@ -206,7 +206,8 @@ namespace vyb { // Changed Vyb to vyb
         std::unique_ptr<vyb::ast::ForStatement> parse_for();
         std::unique_ptr<vyb::ast::ForStatement> buildForLoopIteratorDesugar(
             const SourceLocation& loc, const token::Token& ident, vyb::ast::ExprPtr range_expr,
-            std::unique_ptr<vyb::ast::BlockStatement> body, vyb::ast::ExprPtr skip_expr);
+            std::unique_ptr<vyb::ast::BlockStatement> body, vyb::ast::ExprPtr skip_expr,
+            vyb::ast::ExprPtr hoist_expr = nullptr);
         std::unique_ptr<vyb::ast::ForStatement> parse_async_for();
         std::unique_ptr<vyb::ast::ForStatement> buildAsyncChanForDesugar(
             const SourceLocation& loc, const token::Token& ident, const std::string& chanKind,

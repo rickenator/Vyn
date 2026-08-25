@@ -1,0 +1,55 @@
+// @test: for-loop over a Vec that is a struct field (`for (x in obj.field)`)
+// @description: `for (x in obj.field)` where `field` is a `Vec<T>` used to fail
+//   with "Unknown method 'next' on type 'Vec<T>'": the iterator desugar stored the
+//   raw member expression and called `.next()` on the Vec, which has no such method
+//   (only bare-identifier Vecs and `v.iter()` worked). Now the raw member is hoisted
+//   to a temp identifier and `.iter()`ed exactly like the identifier path. Verifies
+//   iteration, sum, break, and nested-struct fields.
+// @category: iterator, stdlib, vec, struct, for, desugar
+// @expect: pass
+// @expect-output: struct-field-for-ok
+// @expect-return: 0
+
+import collections
+
+struct Inner { nums<Vec<Int>> }
+struct Outer { inner<Inner> }
+
+main()<Int> -> {
+    o<Outer> = Outer()
+    o.inner.nums.push(1); o.inner.nums.push(2); o.inner.nums.push(3)
+
+    # Direct single-level field.
+    sum<Int> = 0
+    for (x in o.inner.nums) {
+        sum = sum + x
+    }
+    if (sum != 6) { println("sum-fail:" + sum); return 1 }
+
+    # Nested field access.
+    total<Int> = 0
+    for (x in o.inner.nums.iter()) {
+        total = total + x
+    }
+    if (total != 6) { println("nested-fail:" + total); return 2 }
+
+    # Break mid-field-iteration.
+    head<Int> = 0
+    for (x in o.inner.nums) {
+        if (x >= 2) { break }
+        head = head + x
+    }
+    if (head != 1) { println("break-fail:" + head); return 3 }
+
+    # A String-field Vec of a Vec<String>-holding struct is NOT applicable here,
+    # but continue works too.
+    evens<Int> = 0
+    for (x in o.inner.nums) {
+        if (x % 2 == 0) { continue }
+        evens = evens + x
+    }
+    if (evens != 4) { println("continue-fail:" + evens); return 4 }
+
+    println("struct-field-for-ok")
+    return 0
+}

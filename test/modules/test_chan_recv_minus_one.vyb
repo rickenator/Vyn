@@ -1,0 +1,34 @@
+// @test: typed chan<Int>.recv() is lossless on -1 (regression for #187)
+// @description: typed `chan<T>.recv()` for scalar payloads used `__vyb_chan_recv`,
+//   a raw -1 sentinel (a closed-and-drained read returned -1), so a genuine -1
+//   payload was indistinguishable from closure. It now uses the presence-reporting
+//   `__vyb_chan_recv_opt` and returns the native `T?` (like `poll()`): a sent -1
+//   arrives as the present value -1, never as "absent". Consumed via
+//   `recv() else default`.
+// @category: modules, threads, channels, concurrency, stdlib
+// @expect: pass
+// @expect-output: chan-minus-one-ok
+// @expect-return: 0
+
+main()<Int> -> {
+    ch<chan<Int>> = chan<Int>()
+    if (ch == 0) { return 1 }
+
+    # A genuine -1 payload must arrive as the present value -1, not as "absent"
+    # (which would fall through to the else-default -999).
+    if (ch.send(-1) != 1) { return 2 }
+    v<Int> = ch.recv() else -999
+    if (v != -1) { println("minus-one-lost:" + v); return 3 }
+
+    # -1 followed by a normal value, both lossless in order.
+    if (ch.send(-1) != 1) { return 4 }
+    if (ch.send(42) != 1) { return 5 }
+    a<Int> = ch.recv() else -999
+    b<Int> = ch.recv() else -999
+    if (a != -1 || b != 42) { println("order-fail:" + a + "," + b); return 6 }
+
+    if (ch.free() != 0) { return 7 }
+
+    println("chan-minus-one-ok")
+    return 0
+}

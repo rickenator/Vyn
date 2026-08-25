@@ -1119,13 +1119,67 @@ void LLVMCodegen::emitChannelMethod(vyb::ast::CallExpression* node, llvm::Value*
             }
             m_currentLLVMValue = builder->CreateCall(f, {h64}, "chan.recv");
         } else {
-            llvm::Function* f = module->getFunction("__vyb_chan_recv");
+            // Scalar payloads: blocking lossless recv. Uses __vyb_chan_recv_opt
+            // (presence-reporting) so a genuine -1 Int payload is delivered intact
+            // and "closed and drained" is a distinct absent signal, exactly like
+            // poll(). Returns the native `T?`, consumed via `recv() else default`.
+            llvm::Function* f = module->getFunction("__vyb_chan_recv_opt");
             if (!f) {
-                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type}, false);
-                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_chan_recv", module.get());
+                llvm::FunctionType* ft = llvm::FunctionType::get(
+                    int64Type, {int64Type, llvm::PointerType::get(int64Type, 0)}, false);
+                f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_chan_recv_opt", module.get());
             }
-            llvm::Value* raw = builder->CreateCall(f, {h64}, "chan.recv");
-            m_currentLLVMValue = decodeChannelScalar(raw, elem);
+            llvm::AllocaInst* outAlloca = builder->CreateAlloca(int64Type, nullptr, "chan.recv.out");
+            llvm::Value* got = builder->CreateCall(f, {h64, outAlloca}, "chan.recv.got");
+            llvm::Value* isGot = builder->CreateTrunc(got, llvm::Type::getInt1Ty(*context), "chan.recv.bool");
+
+            std::unique_ptr<ast::OptionalType> optNode;
+            if (elem) {
+                optNode = std::make_unique<ast::OptionalType>(
+                    node->loc, std::unique_ptr<ast::TypeNode>(elem->clone()));
+            }
+            llvm::StructType* optStruct = nullptr;
+            llvm::Type* valueTy = int64Type;
+            if (optNode) {
+                llvm::Type* t = codegenType(optNode.get());
+                if (t) optStruct = llvm::dyn_cast<llvm::StructType>(t);
+            }
+            if (!optStruct) {
+                logError(node->loc, "Failed to resolve T? type for chan recv");
+                m_currentLLVMValue = nullptr;
+                return;
+            }
+            valueTy = optStruct->getElementType(0);
+            llvm::Value* undefOpt = llvm::UndefValue::get(optStruct);
+
+            llvm::Function* parent = builder->GetInsertBlock()->getParent();
+            llvm::BasicBlock* rBlock = llvm::BasicBlock::Create(*context, "chan.recv.present", parent);
+            llvm::BasicBlock* nBlock = llvm::BasicBlock::Create(*context, "chan.recv.none", parent);
+            llvm::BasicBlock* merge = llvm::BasicBlock::Create(*context, "chan.recv.merge", parent);
+            builder->CreateCondBr(isGot, rBlock, nBlock);
+
+            builder->SetInsertPoint(rBlock);
+            llvm::Value* outVal = builder->CreateLoad(int64Type, outAlloca, "chan.recv.val");
+            llvm::Value* decoded = decodeChannelScalar(outVal, elem);
+            if (decoded->getType() != valueTy) {
+                decoded = tryCast(decoded, valueTy, node->loc);
+                if (!decoded) { m_currentLLVMValue = nullptr; return; }
+            }
+            llvm::Value* presentVal = builder->CreateInsertValue(undefOpt, decoded, 0, "opt.v");
+            presentVal = builder->CreateInsertValue(presentVal, builder->getInt1(true), 1, "opt.p");
+            builder->CreateBr(merge);
+
+            builder->SetInsertPoint(nBlock);
+            llvm::Value* absentVal = builder->CreateInsertValue(
+                undefOpt, llvm::Constant::getNullValue(valueTy), 0, "opt.empty");
+            absentVal = builder->CreateInsertValue(absentVal, builder->getInt1(false), 1, "opt.not");
+            builder->CreateBr(merge);
+
+            builder->SetInsertPoint(merge);
+            llvm::PHINode* phi = builder->CreatePHI(optStruct, 2, "chan.recv.opt");
+            phi->addIncoming(presentVal, rBlock);
+            phi->addIncoming(absentVal, nBlock);
+            m_currentLLVMValue = phi;
         }
         return;
     }

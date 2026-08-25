@@ -544,13 +544,37 @@ std::unique_ptr<vyb::ast::ForStatement> StatementParser::parse_for() {
                 // Optional skip parameter already parsed above: skip_expr
 
                 // Check if range_expr is a simple identifier - if so, use it directly
-                // Otherwise we'd need to store in temp (not implemented yet for complex expressions)
                 auto* vec_ident = dynamic_cast<vyb::ast::Identifier*>(range_expr.get());
                 if (!vec_ident) {
-                    // Non-identifier iterable expression: desugar over the Iterator
-                    // protocol. E.g. `for (x in v.iter()) { body }`.
+                    // Non-identifier iterable expression. The semantic analyzer cannot
+                    // infer the type of a member-*method* call inside a null-typed `var`
+                    // initializer when the receiver is itself a member expression
+                    // (`obj.field.iter()`), nor of a raw member used as an iterator.
+                    // Both are fixed by hoisting the member *object* to a temp
+                    // identifier and letting the desugar call `.iter()` on it
+                    // (`var __src = obj.field; var __it = __src.iter()`); identifier
+                    // receivers (`v.iter()`) are left untouched.
+                    vyb::ast::ExprPtr member_obj = nullptr;
+                    if (auto* raw = dynamic_cast<vyb::ast::MemberExpression*>(range_expr.get())) {
+                        member_obj = std::move(range_expr);
+                    } else if (auto* call = dynamic_cast<vyb::ast::CallExpression*>(range_expr.get())) {
+                        auto* mem = dynamic_cast<vyb::ast::MemberExpression*>(call->callee.get());
+                        if (mem) {
+                            auto* prop = dynamic_cast<vyb::ast::Identifier*>(mem->property.get());
+                            if (prop && prop->name == "iter" &&
+                                dynamic_cast<vyb::ast::MemberExpression*>(mem->object.get())) {
+                                member_obj = std::move(mem->object);
+                            }
+                        }
+                    }
+                    if (member_obj) {
+                        return buildForLoopIteratorDesugar(
+                            for_loc, ident_token, nullptr,
+                            std::move(body), std::move(skip_expr), std::move(member_obj));
+                    }
                     return buildForLoopIteratorDesugar(
-                        for_loc, ident_token, std::move(range_expr), std::move(body), std::move(skip_expr));
+                        for_loc, ident_token, std::move(range_expr),
+                        std::move(body), std::move(skip_expr), nullptr);
                 }
 
                 // A plain-identifier iterable is routed onto the Iterator protocol for
@@ -563,7 +587,7 @@ std::unique_ptr<vyb::ast::ForStatement> StatementParser::parse_for() {
                 auto vec_iter_call = std::make_unique<vyb::ast::CallExpression>(
                     for_loc, std::move(vec_iter_member), std::vector<vyb::ast::ExprPtr>());
                 return buildForLoopIteratorDesugar(
-                    for_loc, ident_token, std::move(vec_iter_call), std::move(body), std::move(skip_expr));
+                    for_loc, ident_token, std::move(vec_iter_call), std::move(body), std::move(skip_expr), nullptr);
             }
 
         } else {
@@ -640,9 +664,31 @@ std::unique_ptr<vyb::ast::ForStatement> StatementParser::parse_for() {
 
 std::unique_ptr<vyb::ast::ForStatement> StatementParser::buildForLoopIteratorDesugar(
     const SourceLocation& loc, const token::Token& ident, vyb::ast::ExprPtr range_expr,
-    std::unique_ptr<vyb::ast::BlockStatement> body, vyb::ast::ExprPtr skip_expr) {
+    std::unique_ptr<vyb::ast::BlockStatement> body, vyb::ast::ExprPtr skip_expr,
+    vyb::ast::ExprPtr hoist_expr) {
 
     std::string it_name = "__it_" + ident.lexeme;
+
+    // Optional `hoist_expr`: a raw, non-identifier iterable expression (e.g. a
+    // struct field `obj.field`) that must be bound to a temp identifier before
+    // `.iter()`: the semantic analyzer cannot infer the type of a member-method
+    // call directly inside a null-typed `var` initializer, but it CAN infer a
+    // member-ACCESS type and an identifier-receiver `.iter()`. So we emit
+    //   var __src_<item> = obj.field;      // member-access inference works
+    //   var __it_<item>  = __src_<item>.iter();  // identifier .iter() works
+    std::unique_ptr<vyb::ast::VariableDeclaration> src_decl = nullptr;
+    if (hoist_expr) {
+        std::string src_name = "__src_" + ident.lexeme;
+        auto src_var = std::make_unique<vyb::ast::Identifier>(loc, src_name);
+        src_decl = std::make_unique<vyb::ast::VariableDeclaration>(
+            loc, std::move(src_var), false, nullptr, std::move(hoist_expr));
+        auto src_ident = std::make_unique<vyb::ast::Identifier>(loc, src_name);
+        auto iter_mem = std::make_unique<vyb::ast::MemberExpression>(
+            loc, std::move(src_ident), std::make_unique<vyb::ast::Identifier>(loc, "iter"),
+            /*computed*/ false);
+        range_expr = std::make_unique<vyb::ast::CallExpression>(
+            loc, std::move(iter_mem), std::vector<vyb::ast::ExprPtr>());
+    }
 
     // var __it_<item> = <iterable>;
     auto it_var = std::make_unique<vyb::ast::Identifier>(loc, it_name);
@@ -754,8 +800,9 @@ std::unique_ptr<vyb::ast::ForStatement> StatementParser::buildForLoopIteratorDes
     auto while_block = std::make_unique<vyb::ast::BlockStatement>(loc, std::move(while_stmts));
     auto while_stmt = std::make_unique<vyb::ast::WhileStatement>(loc, std::move(true_lit), std::move(while_block));
 
-    // { [step_decl]; it_decl; while_stmt; }
+    // { [src_decl]; [step_decl]; it_decl; while_stmt; }
     std::vector<vyb::ast::StmtPtr> outer_stmts;
+    if (src_decl) outer_stmts.push_back(std::move(src_decl));
     for (auto& st : outer_pre) outer_stmts.push_back(std::move(st));
     outer_stmts.push_back(std::move(it_decl));
     outer_stmts.push_back(std::move(while_stmt));

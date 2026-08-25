@@ -1,0 +1,44 @@
+// @test: Vec<String> remove_at/concat/pop are typed String (regression for #185)
+// @description: Vec::remove_at, Vec::pop, and Vec::concat used to hard-code their
+//   return type to Int / Vec<Int> regardless of the element type T, so any non-Int
+//   Vec (e.g. Vec<String>) failed to compile. They now resolve T from the receiver
+//   (mirroring Vec::get). Verifies the values round-trip and the result types are
+//   usable as String / Vec<String>.
+// @category: vectors, stdlib, string, concat, remove_at, pop
+// @expect: pass
+// @expect-output: vec-str-ops-ok
+// @expect-return: 0
+
+import collections
+
+main()<Int> -> {
+    v<String> = ""
+
+    # remove_at returns the element type T (String here), not Int.
+    sv<Vec<String>> = Vec()
+    sv.push("alpha")
+    sv.push("beta")
+    removed<String> = sv.remove_at(1)
+    if (removed != "beta") { println("remove_at-fail:" + removed); return 1 }
+    if (sv.len() != 1) { return 2 }
+
+    # pop returns the element type T (String), not Int.
+    popped<String> = sv.pop()
+    if (popped != "alpha") { println("pop-fail:" + popped); return 3 }
+
+    # concat returns Vec<T> (String here), not Vec<Int>; contents preserved.
+    a<Vec<String>> = Vec()
+    a.push("x"); a.push("y")
+    b<Vec<String>> = Vec()
+    b.push("z")
+    c<Vec<String>> = a.concat(b)
+    if (c.len() != 3) { return 4 }
+    if (c.get(0) != "x" || c.get(1) != "y" || c.get(2) != "z") { return 5 }
+
+    # Chain concat again to confirm the clone is stable across calls.
+    d<Vec<String>> = c.concat(a)
+    if (d.len() != 5) { return 6 }
+
+    println("vec-str-ops-ok")
+    return 0
+}
