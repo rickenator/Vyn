@@ -19,7 +19,7 @@ stdlib/
   prelude.vyb            # top-level prelude re-export module
   core/
     prelude.vyb          # canonical prelude contents
-    result.vyb           # placeholder for future Result<T,E>
+    result.vyb           # source-compat façade for compiler-builtin Result<T,E>
   collections/
     mod.vyb              # placeholder scaffold
   io/

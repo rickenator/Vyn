@@ -1,7 +1,9 @@
 # Agents — Design
 
-**Status:** Draft (design-first, per the `[DECIDED]` note in `TODO.md`; channels
-are shipped and this sits on top of them). Not yet implemented.
+**Status:** ARCHIVED — the design here is implemented as the shipped `agents`
+stdlib module (`stdlib/agents/mod.vyb`; `agent_start`/`agent_send`/`agent_free`/…,
+see `docs/refman/agents.md`). This page is kept as the original design rationale;
+it is historical, not authoritative.
 
 An **agent** is Vyb's lightweight, isolated message-passing unit. It is the
 composition of the concurrency pieces already shipped — the cooperative

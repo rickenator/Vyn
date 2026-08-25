@@ -1,7 +1,13 @@
 # Vyb Documentation Index
 
-This directory contains the active documentation for the Vyb programming language.
-Superseded documents are folded into the repository history.
+> **Not authoritative.** The files under `doc/` are design notes, proposals, and
+> dated reviews. They may describe features as planned or stubbed and can lag
+> reality. The **authoritative** reference is the [Programmer's Guide and the
+> generated pages under `docs/refman/`](../docs/refman/PROGRAMMERS_GUIDE.md).
+> See [DOCS_POLICY.md](DOCS_POLICY.md) for the maintenance checklist.
+
+This directory contains design and review documentation for the Vyb programming
+language. Superseded documents are folded into the repository history.
 
 ---
 

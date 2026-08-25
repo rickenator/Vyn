@@ -85,7 +85,7 @@ Legend: ✅ Implemented | 🚧 Partial / Stubbed | 📋 Planned
   lowers like the named-variable path (`test/modules/test_chan_nonident.vyb`).
   String payloads keep the empty-string sentinel poll. Non-identifier method
   receivers remain a follow-up |
-| `async` / `await` | 🚧 | Runtime stub |
+| `async` / `await` | ✅ | `Future<T>` on a cooperative fiber executor (ucontext fibers over a worker-thread pool; `VYB_WORKER_MAX` caps the pool, `VYB_ASYNC_STACK_SIZE` sizes each fiber stack). `await` suspends mid-body; `async for (item in ch)` drains a channel linearly; async I/O round-trips the same lossless `T?` shapes. (`test/async/async_*`; `asyncs.md`) |
 | `Vec<T>` | ✅ | Bare `Vec()` / `Vec(n)` and explicitly-typed `Vec<T>()` / `Vec<T>(n)` constructors all build a real `{ ptr, size, cap }` growable vector (typed versions work standalone and in struct fields, `test/units/test_vec_typed_constructor.vyb`) |
 | String methods | ✅ | `.len()`, `.contains()`, `.starts_with()`, `.ends_with()`, `.to_upper()`, `.to_lower()`, `.substring()`, `.char_at()`, `.trim()`, `.replace()` |
 | Math intrinsics | ✅ | |
