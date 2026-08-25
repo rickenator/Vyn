@@ -3,15 +3,21 @@
 // @expect: fail
 // @expect-error: string reference-count registry exhausted
 // @execute-jit: true
-// @description: With the registry capacity forced low (16 slots), sustained
-//   string allocation churn (concat + from_byte) exhausts the table. It must
-//   fail loudly and deterministically instead of silently leaving an
-//   allocation untracked (which would leak / corrupt reference counts).
+// @description: With the registry capacity forced low (16 slots) as a hard
+//   ceiling, holding MORE strings LIVE than the table has slots (pushing each
+//   fresh buffer into a Vec so none is freed) must exhaust the table. It must
+//   fail loudly and deterministically instead of silently leaving an allocation
+//   untracked (which would leak / corrupt reference counts).
+//
+//   NOTE: this holds the strings alive in a Vec. A pure reassignment-churn
+//   loop (`s = s.concat(...)`) no longer exhausts a tiny table, because owned
+//   temporary String arguments are now correctly released after the call
+//   (#190/#191) -- churn reuses freed slots instead of filling the table.
 main()<Int> -> {
-    s<String> = ""
+    v<Vec<String>> = Vec<String>()
     i<Int> = 0
     while (i < 1000) {
-        s = s.concat(String::from_byte(i % 256))
+        v.push(String::from_byte(i % 256))
         i += 1
     }
     return 0
