@@ -12,9 +12,10 @@
 // @expect-output: btreemap-ok
 // @expect-return: 0
 // @env: VYB_STDLIB=stdlib
-// @skip-asan: true # small exit-time-only LSan residue in the BTreeMap node arena
-//   (struct-local Vec buffers not reclaimed on every exit path); non-functional,
-//   tracked in #192. The #190 arena teardown leak is fixed (see eed5a81).
+// @skip-asan: true # small exit-time-only LSan residue from BTreeMapIter/generator
+//   (for-in) temp ownership (192B/4 in the suite's iter+edge usage; put/get arena
+//   is ASan-clean after the receiver-temp fix, 17a199a). Non-functional, tracked
+//   in #192 (generator surface).
 import collections
 
 main()<Int> -> {
