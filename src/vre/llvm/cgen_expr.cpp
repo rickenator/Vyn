@@ -9294,6 +9294,42 @@ void LLVMCodegen::visit(ast::RangeExpression* node) {
     m_currentLLVMValue = nullptr;
 }
 
+// Build aspect -> concrete binding type names from the module's `bind` decls
+// (#157). Used to expand an aspect-typed trap into the concrete error types it
+// matches. Built lazily on first trap dispatch.
+void LLVMCodegen::ensureAspectBindTypes() {
+    if (m_aspectBindTypesBuilt) return;
+    m_aspectBindTypesBuilt = true;
+    if (!m_currentVybModule) return;
+    for (auto& stmt : m_currentVybModule->body) {
+        auto* bind = dynamic_cast<ast::BindDeclaration*>(stmt.get());
+        if (!bind) continue;
+        if (!bind->traitType || !bind->selfType) continue;
+        std::string aspectName;
+        if (auto* tn = dynamic_cast<ast::TypeName*>(bind->traitType.get()))
+            if (tn->identifier) aspectName = tn->identifier->name;
+        if (aspectName.empty()) aspectName = bind->traitType->toString();
+        std::string typeName;
+        if (auto* sn = dynamic_cast<ast::TypeName*>(bind->selfType.get()))
+            if (sn->identifier) typeName = sn->identifier->name;
+        if (typeName.empty()) typeName = bind->selfType->toString();
+        if (aspectName.empty() || typeName.empty()) continue;
+        m_aspectBindTypes[aspectName].push_back(typeName);
+    }
+}
+
+// True if a trap's type names an aspect (with at least one concrete binding type),
+// so it matches every such binding type rather than a single concrete type (#157).
+bool LLVMCodegen::trapTypeIsAspect(const vyb::ast::TypeNode* tn) {
+    if (!tn || !m_aspectBindTypesBuilt) return false;
+    std::string nm;
+    if (auto* tln = dynamic_cast<const ast::TypeName*>(tn))
+        if (tln->identifier) nm = tln->identifier->name;
+    if (nm.empty()) return false;
+    auto it = m_aspectBindTypes.find(nm);
+    return it != m_aspectBindTypes.end() && !it->second.empty();
+}
+
 void LLVMCodegen::visit(ast::BlockExpression* node) {
     // Block as expression with trap/ensure support:
     // 1. Execute the block statements
@@ -9351,10 +9387,15 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
     llvm::BasicBlock* landingPadBB = nullptr;
 
     if (hasTrap) {
+        // Aspect/type-name matching map must be built before the slot + dispatcher.
+        ensureAspectBindTypes();
+
         // Determine error type from first trap clause
         // Phase 6.5: For wildcard traps, error type is nullptr, use generic i8* pointer
         // Phase 6.6: For multi-type traps, use generic pointer (error binding will be opaque)
+        // #157: For aspect-named traps (no concrete LLVM type; matches binding types)
         llvm::Type* errorLLVMType = nullptr;
+        bool firstClauseIsAspect = false;
         if (node->trapClauses[0]->isWildcard) {
             // Wildcard trap: use generic pointer type
             errorLLVMType = llvm::PointerType::get(*context, 0);
@@ -9368,7 +9409,15 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
                 m_currentLLVMValue = nullptr;
                 return;
             }
-            errorLLVMType = codegenType(errorType);
+            // An aspect-named trap has no concrete LLVM type (aspects are interfaces,
+            // not concrete types); use a generic pointer and let the dispatcher OR
+            // over the concrete types that bind the aspect.
+            firstClauseIsAspect = trapTypeIsAspect(errorType);
+            if (firstClauseIsAspect) {
+                errorLLVMType = llvm::PointerType::get(*context, 0);
+            } else {
+                errorLLVMType = codegenType(errorType);
+            }
         }
 
         if (!errorLLVMType) {
@@ -9404,7 +9453,8 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
         trapCtx.landingPad = landingPadBB;
         trapCtx.resumeBlock = continueBB;
         trapCtx.errorSlot = errorSlot;
-        trapCtx.errorType = node->trapClauses[0]->isWildcard ? nullptr : node->trapClauses[0]->errorType.get();
+        trapCtx.errorType = (node->trapClauses[0]->isWildcard || firstClauseIsAspect)
+                                ? nullptr : node->trapClauses[0]->errorType.get();
         trapCtx.errorVarName = node->trapClauses[0]->errorName->name;
         trapStack.push_back(trapCtx);
     }
@@ -9517,6 +9567,8 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
 
         // Phase 6.2: Handle multiple trap clauses with type checking
         // For each trap clause, check if error type matches, then execute handler
+        ensureAspectBindTypes();
+
         llvm::BasicBlock* nextCheckBB = nullptr;
         llvm::BasicBlock* unmatchedBB = llvm::BasicBlock::Create(*context, "trap.unmatched", func);
 
@@ -9525,6 +9577,11 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
         for (size_t i = 0; i < node->trapClauses.size(); i++) {
             const auto& trapClause = node->trapClauses[i];
             bool isLastClause = (i == node->trapClauses.size() - 1);
+            // Set when a specific-type trap names an aspect rather than a concrete
+            // error: it matches every concrete type binding that aspect, and the
+            // handler binding is the raw error pointer (type discriminated by
+            // introspection) rather than a single concrete struct.
+            bool trapIsAspect = false;
 
             // Create blocks for this trap clause
             llvm::BasicBlock* handlerBB = llvm::BasicBlock::Create(
@@ -9590,12 +9647,11 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
                     }
                 }
             } else if (trapClause->errorType && errorSlot) {
-                // Specific type trap: check type ID
+                // Specific type trap: check type ID.
 
-                // Get the expected error type
-                llvm::Type* expectedType = codegenType(trapClause->errorType.get());
-
-                // Extract type name from TypeNode
+                // Extract the trap's type name. If it names an aspect that concrete
+                // error types bind, the trap matches each of those concrete types
+                // (#157); otherwise it matches the concrete type by exact-name.
                 std::string expectedTypeName;
                 if (auto* typeName_node = dynamic_cast<ast::TypeName*>(trapClause->errorType.get())) {
                     if (typeName_node->identifier) {
@@ -9603,25 +9659,35 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
                     }
                 }
 
+                std::vector<std::string> matchNames;
                 if (!expectedTypeName.empty()) {
-                    // Compute expected type hash
-                    uint64_t expectedTypeHash = std::hash<std::string>{}(expectedTypeName);
-                    llvm::Value* expectedTypeId = llvm::ConstantInt::get(builder->getInt64Ty(), expectedTypeHash);
+                    auto it = m_aspectBindTypes.find(expectedTypeName);
+                    if (it != m_aspectBindTypes.end() && !it->second.empty()) {
+                        matchNames = it->second;   // aspect -> every binding concrete type
+                        trapIsAspect = true;
+                    } else {
+                        matchNames.push_back(expectedTypeName);
+                    }
+                }
 
-                    // Load the actual error type ID from the error struct header
-                    // Error pointer points to memory with first 8 bytes being type ID
+                if (matchNames.empty()) {
+                    typeMatches = builder->getFalse();
+                } else {
+                    // Load the actual error type ID (first i64 of the error struct).
                     llvm::Value* typeIdPtr = builder->CreateStructGEP(vybErrorTy, errorStructPtr, 0, "error.typeid.ptr");
                     llvm::Value* actualTypeId = builder->CreateLoad(
                         builder->getInt64Ty(),
                         typeIdPtr,
                         "error.typeid"
                     );
-
-                    // Compare type IDs
-                    typeMatches = builder->CreateICmpEQ(actualTypeId, expectedTypeId, "type.matches");
-                } else {
-                    // Couldn't extract type name - shouldn't happen
+                    // OR-chain over every concrete type the trap matches.
                     typeMatches = builder->getFalse();
+                    for (auto& nm : matchNames) {
+                        uint64_t h = std::hash<std::string>{}(nm);
+                        llvm::Value* expectedTypeId = llvm::ConstantInt::get(builder->getInt64Ty(), h);
+                        llvm::Value* thisMatch = builder->CreateICmpEQ(actualTypeId, expectedTypeId, "type.matches");
+                        typeMatches = builder->CreateOr(typeMatches, thisMatch, "type.matches.or");
+                    }
                 }
             } else {
                 // No type to check - shouldn't happen, but default to false
@@ -9652,7 +9718,7 @@ void LLVMCodegen::visit(ast::BlockExpression* node) {
                 // Phase 6.6: Multi-type trap - error variable gets the raw error pointer
                 // Handler would use typeof/as to discriminate types (when introspection exists)
                 typedErrorValue = errorPtr;
-            } else if (trapClause->errorType) {
+            } else if (trapClause->errorType && !trapIsAspect) {
                 llvm::Type* expectedType = codegenType(trapClause->errorType.get());
                 if (expectedType && !expectedType->isPointerTy()) {
                     llvm::Value* payloadPtrSlot = builder->CreateStructGEP(vybErrorTy, errorStructPtr, 2, "error.payload.slot");

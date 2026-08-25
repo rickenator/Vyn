@@ -1,0 +1,46 @@
+// @test: trap on an aspect matches any concrete error type binding it (#157)
+// @description: a trap typed with an aspect (e.g. `trap (e<Fallible>)`) matches an
+//   error whose concrete type binds that aspect; the handler downcasts via `e as
+//   ConcreteType` (the binding is opaque, like a multi-type trap). Exact-name traps
+//   on concrete error types still match exactly; a type that does NOT bind the
+//   aspect is caught only by an exact trap.
+// @category: trap, aspect, bind, error, codegen
+// @expect: pass
+// @expect-return: 0
+
+aspect Fallible {
+}
+
+struct NetworkError { code<Int> }
+bind Fallible -> NetworkError {}
+
+struct ParseError { code<Int> }
+bind Fallible -> ParseError {}
+
+struct CrashError { n<Int> }   // does NOT bind Fallible
+
+main()<Int> -> {
+    // Aspect-typed trap catches the first binding type; payload read via `as`.
+    a<Int> = { fail<NetworkError>(NetworkError { code = 9 }) } trap (e<Fallible>) -> {
+        q<NetworkError> = e as NetworkError
+        q.code
+    }
+    // The same aspect trap catches a different binding type.
+    b<Int> = { fail<ParseError>(ParseError { code = 3 }) } trap (e<Fallible>) -> {
+        p<ParseError> = e as ParseError
+        p.code
+    }
+    // Exact-name trap still matches a concrete error that binds the aspect too.
+    a2<Int> = { fail<NetworkError>(NetworkError { code = 11 }) } trap (e<NetworkError>) -> {
+        q2<NetworkError> = e as NetworkError
+        q2.code
+    }
+    // Exact-name trap on a type that does NOT bind the aspect.
+    c<Int> = { fail<CrashError>(CrashError { n = 5 }) } trap (e<CrashError>) -> {
+        qc<CrashError> = e as CrashError
+        qc.n
+    }
+
+    if (a == 9 && b == 3 && a2 == 11 && c == 5) { return 0 }
+    return 1
+}

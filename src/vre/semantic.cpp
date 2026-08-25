@@ -7988,6 +7988,22 @@ void SemanticAnalyzer::visit(ast::TrapClause* node) {
         return;
     }
 
+    // True when a trap's type names an aspect (an interface, not a concrete type)
+    // that one or more concrete error types bind. Such a trap matches every binding
+    // concrete type (#157); the aspect is not a valid concrete type, so it is not
+    // resolved as one.
+    auto typeNodeNamesAspect = [&](ast::TypeNode* tn) -> bool {
+        if (!tn) return false;
+        std::string nm;
+        if (auto* tln = dynamic_cast<ast::TypeName*>(tn))
+            if (tln->identifier) nm = tln->identifier->name;
+        if (nm.empty()) return false;
+        for (const auto& kv : traitImpls)
+            if (kv.second.count(nm)) return true;
+        return false;
+    };
+    bool singleIsAspect = false;
+
     // Validate multi-type trap
     if (node->isMultiType) {
         if (node->errorTypes.empty()) {
@@ -8014,8 +8030,13 @@ void SemanticAnalyzer::visit(ast::TrapClause* node) {
             errorType->accept(*this);
         }
     } else if (node->errorType) {
-        // Type check single error type (unless wildcard)
-        node->errorType->accept(*this);
+        // Aspect-named trap: skip concrete type resolution (an aspect is an
+        // interface, not a concrete error type -- it matches any concrete type
+        // binding it). Concrete error types are type-checked normally.
+        singleIsAspect = typeNodeNamesAspect(node->errorType.get());
+        if (!singleIsAspect) {
+            node->errorType->accept(*this);
+        }
     }
 
     // Enter new scope for trap handler
@@ -8038,10 +8059,13 @@ void SemanticAnalyzer::visit(ast::TrapClause* node) {
     // traps both bind an opaque error pointer: the static type is unknown (could
     // be any listed type at runtime), so the handler resolves the concrete type
     // via introspection against the runtime type ID (`e as T`, `typeof(e)`,
-    // `typename(e)`) rather than a single concrete type.
+    // `typename(e)`) rather than a single concrete type. An aspect-typed trap
+    // (`e<SomeAspect>` where the aspect is bound by one or more concrete error
+    // types) is the same: at runtime the concrete type is one of the binding
+    // types, unknown statically, so `e` is also bound opaque (#157).
     SymbolInfo errorSymbol;
     errorSymbol.name = node->errorName->name;
-    if (node->isWildcard || node->isMultiType) {
+    if (node->isWildcard || node->isMultiType || singleIsAspect) {
         errorSymbol.type = nullptr;
     } else {
         errorSymbol.type = node->errorType.get();

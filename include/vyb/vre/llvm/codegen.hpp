@@ -608,6 +608,13 @@ private:
     // ({ value(0)=cb, hasValue(1) }). Releases a grabbed `our<T>?` on scope exit.
     void reclaimOptionalOurPayload(llvm::Value* optPtr, const vyb::ast::TypeNode* optAst,
                                    llvm::StructType* optLlvm, bool retain);
+    // Trap matching (#157): aspect name -> concrete type names that bind it (from the
+    // module's `bind <Aspect> -> <Type>` declarations). An aspect-typed trap matches
+    // every such concrete type. Built lazily on first trap dispatch.
+    std::map<std::string, std::vector<std::string>> m_aspectBindTypes;
+    bool m_aspectBindTypesBuilt = false;
+    void ensureAspectBindTypes();
+    bool trapTypeIsAspect(const vyb::ast::TypeNode* tn);
     bool enumInitIsOurTransfer(vyb::ast::Expression* init);
 
     // Async/await support
