@@ -189,6 +189,19 @@ void LLVMCodegen::handleStringConcat(vyb::ast::CallExpression* node, llvm::Value
     llvm::Value* nullTermPos = builder->CreateGEP(llvm::Type::getInt8Ty(*context), newData, newLen, "str.null_pos");
     builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt8Ty(*context), 0), nullTermPos);
 
+    // A freshly-built owned String passed into concat (e.g.
+    // `a.concat(String::from_byte(b))` or `a.concat(helper_that_returns_string())`)
+    // is only *read* by concat -- it copies the bytes into newData and never
+    // retains the argument. The caller owns that argument's single reference, so
+    // it must be dropped here or it leaks into the registry. Free-function call
+    // sites already do this (see the generic pendingStringTempFrees path in
+    // cgen_expr.cpp), but member String methods dispatch to handleStringConcat,
+    // which skipped it -- leaking every temp String argument (#190/#191: the
+    // superlinear per-byte String.concat build was leaking ~1/byte).
+    if (exprProducesOwnedStringTemp(node->arguments[0].get())) {
+        builder->CreateCall(getOrCreateVybStringFreeFunction(), {str2Data});
+    }
+
     // Create new String struct
     llvm::Value* resultStr = llvm::UndefValue::get(strStructType);
     resultStr = builder->CreateInsertValue(resultStr, newData, 0, "str.result_data");
