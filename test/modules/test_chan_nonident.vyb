@@ -27,10 +27,17 @@ makestr()<chan<String>> -> {
 }
 
 main()<Int> -> {
-    # Function-returned chan receiver (Int payload).
-    if (makeint() == 0) { return 1 }
-    if (makeint().send(11) != 1) { return 2 }
-    if ((makeint().poll() else 0) != 0) { return 3 }   # empty -> absent
+    # Function-returned chan receiver (Int payload). Capture + .free() each so
+    # the temporary channels don't leak (chan<T> is an explicit .free() resource).
+    a<chan<Int>> = makeint()
+    if (a == 0) { return 1 }
+    if (a.free() != 0) { return 1 }
+    b<chan<Int>> = makeint()
+    if (b.send(11) != 1) { return 2 }
+    if (b.free() != 0) { return 2 }
+    c<chan<Int>> = makeint()
+    if ((c.poll() else 0) != 0) { return 3 }   # empty -> absent
+    if (c.free() != 0) { return 3 }
     r<chan<Int>> = makeint()
     if (r.send(40) != 1) { return 4 }
     if (r.send(2) != 1) { return 5 }
