@@ -6,20 +6,45 @@
 > strategy, and a full tour of the standard library.
 
 This manual sits alongside the auto-generated reference under
-`docs/refman/`:
+[`docs/refman/`](index.md):
 
-- `index.md` — module map with fan-in / fan-out.
+- [`index.md`](index.md) — module map with fan-in / fan-out.
 - `<module>.md` — one page per stdlib module with every exported symbol,
   signature, and its inter-relationship list.
-- `interfaces.md` — shared cross-module types and who consumes them.
-- `functions.md`, `types.md`, `aspects.md`, `runtime.md` — cross-indexes.
+- [`interfaces.md`](interfaces.md) — shared cross-module types and who
+  consumes them.
+- [`functions.md`](functions.md), [`types.md`](types.md),
+  [`aspects.md`](aspects.md), [`runtime.md`](runtime.md) — cross-indexes.
 
 Throughout this guide, `[Module →](http.md)` style links jump to those pages
 for the exact signature of every symbol. The code samples are real and run
 through the test harness.
 
+> **Authoritative source.** This Programmer's Guide and the auto-generated pages
+> under `docs/refman/` are the canonical reference for the language. Design and
+> review notes elsewhere (the `doc/*` tree and dated review files) are historical
+> and may describe features as planned or stubbed; trust the guide + refman,
+> cross-checked against a live `build/vyb` run.
+
 ---
 
+## Contents
+
+1. [Mental model](#1-mental-model)
+2. [Getting started](#2-getting-started)
+3. [Language tour](#3-language-tour)
+4. [Standard library reference](#4-standard-library-reference)
+5. [Concurrency and async model](#5-concurrency-and-async-model)
+6. [Networking cookbook](#6-networking-cookbook)
+7. [Performance and memory model](#7-performance-and-memory-model)
+8. [Testing and tooling](#8-testing-and-tooling)
+9. [API index](#9-api-index)
+10. [Appendix A — Memory model](#appendix-a--memory-model)
+11. [Appendix B — Auto-serialization](#appendix-b--auto-serialization)
+12. [Appendix C — Glossary](#appendix-c--glossary)
+13. [Appendix D — Grammar (EBNF)](#appendix-d--grammar-ebnf)
+
+---
 ## 1. Mental model
 
 Vyb's core conviction: **you should not have to choose between safety and
