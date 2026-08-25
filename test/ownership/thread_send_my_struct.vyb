@@ -1,0 +1,24 @@
+// @test: owning my<Struct> must not cross a thread boundary (#149)
+// @description: `thread_spawn` closures must not capture a `my<T>` (unique owner
+//   of a heap allocation) — there is no Send-like boundary, so the worker shares
+//   the caller's owned `my<Node>` (heap String) and a concurrent
+//   mutate/free on main is a data race / UAF. Currently ACCEPTED (worker reads
+//   `main-owns`, rc=0) — KNOWN-GAP until a Send-style check lands (#149).
+// @category: ownership, threads, Send, concurrency
+// @expect: fail
+// @expect-error: thread
+
+import threads::{thread_spawn, thread_join}
+
+struct Node { value<Int>, label<String> }
+
+main()<Int> -> {
+    n<my<Node>> = my(Node { value = 3, label = "main-owns" })
+    th<Int> = thread_spawn(|| -> {
+        v<Int> = n.value
+        return v
+    }) else -1
+    if (th < 0) { return 2 }
+    j<Int> = thread_join(th) else -1
+    return 0
+}

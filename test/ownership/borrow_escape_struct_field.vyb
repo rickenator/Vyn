@@ -1,0 +1,21 @@
+// @test: struct-field read through an escaped borrow is rejected (#149)
+// @description: A `their<Struct>` borrowed from a block-local, read after the
+//   local dies, dispatches through freed stack. Currently ACCEPTED (rc=0; reads
+//   "correct by luck" until the slot is reused) — KNOWN-GAP until the escape
+//   check lands (#149).
+// @category: ownership, borrow, escape, lifetime
+// @expect: fail
+// @expect-error: borrow
+
+struct Counter { c<Int>, name<String> }
+
+main()<Int> -> {
+    tmp<Counter> = Counter { c = 0, name = "" }
+    r<their<Counter>> = borrow(tmp)
+    {
+        ctr<Counter> = Counter { c = 42, name = "alive" }
+        r = borrow(ctr)
+    }
+    v<Int> = r.c
+    return v
+}

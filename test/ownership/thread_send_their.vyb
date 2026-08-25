@@ -1,0 +1,24 @@
+// @test: borrowing an owner across a thread boundary is rejected (#149)
+// @description: A `their<T>` borrow of a main-frame value captured by a
+//   `thread_spawn` closure is a cross-thread borrowed reference that can dangle
+//   when the main frame is torn down. Currently ACCEPTED — KNOWN-GAP until a
+//   Send-style check on `thread_spawn` capture lands (#149).
+// @category: ownership, threads, borrow, concurrency
+// @expect: fail
+// @expect-error: thread
+
+import threads::{thread_spawn, thread_join}
+
+struct Counter { c<Int> }
+
+main()<Int> -> {
+    ctr<Counter> = Counter { c = 9 }
+    r<their<Counter>> = borrow(ctr)
+    th<Int> = thread_spawn(|| -> {
+        v<Int> = r.c
+        return v
+    }) else -1
+    if (th < 0) { return 2 }
+    j<Int> = thread_join(th) else -1
+    return 0
+}

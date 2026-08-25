@@ -1,0 +1,14 @@
+// @test: reassigning (mutating) a variable with an active borrow is rejected
+// @description: Regression: after `view(x)` is taken, assigning `x = 5` must be
+//   rejected even though the borrow is not re-taken. The compiler already
+//   enforces this lexically (overlaps only mutual exclusion was tested before).
+// @category: ownership, borrow, mutation
+// @expect: fail
+// @expect-error: Cannot assign to 'x' while it has an active borrow
+
+main()<Int> -> {
+    x<Int> = 1
+    r<their<Int>> = view(x)
+    x = 5
+    return x
+}
