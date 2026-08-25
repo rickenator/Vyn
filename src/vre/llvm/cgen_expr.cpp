@@ -6447,6 +6447,13 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
     // named binding: the callee retains/releases its own copy, so the caller must
     // drop the temp's own reference after the call (see exprProducesOwnedStringTemp).
     std::vector<llvm::Value*> pendingStringTempFrees;
+    // A fresh owned struct passed by value as an argument is deep-copied into the
+    // callee's param by the callee (cgen_decl.cpp ownedStructParam), which reclaims
+    // its own copy at scope exit; the caller still owns the temp's ORIGINAL buffers
+    // and must reclaim them after the call or they leak (#192: decode_run(build_huff(
+    // ...),...) leaked the temp Huff's count/symbol Vec buffers).
+    struct StructTempReclaim { llvm::Value* ptr; const vyb::ast::TypeNode* ast; llvm::StructType* ll; };
+    std::vector<StructTempReclaim> pendingStructTempReclaims;
     auto emitTemporaryReleases = [&]() {
         for (auto& pr : pendingTemporaryReleases) {
             if (pr.kind == 1) releaseOurControlBlock(pr.cb, "temparg.our", pr.pointeeAst, pr.pointeeLlvm);
@@ -6476,6 +6483,12 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         }
         for (llvm::Value* sd : pendingStringTempFrees) {
             builder->CreateCall(getOrCreateVybStringFreeFunction(), {sd});
+        }
+        for (auto& sr : pendingStructTempReclaims) {
+            if (sr.ptr && sr.ast && sr.ll) {
+                std::set<std::string> visited;
+                reclaimStructOwnedFieldsAt(sr.ptr, sr.ast, sr.ll, visited);
+            }
         }
     };
     for (size_t i = 0; i < node->arguments.size(); ++i) {
@@ -6581,6 +6594,28 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             }
             if (tempKind != 0) {
                 pendingTemporaryReleases.push_back(tr);
+            }
+        }
+        // A freshly-built owned struct passed by value as an argument (a call/literal
+        // whose result is a struct with owned Vec/String fields -- e.g.
+        // `decode_run(build_huff(...), build_huff(...), ...)`). The callee deep-copies
+        // the param (cgen_decl.cpp ownedStructParam) and reclaims its own copy at
+        // scope exit; the caller still owns the temp's ORIGINAL buffers and must
+        // reclaim them after the call. Must NOT fire on a named variable/borrow arg
+        // (the callee or a sibling binding also owns it) -- only on an expression that
+        // creates the struct fresh at this call site.
+        bool freshOwnedStructArg =
+            (dynamic_cast<ast::CallExpression*>(node->arguments[i].get()) != nullptr ||
+             dynamic_cast<ast::ObjectLiteral*>(node->arguments[i].get()) != nullptr);
+        if (tempKind == 0 && freshOwnedStructArg && node->arguments[i]->type &&
+            argValue->getType() && argValue->getType()->isStructTy()) {
+            const vyb::ast::TypeNode* at = node->arguments[i]->type.get();
+            if (isKnownStructTypeNode(at) && structTypeHasOwnedFields(at)) {
+                if (auto* st = llvm::dyn_cast<llvm::StructType>(argValue->getType())) {
+                    llvm::Value* tmp = builder->CreateAlloca(st, nullptr, "ownedstructarg.tmp");
+                    builder->CreateStore(argValue, tmp);
+                    pendingStructTempReclaims.push_back(StructTempReclaim{tmp, at, st});
+                }
             }
         }
         argValues.push_back(argValue);

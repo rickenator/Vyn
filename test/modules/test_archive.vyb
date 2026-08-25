@@ -9,9 +9,6 @@
 // @expect-output: archive-ok
 // @expect-return: 0
 // @env: VYB_STDLIB=stdlib
-// @skip-asan: true # exit-time-only LSan leak (deflate code tables, e.g. dlens/
-//   llens Vec<Int>, not reclaimed on the return path); non-functional, tracked
-//   in #192. The #191 O(N^2) and the #190 temp-String/arena leaks are fixed.
 
 import archive::{inflate_gzip, extract_tar, crc32}
 
