@@ -1,0 +1,45 @@
+// Agent-table cap exhaustion (#155): the agent table is fixed at 64
+// (VYB_AGENT_CAP). Exhausting it must fail GRACEFULLY -- the 65th (and beyond)
+// agent_start returns an absent `Int?` (runtime returns 0), never UB or an abort --
+// and every successful agent must be reclaimable with agent_free (no slot leak,
+// LSan-clean).
+// @env: VYB_STDLIB=stdlib
+// @expect: pass
+// @expect-output: okcount=64
+// @expect-return: 0
+
+import agents
+
+main()<Int> -> {
+    n<Int> = 66
+    handles<Vec<Int>> = Vec()
+    okcount<Int> = 0
+    i<Int> = 0
+    while (i < n) {
+        ho<Int?> = agent_start(|message<Int?>| -> { return 0 })
+        match (ho) {
+            x -> { okcount += 1; handles.push(x) }
+            ? -> {}
+        }
+        i = i + 1
+    }
+    // Exactly the 64-cap succeeds; the remaining 2 must fail gracefully.
+    if (okcount != 64) {
+        println("bad count " + okcount.to_string())
+        return 1
+    }
+
+    j<Int> = 0
+    while (j < handles.len()) {
+        // agent_free is Bool? -- present on success, absent on failure. An absent
+        // free here would indicate a slot was not reclaimed.
+        match (agent_free(handles.get(j))) {
+            ok -> {}
+            ? -> { return 2 }
+        }
+        j = j + 1
+    }
+
+    println("okcount=" + okcount.to_string())
+    return 0
+}

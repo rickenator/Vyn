@@ -3426,6 +3426,53 @@ VYB_WEAK int64_t __vyb_strchan_free(int64_t ch) {
 #define VYB_ASYNC_STACK_SIZE (1u << 20)   // 1 MiB per fiber
 #define VYB_WORKER_MAX 64
 
+// #155: ucontext REMAINS the supported context mechanism, intentionally scoped to
+// Linux (glibc/musl) and other POSIX (macOS/BSD) ucontext implementations. The
+// stackful-fiber model is what lets `async for (x in ch)` drain a channel and an
+// `await` suspend mid-body of a plain Vyb function without a compiler state-machine
+// transform; replacing ucontext would trade one context-switch primitive for another
+// (or force that transform) for no portability gain — Vyb targets Linux/POSIX first.
+// The two real costs are bounded here: (1) each task pays VYB_ASYNC_STACK_SIZE of
+// virtual memory, and (2) a fiber is pinned to the worker that first ran it (made
+// portable by building contexts on the worker that will run them — see
+// async_make_context). Both the per-task stack size and the worker-pool ceiling are
+// configurable at startup.
+static size_t g_async_stack_size = 0;   // 0 = not yet resolved from env
+
+// Per-fiber stack size: VYB_ASYNC_STACK_SIZE bytes (default 1 MiB), overridable via
+// the VYB_ASYNC_STACK_SIZE env var, clamped to [64 KiB, 512 MiB].
+static size_t async_stack_size(void) {
+    if (g_async_stack_size == 0) {
+        size_t v = VYB_ASYNC_STACK_SIZE;
+        const char* e = getenv("VYB_ASYNC_STACK_SIZE");
+        if (e && *e) {
+            char* end = NULL;
+            long n = strtol(e, &end, 10);
+            if (end != e && n > 0) {
+                if ((unsigned long)n < (64u << 10)) v = (size_t)(64u << 10);
+                else if ((unsigned long)n > (512u << 20)) v = (size_t)(512u << 20);
+                else v = (size_t)n;
+            }
+        }
+        g_async_stack_size = v;
+    }
+    return g_async_stack_size;
+}
+
+// Worker-pool ceiling: VYB_WORKER_MAX (compile-time 64) by default, overridable via
+// the VYB_WORKER_MAX env var (1..VYB_WORKER_MAX). The static worker table stays at
+// VYB_WORKER_MAX; this only clamps how many are spawned (also capped by CPU count).
+static int async_worker_max(void) {
+    int v = VYB_WORKER_MAX;
+    const char* e = getenv("VYB_WORKER_MAX");
+    if (e && *e) {
+        char* end = NULL;
+        long n = strtol(e, &end, 10);
+        if (end != e && n >= 1 && n <= VYB_WORKER_MAX) v = (int)n;
+    }
+    return v;
+}
+
 typedef struct vyb_async_task vyb_async_task;
 typedef struct vyb_worker vyb_worker;
 
@@ -3553,7 +3600,7 @@ static void* async_worker_main(void* arg);
 static int async_make_context(vyb_async_task* t) {
     if (getcontext(&t->ctx) != 0) return -1;
     t->ctx.uc_stack.ss_sp = t->stack;
-    t->ctx.uc_stack.ss_size = VYB_ASYNC_STACK_SIZE;
+    t->ctx.uc_stack.ss_size = async_stack_size();
     t->ctx.uc_link = NULL;
     makecontext(&t->ctx, (void(*)(void))vyb_async_tramp, 0);
     t->context_made = 1;
@@ -3565,8 +3612,9 @@ static void async_ensure_workers(void) {
     if (g_nworkers > 0) return;
     long ncpu = sysconf(_SC_NPROCESSORS_ONLN);
     int n = (ncpu > 0) ? (int)ncpu : 4;
+    int wm = async_worker_max();
     if (n < 1) n = 1;
-    if (n > VYB_WORKER_MAX) n = VYB_WORKER_MAX;
+    if (n > wm) n = wm;
     for (int i = 0; i < n; i++) {
         g_workers[i].id = i;
         pthread_cond_init(&g_workers[i].cv, NULL);
@@ -3674,7 +3722,7 @@ VYB_WEAK int64_t __vyb_async_spawn(void* env, void* fn) {
     if (!fn) return 0;
     vyb_async_task* t = (vyb_async_task*)calloc(1, sizeof(vyb_async_task));
     if (!t) return 0;
-    t->stack = malloc(VYB_ASYNC_STACK_SIZE);
+    t->stack = malloc(async_stack_size());
     if (!t->stack) { free(t); return 0; }
     t->fn = (int64_t (*)(void*, int64_t))fn;
     t->wake_ms = -1;

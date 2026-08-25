@@ -1,0 +1,33 @@
+// Stress: bulk async task creation + await + cleanup (#155). Spawns N async
+// tasks (each `work(i)` returns i*2), awaits every result, and verifies the sum.
+// Each task gets its own 1 MiB fiber stack that must be reclaimed at teardown, so
+// this doubles as an LSan check that task structs + stacks + closure envs are all
+// freed (no leak). Kept at N=1000 so the aggregate virtual-memory footprint stays
+// healthy under ASan.
+// @env: VYB_STDLIB=stdlib
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+
+async work(i<Int>)<Future<Int>> -> {
+    return i * 2
+}
+
+main()<Int> -> {
+    n<Int> = 1000
+    sum<Int> = 0
+    i<Int> = 0
+    while (i < n) {
+        f<Future<Int>> = work(i)
+        v<Int> = await f
+        sum += v
+        i = i + 1
+    }
+    // sum of (i*2) for i in [0, n) = n * (n - 1)
+    if (sum != n * (n - 1)) {
+        println("bad sum " + sum.to_string())
+        return 1
+    }
+    println("ok")
+    return 0
+}

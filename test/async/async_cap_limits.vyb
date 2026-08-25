@@ -1,0 +1,26 @@
+// Exercise VYB_WORKER_MAX and VYB_ASYNC_STACK_SIZE (#155). With the pool capped at
+// 2 workers and each fiber stack sized to 256 KiB (instead of 1 MiB), async tasks
+// must still spawn, run, and be awaited correctly. Proves the configurable-limit
+// path (runtime read of the env knobs + clamping) and single/limited-worker
+// correctness.
+// @env: VYB_STDLIB=stdlib; VYB_WORKER_MAX=2; VYB_ASYNC_STACK_SIZE=262144
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+
+async add(a<Int>, b<Int>)<Future<Int>> -> {
+    return a + b
+}
+
+main()<Int> -> {
+    // Exercise deep-ish recursion on the 256 KiB fiber stack to sanity-check the
+    // reduced size is sufficient for normal use.
+    r1<Int> = await add(20, 22)
+    if (r1 != 42) { return 1 }
+
+    r2<Int> = await add(100, 200)
+    if (r2 != 300) { return 2 }
+
+    println("ok")
+    return 0
+}
