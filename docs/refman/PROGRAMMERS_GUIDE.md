@@ -2317,6 +2317,7 @@ regenerates byte-identical output.
 
 
 
+
 The **shared cross-module types** (`HttpResponse`, `TcpStream`, `TlsContext`,
 `TlsStream`, `Socket`) and every symbol that uses them are in
 [`interfaces.md`](interfaces.md).
