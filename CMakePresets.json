@@ -1,0 +1,77 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 20, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "debug",
+      "displayName": "Debug (default)",
+      "description": "Unoptimized developer build (default when no build type is selected)",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "VYB_USE_OPENSSL": "ON",
+        "VYB_USE_QT5": "OFF"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release (optimized)",
+      "description": "Optimized native build",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VYB_USE_OPENSSL": "ON",
+        "VYB_USE_QT5": "OFF"
+      }
+    },
+    {
+      "name": "relwithdebinfo",
+      "displayName": "RelWithDebInfo",
+      "description": "Optimized with debug info",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-relwithdebinfo",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "VYB_USE_OPENSSL": "ON",
+        "VYB_USE_QT5": "OFF"
+      }
+    },
+    {
+      "name": "asan",
+      "displayName": "AddressSanitizer (address + undefined)",
+      "description": "Debug + Address/UB sanitizers; full test suite is ASan/LSan-clean",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-asan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "VYB_SANITIZE": "address,undefined",
+        "VYB_USE_QT5": "OFF",
+        "VYB_USE_OPENSSL": "ON",
+        "VYB_BINDGEN_LIBCLANG": "OFF"
+      }
+    },
+    {
+      "name": "asan-leaks",
+      "displayName": "AddressSanitizer + LeakSanitizer",
+      "description": "Debug + ASan (address only; LeakSanitizer enabled by default on Linux)",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-asan-leaks",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "VYB_SANITIZE": "address",
+        "VYB_USE_QT5": "OFF",
+        "VYB_USE_OPENSSL": "ON",
+        "VYB_BINDGEN_LIBCLANG": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "debug", "configurePreset": "debug" },
+    { "name": "release", "configurePreset": "release" },
+    { "name": "relwithdebinfo", "configurePreset": "relwithdebinfo" },
+    { "name": "asan", "configurePreset": "asan" },
+    { "name": "asan-leaks", "configurePreset": "asan-leaks" }
+  ]
+}

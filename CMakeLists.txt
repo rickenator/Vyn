@@ -1,7 +1,32 @@
 cmake_minimum_required(VERSION 3.15)
 project(VybParser VERSION 0.7.3)
 
-set(CMAKE_BUILD_TYPE Debug)
+# Build profile (#160): Debug is the DEFAULT when the caller selects no build type,
+# but a caller-set -DCMAKE_BUILD_TYPE=Release / RelWithDebInfo is respected (never
+# silently overridden). Use `cmake --preset <name>`; see CMakePresets.json and
+# doc/BUILD.md for the supported profiles.
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type: Debug, Release, RelWithDebInfo, MinSizeRel" FORCE)
+endif()
+
+# Optional sanitizer profile (#160). Empty = none. Examples:
+#   -DVYB_SANITIZE=address
+#   -DVYB_SANITIZE="address,undefined"
+# Applies -fsanitize=<s> to C, C++, and link for each listed sanitizer, plus
+# -fno-omit-frame-pointer for usable backtraces. Used by the CI ASan preset.
+set(VYB_SANITIZE "" CACHE STRING "Sanitizer(s) to enable (empty=none; e.g. address / address,undefined)")
+if(VYB_SANITIZE)
+    string(REPLACE "," ";" VYB_SAN_LIST ${VYB_SANITIZE})
+    foreach(s ${VYB_SAN_LIST})
+        string(STRIP ${s} s)
+        if(s)
+            message(STATUS "Sanitizer: -fsanitize=${s}")
+            add_compile_options(-fsanitize=${s} -fno-omit-frame-pointer)
+            add_link_options(-fsanitize=${s})
+        endif()
+    endforeach()
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -214,6 +239,19 @@ target_include_directories(vyb PRIVATE
 
 # Add LLVM definitions
 target_compile_definitions(vyb PRIVATE ${LLVM_DEFINITIONS})
+
+# Build identity (#160): every produced binary embeds its build configuration so
+# `vyb --version` reports the build type and sanitizer coverage unambiguously.
+if(VYB_SANITIZE)
+    set(VYB_SANITIZE_STR "${VYB_SANITIZE}")
+else()
+    set(VYB_SANITIZE_STR "none")
+endif()
+target_compile_definitions(vyb PRIVATE
+    VYB_PROJECT_VERSION="${PROJECT_VERSION}"
+    VYB_BUILD_TYPE_STR="${CMAKE_BUILD_TYPE}"
+    VYB_SANITIZE_STR="${VYB_SANITIZE_STR}"
+)
 
 # Link libraries
 target_link_libraries(vyb PRIVATE

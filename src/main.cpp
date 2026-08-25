@@ -2811,6 +2811,14 @@ bool runHelper(const std::string&, const std::vector<std::string>&,
 #endif
 } // namespace
 
+// #160: build-identity macros are provided by CMake (CMakeLists.txt). Fall backs
+// keep translation units that reference them valid outside a CMake-configured build.
+#ifndef VYB_PROJECT_VERSION
+#define VYB_PROJECT_VERSION "unknown"
+#define VYB_BUILD_TYPE_STR "unknown"
+#define VYB_SANITIZE_STR "unknown"
+#endif
+
 int main(int argc, char* argv[]) {
     Catch::Session session; // Catch2 entry point
 
@@ -2917,6 +2925,14 @@ int main(int argc, char* argv[]) {
     // [[bin]] in a vyb.toml project, resolving local path dependencies and
     // reusing the module registry + native compile/link pipeline.
     // `vyb new <name>`: scaffold a fresh project.
+    // #160: report the embedded build configuration (build type + sanitizer).
+    if (argc >= 2 && (std::string(argv[1]) == "--version" || std::string(argv[1]) == "--build-info")) {
+        std::cout << "Vyb " << VYB_PROJECT_VERSION
+                  << " (build=" << VYB_BUILD_TYPE_STR
+                  << ", sanitize=" << VYB_SANITIZE_STR << ")\n";
+        return 0;
+    }
+
     if (argc >= 2 && std::string(argv[1]) == "build") {
         return run_build_command(argc - 2, argv + 2, std::string(argv[0]));
     }
