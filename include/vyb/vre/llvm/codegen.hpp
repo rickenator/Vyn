@@ -604,6 +604,10 @@ private:
     bool enumPayloadHoldsOurRef(const vyb::ast::TypeNode* astType) const;
     void reclaimEnumOurPayload(llvm::Value* enumPtr, const vyb::ast::TypeNode* astType,
                                bool retain);
+    // Retain/release the `our<T>` strong ref inside an `Optional<our<T>>`
+    // ({ value(0)=cb, hasValue(1) }). Releases a grabbed `our<T>?` on scope exit.
+    void reclaimOptionalOurPayload(llvm::Value* optPtr, const vyb::ast::TypeNode* optAst,
+                                   llvm::StructType* optLlvm, bool retain);
     bool enumInitIsOurTransfer(vyb::ast::Expression* init);
 
     // Async/await support

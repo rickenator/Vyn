@@ -10779,12 +10779,18 @@ bool LLVMCodegen::exprIsMildTransfer(vyb::ast::Expression* expr) {
     // `soft(...)` hands over a fresh weak reference that a storage location can
     // take without an extra retain; a bare read of an existing `mild` value is a
     // shared copy and must be retained (+weak) on stow to balance the release on
-    // scope exit.
+    // scope exit. Any function call returning `mild<T>` likewise hands over its
+    // single fresh weak ref (its return-transfer path did the transfer), so it is
+    // a transfer too -- mirroring exprIsOurTransfer for function-returned `our<T>`.
     if (!expr) return false;
     auto* call = dynamic_cast<vyb::ast::CallExpression*>(expr);
     if (!call) return false;
     if (auto* id = dynamic_cast<vyb::ast::Identifier*>(call->callee.get())) {
         if (id->name == "soft") return true;
+    }
+    if (call->type) {
+        std::string t = call->type->toString();
+        if (t.rfind("mild<", 0) == 0) return true;
     }
     return false;
 }

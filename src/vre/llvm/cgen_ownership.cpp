@@ -231,6 +231,25 @@ void LLVMCodegen::cleanupVariable(const ScopeVariable& var) {
                     return;
                 }
             }
+            // An `our<T>?` optional holds a strong count on its control block when
+            // present (e.g. `mild<T>.grab()`); drop it on scope exit. Layout is
+            // `{ our<T> value(0), i1 hasValue(1) }`.
+            {
+                auto astIt = valueTypeMap.find(var.allocaInst);
+                if (var.allocaInst && astIt != valueTypeMap.end() && astIt->second) {
+                    if (auto* ot = dynamic_cast<const ast::OptionalType*>(astIt->second.get())) {
+                        if (ot->containedType && isOurRefType(ot->containedType.get()) &&
+                            llvm::isa<llvm::StructType>(var.type)) {
+                            VYB_CDBG << "DEBUG: Releasing owned `our<T>?` payload for variable: "
+                                      << var.name << std::endl;
+                            reclaimOptionalOurPayload(
+                                var.allocaInst, astIt->second.get(),
+                                llvm::cast<llvm::StructType>(var.type), /*retain=*/false);
+                            return;
+                        }
+                    }
+                }
+            }
             // A struct-typed binding owns its Vec / String fields (and those of
             // any nested owning structs). Reclaim each owned field on scope exit.
             // String, Vec, and closure bindings fall through to their own branches.
@@ -1221,6 +1240,39 @@ void LLVMCodegen::reclaimEnumOurPayload(llvm::Value* enumPtr, const vyb::ast::Ty
         builder->CreateBr(nextBB);
         builder->SetInsertPoint(nextBB);
     }
+}
+
+// Retain (retain=true) or release (retain=false) the `our<T>` strong reference
+// held by an `Optional<our<T>>` (`{ our<T> value(0), i1 hasValue(1) }`), e.g. the
+// present value handed over by `mild<T>.grab()`. `optAst` is the OptionalType node;
+// `optLlvm` its canonical struct (value at 0, hasValue flag at 1).
+void LLVMCodegen::reclaimOptionalOurPayload(llvm::Value* optPtr, const vyb::ast::TypeNode* optAst,
+                                            llvm::StructType* optLlvm, bool retain) {
+    auto* ot = dynamic_cast<const ast::OptionalType*>(optAst);
+    if (!ot || !ot->containedType || !isOurRefType(ot->containedType.get())) return;
+    if (!optPtr || !optLlvm || optLlvm->getNumElements() < 2 || !builder || !currentFunction) return;
+
+    llvm::PointerType* rawPtr = llvm::PointerType::get(*context, 0);
+    // field 1 = hasValue flag; load and guard the release/reclaim on it.
+    llvm::Value* hasPtr = builder->CreateStructGEP(optLlvm, optPtr, 1, "optour.has_ptr");
+    llvm::Value* has = builder->CreateLoad(llvm::Type::getInt1Ty(*context), hasPtr, "optour.has");
+
+    llvm::BasicBlock* doBB = llvm::BasicBlock::Create(*context, "optour.do", currentFunction);
+    llvm::BasicBlock* contBB = llvm::BasicBlock::Create(*context, "optour.cont", currentFunction);
+    builder->CreateCondBr(has, doBB, contBB);
+    builder->SetInsertPoint(doBB);
+
+    // field 0 = the `our<T>` control-block handle.
+    llvm::Value* cb = builder->CreateLoad(rawPtr,
+        builder->CreateStructGEP(optLlvm, optPtr, 0, "optour.val_ptr"), "optour.val");
+    const vyb::ast::TypeNode* pointeeAst = ourPointeeOf(ot->containedType.get());
+    llvm::Type* pointeeLlvm = pointeeAst
+        ? codegenType(const_cast<vyb::ast::TypeNode*>(pointeeAst)) : nullptr;
+    if (retain) retainOurControlBlock(cb, "reclaim.optour.retain");
+    else releaseOurControlBlock(cb, "reclaim.optour.release", pointeeAst, pointeeLlvm);
+
+    builder->CreateBr(contBB);
+    builder->SetInsertPoint(contBB);
 }
 
 // Does an enum-typed initializer hand over its payload's strong ref (a "fresh

@@ -472,6 +472,16 @@ void LLVMCodegen::visit(vyb::ast::VariableDeclaration* node) {
         // is released on scope exit.
         bool enumOurVar = ownership == ast::OwnershipKind::MY && node->typeNode &&
                           enumPayloadHoldsOurRef(node->typeNode.get());
+        // An `our<T>?` optional (e.g. `mild<T>.grab()` returning `our<T>?`) owns a
+        // strong count on its payload's control block too; treat it like the enum
+        // case so the count is released on scope exit.
+        if (!enumOurVar && ownership == ast::OwnershipKind::MY && node->typeNode) {
+            if (auto* ot = dynamic_cast<ast::OptionalType*>(node->typeNode.get())) {
+                if (ot->containedType && isOurRefType(ot->containedType.get())) {
+                    enumOurVar = true;
+                }
+            }
+        }
         if (enumOurVar) {
             needsCleanup = true;
             VYB_CDBG << "DEBUG: Variable '" << node->id->name
