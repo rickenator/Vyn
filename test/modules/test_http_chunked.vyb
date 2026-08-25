@@ -1,0 +1,72 @@
+// @test: HTTP client decodes a chunked Transfer-Encoding response (framing)
+// @description: a raw loopback server answers http_get_full with an
+//   HTTP/1.1 response framed with Transfer-Encoding: chunked (the classic
+//   "Wikipedia" example). The pure-Vyb client must drain each hex size line +
+//   data block + CRLF, stop at the 0-size terminator + trailers, and return the
+//   decoded body with NO framing artifacts (a "4\r\nWiki\r\n" hex size line
+//   leaking into the page text). This pins the chunked capability in the
+//   HTTP/HTTPS capability boundary (doc/HTTP_CAPABILITY_BOUNDARIES.md, #159).
+// @category: modules, http, network, framing, stdlib
+// @expect: pass
+// @expect-output: chunked-ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import http::{http_get_full, http_header}
+import network::{socket_open, socket_bind, socket_listen, socket_accept,
+                 socket_send, socket_local_port, socket_close, Socket}
+import threads::{thread_spawn, thread_join}
+
+main()<Int> -> {
+    srv<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP) else -1
+    if (srv < 0) { return 1 }
+    if (!(socket_bind(srv, "127.0.0.1", 0) else false)) { socket_close(srv); return 2 }
+    if (!(socket_listen(srv, 4) else false)) { socket_close(srv); return 3 }
+    port<Int> = socket_local_port(srv) else -1
+    if (port <= 0) { socket_close(srv); return 4 }
+
+    # Worker: answer one connection with a chunked response. Body blocks are
+    # "Wiki"(4) + "pedia"(5) + " in\r\n\r\nchunks."(14 = 0xE), then a 0-size
+    # terminator and a trailer, so the client also drains trailers.
+    th<Int> = thread_spawn(|| -> {
+        c<Int> = socket_accept(srv) else -1
+        if (c < 0) { return 1 }
+        resp<String> = "HTTP/1.1 200 OK\r\n" +
+                       "Transfer-Encoding: chunked\r\n" +
+                       "Connection: close\r\n" +
+                       "Trailer: X-Checksum\r\n" +
+                       "\r\n" +
+                       "4\r\nWiki\r\n" +
+                       "5\r\npedia\r\n" +
+                       "E\r\n in\r\n\r\nchunks.\r\n" +
+                       "0\r\n" +
+                       "X-Checksum: abc123\r\n" +
+                       "\r\n"
+        n<Int> = socket_send(c, resp) else -1
+        socket_close(c)
+        if (n < 0) { return 2 }
+        return 0
+}) else -1
+    if (th < 0) { socket_close(srv); return 5 }
+
+    expected<String> = "Wikipedia in\r\n\r\nchunks."
+    match (http_get_full("127.0.0.1", port, "/chunked")) {
+        resp -> {
+            io<Int> = thread_join(th) else -2
+            socket_close(srv)
+            if (io != 0) { return 6 }
+            if (resp.status != 200) { return 7 }
+            if (resp.body != expected) { return 8 }
+            # The framing must NOT leak into the body: no hex size line, no CRLF
+            # block boundaries as page text.
+            if (resp.body.index_of("4\r\n") >= 0) { return 9 }
+            if (resp.body.index_of("Wiki\r\n") >= 0) { return 10 }
+            # The client saw and consumed the chunked framing header.
+            te<String> = http_header(resp, "Transfer-Encoding")
+            if (te.len() == 0 || te.index_of("chunked") < 0) { return 11 }
+            println("chunked-ok")
+            return 0
+        }
+        ? -> { socket_close(srv); return 12 }
+    }
+}

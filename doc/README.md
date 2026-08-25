@@ -51,6 +51,8 @@ Superseded documents are folded into the repository history.
 | [`bundles_and_sharing.md`](bundles_and_sharing.md) | Module `bundle` and `share` visibility |
 | [`module_visibility.md`](module_visibility.md) | Module resolution and visibility notes |
 | [`stdlib_layout.md`](stdlib_layout.md) | Standard library module layout |
+| [`HTTP_CAPABILITY_BOUNDARIES.md`](HTTP_CAPABILITY_BOUNDARIES.md) | HTTP/HTTPS client & server capability boundary, non-goals, and error model |
+| [`NETWORK_ERROR_CONTRACTS.md`](NETWORK_ERROR_CONTRACTS.md) | `network` module raw-socket / async-I/O / UDP-peer error contracts |
 
 ---
 
