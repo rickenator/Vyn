@@ -20,14 +20,19 @@
 #     http_request(method, path, host) -> String   a request head
 #     http_read_rest(fd, max) -> String            everything until the peer closes
 #     http_get(host, port, path) -> String?        full GET round-trip -> body (absent on failure)
-#     http_get_full(host, port, path) -> HttpResponse?  full HTTP/1.1 client
+#     http_get_full(host, port, path) -> HttpResponse  full HTTP/1.1 client; failed
+#                                                     round-trips carry a lossless
+#                                                     `error` reason (status -1)
 #
 #   Concurrent server:
 #     http_serve(port, backlog) -> TcpListener?  listen + accept on a worker thread
 #                                                (one detached thread per connection)
 #
-#   Fallibility: absences above are failures. Escalate via `match`/`else`
-#   and `fail http_error(op, target)` into the fail/trap framework.
+#   Fallibility: http_get_full returns a **present** HttpResponse -- on failure
+#   `status` is -1 and `error` holds the reason (never a silent absent, never a
+#   sentinel passed off as data). Network acquisition ops (`http_listen`/
+#   `http_accept`) and the body conveniences keep the `T?` absent-on-failure
+#   shape. Escalate via `match` and `fail http_error(op, target)`.
 #
 # Threading: `http_serve` runs the accept loop on a worker thread and serves
 # each accepted connection on its own detached thread, so the server keeps
@@ -38,10 +43,10 @@
 # external/local server.
 
 # Underlying socket plumbing comes from the `network` module, and per-connection
-# worker threads from the `threads` module. Fallible http ops expose the File?/net
-# shape: http_listen returns `TcpListener?`, http_accept returns `TcpStream?`,
-# http_get returns `String?`, and http_get_full returns `HttpResponse?` -- absence
-# IS failure (no `-1`/`""` sentinels). Unwrap with `match`/`else` and escalate with
+# worker threads from the `threads` module. http_listen returns `TcpListener?`
+# and http_accept returns `TcpStream?` (T? absent-on-failure); http_get_full
+# returns a present `HttpResponse` whose `error` carries the lossless reason on
+# failure (see above). http_get returns `String?`. Escalate with
 # `fail http_error(op, target)` into the fail/trap framework.
 import network::{socket_open, socket_bind, socket_listen, socket_accept,
                   socket_connect, socket_recv, socket_send, socket_local_port,
@@ -163,24 +168,6 @@ http_read_rest(conn<Int>, max<Int>)<String> -> {
     return buf
 }
 
-# Full GET round-trip against `host`:`port` for `path`. Returns the body as a
-# `String?` -- absent on connection failure (an empty body is still a valid
-# present value). Blocks until the peer responds.
-share(all)
-http_get(host<String>, port<Int>, path<String>)<String?> -> {
-    fd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP) else -1
-    if (fd < 0) { return String?() }
-    if (!(socket_connect(fd, host, port) else false)) {
-        socket_close(fd)
-        return String?()
-    }
-    http_send_all(fd, http_request("GET", path, host))
-    http_read_head(fd, 65536)
-    body<String> = http_read_rest(fd, 65536)
-    socket_close(fd)
-    return String?(body)
-}
-
 # Serve one accepted connection on a fresh detached thread: read its head,
 # extract the request path, and answer with a well-formed response before
 # closing. Runs concurrently with the rest of the server.
@@ -235,16 +222,21 @@ http_serve(port<Int>, backlog<Int>)<TcpListener?> -> {
 # until the peer closes). No new FFI -- it reuses the socket helpers above, so
 # it blocks only on the kernel exactly like the server side.
 
-# A parsed HTTP response. `headers` holds the raw response header lines (minus
-# the terminating blank line); `body` is the payload (Content-Length-sized, or
-# everything read before the peer closed). `status` is -1 when no response could
-# be completed.
+# A completed HTTP round-trip. On success `status` is the parsed code and
+# `error` is absent. On failure the clients still return a **present** response
+# with `status` -1 and `error` present holding a lossless reason string
+# ("resolve failed", "connect ... failed", "tls ...", "bad response: no status
+# line") -- so a failed round-trip is never a silent absent and never conflated
+# with a valid response. `headers` holds the raw response header lines (minus the
+# terminating blank line); `body` is the payload (Content-Length-sized, or
+# everything read before the peer closed).
 share(all)
 struct HttpResponse {
     status<Int>,
     reason<String>,
     headers<Vec<String>>,
-    body<String>
+    body<String>,
+    error<String?>
 }
 
 # A shared error value for escalating a failed HTTP op into the fail/trap
@@ -260,11 +252,20 @@ struct HttpError {
 }
 
 # Build an `HttpError` for a failed `op` targeting `target`. Typical use is
-# escalating an absent `String?` / `HttpResponse?` / `TcpListener?`:
-#   match (http_get_full(h, p, path)) { r -> body(r), ? -> { fail http_error("get", h) } }
+# escalating a failed full-client result into the fail/trap framework:
+#   r<HttpResponse> = http_get_full(h, p, path)
+#   match (r.error) { ? -> body(r), e -> { fail http_error("get", h) } }
 share(all)
 http_error(op<String>, target<String>)<HttpError> -> {
     return HttpError { op = op, target = target, message = "http " + op + " failed" }
+}
+
+# Build a failed-round-trip result for the full clients: still **present**, with
+# `status` -1 and `error` carrying the lossless reason `msg`. Callers tell
+# success from failure with `match (resp.error)` or `resp.status < 0`.
+share(all)
+http_err(msg<String>)<HttpResponse> -> {
+    return HttpResponse { status = -1, reason = "", headers = Vec<String>(), body = "", error = String?(msg) }
 }
 
 # Index of the first occurrence of `needle` in `s`, or -1.
@@ -418,22 +419,23 @@ http_read_chunked(fd<Int>)<String> -> {
     return body
 }
 
-# Full HTTP/1.1 GET round-trip. Returns an HttpResponse with the parsed status,
-# reason, headers, and body; status is -1 if the round-trip could not be
-# completed (e.g. connection failure).
+# Full HTTP/1.1 GET round-trip. Returns a present `HttpResponse`: on success
+# `status` is the parsed code and `error` is absent; on failure `status` is -1
+# and `error` carries a lossless reason ("resolve failed: <host>", "connect
+# <ip>:<port> failed", "bad response: no status line").
 share(all)
-http_get_full(host<String>, port<Int>, path<String>)<HttpResponse?> -> {
+http_get_full(host<String>, port<Int>, path<String>)<HttpResponse> -> {
     # Resolve the host to an IPv4 address first (exactly like the https client),
     # then connect by IP. The sockets are AF_INET only, and a bare hostname can
     # resolve to an IPv6 address first, which would make the connect fail - even
     # when the host serves IPv4 too. The hostname is kept for the Host header.
     connect_ip<String> = socket_resolve(host) else ""
-    if (connect_ip.len() == 0) { return HttpResponse?() }
+    if (connect_ip.len() == 0) { return http_err("resolve failed: " + host) }
     fd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP) else -1
-    if (fd < 0) { return HttpResponse?() }
+    if (fd < 0) { return http_err("socket open failed") }
     if (!(socket_connect(fd, connect_ip, port) else false)) {
         socket_close(fd)
-        return HttpResponse?()
+        return http_err("connect " + connect_ip + ":" + port.to_string() + " failed")
     }
     req<String> = "GET " + path + " HTTP/1.1\r\nHost: " + host + "\r\nConnection: close\r\n\r\n"
     socket_send(fd, req)
@@ -441,7 +443,7 @@ http_get_full(host<String>, port<Int>, path<String>)<HttpResponse?> -> {
     code<Int> = http_status_code(line)
     if (code < 0) {
         socket_close(fd)
-        return HttpResponse?()
+        return http_err("bad response: no status line")
     }
     hs<Vec<String>> = Vec<String>()
     length<Int> = -1
@@ -479,7 +481,7 @@ http_get_full(host<String>, port<Int>, path<String>)<HttpResponse?> -> {
         }
     }
     socket_close(fd)
-    return HttpResponse?(HttpResponse { status = code, reason = reason, headers = hs, body = body })
+    return HttpResponse { status = code, reason = reason, headers = hs, body = body, error = String?() }
 }
 
 # Look a header up by (case-insensitive) name across a parsed response's headers.
@@ -492,4 +494,14 @@ http_header(resp<HttpResponse>, name<String>)<String> -> {
         i = i + 1
     }
     return ""
+}
+
+# Convenience full-GET returning just the response body as a `String?` (absent
+# on a failed round-trip, so an empty body is still a present valid value). The
+# whole response -- including the lossless failure reason -- is on `http_get_full`.
+share(all)
+http_get(host<String>, port<Int>, path<String>)<String?> -> {
+    r<HttpResponse> = http_get_full(host, port, path)
+    if (r.status < 0) { return String?() }
+    return String?(r.body)
 }

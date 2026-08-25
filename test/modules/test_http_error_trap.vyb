@@ -1,7 +1,8 @@
 // @test: http module HttpError shared across modules via fail/trap
-// @description: a failed http_get_full (absent HttpResponse? against a dead
-//   port) is escalated from a failable helper with http::http_error -> an
-//   HttpError caught by main's trap; the fields carry op/target/message.
+// @description: a failed http_get_full (status -1 with an `error` reason
+//   against a dead port) is escalated from a failable helper with
+//   http::http_error -> an HttpError caught by main's trap; the fields carry
+//   op/target/message.
 // @category: http, modules, stdlib, error_handling, fail, trap
 // @expect: pass
 // @expect-output: http-error-trap: ok
@@ -12,13 +13,14 @@ import network::{socket_open, socket_bind, socket_listen, socket_local_port,
                  socket_close, Socket}
 import http::{http_get_full, http_error, HttpError}
 
-# Failable helper: an absent HttpResponse? is escalated into an HttpError so the
-# caller can trap the real typed value (the fail is in this callee, so main's own
-# return serialization stays intact).
+# Failable helper: a failed full-client result (status -1, `error` present) is
+# escalated into an HttpError so the caller can trap the real typed value (the
+# fail is in this callee, so main's own return serialization stays intact).
 try_fetch(port<Int>)<Void> -> {
-    match (http_get_full("127.0.0.1", port, "/nope")) {
-        r -> { }
-        ? -> { fail http_error("get", "127.0.0.1:" + port.to_string()) }
+    r<HttpResponse> = http_get_full("127.0.0.1", port, "/nope")
+    match (r.error) {
+        e -> { fail http_error("get", "127.0.0.1:" + port.to_string()) }
+        ? -> { }
     }
 }
 

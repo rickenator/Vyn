@@ -89,31 +89,41 @@ keeping the hostname for SNI / the `Host:` header (see `#188`):
 - `https://https_get_full_verified` — `stdlib/https/mod.vyb:195`
 - `https://https_get_full` (unverified) — `stdlib/https/mod.vyb:184` (fixed in `#188`)
 
-If resolution fails, the client returns an **absent** optional (see §7) rather
-than attempting a bogus raw-hostname connect.
+If resolution fails, the client returns a failed response with `error = "resolve
+failed: <host>"` (see §7) rather than attempting a bogus raw-hostname connect.
 
 ## 7. Error model (explicit, not accidental)
 
-- **Absent `T?` = "the round-trip could not be completed."** `http_get_full` →
-  `HttpResponse?`, `https_get_full` → `HttpResponse?`, `http_get`/`https_get` →
-  `String?`, all **absent on failure** (resolve failure, connect failure, TLS
-  handshake failure, truncated/ unparseable response). Callers unwrap with
-  `match`/`else`; they must treat absence as a transport-level failure, not a
-  "no body" — an empty body is a *present* `""`.
-- **`HttpResponse.status == -1`** = the status line did not parse
-  (`http_status_code` returns `-1`). `reason` may be `""` for non-standard
-  status codes.
+- **`http_get_full` / `https_get_full` return a present `HttpResponse` with a
+  lossless reason on failure.** `HttpResponse { status, reason, headers, body,
+  error<String?> }` (`stdlib/http/mod.vyb:243`): on success `error` is **absent**
+  and `status` is the parsed code; on failure `error` is **present** with a
+  reason string and `status` is `-1`. Failure reasons distinguish the phase:
+  `"resolve failed: <host>"`, `"connect <ip>:<port> failed"`, `"socket open
+  failed"`, `"tls handshake failed"`, `"tls stream failed"`,
+  `"bad response: no status line"`. A failed round-trip is therefore **never a
+  silent absent** and never a sentinel passed off as data.
+- **`http_get` / `https_get`** (body conveniences) still return `String?` —
+  **absent** when `status < 0`, present-with-body otherwise (an empty body is a
+  present `""`). Read the reason via the `*_full` response's `error`.
+- **Network acquisition ops** (`http_listen` → `TcpListener?`, `http_accept` →
+  `TcpStream?`) keep the native-`T?` absent-on-failure shape (see
+  `NETWORK_ERROR_CONTRACTS.md`).
+- **`HttpResponse.status == -1`** also covers the case where the status line did
+  not parse (`http_status_code` returns `-1`, paired with `error = "bad
+  response: no status line"`). `reason` may be `""` for non-standard codes.
 - **Escalation** to the fail/trap framework is explicit and typed:
-  - `http::http_error(op, target)` → `HttpError` (`stdlib/http/mod.vyb:266`)
-  - `http::http_error(op, target)` message is a fixed `"http <op> failed"`
-    (http is pure Vyb; the low-level reason lives at the network layer).
+  - `http::http_error(op, target)` → `HttpError` (`stdlib/http/mod.vyb:271`)
+  - `http::http_error(op, target)` message is a fixed `"http <op> failed"`;
+    the per-round-trip phase reason lives on the returned `HttpResponse.error`.
   - `network::net_error(op, target)` → `NetError` captures the real last
     `socket_error_message()` (`stdlib/network/mod.vyb:177`).
   - `tls::TlsError` + variants for the TLS layer.
 - Every helper is already `@expect: pass`-tested through the fail/trap path
   (`test/modules/test_http_error_trap.vyb`, `test_net_error_trap.vyb`,
   `test/tls/test_tls_error_trap.vyb`), so an unsupported/ failed operation is a
-  **typed, catchable error**, never an unhandled runtime abort.
+  **typed, catchable error**, never an unhandled runtime abort. The reason
+  string itself is pinned by `test/modules/test_http_error_reason.vyb`.
 
 ## 8. Interop test matrix (issue #159 acceptance criterion 2)
 
@@ -127,6 +137,7 @@ than attempting a bogus raw-hostname connect.
 | Threaded concurrent server | `test/modules/test_http_threaded.vyb` |
 | HTTP string helpers / parsing | `test/modules/test_http_parse.vyb` |
 | **Chunked transfer-encoding decode** | `test/modules/test_http_chunked.vyb` |
+| **Full clients surface lossless failure reason** | `test/modules/test_http_error_reason.vyb` |
 | HTTPS unverified client **resolves hostnames** | `test/tls/test_https_client.vyb` (`localhost`, regression for `#188`) |
 | HTTPS verified client (pinned CA + hostname) | `test/tls/test_https_verified.vyb` |
 | TLS handshake/echo loopback | `test/tls/test_tls_loopback.vyb` |

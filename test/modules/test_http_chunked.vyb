@@ -50,23 +50,19 @@ main()<Int> -> {
     if (th < 0) { socket_close(srv); return 5 }
 
     expected<String> = "Wikipedia in\r\n\r\nchunks."
-    match (http_get_full("127.0.0.1", port, "/chunked")) {
-        resp -> {
-            io<Int> = thread_join(th) else -2
-            socket_close(srv)
-            if (io != 0) { return 6 }
-            if (resp.status != 200) { return 7 }
-            if (resp.body != expected) { return 8 }
-            # The framing must NOT leak into the body: no hex size line, no CRLF
-            # block boundaries as page text.
-            if (resp.body.index_of("4\r\n") >= 0) { return 9 }
-            if (resp.body.index_of("Wiki\r\n") >= 0) { return 10 }
-            # The client saw and consumed the chunked framing header.
-            te<String> = http_header(resp, "Transfer-Encoding")
-            if (te.len() == 0 || te.index_of("chunked") < 0) { return 11 }
-            println("chunked-ok")
-            return 0
-        }
-        ? -> { socket_close(srv); return 12 }
-    }
+    resp<HttpResponse> = http_get_full("127.0.0.1", port, "/chunked")
+    io<Int> = thread_join(th) else -2
+    socket_close(srv)
+    if (io != 0) { return 6 }
+    if (resp.status != 200) { return 7 }
+    if (resp.body != expected) { return 8 }
+    # The framing must NOT leak into the body: no hex size line, no CRLF
+    # block boundaries as page text.
+    if (resp.body.index_of("4\r\n") >= 0) { return 9 }
+    if (resp.body.index_of("Wiki\r\n") >= 0) { return 10 }
+    # The client saw and consumed the chunked framing header.
+    te<String> = http_header(resp, "Transfer-Encoding")
+    if (te.len() == 0 || te.index_of("chunked") < 0) { return 11 }
+    println("chunked-ok")
+    return 0
 }

@@ -11,8 +11,8 @@
 # server diagnostic of the whole tls+http wiring.
 #
 #   https_get(host, port, path) -> String?             full GET round-trip -> body (absent on failure)
-#   https_get_full(host, port, path) -> HttpResponse?   parsed status/headers/body
-#   https_get_full_verified(host, port, path, ca) -> HttpResponse?
+#   https_get_full(host, port, path) -> HttpResponse   parsed status/headers/body; failed round-trips carry `error` String?
+#   https_get_full_verified(host, port, path, ca) -> HttpResponse
 #   https_get_verified(host, port, path, ca) -> String?
 #
 #   Fallibility: an absent `HttpResponse?`/`String?` is a failed round-trip.
@@ -27,7 +27,7 @@ import tls::{tls_client_context, tls_client_context_verified, tls_server_context
 # http's helpers and its shared HttpResponse type are imported via two separate
 # subset imports of http; the module resolver now splices each subset import
 # independently (deep-cloning http's body per consumer).
-share(all) import http::{HttpResponse}
+share(all) import http::{HttpResponse, http_err}
 import http::{http_status_code, http_header_value, http_index_of, http_parse_int,
               http_parse_hex}
 
@@ -101,12 +101,12 @@ share(all)
 # and frees `ctx`.
 # socket_open(AF_INET=2, SOCK_STREAM=1, IPPROTO_TCP=6).
 https_fetch(verify_host<String>, connect_ip<String>, port<Int>, path<String>,
-            ctx<TlsContext>)<HttpResponse?> -> {
+            ctx<TlsContext>)<HttpResponse> -> {
     fd<Int> = socket_open(2, 1, 6) else -1
-    if (fd < 0) { return HttpResponse?() }
+    if (fd < 0) { return http_err("socket open failed") }
     if (!(socket_connect(fd, connect_ip, port) else false)) {
         socket_close(fd)
-        return HttpResponse?()
+        return http_err("connect " + connect_ip + ":" + port.to_string() + " failed")
     }
     match (tls_stream(ctx, fd, verify_host)) {
         s -> {
@@ -120,7 +120,7 @@ https_fetch(verify_host<String>, connect_ip<String>, port<Int>, path<String>,
                     if (code < 0) {
                         tls_close(c)
                         tls_free_context(ctx)
-                        return HttpResponse?()
+                        return http_err("bad response: no status line")
                     }
                     hs<Vec<String>> = Vec<String>()
                     length<Int> = -1
@@ -159,19 +159,19 @@ https_fetch(verify_host<String>, connect_ip<String>, port<Int>, path<String>,
                     }
                     tls_close(c)
                     tls_free_context(ctx)
-                    return HttpResponse?(HttpResponse { status = code, reason = reason, headers = hs, body = body })
+                    return HttpResponse { status = code, reason = reason, headers = hs, body = body, error = String?() }
                 }
                 ? -> {
                     tls_close(s)
                     tls_free_context(ctx)
-                    return HttpResponse?()
+                    return http_err("tls handshake failed")
                 }
             }
         }
         ? -> {
             socket_close(fd)
             tls_free_context(ctx)
-            return HttpResponse?()
+            return http_err("tls stream failed")
         }
     }
 }
@@ -180,12 +180,12 @@ https_fetch(verify_host<String>, connect_ip<String>, port<Int>, path<String>,
 # / loopback). `host` is a hostname: resolved to an IPv4 for the connection
 # while kept as the SNI / `Host:` header. Does not verify the peer's CA chain.
 share(all)
-https_get_full(host<String>, port<Int>, path<String>)<HttpResponse?> -> {
+https_get_full(host<String>, port<Int>, path<String>)<HttpResponse> -> {
     ip<String> = socket_resolve(host) else ""
-    if (ip.len() == 0) { return HttpResponse?() }
+    if (ip.len() == 0) { return http_err("resolve failed: " + host) }
     match (tls_client_context()) {
         ctx -> { return https_fetch(host, ip, port, path, ctx) }
-        ? -> { return HttpResponse?() }
+        ? -> { return http_err("tls client context failed") }
     }
 }
 
@@ -194,34 +194,33 @@ https_get_full(host<String>, port<Int>, path<String>)<HttpResponse?> -> {
 # certificate (SNI + hostname check). `ca_pem` pins a CA cert or is "" to use
 # the system default CA paths.
 share(all)
-https_get_full_verified(host<String>, port<Int>, path<String>, ca_pem<String>)<HttpResponse?> -> {
+https_get_full_verified(host<String>, port<Int>, path<String>, ca_pem<String>)<HttpResponse> -> {
     ip<String> = socket_resolve(host) else ""
-    if (ip.len() == 0) { return HttpResponse?() }
+    if (ip.len() == 0) { return http_err("resolve failed: " + host) }
     match (tls_client_context_verified(ca_pem)) {
         ctx -> { return https_fetch(host, ip, port, path, ctx) }
-        ? -> { return HttpResponse?() }
+        ? -> { return http_err("tls client context failed") }
     }
 }
 
 
 # Convenience wrapper returning just the response body as a `String?` (absent on
-# failure, so an empty body is still a valid present value).
+# failure, so an empty body is still a valid present value). Full failure reasons
+# are on `https_get_full`'s `error` field.
 share(all)
 https_get(host<String>, port<Int>, path<String>)<String?> -> {
-    match (https_get_full(host, port, path)) {
-        resp -> { return String?(resp.body) }
-        ? -> { return String?() }
-    }
+    r<HttpResponse> = https_get_full(host, port, path)
+    if (r.status < 0) { return String?() }
+    return String?(r.body)
 }
 
 # Verified convenience wrapper returning just the response body as a `String?`
 # (absent on failure).
 share(all)
 https_get_verified(host<String>, port<Int>, path<String>, ca_pem<String>)<String?> -> {
-    match (https_get_full_verified(host, port, path, ca_pem)) {
-        resp -> { return String?(resp.body) }
-        ? -> { return String?() }
-    }
+    r<HttpResponse> = https_get_full_verified(host, port, path, ca_pem)
+    if (r.status < 0) { return String?() }
+    return String?(r.body)
 }
 
 # Diagnostics: stand up a throwaway TLS server that answers one request with a
@@ -266,10 +265,8 @@ https_selfhost(cert_pem<String>, key_pem<String>)<Bool?> -> {
             code<Int> = 0
             got<String> = ""
             rs<String> = ""
-            match (https_get_full("localhost", port, "/secure")) {
-                resp -> { code = resp.status; got = resp.body; rs = resp.reason }
-                ? -> { }
-            }
+            r<HttpResponse> = https_get_full("localhost", port, "/secure")
+            code = r.status; got = r.body; rs = r.reason
             io<Int> = thread_join(th) else -2
             tls_free_context(scx)
             socket_close(srv)
@@ -323,10 +320,8 @@ https_selfhost_verified(cert_pem<String>, key_pem<String>)<Bool?> -> {
             code<Int> = 0
             got<String> = ""
             rs<String> = ""
-            match (https_get_full_verified("localhost", port, "/secure", cert_pem)) {
-                resp -> { code = resp.status; got = resp.body; rs = resp.reason }
-                ? -> { }
-            }
+            r<HttpResponse> = https_get_full_verified("localhost", port, "/secure", cert_pem)
+            code = r.status; got = r.body; rs = r.reason
             io<Int> = thread_join(th) else -2
             tls_free_context(scx)
             socket_close(srv)

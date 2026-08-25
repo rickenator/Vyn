@@ -1,0 +1,57 @@
+// @test: http/https full clients surface a lossless failure reason (error field)
+// @description: against a deterministically-closed loopback port, http_get_full
+//   and https_get_full must return a PRESENT response with status -1 and an
+//   `error` String? carrying a "connect ... failed" reason -- so a failed
+//   round-trip is never a silent absent and never conflated with a valid page.
+//   Success round-trips leave `error` absent (covered in test_http_client).
+// @category: http, https, modules, stdlib, error_handling
+// @expect: pass
+// @expect-output: reason-ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import http::{http_get_full, HttpResponse}
+import https::{https_get_full}
+import network::{socket_open, socket_bind, socket_listen, socket_local_port,
+                 socket_close, Socket}
+
+# Reserve + close an ephemeral loopback port so connecting to it deterministically
+# refuses (a connect failure, not a resolution failure).
+closed_port()<Int> -> {
+    fd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, 0) else -1
+    if (fd < 0) { return 1000 }
+    if (!(socket_bind(fd, "127.0.0.1", 0) else false)) { socket_close(fd); return 1000 }
+    if (!(socket_listen(fd, 1) else false)) { socket_close(fd); return 1000 }
+    p<Int> = socket_local_port(fd) else -1
+    socket_close(fd)
+    return p
+}
+
+# Read the lossless reason out of a response; returns "" when absent.
+reason_of(r<HttpResponse>)<String> -> {
+    match (r.error) {
+        e -> { return e }
+        ? -> { return "" }
+    }
+}
+
+main()<Int> -> {
+    port<Int> = closed_port()
+
+    # http:// -- must fail with a connect reason, not a silent absent.
+    rh<HttpResponse> = http_get_full("127.0.0.1", port, "/x")
+    eh<String> = reason_of(rh)
+    if (rh.status >= 0) { return 1 }
+    if (eh.len() == 0) { return 2 }
+    if (eh.index_of("connect") < 0) { println("http reason=" + eh); return 3 }
+
+    # https:// -- same guarantee through the TLS client path.
+    rs<HttpResponse> = https_get_full("127.0.0.1", port, "/x")
+    es<String> = reason_of(rs)
+    if (rs.status >= 0) { return 4 }
+    if (es.len() == 0) { return 5 }
+    if (es.index_of("connect") < 0) { println("https reason=" + es); return 6 }
+
+    println("reason-ok")
+    return 0
+}

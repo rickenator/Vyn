@@ -16,19 +16,17 @@ main()<Int> -> {
             port<Int> = srv.local_port()
             if (port <= 0) { srv.close(); return 2 }
 
-            match (http_get_full("127.0.0.1", port, "/greet")) {
-                resp -> {
-                    srv.close()
-                    if (resp.status != 200) { return 3 }
-                    if (resp.reason != "OK") { return 4 }
-                    if (resp.body != "hi from vyb: /greet") { return 5 }
-                    if (http_header(resp, "Content-Type") != "text/plain") { return 6 }
-                    cl<String> = http_header(resp, "content-length")
-                    if (cl.len() == 0 || http_parse_int(cl) != resp.body.len()) { return 7 }
-                    if (resp.headers.len() < 3) { return 8 }
-                }
-                ? -> { srv.close(); return 12 }
-            }
+            resp<HttpResponse> = http_get_full("127.0.0.1", port, "/greet")
+            srv.close()
+            if (resp.status != 200) { return 3 }
+            if (resp.reason != "OK") { return 4 }
+            if (resp.body != "hi from vyb: /greet") { return 5 }
+            if (http_header(resp, "Content-Type") != "text/plain") { return 6 }
+            cl<String> = http_header(resp, "content-length")
+            if (cl.len() == 0 || http_parse_int(cl) != resp.body.len()) { return 7 }
+            if (resp.headers.len() < 3) { return 8 }
+            # Success round-trip carries no error reason.
+            match (resp.error) { ? -> { }, e -> { return 12 } }
 
             println("ok")
             return 0
