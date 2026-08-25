@@ -12,9 +12,9 @@
 // @expect-output: btreemap-ok
 // @expect-return: 0
 // @env: VYB_STDLIB=stdlib
-// @skip-asan: true # exit-time ownership-teardown leak in the BTreeMap node arena
-//   (Vec get<->set / split deep-copy cycles); non-functional, LSan-only, tracked
-//   in #190. Real fix is compiler ownership teardown (implementation agent).
+// @skip-asan: true # small exit-time-only LSan residue in the BTreeMap node arena
+//   (struct-local Vec buffers not reclaimed on every exit path); non-functional,
+//   tracked in #192. The #190 arena teardown leak is fixed (see eed5a81).
 import collections
 
 main()<Int> -> {
