@@ -399,30 +399,6 @@ void __vyb_runtime_set_error_cause(VybError* error, VybError* cause) {
     error->cause = cause;
 }
 
-// ===== Type Dispatch =====
-
-bool __vyb_runtime_error_matches_type(
-    VybError* error,
-    const char* trap_type_name,
-    void* trap_type_id
-) {
-    if (!error || !trap_type_name) return false;
-
-    // Simple string comparison for now
-    // TODO: Add aspect-based matching
-    return strcmp(error->type_name, trap_type_name) == 0;
-}
-
-void* __vyb_runtime_cast_error(VybError* error, const char* target_type_name) {
-    if (!error || !target_type_name) return nullptr;
-
-    if (strcmp(error->type_name, target_type_name) == 0) {
-        return error->data;
-    }
-
-    return nullptr;
-}
-
 // ===== Custom Handler Management =====
 
 void __vyb_runtime_set_untrapped_handler(VybUntrappedErrorHandler handler) {
@@ -602,24 +578,6 @@ void __vyb_runtime_untrapped_error(VybError* error) {
     fflush(stderr);
 
     exit(exitCode);
-}
-
-// ===== Defer/Ensure Support (Stubs for now) =====
-
-void __vyb_runtime_register_defer(void (*cleanup_fn)(void*), void* context) {
-    // TODO: Implement defer stack
-}
-
-void __vyb_runtime_execute_defers() {
-    // TODO: Execute defers in LIFO order
-}
-
-void __vyb_runtime_push_ensure_block(void (*ensure_fn)()) {
-    // TODO: Implement ensure stack
-}
-
-void __vyb_runtime_pop_ensure_block() {
-    // TODO: Pop ensure stack
 }
 
 } // extern "C"
