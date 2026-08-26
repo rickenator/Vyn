@@ -1,0 +1,51 @@
+# libgit2 — posted FFI binding (SDK Phase 3/4).
+#
+# Vyb-friendly lossless wrapper over a curated libgit2 subset (init / open /
+# revparse / clone). Uses the FFI `from<loc<T>>()` handle out-param idiom (same
+# as bindings/sqlite). Requires libgit2 loaded into the process
+# (LD_LIBRARY_PATH pointing at a libgit2 .so; the vyb binary dlopen's it).
+import git2_binding::{git_libgit2_init, git_repository_open, git_repository_free,
+                      git_revparse_single, git_object_free, git_clone}
+
+# Initialize libgit2 (idempotent). Present on success.
+share(all)
+init()<Bool?> -> {
+    freedom {
+        if (git_libgit2_init() < 0) { return Bool?() }
+    }
+    return Bool?(true)
+}
+
+# Clone `url` into `dest`. Present (true) on success, absent on failure.
+share(all)
+clone(url<String>, dest<String>)<Bool?> -> {
+    freedom {
+        repo<loc<CVoid>> = from<loc<CVoid>>(0)
+        if (git_clone(loc(repo), url, dest, from<loc<CVoid>>(0)) != 0) { return Bool?() }
+        git_repository_free(repo)
+        return Bool?(true)
+    }
+}
+
+# Open the repo at `path`. Present on success.
+share(all)
+open_repo(path<String>)<Bool?> -> {
+    freedom {
+        repo<loc<CVoid>> = from<loc<CVoid>>(0)
+        if (git_repository_open(loc(repo), path) != 0) { return Bool?() }
+        git_repository_free(repo)
+        return Bool?(true)
+    }
+}
+
+# Resolve `revspec` (e.g. "HEAD") in the repo at `path`. Present on success.
+share(all)
+revparse(path<String>, revspec<String>)<Bool?> -> {
+    freedom {
+        repo<loc<CVoid>> = from<loc<CVoid>>(0)
+        obj<loc<CVoid>> = from<loc<CVoid>>(0)
+        if (git_repository_open(loc(repo), path) != 0) { return Bool?() }
+        if (git_revparse_single(loc(obj), repo, revspec) == 0) { return Bool?(true) }
+        return Bool?()
+    }
+}
