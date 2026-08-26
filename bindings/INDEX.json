@@ -1,1 +1,1 @@
-{"_policy": "official-bindings", "plugins": {"bindings/sqlite/sqlite3_binding.vyb": "59e821a34132e4e7680b0fe45330673a2f6e44884e1f46531388330db21a7f25"}}
+{"bindings/sqlite/mod.vyb": "75abcd3182facf7c0ece4a533d914e54f19b58d4d24f0ebb0f599df11583e13b", "bindings/sqlite/sqlite3_binding.vyb": "59e821a34132e4e7680b0fe45330673a2f6e44884e1f46531388330db21a7f25"}

@@ -2923,8 +2923,87 @@ static std::string modReadFile(const std::string& path) {
 static const char* mod_publisher_pubkey() {
     const char* e = getenv("VYB_PUBLISHER_KEY");
     if (e && *e) return e;
-    return "bea5577a3ad59e6a7061b8b6598d6eac1c0fa0c276c36e6d4c9f8363f9484873";
+    return "1b4900f7b96ea184b0d15076afbb39dc7895bf33b903e2089a3c60f8a3166e2a";
 }
+// SDK Phase 4 key management. Private signing keys live OUT of the source tree
+// in $VYB_SIGNING_DIR (default ~/.vyb/signing/), mode 0600, generated ONCE and
+// persisted across SDK builds (rotation is an explicit --rotate, never implicit).
+static void mod_hex_to_bytes(const std::string& hex, unsigned char* out, size_t n) {
+    for (size_t i = 0; i < n && i * 2 + 1 < hex.size(); i++)
+        out[i] = (unsigned char)strtol(hex.substr(i * 2, 2).c_str(), nullptr, 16);
+}
+static std::string mod_bytes_to_hex(const unsigned char* in, size_t n) {
+    static const char* HX = "0123456789abcdef";
+    std::string out(n * 2, '0');
+    for (size_t i = 0; i < n; i++) { out[i * 2] = HX[in[i] >> 4]; out[i * 2 + 1] = HX[in[i] & 15]; }
+    return out;
+}
+#ifdef VYB_HAVE_OPENSSL
+#include <openssl/rand.h>
+static bool mod_random_bytes(unsigned char* o, size_t n) { return RAND_bytes(o, (int)n) == 1; }
+#endif
+// Generate an Ed25519 keypair, write the RAW 32-byte private key to `privPath`
+// (mode 0600), and print the public hex to pin. Returns 0 on success.
+static int mod_gen_key(const std::string& privPath) {
+#ifdef VYB_HAVE_OPENSSL
+    unsigned char priv[32], pub[32];
+    if (!mod_random_bytes(priv, sizeof(priv))) { std::cerr << "Error: RAND_bytes failed\n"; return 1; }
+    EVP_PKEY* pkey = EVP_PKEY_new_raw_private_key(EVP_PKEY_ED25519, NULL, priv, 32);
+    if (!pkey) { std::cerr << "Error: could not create Ed25519 key\n"; return 1; }
+    size_t plen = 32;
+    EVP_PKEY_get_raw_public_key(pkey, pub, &plen);
+    std::ofstream f(privPath, std::ios::binary | std::ios::trunc);
+    if (!f) { EVP_PKEY_free(pkey); std::cerr << "Error: cannot write key to " << privPath << "\n"; return 1; }
+    f.write((const char*)priv, 32); f.close();
+    chmod(privPath.c_str(), 0600);
+    EVP_PKEY_free(pkey);
+    std::cout << "Wrote Ed25519 private signing key to " << privPath << " (0600; secure it, never commit)\n";
+    std::cout << "Public key to pin: " << mod_bytes_to_hex(pub, plen) << "\n";
+    return 0;
+#else
+    std::cerr << "Error: signing keys require an OpenSSL build (VYB_HAVE_OPENSSL)\n"; return 1;
+#endif
+}
+// Sign an INDEX with a raw 32-byte Ed25519 private key (file of 32 bytes, or
+// 64-hex), writing a 64-byte signature to indexPath + ".sig". Returns 0.
+static int mod_sign_index(const std::string& indexPath, const std::string& keyArg, const std::string& sigArg) {
+#ifdef VYB_HAVE_OPENSSL
+    unsigned char priv[32];
+    if (fs::exists(keyArg)) {
+        std::string kb = modReadFile(keyArg);
+        if (kb.size() != 32) { std::cerr << "Error: private key file must be exactly 32 raw bytes\n"; return 1; }
+        memcpy(priv, kb.data(), 32);
+    } else {
+        if (keyArg.size() != 64) { std::cerr << "Error: expected a 64-hex private key or a 32-byte key file\n"; return 1; }
+        mod_hex_to_bytes(keyArg, priv, 32);
+    }
+    std::string index = modReadFile(indexPath);
+    EVP_PKEY* pkey = EVP_PKEY_new_raw_private_key(EVP_PKEY_ED25519, NULL, priv, 32);
+    if (!pkey) { std::cerr << "Error: could not restore Ed25519 key\n"; return 1; }
+    EVP_MD_CTX* c = EVP_MD_CTX_new();
+    unsigned char sig[64]; size_t siglen = sizeof(sig);
+    bool ok = c && EVP_DigestSignInit(c, NULL, NULL, NULL, pkey) == 1 &&
+              EVP_DigestSign(c, sig, &siglen, (const unsigned char*)index.data(), index.size()) == 1;
+    EVP_MD_CTX_free(c); EVP_PKEY_free(pkey);
+    if (!ok) { std::cerr << "Error: signing failed\n"; return 1; }
+    std::string sigPath = sigArg.empty() ? indexPath + ".sig" : sigArg;
+    std::ofstream f(sigPath, std::ios::binary | std::ios::trunc);
+    f.write((const char*)sig, (std::streamsize)siglen); f.close();
+    std::cout << "Wrote 64-byte Ed25519 signature to " << sigPath << "\n";
+    return 0;
+#else
+    std::cerr << "Error: signing requires an OpenSSL build\n"; return 1;
+#endif
+}
+// Resolve the trust public key: --key wins, then VYB_SIGNING_KEY (own-key opt-in
+// for a builder's SDK), else the official pinned default.
+static std::string mod_resolve_pubkey(const std::string& optKey) {
+    if (!optKey.empty()) return optKey;
+    const char* e = getenv("VYB_SIGNING_KEY");
+    if (e && *e) return e;
+    return mod_publisher_pubkey();
+}
+
 // Verify a 64-byte Ed25519 signature over the exact message bytes against the
 // 32-byte (hex) public key. Returns true on valid signature (sets err on failure).
 static bool mod_verify_ed25519(const std::string& msg, const std::string& sig,
@@ -2950,7 +3029,50 @@ static bool mod_verify_ed25519(const std::string& msg, const std::string& sig,
 #endif
 }
 
-static int mod_fetch_github(const std::string& ownerRepoPath, const std::string& exePath, std::string& outDir) {
+// Forward declarations for the Phase-4 signed-INDEX helpers (defined lower).
+static std::string mod_resolve_pubkey(const std::string& optKey);
+static bool mod_verify_ed25519(const std::string& msg, const std::string& sig,
+                               const std::string& pubHex, std::string& err);
+static bool mod_verify_index(const std::string& indexPath, const std::string& sigArg,
+                             const std::string& optKey, std::string& err);
+
+// Fetch one URL from the github raw host into `outFile` via a generated Vyb
+// driver (verified TLS against the system CA). Returns the driver's exit code.
+static int mod_fetch_url(const std::string& rawPath, const std::string& outFile,
+                         const std::string& capath, const std::string& exePath,
+                         const std::string& tmpRoot) {
+    std::string driver = tmpRoot + "/f.vyb";
+    {
+        std::ostringstream d;
+        d << "# generated by vyb mod install (github transport, #175)\n"
+          << "import https::{https_get_full_verified}\n"
+          << "import http::{HttpResponse}\n"
+          << "import io::{open_read, read_all, open_write, write_str, close}\n"
+          << "main()<Int> -> {\n"
+          << "    capth<String> = \"" << capath << "\"\n"
+          << "    ca2<String> = \"\"\n"
+          << "    match (open_read(capth)) {\n"
+          << "        cf -> { match (read_all(cf)) { c -> { ca2 = c } ? -> {} } }\n"
+          << "        ? -> {}\n"
+          << "    }\n"
+          << "    r<HttpResponse> = https_get_full_verified(\"raw.githubusercontent.com\", 443, \"" << rawPath << "\", ca2)\n"
+          << "    if (r.status != 200) { println(\"MODFETCH-ERR status=\" + r.status.to_string()); return 1 }\n"
+          << "    match (open_write(\"" << outFile << "\")) {\n"
+          << "        of -> { wres<Int?> = write_str(of, r.body); cres<Bool?> = close(of) }\n"
+          << "        ? -> { println(\"MODFETCH-ERR open_write\"); return 1 }\n"
+          << "    }\n"
+          << "    println(\"MODFETCH-OK\")\n"
+          << "    return 0\n"
+          << "}\n";
+        std::ofstream f(driver); f << d.str();
+    }
+    std::string exeDir = fs::path(exePath).parent_path().string();
+    std::string stdlib = (fs::path(exeDir) / ".." / "stdlib").lexically_normal().string();
+    if (fs::exists(stdlib)) setenv("VYB_STDLIB", stdlib.c_str(), 1);
+    return run_exec({exePath, driver});
+}
+
+static int mod_fetch_github(const std::string& ownerRepoPath, const std::string& exePath, std::string& outDir, bool requireSigned) {
     size_t s1 = ownerRepoPath.find('/');
     size_t s2 = (s1 == std::string::npos) ? std::string::npos : ownerRepoPath.find('/', s1 + 1);
     if (s1 == std::string::npos || s2 == std::string::npos) {
@@ -2976,51 +3098,50 @@ static int mod_fetch_github(const std::string& ownerRepoPath, const std::string&
     std::error_code ec;
     fs::create_directories(proj, ec);
     std::string outFile = proj + "/mod.vyb";
-    std::string driver = tmpRoot + "/fetch.vyb";
-    {
-        std::ostringstream d;
-        d << "# generated by vyb mod install (github transport, #175). Verifies the peer\n"
-          << "# against the system CA bundle (VYB_CA_BUNDLE or /etc/ssl/certs/ca-certificates.crt);\n"
-          << "# integrity is additionally pinned via the sha256 TOFU recorded in vyb.lock.\n"
-          << "import https::{https_get_full_verified}\n"
-          << "import http::{HttpResponse}\n"
-          << "import io::{open_read, read_all, open_write, write_str, close}\n"
-          << "main()<Int> -> {\n"
-          << "    capth<String> = \"" << capath << "\"\n"
-          << "    ca2<String> = \"\"\n"
-          << "    match (open_read(capth)) {\n"
-          << "        cf -> { match (read_all(cf)) { c -> { ca2 = c } ? -> {} } }\n"
-          << "        ? -> {}\n"
-          << "    }\n"
-          << "    r<HttpResponse> = https_get_full_verified(\"raw.githubusercontent.com\", 443, \"" << rawPath << "\", ca2)\n"
-          << "    if (r.status != 200) { println(\"MODFETCH-ERR status=\" + r.status.to_string()); return 1 }\n"
-          << "    match (open_write(\"" << outFile << "\")) {\n"
-          << "        of -> { wres<Int?> = write_str(of, r.body); cres<Bool?> = close(of) }\n"
-          << "        ? -> { println(\"MODFETCH-ERR open_write\"); return 1 }\n"
-          << "    }\n"
-          << "    println(\"MODFETCH-OK\")\n"
-          << "    return 0\n"
-          << "}\n";
-        std::ofstream f(driver); f << d.str();
+    if (mod_fetch_url(rawPath, outFile, capath, exePath, tmpRoot) != 0) {
+        std::cerr << "Error: github fetch failed.\n";
+        return 1;
     }
-    std::string exeDir = fs::path(exePath).parent_path().string();
-    std::string stdlib = (fs::path(exeDir) / ".." / "stdlib").lexically_normal().string();
-    if (fs::exists(stdlib)) setenv("VYB_STDLIB", stdlib.c_str(), 1);
-    std::vector<std::string> args = { exePath, driver };
-    int rc = run_exec(args);
-    if (rc != 0) { std::cerr << "Error: github fetch failed (exit " << rc << ").\n"; return 1; }
     if (!fs::exists(outFile)) { std::cerr << "Error: github fetch produced no module.\n"; return 1; }
+
+    // --require-signed (Phase 4): verify the module hash against the signed INDEX.
+    if (requireSigned) {
+        std::string idx = tmpRoot + "/INDEX.json", sigp = tmpRoot + "/INDEX.json.sig";
+        std::string base = "/" + owner + "/" + repo + "/main/";
+        if (mod_fetch_url(base + "INDEX.json", idx, capath, exePath, tmpRoot) != 0 ||
+            mod_fetch_url(base + "INDEX.json.sig", sigp, capath, exePath, tmpRoot) != 0) {
+            std::cerr << "Error: --require-signed: could not fetch the signed INDEX.json.\n";
+            return 1;
+        }
+        std::string err;
+        if (!mod_verify_index(idx, sigp, "", err)) { // official key; VYB_SIGNING_KEY opt-in
+            std::cerr << "Error: --require-signed: " << err << "\n";
+            return 1;
+        }
+        std::string idxBody = modReadFile(idx);
+        std::string moduleBytes = modReadFile(outFile);
+        vyb_file_str dd = __vyb_sha256_hex(moduleBytes.empty() ? "" : moduleBytes.data(), (int64_t)moduleBytes.size());
+        std::string actualHex = modHexLower(dd.len > 0 ? std::string(dd.ptr, (size_t)dd.len) : "");
+        std::string wantHex;
+        size_t kp = idxBody.find("\"" + subpath + "\"");
+        if (kp != std::string::npos) {
+            size_t colon = idxBody.find(':', kp);
+            size_t vq = colon != std::string::npos ? idxBody.find('"', colon + 1) : std::string::npos;
+            if (vq != std::string::npos && vq + 65 <= idxBody.size())
+                wantHex = modHexLower(idxBody.substr(vq + 1, 64));
+        }
+        if (actualHex.empty() || actualHex != wantHex) {
+            std::cerr << "Error: --require-signed: module sha256 " << actualHex
+                      << " does not match the signed INDEX entry (" << wantHex << ") for " << subpath << "\n";
+            return 1;
+        }
+        std::cout << "signed INDEX verified for " << subpath << " (publisher key).\n";
+    }
+
     outDir = proj;
     return 0;
 }
 static int mod_install(const std::string& spec, const std::string& exePath, bool requireSigned) {
-    if (requireSigned) {
-        std::cerr << "Error: --require-signed refuses to install without signature "
-                     "verification, and the signed-INDEX fetch for the transport is not "
-                     "yet wired (Phase 4). Validate an INDEX offline with "
-                     "'vyb mod verify-signed <INDEX.json>'.\n";
-        return 1;
-    }
     std::string src = spec;
     std::string pin;
     if (auto at = src.find('@'); at != std::string::npos) {
@@ -3030,8 +3151,14 @@ static int mod_install(const std::string& spec, const std::string& exePath, bool
     std::string dirPath;
     if (src.rfind("path:", 0) == 0) {
         dirPath = src.substr(5);
+        if (requireSigned) {
+            std::cerr << "Error: --require-signed: a path: source has no posted signed "
+                         "INDEX; use a github: source or validate with "
+                         "'vyb mod verify-signed <INDEX.json>'.\n";
+            return 1;
+        }
     } else if (src.rfind("github:", 0) == 0) {
-        if (mod_fetch_github(src.substr(7), exePath, dirPath) != 0) return 1;
+        if (mod_fetch_github(src.substr(7), exePath, dirPath, requireSigned) != 0) return 1;
     } else {
         std::cerr << "Error: unrecognized module spec '" << src
                   << "' (expect path:DIR or github:owner/repo/path[@sha256:HEX]).\n";
@@ -3114,12 +3241,12 @@ static int mod_install(const std::string& spec, const std::string& exePath, bool
 // Offline verification of a posted INDEX against the pinned publisher key
 // (Phase 4 / doc/MANIFEST.md §4). INDEX.sig is a 64-byte Ed25519 signature over
 // the exact INDEX.json bytes.
-static bool mod_verify_index(const std::string& indexPath, const std::string& sigArg, std::string& err) {
+static bool mod_verify_index(const std::string& indexPath, const std::string& sigArg, const std::string& optKey, std::string& err) {
     std::string sigPath = sigArg.empty() ? indexPath + ".sig" : sigArg;
     std::string index = modReadFile(indexPath);
     std::string sig = modReadFile(sigPath);
     if (index.empty() || sig.empty()) { err = "could not read INDEX or its signature"; return false; }
-    return mod_verify_ed25519(index, sig, mod_publisher_pubkey(), err);
+    return mod_verify_ed25519(index, sig, mod_resolve_pubkey(optKey), err);
 }
 
 static int run_mod_command(int argc, char** argv, const std::string& exePath) {
@@ -3136,14 +3263,36 @@ static int run_mod_command(int argc, char** argv, const std::string& exePath) {
                   << "  See doc/MANIFEST.md.\n";
         return 0;
     }
+    if (argc >= 1 && std::string(argv[0]) == "gen-key") {
+        const char* h = getenv("HOME");
+        const char* d = getenv("VYB_SIGNING_DIR");
+        std::string dir = (d && *d) ? d : ((h && *h ? h : ".") + std::string("/.vyb/signing"));
+        std::string priv = (argc >= 2) ? argv[1] : (dir + "/sdk.key");
+        std::error_code ec; fs::create_directories(fs::path(dir), ec);
+        return mod_gen_key(priv);
+    }
+    if (argc >= 2 && std::string(argv[0]) == "sign-index") {
+        std::string keyArg, sigArg;
+        for (int i = 2; i < argc; ++i) {
+            if (std::string(argv[i]) == "--key" && i + 1 < argc) keyArg = argv[++i];
+            else if (std::string(argv[i]) == "--sig" && i + 1 < argc) sigArg = argv[++i];
+        }
+        if (keyArg.empty()) { std::cerr << "Error: vyb mod sign-index <INDEX.json> --key <priv>\n"; return 1; }
+        return mod_sign_index(argv[1], keyArg, sigArg);
+    }
     if (argc >= 1 && std::string(argv[0]) == "verify-signed") {
-        if (argc < 2) { std::cerr << "Error: vyb mod verify-signed <INDEX.json> [<INDEX.sig>]\n"; return 1; }
+        if (argc < 2) { std::cerr << "Error: vyb mod verify-signed <INDEX.json> [<INDEX.sig>] [--key <pubHex>]\n"; return 1; }
+        std::string index = argv[1], sig, optKey;
+        for (int i = 2; i < argc; ++i) {
+            if (std::string(argv[i]) == "--key" && i + 1 < argc) optKey = argv[++i];
+            else if (sig.empty()) sig = argv[i];
+        }
         std::string err;
-        if (!mod_verify_index(argv[1], (argc >= 3 ? argv[2] : ""), err)) {
+        if (!mod_verify_index(index, sig, optKey, err)) {
             std::cerr << "SIGNED VERIFY FAIL: " << err << "\n";
             return 1;
         }
-        std::cout << "SIGNED VERIFY OK (publisher key)\n";
+        std::cout << "SIGNED VERIFY OK\n";
         return 0;
     }
     if (argc < 1 || std::string(argv[0]) != "install") {

@@ -143,10 +143,11 @@ pin re-verification against the cached bytes) work offline.
 The TOFU/sha256-pin model above authenticates a module only against the
 digest you *first observed*. That is a self-signed-cert-equivalent trust
 anchor: it defends against tampering after first attach but not against a
-first-use substitution, and nothing vouches for *who* published it. For
-**official** bindings a defined **root of authority** and **signed packages**
-are required. This is the locked Phase-4 spec — the next implementation step
-after the smuggle transport.
+first-use substitution, and nothing vouches for *who* published it.
+For **official** bindings a defined **root of authority** and **signed packages**
+are required. The crypto/root core is **implemented** (raw Ed25519 via OpenSSL,
+not the minisign format); the github `--require-signed` transport fetch is the
+remaining acceptance line. See §4.7.
 
 ### 4.1 Root of authority
 
@@ -227,11 +228,27 @@ hash does not verify is rejected outright. Without it, T0 TOFU remains available
 
 ### 4.7 Implementation status
 
-- **Landed:** pinned publisher key (`bindings/publisher_key.pub`) + Ed25519
-  signature verification via `vyb mod verify-signed <INDEX.json>` (the crypto/root
-  mechanism), and a signed `bindings/INDEX.json` (+ sibling `.sig`) committed.
-- **Staged:** the transport-level fetch+verify (`vyb mod install --require-signed
-  github:...` fetching + verifying the posted `INDEX.json`) — until wired,
-  `--require-signed` refuses to install rather than silently skip verification.
+- **Landed:** pinned publisher root key + Ed25519 verification —
+  `vyb mod verify-signed <INDEX.json>` (official default, `--key`/`VYB_SIGNING_KEY`
+  opt-in), `vyb mod sign-index` (semi-auto signing), `vyb mod gen-key` (keypair).
+  `--require-signed` on a `github:` install fetches + verifies the posted
+  `INDEX.json` and checks the module hash before installing; a `path:` source has
+  no posted signed INDEX and refuses under `--require-signed`.
 - The T0 TOFU path is unchanged.
+
+### 4.8 Key operations: storage, rotation, own-SDK builds
+
+- **Storage:** a private signing key is never in the source tree. `vyb mod
+  gen-key` writes to `$VYB_SIGNING_DIR` (default `~/.vyb/signing/`), file mode
+  0600, dir 0700. The SDK packager runs `scripts/ensure_signing_key.sh`, which
+  ensures an out-of-tree key exists for every build.
+- **No implicit rotation:** the key is generated ONCE and persists across SDK
+  builds — building the SDK does NOT rotate it. Rotation is an explicit `--rotate`
+  (`ensure_signing_key.sh ... --rotate`), which archives the old key to
+  `.bak.<ts>` and generates a new one; the new public key is then re-pinned and
+  `bindings/INDEX.json` re-signed.
+- **Use ours by default; own-key for your own SDK build:** official packages
+  verify against the default pinned key. A builder generating their own key pins
+  it via `VYB_SIGNING_KEY`/`--key` and signs their own `INDEX.json` with
+  `vyb mod sign-index INDEX.json --key <their key>`.
 

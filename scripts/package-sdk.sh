@@ -195,6 +195,9 @@ print(f"    manifest.json: {len(files)} files")
 PY
 
 # ---- tar ------------------------------------------------------------------
+echo "==> Signing key (Phase 4): ensure an out-of-tree key — generated once, explicit rotation"
+bash "${REPO_DIR}/scripts/ensure_signing_key.sh" "$VYB_BIN" >/dev/null 2>&1 || true
+
 echo "==> Tarballing $TARBALL"
 mkdir -p "$OUT_DIR"
 tar -C "$OUT_DIR/.stage" -czf "$TARBALL" "$PKG_DIR_NAME"
