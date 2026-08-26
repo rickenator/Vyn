@@ -1,0 +1,131 @@
+name: release-sdk
+
+# Vyb SDK phase 1 release CI (#175): on a v* tag (or manual dispatch), build the
+# Release compiler on Linux and macOS, run the docs ship-gate plus the full JIT
+# suite and AOT/native-link pass against the staged binary, then package the SDK
+# (scripts/package-sdk.sh) and upload the tarball + manifest as release artifacts.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+concurrency:
+  group: release-sdk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sdk:
+    name: SDK (${{ matrix.os_label }}-${{ matrix.arch_label }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            os_label: linux
+            arch_label: x64
+          - os: macos-latest
+            os_label: macos
+            arch_label: x64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so the derived revision matches the tag
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake \
+            llvm-18-dev libclang-18-dev \
+            catch2
+
+      - name: Install build dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install llvm@18 libclang catch2 cmake
+
+      - name: Configure (Release -> build-release)
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            LLVM_DIR="$(brew --prefix llvm@18)/lib/cmake/llvm"
+          else
+            LLVM_DIR=/usr/lib/llvm-18/cmake
+          fi
+          cmake -S . -B build-release \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_DIR="$LLVM_DIR" \
+            -DVYB_USE_QT5=OFF \
+            -DVYB_USE_OPENSSL=ON \
+            -DVYB_BINDGEN_LIBCLANG=ON
+
+      - name: Build (Release)
+        run: cmake --build build-release --parallel "$(nproc)"
+
+      - name: Verify build identity (#160)
+        # The staged binary must report build=Release (never silently Debug) +
+        # no sanitizer so the shipped SDK is unambiguously a release artifact.
+        run: test "$(./build-release/vyb --version)" = "Vyb $(grep '^project' CMakeLists.txt | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+') (build=Release, sanitize=none)"
+
+      - name: Docs ship-gate must pass
+        run: bash test/docs_gate.sh
+
+      - name: Full JIT test suite (against build-release/vyb)
+        run: python3 test/run_tests.py --vyb build-release/vyb --test-dir test --execute-jit --json /tmp/suite.json --evidence /tmp/release-evidence.json
+
+      - name: AOT / native-link coverage (against build-release/vyb)
+        # test_compilation.sh resolves the binary at build/vyb; alias build ->
+        # build-release so the AOT pass exercises the exact staged artifact.
+        run: |
+          ln -sfn build-release build
+          ./test_compilation.sh --json /tmp/aot-evidence.json
+          rm -f test_output_* ./*.o 2>/dev/null || true
+
+      - name: Derive version from tag
+        id: version
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "Derived SDK version from tag '${GITHUB_REF_NAME}': ${VER}"
+
+      - name: Print evidence summary (total / pass / fail / revision)
+        # Brief, single-line summary distilled from the JIT run-evidence file.
+        run: |
+          python3 - <<'EOF'
+          import json
+          try:
+              with open('/tmp/release-evidence.json') as f:
+                  ev = json.load(f)
+              total    = ev.get('total', '?')
+              passed   = ev.get('passed', '?')
+              failed   = ev.get('failed', '?')
+              revision = ev.get('revision', '?')
+          except Exception as exc:
+              total, passed, failed, revision = 'n/a', 'n/a', 'n/a', 'n/a'
+              print(f'[evidence] could not read /tmp/release-evidence.json: {exc}')
+          print(f'[evidence] total={total} passed={passed} failed={failed} revision={revision}')
+          EOF
+
+      - name: Package SDK
+        run: |
+          bash scripts/package-sdk.sh --version "${{ steps.version.outputs.version }}" --out dist
+          echo "--- packaged in dist/ ---"
+          ls -la dist/
+
+      - name: Upload SDK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vyb-sdk-${{ matrix.os_label }}-${{ matrix.arch_label }}
+          path: |
+            dist/*.tar.gz
+            dist/manifest.json
+          if-no-files-found: error
