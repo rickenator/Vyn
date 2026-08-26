@@ -1,0 +1,13 @@
+# calc::strutil
+#
+# Sibling helper module for the `calc` demo module. It lives in the same
+# directory as `calc/mod.vyb` and is imported by `calc` using a *relative*
+# path import (`import strutil::{exclaim}`). This is the point of the fixture:
+# the smuggle channel must ship a `.vyb` module together with its relative-import
+# sibling `.vyb` files and resolve them the same way the compiler does (search
+# the importing file's own directory first).
+
+share(all)
+exclaim(s<String>)<String> -> {
+    return s + "!"
+}

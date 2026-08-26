@@ -1,0 +1,26 @@
+# calc
+#
+# Offline 'posted module' fixture for the smuggle channel (vyb mod install).
+# A small demo module named `calc`, resolved from a repo file tree as
+# `<root>/calc/mod.vyb`. It exports two functions (one Int-returning, one
+# String-returning) so an importer exercises both return types across the
+# module boundary.
+#
+# `greet` dogfoods Vyb a little: it binds the input to a local variable and
+# delegates the work to a helper, `exclaim`, imported from the sibling module
+# `strutil` via a RELATIVE path import. Shipping `strutil.vyb` alongside is
+# mandatory — the smuggle channel must carry relative-import siblings.
+
+share(all)
+import strutil::{exclaim}
+
+share(all)
+add(a<Int>, b<Int>)<Int> -> {
+    return a + b
+}
+
+share(all)
+greet(name<String>)<String> -> {
+    nick<String> = name
+    return exclaim("Hello, " + nick)
+}

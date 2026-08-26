@@ -5,6 +5,10 @@
 implementation. This page is the contract: what is supported, what is rejected,
 and the compatibility policy.
 
+> New: remote modules fetched by `vyb mod install` are recorded into the same
+> `[dependencies]` table — see
+> [Remote module import (vyb mod install)](#remote-module-import-vyb-mod-install).
+
 ## Fields and tables
 
 ```
@@ -57,3 +61,70 @@ mis-parsing:
 - Local `path` dependencies are the only **resolved** source today; `git` and
   `version` sources parse but are rejected at build with `#165` (see
   `doc/DEVELOPER_TOOLING.md` for the staged resolver).
+
+## Remote module import (`vyb mod install`)
+
+Phase 2 of the SDK plan (issue **#175**): `vyb mod install` fetches a remote
+`.vyb` module and registers it as a local `path` dependency so that it works
+through the exact same `[dependencies]` machinery described above.
+
+### Module spec grammar
+
+A remote module is addressed by a spec of the form
+
+```
+github:owner/repo/path
+```
+
+where `path` is a single `.vyb` module file posted in that repository's file
+tree (by convention under the repo's `bindings/` directory). The spec may carry
+an optional integrity pin appended as a suffix:
+
+```
+github:owner/repo/path@sha256:HEX
+```
+
+`HEX` is the lowercase hex SHA-256 of the module file's bytes.
+
+### What the command does, end to end
+
+`vyb mod install github:owner/repo/path[@sha256:HEX]`:
+
+1. **Fetch** — retrieves the specified `.vyb` module file, plus any sibling
+   `.vyb` files it imports by relative path, from the repository's GitHub file
+   tree. Fetching goes over the HTTPS standard library: the module spec's
+   `owner/repo/path` is mapped onto `raw.githubusercontent.com`, i.e. the
+   `/owner/repo/<branch>/<path>` web path for that file.
+2. **Verify the pin (optional)** — if the spec carries `@sha256:HEX`, the
+   fetched bytes are hashed with `crypto::sha256` and compared to the pin. A
+   mismatch is a **hard error** that aborts the install and reports **both** the
+   expected hexadecimal digest and the actual one computed from the fetched
+   bytes, so the discrepancy is visible at a glance.
+3. **Materialize** — writes the fetched module (and its relative-import
+   siblings) into the project-local directory
+   `.vybmod/owner/repo/` (mirroring the spec's `owner/repo`).
+4. **Record in the lockfile** — appends `name -> { source, sha256 }` to
+   `vyb.lock`, where `source` is the full spec the module was installed from and
+   `sha256` its integrity digest.
+5. **Register the dependency** — unless an entry already exists, adds
+   `name = { path = ".vybmod/owner/repo" }` to the project's `vyb.toml`
+   `[dependencies]` table, making the installed module resolve as an ordinary
+   local path dependency. If the `name` is already present it is left
+   untouched.
+
+### Integrity model
+
+- A provided `@sha256:HEX` pin is **re-verified on every re-install** — the
+  fetched bytes are always re-hashed and compared, so a changed or tampered
+  upstream file surfaces as the hard error described above.
+- Content fetched **without** a pin is still recorded in `vyb.lock` with the
+  `sha256` computed over the fetched bytes at install time, so even
+  unpinned installs carry a verifiable digest for future re-checking.
+
+### Offline / cache note
+
+Already-fetched modules are **reused rather than re-fetched**: if
+`.vybmod/owner/repo/` is already present and up to date, `vyb mod install`
+skips the network fetch for that module, so repeat installs (including
+pin re-verification against the cached bytes) work offline.
+
