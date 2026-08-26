@@ -96,12 +96,12 @@ github:owner/repo/path@sha256:HEX
    `owner/repo/path` is mapped onto `raw.githubusercontent.com`, i.e. the
    `/owner/repo/<branch>/<path>` web path for that file.
 
-   > **Transport & trust:** the fetch uses the HTTPS stdlib's *unverified* client
-   > context, so integrity comes from the **sha256 pin (TOFU)** — not the TLS
-   > layer. The first install records the fetched digest in `vyb.lock`; the
-   > verified-TLS client has a handshake interop gap against the GitHub CDN
-   > (`raw.githubusercontent.com`/Fastly) tracked separately for the tls stack.
-   > A caller can always pin `@sha256:HEX` for a hard guarantee.
+   > **Transport & trust:** the fetch uses the HTTPS stdlib's *verified* client
+   > (`https_get_full_verified`) against the system CA bundle (`VYB_CA_BUNDLE` or
+   > `/etc/ssl/certs/ca-certificates.crt`), so the peer certificate is validated
+   > at the transport layer. Integrity is additionally pinned with the **sha256
+   > TOFU** recorded in `vyb.lock` (computed on first install, re-verified on
+   > re-install); a caller can force `@sha256:HEX` for a hard guarantee.
 
 2. **Verify the pin (optional)** — if the spec carries `@sha256:HEX`, the
    fetched bytes are hashed with `crypto::sha256` and compared to the pin. A

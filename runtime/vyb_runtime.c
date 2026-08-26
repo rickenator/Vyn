@@ -2151,12 +2151,27 @@ VYB_WEAK int64_t __vyb_tls_client_context(void) {
 // Load one CA cert given as in-memory PEM into `ctx`'s trust store.
 static int vyb_tls_load_ca_pem(SSL_CTX* ctx, const char* pem) {
     BIO* b = BIO_new_mem_buf((void*)pem, (int)(pem ? strlen(pem) : 0));
-    X509_STORE* store = b ? SSL_CTX_get_cert_store(ctx) : NULL;
-    X509* ca = b ? PEM_read_bio_X509(b, NULL, NULL, NULL) : NULL;
-    int ok = (ca && store && X509_STORE_add_cert(store, ca) == 1);
-    if (ca) X509_free(ca);
-    if (b) BIO_free(b);
-    return ok;
+    if (!b) { vyb_tls_capture_error(); return 0; }
+    X509_STORE* store = SSL_CTX_get_cert_store(ctx);
+    if (!store) { BIO_free(b); vyb_tls_capture_error(); return 0; }
+    // Load the WHOLE bundle, not just the first cert: a CA file (e.g. the system
+    // ca-certificates.crt) is many chained PEMs, and VERIFY_PEER needs the right
+    // root as an anchor. Reading a single cert previously loaded an arbitrary
+    // first CA, so real-chain verification failed (loopback self-signed tests
+    // passed only because a self-signed cert is its own anchor).
+    ERR_clear_error();
+    int added = 0;
+    for (;;) {
+        X509* ca = PEM_read_bio_X509(b, NULL, NULL, NULL);
+        if (!ca) break;                 // end of bundle
+        if (X509_STORE_add_cert(store, ca) == 1) added++;
+        X509_free(ca);
+        if (added > 10000) break;       // sanity cap
+    }
+    BIO_free(b);
+    ERR_clear_error();
+    if (added == 0) { vyb_tls_capture_error(); return 0; }
+    return 1;
 }
 
 // A client SSL_CTX that verifies the peer against `ca_pem` (or the system
