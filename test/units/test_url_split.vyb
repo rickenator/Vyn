@@ -1,0 +1,33 @@
+// @test: url module splits a URL into (scheme, host, port, path) (#195 Item 4)
+// @description: url_split resolves the scheme's default port when omitted and
+//   honours an explicit port; scheme is case-insensitive.
+// @category: url, string, stdlib
+// @expect: pass
+// @expect-return: 0
+
+import url::{url_split, UrlSplit, default_port}
+
+main()<Int> -> {
+    a<UrlSplit> = url_split("https://codeload.github.com:8443/vim/vim/tar.gz")
+    if (a.scheme != "https" || a.host != "codeload.github.com") { return 1 }
+    if (a.port != 8443 || a.path != "/vim/vim/tar.gz") { return 2 }
+
+    b<UrlSplit> = url_split("https://example.com")
+    if (b.port != 443 || b.path != "/") { return 3 }
+
+    c<UrlSplit> = url_split("http://example.com/x")
+    if (c.scheme != "http" || c.port != 80 || c.path != "/x") { return 4 }
+
+    d<UrlSplit> = url_split("host:8080/robots.txt")
+    if (d.scheme != "http" || d.host != "host" || d.port != 8080) { return 5 }
+    if (d.path != "/robots.txt") { return 6 }
+
+    e<UrlSplit> = url_split("HTTPS://Example.COM/PATH")
+    if (e.scheme != "https" || e.host != "Example.COM") { return 7 }
+
+    p<Int> = default_port("https")
+    if (p != 443) { return 8 }
+
+    println("url-ok")
+    return 0
+}

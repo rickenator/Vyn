@@ -1,0 +1,90 @@
+# url - URL parsing in pure Vyb (no FFI).
+#
+# Splits a single absolute URL into (scheme, host, port, path), resolving the
+# scheme's conventional default port when the URL omits one, so a caller can
+# pick the http vs https client from the scheme and pass port/path straight
+# through.
+#
+# This is the stdlib promotion of the behavior-verified framework parser
+# (VybOS `modules/url.vyb`, which drives every realizer slice); it is kept
+# behavior-identical.
+#
+# Usage:
+#   import url::{url_split, default_port, UrlSplit}
+#   u<UrlSplit> = url_split("https://codeload.github.com:8443/vim/vim/tar.gz")
+#   # u.scheme == "https", u.host == "codeload.github.com", u.port == 8443,
+#   # u.path  == "/vim/vim/tar.gz"
+#
+# Note: IPv6 bracket hosts (`[::1]:8080`) and URL fragments (`#frag`) are NOT
+# specially handled; a host containing `:` is split at the first colon and a
+# fragment is captured as part of the path.
+#
+# #195 Item 4.
+
+# The four components of a parsed absolute URL, with `port` always resolved to
+# a concrete number (the scheme default when the URL omits one).
+share(all)
+struct UrlSplit {
+    scheme<String>,
+    host<String>,
+    port<Int>,
+    path<String>
+}
+
+# The conventional default port for a scheme name, classified with a
+# single-value String `select`. Unknown / empty schemes fall to the wildcard.
+share(all)
+default_port(scheme<String>)<Int> -> {
+    return select(scheme) -> {
+        "https" -> 443,
+        "http"  -> 80,
+        ?       -> 0
+    }
+}
+
+# Parse a base-10 integer out of a decimal digit string (zero on no digits).
+share(all)
+str_to_int(s<String>)<Int> -> {
+    n<Int> = 0
+    l<Int> = s.len()
+    if (l > 0) {
+        for (i in 0..l-1) {
+            c<Int> = s.char_at(i)
+            if (c >= 48 && c <= 57) { n = n * 10 + (c - 48) }
+        }
+    }
+    return n
+}
+
+# Split a raw absolute URL string into its components, resolving the default
+# port. A leading scheme (`scheme://`) is honoured; a bare host/port or
+# host:path input defaults the scheme to "http". A string with no scheme and no
+# authority (`hello`) is treated as a host-only reference.
+share(all)
+url_split(raw<String>)<UrlSplit> -> {
+    s<String> = raw.trim()
+    scheme<String> = "http"
+    rest<String> = s
+    mark<Int> = s.index_of("://")
+    if (mark >= 0) {
+        scheme = s.substring(0, mark).to_lower()
+        rest = s.substring(mark + 3, s.len())
+    }
+    port<Int> = default_port(scheme)
+    path<String> = "/"
+    hostport<String> = rest
+    slash<Int> = rest.index_of("/")
+    if (slash >= 0) {
+        hostport = rest.substring(0, slash)
+        path = rest.substring(slash, rest.len())
+        if (path == "") { path = "/" }
+    }
+    host<String> = hostport
+    colon<Int> = hostport.index_of(":")
+    if (colon >= 0) {
+        host = hostport.substring(0, colon)
+        ps<String> = hostport.substring(colon + 1, hostport.len())
+        if (ps.len() > 0) { port = str_to_int(ps) }
+    }
+    return UrlSplit { scheme = scheme, host = host, port = port, path = path }
+}
