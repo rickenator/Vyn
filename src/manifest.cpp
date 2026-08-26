@@ -125,6 +125,20 @@ std::vector<Table> parse_toml(const std::string& text, std::string* error) {
             if (error) *error = "could not parse key = value at line " + std::to_string(lineno);
             return {};
         }
+        // #164: reject unsupported TOML value forms with a precise location instead
+        // of silently mis-parsing them. The vyb manifest format deliberately does
+        // NOT adopt full TOML: only bare/quoted strings, integers, and inline
+        // tables { k = v, ... } are value forms.
+        if (!value.empty() && value[0] == '[') {
+            if (error)
+                *error = "unsupported TOML array value for key '" + key + "' at line "
+                         + std::to_string(lineno)
+                         + ": the vyb manifest format supports only bare/quoted "
+                           "strings, integers, and inline tables { k = v, ... }; full "
+                           "TOML arrays are not supported (#164); see "
+                           "doc/MANIFEST.md";
+            return {};
+        }
         Table* cur = currentSection();
         if (!cur) {
             if (error) *error = "key '" + key + "' appears before any [section] at line "
