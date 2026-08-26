@@ -215,11 +215,23 @@ hash does not verify is rejected outright. Without it, T0 TOFU remains available
 ### 4.6 Acceptance (Phase-4 gate)
 
 - `vyb mod install --require-signed github:owner/repo/bindings/sqlite/mod.vyb`
-  (with a committed publisher key + signed `INDEX.json` for `bindings/sqlite`)
-  verifies and installs; a tampered module OR a forged/bad signature errors
-  with the exact failing stage named.
+  (with a committed publisher key + signed `INDEX.json` for `bindings/sqlite`) —
+  when the transport fetch/verify is wired: a tampered module OR a forged/bad
+  signature errors with the exact failing stage named; otherwise (staged) it
+  refuses to install rather than silently skip verification (§4.7).
+- `vyb mod verify-signed <INDEX.json>` validates an INDEX against the pinned
+  publisher key (live today).
 - The publisher public key ships in the SDK + is pinned by `vyb`.
 - TOFU (T0) path is unchanged and stays green; full suite passes; docs-gate
   passes.
 
+### 4.7 Implementation status
+
+- **Landed:** pinned publisher key (`bindings/publisher_key.pub`) + Ed25519
+  signature verification via `vyb mod verify-signed <INDEX.json>` (the crypto/root
+  mechanism), and a signed `bindings/INDEX.json` (+ sibling `.sig`) committed.
+- **Staged:** the transport-level fetch+verify (`vyb mod install --require-signed
+  github:...` fetching + verifying the posted `INDEX.json`) — until wired,
+  `--require-signed` refuses to install rather than silently skip verification.
+- The T0 TOFU path is unchanged.
 

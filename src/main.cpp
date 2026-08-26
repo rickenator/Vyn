@@ -19,6 +19,9 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <algorithm> // For std::find
+#ifdef VYB_HAVE_OPENSSL
+#include <openssl/evp.h> // FFI backend: Ed25519 signature verification (SDK Phase 4)
+#endif
 #include <cctype>
 #include <optional>
 #include <utility>
@@ -2914,6 +2917,39 @@ static std::string modReadFile(const std::string& path) {
     ss << f.rdbuf();
     return ss.str();
 }
+// SDK Phase 4: pinned publisher root key (Ed25519, 32-byte hex public). This is
+// the root of authority for official packages (doc/MANIFEST.md §4). Overridable
+// via VYB_PUBLISHER_KEY; the default is the Vyb publisher key committed/embedded.
+static const char* mod_publisher_pubkey() {
+    const char* e = getenv("VYB_PUBLISHER_KEY");
+    if (e && *e) return e;
+    return "bea5577a3ad59e6a7061b8b6598d6eac1c0fa0c276c36e6d4c9f8363f9484873";
+}
+// Verify a 64-byte Ed25519 signature over the exact message bytes against the
+// 32-byte (hex) public key. Returns true on valid signature (sets err on failure).
+static bool mod_verify_ed25519(const std::string& msg, const std::string& sig,
+                               const std::string& pubHex, std::string& err) {
+#ifdef VYB_HAVE_OPENSSL
+    if (sig.size() != 64) { err = "signature is not 64 bytes"; return false; }
+    if (pubHex.size() != 64) { err = "public key is not 32 bytes (hex)"; return false; }
+    unsigned char pub[32];
+    for (int i = 0; i < 32; i++) pub[i] = (unsigned char)strtol(pubHex.substr(i * 2, 2).c_str(), nullptr, 16);
+    EVP_PKEY* pkey = EVP_PKEY_new_raw_public_key(EVP_PKEY_ED25519, NULL, pub, 32);
+    if (!pkey) { err = "could not parse public key"; return false; }
+    EVP_MD_CTX* c = EVP_MD_CTX_new();
+    bool ok = c && EVP_DigestVerifyInit(c, NULL, NULL, NULL, pkey) == 1 &&
+              EVP_DigestVerify(c, (const unsigned char*)sig.data(), sig.size(),
+                               (const unsigned char*)msg.data(), msg.size()) == 1;
+    if (c) EVP_MD_CTX_free(c);
+    EVP_PKEY_free(pkey);
+    if (!ok) err = "publisher signature invalid";
+    return ok;
+#else
+    err = "signed verification requires an OpenSSL build (VYB_HAVE_OPENSSL)";
+    return false;
+#endif
+}
+
 static int mod_fetch_github(const std::string& ownerRepoPath, const std::string& exePath, std::string& outDir) {
     size_t s1 = ownerRepoPath.find('/');
     size_t s2 = (s1 == std::string::npos) ? std::string::npos : ownerRepoPath.find('/', s1 + 1);
@@ -2977,7 +3013,14 @@ static int mod_fetch_github(const std::string& ownerRepoPath, const std::string&
     outDir = proj;
     return 0;
 }
-static int mod_install(const std::string& spec, const std::string& exePath) {
+static int mod_install(const std::string& spec, const std::string& exePath, bool requireSigned) {
+    if (requireSigned) {
+        std::cerr << "Error: --require-signed refuses to install without signature "
+                     "verification, and the signed-INDEX fetch for the transport is not "
+                     "yet wired (Phase 4). Validate an INDEX offline with "
+                     "'vyb mod verify-signed <INDEX.json>'.\n";
+        return 1;
+    }
     std::string src = spec;
     std::string pin;
     if (auto at = src.find('@'); at != std::string::npos) {
@@ -3068,22 +3111,51 @@ static int mod_install(const std::string& spec, const std::string& exePath) {
               << " (sha256=" << actualHex << ") -> .vybmod/" << name << "\n";
     return 0;
 }
+// Offline verification of a posted INDEX against the pinned publisher key
+// (Phase 4 / doc/MANIFEST.md §4). INDEX.sig is a 64-byte Ed25519 signature over
+// the exact INDEX.json bytes.
+static bool mod_verify_index(const std::string& indexPath, const std::string& sigArg, std::string& err) {
+    std::string sigPath = sigArg.empty() ? indexPath + ".sig" : sigArg;
+    std::string index = modReadFile(indexPath);
+    std::string sig = modReadFile(sigPath);
+    if (index.empty() || sig.empty()) { err = "could not read INDEX or its signature"; return false; }
+    return mod_verify_ed25519(index, sig, mod_publisher_pubkey(), err);
+}
+
 static int run_mod_command(int argc, char** argv, const std::string& exePath) {
     if (argc >= 1 && (std::string(argv[0]) == "--help" || std::string(argv[0]) == "help")) {
-        std::cout << "Usage: vyb mod install <path:DIR|github:owner/repo/path>[@sha256:HEX]\n"
-                  << "  Installs a module (+ relative-import siblings) into .vybmod/<name>/,\n"
-                  << "  pin-verifies an optional @sha256:HEX, records vyb.lock, and registers\n"
-                  << "  a path dependency in vyb.toml. See doc/MANIFEST.md.\n";
+        std::cout << "Usage:\n"
+                  << "  vyb mod install <path:DIR|github:owner/repo/path>[@sha256:HEX] [--require-signed]\n"
+                  << "  vyb mod verify-signed <INDEX.json> [<INDEX.sig>]\n"
+                  << "\n"
+                  << "  install fetches a module (+ relative-import siblings) into .vybmod/<name>/,\n"
+                  << "  pin-verifies an optional @sha256:HEX, records vyb.lock, and registers a path\n"
+                  << "  dependency in vyb.toml. --require-signed verifies the posted INDEX.json\n"
+                  << "  signature against the pinned publisher key (official packages).\n"
+                  << "  verify-signed validates an INDEX.json (+ sibling .sig) against the pinned key.\n"
+                  << "  See doc/MANIFEST.md.\n";
+        return 0;
+    }
+    if (argc >= 1 && std::string(argv[0]) == "verify-signed") {
+        if (argc < 2) { std::cerr << "Error: vyb mod verify-signed <INDEX.json> [<INDEX.sig>]\n"; return 1; }
+        std::string err;
+        if (!mod_verify_index(argv[1], (argc >= 3 ? argv[2] : ""), err)) {
+            std::cerr << "SIGNED VERIFY FAIL: " << err << "\n";
+            return 1;
+        }
+        std::cout << "SIGNED VERIFY OK (publisher key)\n";
         return 0;
     }
     if (argc < 1 || std::string(argv[0]) != "install") {
-        std::cerr << "Error: unknown vyb mod subcommand (expected 'install'); try 'vyb mod help'.\n";
+        std::cerr << "Error: unknown vyb mod subcommand (expected 'install'/'verify-signed'); try 'vyb mod help'.\n";
         return 1;
     }
     if (argc < 2) { std::cerr << "Error: vyb mod install <spec>\n"; return 1; }
-    return mod_install(argv[1], exePath);
+    bool requireSigned = false;
+    for (int i = 2; i < argc; ++i)
+        if (std::string(argv[i]) == "--require-signed") requireSigned = true;
+    return mod_install(argv[1], exePath, requireSigned);
 }
-
 int main(int argc, char* argv[]) {
     Catch::Session session; // Catch2 entry point
 
