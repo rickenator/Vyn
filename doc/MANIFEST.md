@@ -136,3 +136,90 @@ Already-fetched modules are **reused rather than re-fetched**: if
 skips the network fetch for that module, so repeat installs (including
 pin re-verification against the cached bytes) work offline.
 
+---
+
+## Signed packages & root authority — Phase 4 (specification)
+
+The TOFU/sha256-pin model above authenticates a module only against the
+digest you *first observed*. That is a self-signed-cert-equivalent trust
+anchor: it defends against tampering after first attach but not against a
+first-use substitution, and nothing vouches for *who* published it. For
+**official** bindings a defined **root of authority** and **signed packages**
+are required. This is the locked Phase-4 spec — the next implementation step
+after the smuggle transport.
+
+### 4.1 Root of authority
+
+- **Root = the official Vyb publisher signing key** (Ed25519, minisign,
+  `UNTYPED` PK as published). The CLI pins it as the sole trust anchor for
+  package authenticity.
+- **Not a TLS CA.** The key *is* the root; TLS remains transport only, and a
+  signed module stays authentic even if the TLS layer were compromised.
+- **Distribution / pinning (out-of-band):** the public key ships in the SDK
+  (`sdk/vendor/publisher_key.minisig.pub`), is embedded in the `vyb` binary as
+  the `VYB_PUBLISHER_KEY` default, and is committed to the repo (`bindings/`).
+  Rotating it (key compromise) is a documented, versioned, out-of-band event
+  (a new key release + `INDEX.json` re-sign), not a runtime ceremony.
+
+### 4.2 Posted-module signed layout
+
+For an "official" binding at `<owner>/<repo>/bindings/<name>/`:
+
+```
+bindings/<name>/mod.vyb          # the module (as today)
+bindings/INDEX.json              # {"bindings/<name>/mod.vyb": "<sha256>", ...}
+bindings/INDEX.json.minisig      # Ed25519 signature over INDEX.json (publisher key)
+```
+
+`INDEX.json` is a plain JSON map from module path → lowercase sha256 (content
+identity). The `.minisig` is the minisign-canonical detached signature of the
+exact `INDEX.json` bytes under the publisher key.
+
+### 4.3 Verification algorithm (`vyb mod install`)
+
+1. **Fetch** the module + relative-import siblings (as today).
+2. **Fetch** the posted `INDEX.json` and `INDEX.json.minisig`.
+3. **Verify the signature first**: check `.minisig` validates against the
+   pinned publisher key over the exact `INDEX.json` bytes. A bad signature is a
+   hard error (`Error: publisher signature invalid — module is not official`).
+4. **Verify the module hash**: `sha256(fetched bytes)` must equal
+   `INDEX.json[module_path]`. Mismatch → hard error with both digests.
+5. **Record** `name -> { source, sha256, index_sha256, publisher_sig: true }`
+   in `vyb.lock`; re-verify all of it on re-install.
+6. An explicit `@sha256:` pin on the spec AND/OR the signed-INDEX check may
+   both apply; any failing condition is a hard error.
+
+### 4.4 Trust tiers (explicit, user-selectable)
+
+| Tier | Model | Default | Use |
+| --- | --- | --- | --- |
+| `T0` | TOFU pin (current) | yes | unofficial / convenience remotes |
+| `T1` | signed-INDEX under pinned publisher key | opt-in (`--require-signed`) | **official** bindings; install fails without a valid signature |
+| `T2` | registry-held publisher keys | future | beyond Phase 4 |
+
+`--require-signed` (or a project `vyb.toml` `[mod] require_signed = true`) turns
+T1 on: a module whose posted INDEX has no valid signature or whose signature or
+hash does not verify is rejected outright. Without it, T0 TOFU remains available.
+
+### 4.5 Threat model
+
+- **TOFU (T0)** defeats tampering *after* first attach but not first-use
+  substitution, and gives no publisher identity.
+- **Signed (T1)** defeats substitution at any point *provided* the pinned root
+  key itself was obtained safely (the point of out-of-band pinning in 4.1).
+  Ordering matters: signature is verified independently of TLS, so a module is
+  authentic **regardless** of TLS state.
+- **Root-key compromise** is total (as with any single-root scheme); the
+  mitigation is versioned key rotation out-of-band (4.1) and, later, T2.
+
+### 4.6 Acceptance (Phase-4 gate)
+
+- `vyb mod install --require-signed github:owner/repo/bindings/sqlite/mod.vyb`
+  (with a committed publisher key + signed `INDEX.json` for `bindings/sqlite`)
+  verifies and installs; a tampered module OR a forged/bad signature errors
+  with the exact failing stage named.
+- The publisher public key ships in the SDK + is pinned by `vyb`.
+- TOFU (T0) path is unchanged and stays green; full suite passes; docs-gate
+  passes.
+
+
