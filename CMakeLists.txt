@@ -371,6 +371,13 @@ if(BUILD_TESTING)
         TIMEOUT 600
         LABELS "lang;manifest"
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+    add_test(NAME remote-import
+        COMMAND bash ${CMAKE_SOURCE_DIR}/test/remote_import.sh)
+    set_tests_properties(remote-import PROPERTIES
+        TIMEOUT 300
+        LABELS "lang;sdk;mod"
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()
 
 add_custom_target(run-examples

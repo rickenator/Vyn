@@ -2891,6 +2891,128 @@ bool runHelper(const std::string&, const std::vector<std::string>&,
 #define VYB_SANITIZE_STR "unknown"
 #endif
 
+// #175 Phase 2: `vyb mod install <spec>` — the smuggle channel core.
+static std::string modHexLower(const std::string& h) {
+    std::string out = h;
+    for (auto& c : out) if (c >= 'A' && c <= 'Z') c = (char)(c + 32);
+    return out;
+}
+static std::string modReadFile(const std::string& path) {
+    std::ifstream f(path, std::ios::binary);
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    return ss.str();
+}
+static int mod_install(const std::string& spec) {
+    std::string src = spec;
+    std::string pin;
+    if (auto at = src.find('@'); at != std::string::npos) {
+        std::string tail = src.substr(at + 1);
+        if (tail.rfind("sha256:", 0) == 0) { pin = modHexLower(tail.substr(7)); src = src.substr(0, at); }
+    }
+    std::string dirPath;
+    if (src.rfind("path:", 0) == 0) {
+        dirPath = src.substr(5);
+    } else if (src.rfind("github:", 0) == 0) {
+        std::cerr << "Error: the github: transport is staged (https stdlib driver, per "
+                     "doc/MANIFEST.md 'Remote module import'); use path:DIR for the offline "
+                     "smuggle channel core.\n";
+        return 1;
+    } else {
+        std::cerr << "Error: unrecognized module spec '" << src
+                  << "' (expect path:DIR or github:owner/repo/path[@sha256:HEX]).\n";
+        return 1;
+    }
+    std::error_code ec;
+    if (!fs::is_directory(dirPath, ec)) {
+        std::cerr << "Error: source dir not found: " << dirPath << "\n";
+        return 1;
+    }
+    std::string name = fs::path(dirPath).filename().string();
+    if (name.empty() || name == "." || name == "/") name = "mod";
+
+    std::vector<std::string> modFiles;
+    fs::path primary;
+    fs::path modVyb = fs::path(dirPath) / "mod.vyb";
+    if (fs::exists(modVyb)) {
+        primary = modVyb;
+        for (auto& e : fs::directory_iterator(dirPath, ec))
+            if (e.is_regular_file() && e.path().extension() == ".vyb") modFiles.push_back(e.path().string());
+    } else {
+        for (auto& e : fs::directory_iterator(dirPath, ec))
+            if (e.is_regular_file() && e.path().extension() == ".vyb") { modFiles.push_back(e.path().string()); primary = e.path(); }
+    }
+    if (modFiles.empty() || primary.empty()) {
+        std::cerr << "Error: no .vyb module found under " << dirPath << "\n";
+        return 1;
+    }
+    std::sort(modFiles.begin(), modFiles.end());
+
+    std::string bytes = modReadFile(primary.string());
+    vyb_file_str d = __vyb_sha256_hex(bytes.empty() ? "" : bytes.data(), (int64_t)bytes.size());
+    std::string actualHex = d.len > 0 ? modHexLower(std::string(d.ptr, (size_t)d.len)) : "";
+    if (!pin.empty() && actualHex != pin) {
+        std::cerr << "Error: sha256 mismatch installing '" << name << "': pinned "
+                  << pin << " but fetched " << actualHex << "\n";
+        return 1;
+    }
+
+    fs::path destDir = fs::current_path() / ".vybmod" / name;
+    fs::create_directories(destDir, ec);
+    for (auto& mf : modFiles) {
+        fs::path target = destDir / fs::path(mf).filename();
+        if (fs::exists(target) && modReadFile(target.string()) == modReadFile(mf)) continue;
+        fs::copy_file(mf, target, fs::copy_options::overwrite_existing, ec);
+    }
+
+    {
+        std::string lockPath = (fs::current_path() / "vyb.lock").string();
+        std::string lockBody;
+        { std::ifstream f(lockPath); std::ostringstream ss; ss << f.rdbuf(); lockBody = ss.str(); }
+        std::istringstream in(lockBody); std::ostringstream out;
+        std::string line;
+        while (std::getline(in, line))
+            if (line.rfind(name + " = {", 0) != 0) out << line << "\n";
+        out << name << " = { source = \"" << src << "\", sha256 = \"" << actualHex << "\" }\n";
+        std::ofstream f(lockPath, std::ios::trunc); f << out.str();
+    }
+    {
+        std::string tomlPath = (fs::current_path() / "vyb.toml").string();
+        std::string body;
+        { std::ifstream f(tomlPath); std::ostringstream ss; ss << f.rdbuf(); body = ss.str(); }
+        std::string depLine = name + " = { path = \".vybmod/" + name + "\" }";
+        if (body.find(depLine) == std::string::npos) {
+            if (body.find("[dependencies]") == std::string::npos) {
+                if (!body.empty() && body.back() != '\n') body += "\n";
+                body += "[dependencies]\n";
+            }
+            size_t pos = body.find("[dependencies]");
+            size_t ins = body.find('\n', pos);
+            ins = (ins == std::string::npos) ? body.size() : ins + 1;
+            body.insert(ins, "  " + depLine + "\n");
+            std::ofstream f(tomlPath, std::ios::trunc); f << body;
+        }
+    }
+    std::cout << "installed " << name << " from " << src
+              << " (sha256=" << actualHex << ") -> .vybmod/" << name << "\n";
+    return 0;
+}
+static int run_mod_command(int argc, char** argv) {
+    if (argc >= 1 && (std::string(argv[0]) == "--help" || std::string(argv[0]) == "help")) {
+        std::cout << "Usage: vyb mod install <path:DIR|github:owner/repo/path>[@sha256:HEX]\n"
+                  << "  Installs a module (+ relative-import siblings) into .vybmod/<name>/,\n"
+                  << "  pin-verifies an optional @sha256:HEX, records vyb.lock, and registers\n"
+                  << "  a path dependency in vyb.toml. See doc/MANIFEST.md.\n";
+        return 0;
+    }
+    if (argc < 1 || std::string(argv[0]) != "install") {
+        std::cerr << "Error: unknown vyb mod subcommand (expected 'install'); try 'vyb mod help'.\n";
+        return 1;
+    }
+    if (argc < 2) { std::cerr << "Error: vyb mod install <spec>\n"; return 1; }
+    return mod_install(argv[1]);
+}
+
 int main(int argc, char* argv[]) {
     Catch::Session session; // Catch2 entry point
 
@@ -3028,6 +3150,10 @@ int main(int argc, char* argv[]) {
         // `vyb test [--category C] [--pattern P] [--test-dir D] ...` (#154): run the
         // canonical language suite via the repo test harness.
         return run_test_command(argc - 2, argv + 2, std::string(argv[0]));
+    }
+    if (argc >= 2 && std::string(argv[1]) == "mod") {
+        // `vyb mod install <spec>` -- smuggle channel (#175 Phase 2).
+        return run_mod_command(argc - 2, argv + 2);
     }
 
     std::vector<std::string> catch_args;
