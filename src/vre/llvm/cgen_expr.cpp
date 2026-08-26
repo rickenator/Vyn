@@ -2901,6 +2901,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         else if (fname == "vyb_io_read_all") rtName = "__vyb_file_read_all";
         else if (fname == "vyb_io_error_code") rtName = "__vyb_file_error_code";
         else if (fname == "vyb_io_error_message") rtName = "__vyb_file_error_message";
+        else if (fname == "vyb_fs_mkdir") rtName = "__vyb_mkdir";
+        else if (fname == "vyb_crypto_sha256") rtName = "__vyb_sha256_hex";
         if (!rtName.empty()) {
             auto getFileFn = [&](llvm::FunctionType* ft) -> llvm::Function* {
                 llvm::Function* f = module->getFunction(rtName);
@@ -2932,6 +2934,17 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int8PtrType, int64Type}, false);
                 m_currentLLVMValue = builder->CreateCall(
                     getFileFn(ft), {toStrPtr(path), toI64(flags)}, "file.fd");
+                return;
+            } else if (fname == "vyb_fs_mkdir") {
+                if (node->arguments.size() != 1) {
+                    logError(node->loc, "__vyb_mkdir expects 1 argument (path)");
+                    m_currentLLVMValue = nullptr; return;
+                }
+                node->arguments[0]->accept(*this); llvm::Value* path = m_currentLLVMValue;
+                if (!path) { m_currentLLVMValue = nullptr; return; }
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int8PtrType}, false);
+                m_currentLLVMValue = builder->CreateCall(
+                    getFileFn(ft), {toStrPtr(path)}, "fs.mkdir");
                 return;
             } else if (fname == "vyb_io_close") {
                 if (node->arguments.size() != 1) {
@@ -2970,6 +2983,22 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 llvm::StructType* strStructType = llvm::StructType::get(*context, strFields, false);
                 llvm::FunctionType* ft = llvm::FunctionType::get(strStructType, {int64Type}, false);
                 m_currentLLVMValue = builder->CreateCall(getFileFn(ft), {toI64(fd)}, "file.content");
+                return;
+            } else if (fname == "vyb_crypto_sha256") {
+                if (node->arguments.size() != 1) {
+                    logError(node->loc, "__vyb_sha256_hex expects 1 argument (data)");
+                    m_currentLLVMValue = nullptr; return;
+                }
+                node->arguments[0]->accept(*this); llvm::Value* data = m_currentLLVMValue;
+                if (!data) { m_currentLLVMValue = nullptr; return; }
+                llvm::Value* dataPtr = toStrPtr(data);
+                llvm::Value* dataLen = llvm::ConstantInt::get(int64Type, 0);
+                if (data->getType()->isStructTy())
+                    dataLen = builder->CreateExtractValue(data, 1, "crypto.len");
+                std::vector<llvm::Type*> strFields = {int8PtrType, int64Type};
+                llvm::StructType* strStructType = llvm::StructType::get(*context, strFields, false);
+                llvm::FunctionType* ft = llvm::FunctionType::get(strStructType, {int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(getFileFn(ft), {dataPtr, dataLen}, "crypto.sha256");
                 return;
             } else if (fname == "vyb_io_error_code") {
                 if (!node->arguments.empty()) {

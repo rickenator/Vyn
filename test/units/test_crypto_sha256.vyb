@@ -1,0 +1,26 @@
+// @test: crypto::sha256 returns the SHA-256 hex digest (#195 Item 2)
+// @category: crypto, hash, stdlib
+// @expect: pass
+// @expect-return: 0
+
+import crypto::{sha256}
+
+main()<Int> -> {
+    h0<String> = sha256("")
+    if (h0 != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855") {
+        println("bad empty: " + h0)
+        return 1
+    }
+    h1<String> = sha256("abc")
+    if (h1 != "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad") {
+        println("bad abc")
+        return 2
+    }
+    h2<String> = sha256("The quick brown fox jumps over the lazy dog")
+    if (h2 != "d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592") {
+        println("bad fox")
+        return 3
+    }
+    println("sha256-ok")
+    return 0
+}

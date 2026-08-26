@@ -1,0 +1,25 @@
+# fs - filesystem primitives (#195).
+#
+# Path/fs operations crossing the runtime's `__vyb_*` helpers; the Vyb surface
+# stays allocation/pointer-free like `io`. Today this is the nested-store
+# unblocker VybOS needs: a program can create a directory tree so the store can
+# use a nested layout and write per-derivation metadata next to realised
+# outputs (replacing the host `freedom { exec } mkdir -p` staging hacks).
+#
+# Usage:
+#   import fs::{mkdir}
+#   match (mkdir("/store/a/b/c")) {
+#       ok -> { println("created") }
+#       ?  -> { println("mkdir failed: " + error_message()) }
+#   }
+
+# Recursively create `path` (all missing parent components), idempotent when a
+# component already exists as a directory. Returns `Bool?` -- present on
+# success, absent on failure (mirrors io's optional `T?` shape; a directory
+# carries no file descriptor, so presence == success).
+share(all)
+mkdir(path<String>)<Bool?> -> {
+    r<Int> = vyb_fs_mkdir(path)
+    if (r != 0) { return Bool?() }
+    return Bool?(true)
+}

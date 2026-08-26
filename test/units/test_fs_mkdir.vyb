@@ -1,0 +1,21 @@
+// @test: fs::mkdir creates a directory tree recursively + idempotently (#195 Item 1)
+// @category: fs, io, stdlib
+// @expect: pass
+// @expect-return: 0
+
+import fs::{mkdir}
+
+main()<Int> -> {
+    // Fresh nested tree.
+    match (mkdir("/tmp/vyb_fs_mkdir_test/p/a/b/c")) {
+        ok -> {}
+        ? -> { return 1 }
+    }
+    // Idempotent: re-creating an existing tree must succeed.
+    match (mkdir("/tmp/vyb_fs_mkdir_test/p/a/b/c")) {
+        ok -> {}
+        ? -> { return 2 }
+    }
+    println("fs-mkdir-ok")
+    return 0
+}

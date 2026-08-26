@@ -108,6 +108,12 @@ extern "C" {
     int64_t __vyb_file_error_code(void);
     const char* __vyb_file_error_message(void);
 
+    // Filesystem runtime helpers (fs stdlib module, #195)
+    int64_t __vyb_mkdir(const char* path);
+
+    // Crypto runtime helpers (crypto stdlib module, #195)
+    vyb_file_str __vyb_sha256_hex(const char* data, int64_t len);
+
     // Network I/O runtime helpers (network stdlib module)
     int64_t __vyb_net_open(int64_t domain, int64_t t, int64_t protocol);
     int64_t __vyb_net_close(int64_t fd);
@@ -1968,6 +1974,10 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_file_error_code), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_file_error_message")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_file_error_message), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_mkdir")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_mkdir), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_sha256_hex")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_sha256_hex), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_stdin_read")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_stdin_read), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_stdin_read_line")] = llvm::orc::ExecutorSymbolDef(

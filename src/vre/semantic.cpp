@@ -2122,6 +2122,8 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_io_open" || name == "vyb_io_close" || name == "vyb_io_write" ||
             name == "vyb_io_read_all" || name == "vyb_io_read_all_opt" || name == "vyb_io_error_code" ||
             name == "vyb_io_error_message" ||
+            name == "vyb_fs_mkdir" ||
+            name == "vyb_crypto_sha256" ||
             name == "vyb_net_open" || name == "vyb_net_close" || name == "vyb_net_bind" ||
             name == "vyb_net_listen" || name == "vyb_net_accept" || name == "vyb_net_connect" ||
             name == "vyb_net_send" || name == "vyb_net_recv" || name == "vyb_net_recv_opt" ||
@@ -2737,10 +2739,10 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
         {
             static const std::set<std::string> fileIntFuncs = {
                 "vyb_io_open", "vyb_io_close", "vyb_io_write",
-                "vyb_io_error_code"
+                "vyb_io_error_code", "vyb_fs_mkdir"
             };
             static const std::set<std::string> fileStrFuncs = {
-                "vyb_io_read_all", "vyb_io_error_message"
+                "vyb_io_read_all", "vyb_io_error_message", "vyb_crypto_sha256"
             };
             if (fileIntFuncs.count(name) || fileStrFuncs.count(name)) {
                 auto* resTy = new ast::TypeName(node->loc,

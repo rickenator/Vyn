@@ -1,0 +1,18 @@
+# crypto - hash primitives (#195).
+#
+# `sha256(data)` returns the SHA-256 (FIPS 180-4) digest of a byte buffer as a
+# lowercase hexadecimal String. It crosses the runtime's `__vyb_sha256_hex`
+# helper in `runtime/vyb_runtime.c`; the returned `String` owns its buffer as
+# a normal Vyb String.
+#
+# VybOS uses this in place of its collision-unsafe FNV-1a `content_hash`
+# stand-in so the store gets collision-safe content addressing.
+#
+# Usage:
+#   import crypto::{sha256}
+#   println(sha256(""))  # e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+
+share(all)
+sha256(data<String>)<String> -> {
+    return vyb_crypto_sha256(data)
+}
