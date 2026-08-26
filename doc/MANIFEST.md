@@ -95,6 +95,14 @@ github:owner/repo/path@sha256:HEX
    tree. Fetching goes over the HTTPS standard library: the module spec's
    `owner/repo/path` is mapped onto `raw.githubusercontent.com`, i.e. the
    `/owner/repo/<branch>/<path>` web path for that file.
+
+   > **Transport & trust:** the fetch uses the HTTPS stdlib's *unverified* client
+   > context, so integrity comes from the **sha256 pin (TOFU)** — not the TLS
+   > layer. The first install records the fetched digest in `vyb.lock`; the
+   > verified-TLS client has a handshake interop gap against the GitHub CDN
+   > (`raw.githubusercontent.com`/Fastly) tracked separately for the tls stack.
+   > A caller can always pin `@sha256:HEX` for a hard guarantee.
+
 2. **Verify the pin (optional)** — if the spec carries `@sha256:HEX`, the
    fetched bytes are hashed with `crypto::sha256` and compared to the pin. A
    mismatch is a **hard error** that aborts the install and reports **both** the
