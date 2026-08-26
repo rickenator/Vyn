@@ -1509,6 +1509,65 @@ int run_new_command(int argc, char** argv) {
     return 0;
 }
 
+void print_version_text() {
+    std::cout << "Vyb " << VYB_PROJECT_VERSION
+              << " (build=" << VYB_BUILD_TYPE_STR
+              << ", sanitize=" << VYB_SANITIZE_STR << ")\n";
+}
+
+void print_subcommand_help() {
+    print_version_text();
+    std::cout << "\n"
+              << "Usage: vyb <subcommand> [args]  |  vyb <file.vyb> [options]\n\n"
+              << "Subcommands:\n"
+              << "  build <dir> [--link <lib>]* [--static] [-O0..3]  build [[bin]] in a vyb.toml project\n"
+              << "  new <name> [--version X.Y.Z]  scaffold a fresh project\n"
+              << "  test [--category C] [--pattern P] [--test-dir D]  run the language test suite\n"
+              << "  bindgen <header.h> [--full]   generate Vyb bindings from a C header\n"
+              << "\n"
+              << "Compile/run a file directly ('vyb program.vyb ...'); 'vyb --help' shows\n"
+              << "compiler options; 'vyb --version' prints version + build configuration.\n";
+}
+
+// Run an external program with an argv array, preserving its exit status (Linux).
+static int run_exec(const std::vector<std::string>& args) {
+    std::vector<char*> v;
+    for (auto& s : args) v.push_back(const_cast<char*>(s.c_str()));
+    v.push_back(nullptr);
+    pid_t pid = fork();
+    if (pid == 0) {
+        execvp(v[0], v.data());
+        _exit(127);
+    }
+    int status = 0;
+    waitpid(pid, &status, 0);
+    return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+}
+
+// `vyb test [--category C] [--pattern P] [--test-dir D] [--json F] ...`:
+// run the canonical language suite via the repo's test harness (#154). The test
+// tree is resolved from the compiler binary's own location so `vyb test` works
+// from anywhere, not just the repo root.
+int run_test_command(int argc, char** argv, const std::string& exeArg) {
+    std::error_code ec;
+    fs::path exePath = fs::path(exeArg);
+    if (exePath.is_relative()) exePath = fs::absolute(exePath, ec);
+    fs::path repoRoot = exePath.parent_path().parent_path();   // <root>/build/vyb -> <root>
+    fs::path harness = repoRoot / "test" / "run_tests.py";
+    if (!fs::exists(harness)) {
+        std::cerr << "Error: test harness not found at " << harness.string() << std::endl;
+        return 1;
+    }
+    std::vector<std::string> args;
+    args.push_back("python3");
+    args.push_back(harness.string());
+    args.push_back("--vyb");
+    args.push_back(exeArg);                 // the compiler binary itself (main's argv[0])
+    args.push_back("--execute-jit");
+    for (int i = 0; i < argc; ++i) args.push_back(std::string(argv[i]));
+    return run_exec(args);
+}
+
 } // namespace
 
 // Function to execute Vyb code using LLVM JIT
@@ -2927,17 +2986,35 @@ int main(int argc, char* argv[]) {
     // `vyb new <name>`: scaffold a fresh project.
     // #160: report the embedded build configuration (build type + sanitizer).
     if (argc >= 2 && (std::string(argv[1]) == "--version" || std::string(argv[1]) == "--build-info")) {
-        std::cout << "Vyb " << VYB_PROJECT_VERSION
-                  << " (build=" << VYB_BUILD_TYPE_STR
-                  << ", sanitize=" << VYB_SANITIZE_STR << ")\n";
+        print_version_text();
+        return 0;
+    }
+
+    // #154: subcommand overview help.
+    if (argc >= 2 && std::string(argv[1]) == "help") {
+        print_subcommand_help();
         return 0;
     }
 
     if (argc >= 2 && std::string(argv[1]) == "build") {
+        if (argc >= 3 && std::string(argv[2]) == "--help") {
+            std::cout << "Usage: vyb build <dir> [--link <lib>]* [--static] [-O0..3] [-C dir] "
+                         "(build [[bin]] targets in a vyb.toml project)\n";
+            return 0;
+        }
         return run_build_command(argc - 2, argv + 2, std::string(argv[0]));
     }
     if (argc >= 2 && std::string(argv[1]) == "new") {
+        if (argc >= 3 && std::string(argv[2]) == "--help") {
+            std::cout << "Usage: vyb new <name> [--version X.Y.Z]\n";
+            return 0;
+        }
         return run_new_command(argc - 2, argv + 2);
+    }
+    if (argc >= 2 && std::string(argv[1]) == "test") {
+        // `vyb test [--category C] [--pattern P] [--test-dir D] ...` (#154): run the
+        // canonical language suite via the repo test harness.
+        return run_test_command(argc - 2, argv + 2, std::string(argv[0]));
     }
 
     std::vector<std::string> catch_args;
