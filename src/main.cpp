@@ -1412,8 +1412,11 @@ int run_build_command(int argc, char** argv, const std::string& exeArg) {
 
     for (const auto& d : manifest->dependencies) {
         if (d.source != "path") {
-            std::cerr << "Error: dependency '" << d.name << "' uses the '" << d.source
-                      << "' source, which is not implemented yet; use a local path dependency."
+            std::cerr << "Error: dependency '" << d.name << "' uses source '"
+                      << d.source << "', which is not supported yet (#165): only "
+                         "local 'path' dependencies resolve. "
+                      << (d.source == "git" && !d.url.empty() ? "Git URL: " + d.url + ". " : "")
+                      << "See doc/DEVELOPER_TOOLING.md for the staged resolver."
                       << std::endl;
             return 1;
         }

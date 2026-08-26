@@ -364,6 +364,13 @@ if(BUILD_TESTING)
         TIMEOUT 600
         LABELS "lang;aot"
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+    add_test(NAME manifest
+        COMMAND bash ${CMAKE_SOURCE_DIR}/test_manifest.sh)
+    set_tests_properties(manifest PROPERTIES
+        TIMEOUT 600
+        LABELS "lang;manifest"
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()
 
 add_custom_target(run-examples
