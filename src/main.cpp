@@ -3107,9 +3107,12 @@ static int mod_fetch_github(const std::string& ownerRepoPath, const std::string&
     // --require-signed (Phase 4): verify the module hash against the signed INDEX.
     if (requireSigned) {
         std::string idx = tmpRoot + "/INDEX.json", sigp = tmpRoot + "/INDEX.json.sig";
+        std::string modDir = fs::path(subpath).parent_path().string(); // co-located INDEX
+        std::string idxRel = (modDir.empty() ? "" : modDir + "/") + "INDEX.json";
+        std::string sigRel = (modDir.empty() ? "" : modDir + "/") + "INDEX.json.sig";
         std::string base = "/" + owner + "/" + repo + "/main/";
-        if (mod_fetch_url(base + "INDEX.json", idx, capath, exePath, tmpRoot) != 0 ||
-            mod_fetch_url(base + "INDEX.json.sig", sigp, capath, exePath, tmpRoot) != 0) {
+        if (mod_fetch_url(base + idxRel, idx, capath, exePath, tmpRoot) != 0 ||
+            mod_fetch_url(base + sigRel, sigp, capath, exePath, tmpRoot) != 0) {
             std::cerr << "Error: --require-signed: could not fetch the signed INDEX.json.\n";
             return 1;
         }
@@ -3299,11 +3302,14 @@ static int run_mod_command(int argc, char** argv, const std::string& exePath) {
         std::cerr << "Error: unknown vyb mod subcommand (expected 'install'/'verify-signed'); try 'vyb mod help'.\n";
         return 1;
     }
-    if (argc < 2) { std::cerr << "Error: vyb mod install <spec>\n"; return 1; }
+    std::string spec;
     bool requireSigned = false;
-    for (int i = 2; i < argc; ++i)
+    for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--require-signed") requireSigned = true;
-    return mod_install(argv[1], exePath, requireSigned);
+        else spec = argv[i];
+    }
+    if (spec.empty()) { std::cerr << "Error: vyb mod install <spec>\n"; return 1; }
+    return mod_install(spec, exePath, requireSigned);
 }
 int main(int argc, char* argv[]) {
     Catch::Session session; // Catch2 entry point
