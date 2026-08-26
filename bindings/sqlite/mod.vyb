@@ -1,0 +1,26 @@
+# sqlite — posted FFI binding (SDK Phase 3 / #174).
+#
+# Vyb-friendly lossless wrapper over a curated sqlite3 subset, imported via the
+# smuggle channel like any posted module. Uses the FFI `from<loc<T>>(int)`
+# (int → null/raw pointer) + `loc(x)` (address-of) idioms for the sqlite3*
+# out-parameter round-trip. Requires libsqlite3 exposed RTLD_GLOBAL by the
+# compiler (the `vyb mod install` / FFI dlopen hook). See the bg docs for the
+# trust/signing model (Phase 4).
+import sqlite3_binding::{sqlite3_open, sqlite3_close, sqlite3_exec}
+
+# Open `path` (":memory:" is valid), run one SQL statement, close. Present
+# (true) on success, absent on failure. Lossless; no pointer escapes the
+# wrapper.
+share(all)
+sqlite(path<String>, sql<String>)<Bool?> -> {
+    freedom {
+        db<loc<CVoid>> = from<loc<CVoid>>(0)
+        if (sqlite3_open(path, loc(db)) != 0) { return Bool?() }
+        if (sqlite3_exec(db, sql, loc(0), loc(0), loc(0)) != 0) {
+            sqlite3_close(db)
+            return Bool?()
+        }
+        sqlite3_close(db)
+        return Bool?(true)
+    }
+}

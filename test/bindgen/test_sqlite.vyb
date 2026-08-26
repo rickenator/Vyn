@@ -1,0 +1,17 @@
+// @test: sqlite posted binding (SDK Phase 3 / #174)
+// @description: sqlite open+exec+close via the freedom FFI with the from<loc<T>>()
+//   handle out-parameter round-trip. Requires libsqlite3 exposed by the
+//   compiler's optional-C-lib dlopen hook.
+// @category: ffi, bindings, sqlite
+// @expect: pass
+// @vyb-args: --module-path bindings
+// @expect-return: 0
+
+import sqlite::{sqlite}
+
+main()<Int> -> {
+    match (sqlite(":memory:", "CREATE TABLE t(x); INSERT INTO t VALUES(42);")) {
+        ok -> { return 0 }
+        ? -> { return 1 }
+    }
+}
