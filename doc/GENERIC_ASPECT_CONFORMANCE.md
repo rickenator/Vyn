@@ -31,13 +31,22 @@ These are the places to grep for "placeholder"/"For now"/ad hoc branching when a
 conformance case fails; the durable fix is type-system ownership info, not more
 syntactic guessing (see the ownership notes in `doc/code-organization.md`).
 
-## Staged tranche
+## Coverage status
 
-- **Now (foundation):** this inventory + the existing `test/aspect/*` (`@expect:
-  pass|fail`) run in JIT under `--execute-jit`, so every row above already has
-  positive/negative JIT coverage. `test/aspect/PHASE_*` docs track the build-out.
-- **Next:** (1) add a negative case per row where only the positive exists;
-  (2) extend the AOT harness (`test_compilation.sh`) so the aspect suite also
-  runs in **native** mode (currently only 3 examples are AOT-covered);
-  (3) isolate/remove ad hoc validation paths whose behavior cannot be specified
-  and tested. Items (2)-(3) are tracked separately from this issue's foundation.
+- **JIT conformance**: the full `test/aspect/*` suite (`@expect: pass|fail`) runs
+  under `--execute-jit`; every row above has positive **and** negative coverage
+  (inheritance cycle / phantom-super, unbound-qualified call, invalid/nonexistent
+  bounds, missing-super, etc.).
+- **Native (AOT) conformance**: `test_compilation.sh` compiles+runs a
+  representative set of the positive aspect tests natively (`native_aspect`,
+  one per inventory row; currently 15 cases covering aspect inheritance,
+  bind precedence, monomorphization, generic String return, qualified/
+  unqualified type-param calls, associated types, primitive binds, receivers).
+  Runs in CI via the `aot-native` CTest (label `lang;aot`).
+
+## Remaining (tracked separately)
+
+- Isolate/remove the ad hoc validation paths listed below whose behavior cannot
+  be fully specified and tested -- a code refactor, not a tests task. The durable
+  direction is type-system ownership/canonicalization rather than more special
+  cases; see `doc/code-organization.md`.

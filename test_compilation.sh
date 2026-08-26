@@ -1,10 +1,11 @@
 #!/bin/bash
-# Test AOT compilation of Vyb examples (`--build`) -- #158.
+# Test AOT compilation of Vyb examples (`--build`) -- #158 (+ #166 aspect suite).
 #
 # The compiled executable must exit 0 and write the program's main-return value
-# (JSON-serialized) to stdout, matching the JIT contract enforced by run_tests.py.
-# Pass `--json <file>` for machine-readable per-test results + totals (reproducible
-# release evidence); the exit code is 0 only when every test passes.
+# (JSON-serialized) to stdout, matching the JIT contract enforced by run_tests.py,
+# OR (for the native/aspect conformance set) simply exit 0. Pass `--json <file>`
+# for machine-readable per-test results + totals (reproducible release evidence);
+# the exit code is 0 only when every test passes.
 
 JSON_FILE=""
 if [ "$1" == "--json" ] && [ -n "$2" ]; then
@@ -56,12 +57,60 @@ test_compile() {
     fi
 }
 
+# #166: native (AOT) conformance for the generic/aspect suite. Each @expect:
+# pass test is compiled natively and run; assertion is exit 0 (the test returns 0
+# on success). VYB_STDLIB lets the module imports resolve for --build.
+native_aspect() {
+    local test_file=$1
+    local test_name=$(basename "$test_file" .vyb)
+    echo "Testing (native/aspect): $test_name"
+    if ! VYB_STDLIB=stdlib build/vyb "$test_file" --build "test_output_$test_name" -O2 > /dev/null 2>&1; then
+        echo "✗ Build failed: $test_name"
+        TESTS_FAILED=$((TESTS_FAILED + 1))
+        JENTRIES+=("\"$test_name (native)\": {\"pass\":false, \"note\":\"build failed\"}")
+        return 1
+    fi
+    local actual_exit
+    ./test_output_$test_name > /dev/null 2>&1
+    actual_exit=$?
+    if [ "$actual_exit" -eq 0 ]; then
+        echo "✓ Pass: $test_name (native, exit 0)"
+        TESTS_PASSED=$((TESTS_PASSED + 1))
+        JENTRIES+=("\"$test_name (native)\": {\"pass\":true}")
+    else
+        echo "✗ Fail: $test_name (native, exit: $actual_exit)"
+        TESTS_FAILED=$((TESTS_FAILED + 1))
+        JENTRIES+=("\"$test_name (native)\": {\"pass\":false, \"exit\":$actual_exit}")
+    fi
+    rm -f "test_output_$test_name" "test_output_$test_name.o"
+    return 0
+}
+
 echo "Running compilation tests..."
 echo
 
 test_compile "test/compilation/test_compile.vyb" 49
 test_compile "test/compilation/binary_tree.vyb" 60
 test_compile "test/compilation/binary_tree_complex.vyb" 350
+
+echo "Running native/aspect conformance tests (#166)..."
+echo
+
+native_aspect test/aspect/test_aspect_inheritance_valid.vyb
+native_aspect test/aspect/test_bind_concrete_generic.vyb
+native_aspect test/aspect/test_bind_precedence_bounded_first.vyb
+native_aspect test/aspect/test_bind_precedence_bounded_last.vyb
+native_aspect test/aspect/test_mono_direct.vyb
+native_aspect test/aspect/test_generic_fn_string_ret.vyb
+native_aspect test/aspect/test_qualified_call_on_type_param.vyb
+native_aspect test/aspect/test_unqualified_call_on_type_param.vyb
+native_aspect test/aspect/test_associated_type_positive.vyb
+native_aspect test/aspect/test_associated_type_constraint_default.vyb
+native_aspect test/aspect/test_associated_type_default.vyb
+native_aspect test/aspect/test_bind_primitive_target.vyb
+native_aspect test/aspect/test_method_call.vyb
+native_aspect test/aspect/test_trait_impl.vyb
+native_aspect test/aspect/test_receiver_bare_self_basic.vyb
 
 echo
 echo "=========================================="
