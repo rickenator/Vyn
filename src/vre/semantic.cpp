@@ -24,6 +24,23 @@ extern bool g_debug_codegen;
 
 namespace vyb {
 
+// Defined in src/main.cpp; lets semantic treat kernel-mode device intrinsics
+// (issue #198 P4) as intrinsic so they need no symbol resolution in kernel mode.
+extern bool g_kernel_mode;
+
+// Kernel-mode device intrinsic -> Vyb return type name ("" if not intrinsic).
+// These are device-only: thread indexing (tid/blk/dim read NVPTX special
+// registers) and device-global load/store. Available ONLY under g_kernel_mode.
+static const char* kernelIntrinsicReturnType(const std::string& name) {
+    if (name == "tid_x" || name == "tid_y" || name == "blk_x" || name == "blk_y" ||
+        name == "dim_x" || name == "dim_y" || name == "ld_i64") return "Int";
+    if (name == "ld_f64" || name == "ld_f32") return "Float";
+    if (name == "ld_i32") return "CInt";
+    if (name == "st_f64" || name == "st_f32" || name == "st_i64" || name == "st_i32")
+        return "Void";
+    return nullptr;
+}
+
 // True when a channel payload element type is a String. Scalar / Bool / Char /
 // Float payloads use the int-slot channel runtime; String uses the refcounted
 // string runtime. Mirrors the codegen helper of the same name.
@@ -2299,6 +2316,14 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "vyb_qt_dlg_selected_opt") {
 // gen_qt[sem_allow]: end
             isIntrinsic = true;
+        } else if (vyb::g_kernel_mode && kernelIntrinsicReturnType(name)) {
+            // Kernel-mode device intrinsics (issue #198 P4): no symbol resolution;
+            // lowered directly to NVPTX special-register reads / global loads-stores.
+            isIntrinsic = true;
+            const char* tname = kernelIntrinsicReturnType(name);
+            node->type = std::make_unique<ast::TypeName>(
+                node->loc, std::make_unique<ast::Identifier>(node->loc, tname));
+            expressionTypes[node] = node->type.get();
         }
     }
 

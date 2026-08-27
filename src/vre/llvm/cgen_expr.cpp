@@ -1156,7 +1156,72 @@ void LLVMCodegen::emitVecConstructor(vyb::ast::CallExpression* node) {
     m_currentLLVMValue = builder->CreateLoad(vecStructType, vecAlloca, "vec.new.value");
 }
 
+// Kernel-mode device intrinsics (issue #198 P4). Lower thread/block/dimension
+// reads to NVPTX special-register intrinsics (i32, zext to Int) and device-global
+// load/store to addrspace(1) (global) memory access. Only reached under
+// g_kernel_mode; a host-mode call to these names falls through to the normal path.
+bool LLVMCodegen::emitKernelIntrinsic(vyb::ast::CallExpression* node) {
+    auto* kc = dynamic_cast<ast::Identifier*>(node->callee.get());
+    if (!kc) return false;
+    const std::string& name = kc->name;
+
+    // Thread / block / block-dimension reads -> `llvm.nvvm.read.ptx.sreg.*` (i32).
+    auto readSreg = [&](const char* sreg) -> bool {
+        llvm::Function* fn = module->getFunction(sreg);
+        if (!fn) {
+            fn = llvm::Function::Create(
+                llvm::FunctionType::get(int32Type, {}, false),
+                llvm::Function::ExternalLinkage, sreg, module.get());
+        }
+        llvm::Value* v = builder->CreateCall(fn, {}, "sreg");
+        m_currentLLVMValue = builder->CreateZExt(v, int64Type, "sreg.zext");
+        return true;
+    };
+    if (name == "tid_x") return readSreg("llvm.nvvm.read.ptx.sreg.tid.x");
+    if (name == "tid_y") return readSreg("llvm.nvvm.read.ptx.sreg.tid.y");
+    if (name == "blk_x") return readSreg("llvm.nvvm.read.ptx.sreg.ctaid.x");
+    if (name == "blk_y") return readSreg("llvm.nvvm.read.ptx.sreg.ctaid.y");
+    if (name == "dim_x") return readSreg("llvm.nvvm.read.ptx.sreg.ntid.x");
+    if (name == "dim_y") return readSreg("llvm.nvvm.read.ptx.sreg.ntid.y");
+
+    // Device-global load/store: address is a Vyb Int (i64) buffer address that the
+    // host CUDA allocation produced -> reinterpret as a global (addrspace 1) pointer.
+    if (name.rfind("ld_", 0) == 0 || name.rfind("st_", 0) == 0) {
+        llvm::Type* elemTy = nullptr;   // memory element type
+        llvm::Type* retTy = nullptr;    // Vyb-surface result type
+        if (name == "ld_f64" || name == "st_f64") { elemTy = doubleType; retTy = doubleType; }
+        else if (name == "ld_f32" || name == "st_f32") {
+            elemTy = llvm::Type::getFloatTy(*context); retTy = doubleType;
+        }
+        else if (name == "ld_i64" || name == "st_i64") { elemTy = int64Type; retTy = int64Type; }
+        else { elemTy = int32Type; retTy = int32Type; }  // ld_i32 / st_i32
+
+        llvm::Value* addr = node->arguments.empty() ? nullptr : (node->arguments[0]->accept(*this), m_currentLLVMValue);
+        if (!addr) return true;
+        llvm::Value* gp = builder->CreateIntToPtr(
+            addr, llvm::PointerType::get(*context, 1), "gptr");
+        if (name.rfind("st_", 0) == 0) {
+            if (node->arguments.size() < 2) return true;
+            node->arguments[1]->accept(*this);
+            builder->CreateStore(m_currentLLVMValue, gp);
+            m_currentLLVMValue = nullptr;
+        } else {
+            llvm::Value* loaded = builder->CreateLoad(elemTy, gp, "gld");
+            if (retTy != elemTy)
+                loaded = builder->CreateFPExt(loaded, retTy, "ld.ext");
+            m_currentLLVMValue = loaded;
+        }
+        return true;
+    }
+    return false;
+}
+
 void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
+
+    // Kernel-mode device intrinsics (#198 P4): lowered directly, no symbol lookup.
+    if (vyb::g_kernel_mode && emitKernelIntrinsic(node)) {
+        return;
+    }
 
     // Bare builtin enum constructor: `Ok(x)` / `Err(e)` for Result. The semantic
     // layer injected the target enum type into this node, so the payload types

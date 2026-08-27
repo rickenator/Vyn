@@ -1855,6 +1855,44 @@ int run_test_command(int argc, char** argv, const std::string& exeArg) {
 
 } // namespace
 
+// Issue #198 P4: minimal CUDA launch helpers. Vyb's freedom FFI can model a
+// single-arg cuLaunchKernel (scalar loc slots) but cannot build a contiguous
+// void*[] kernelParams buffer in a local (addr() only works on `loc<*>` locals;
+// arrays/structs/scalars yield null). These compiler-provided symbols own that
+// void** packing: they copy each 8-byte arg (Int/f64) into a local buffer and
+// point kernelParams at it. cuLaunchKernel is reached via dlsym because libcuda
+// is dlopen'd at runtime (never linked). Returns the CUresult (0 = enqueued OK).
+//
+// Two variants so the 4th arg's SysV register class matches the Vyb declaration:
+// `cuda_launch4` last arg is FP (double -> XMM0) for an f64 kernel param (alpha);
+// `cuda_launch4i` last arg is integer (int64 -> RDI) for an Int kernel param (n).
+extern "C" int vyb_cuda_launch4(void* f, unsigned gridX, unsigned gridY, unsigned gridZ,
+                                unsigned blockX, unsigned blockY, unsigned blockZ,
+                                int64_t a0, int64_t a1, int64_t a2, double a3) {
+    typedef int (*CuLaunchFn)(void*, unsigned, unsigned, unsigned, unsigned, unsigned,
+                              unsigned, unsigned, void*, void*, void*);
+    static CuLaunchFn launch = (CuLaunchFn)dlsym(RTLD_DEFAULT, "cuLaunchKernel");
+    if (!launch) return 1;
+    void* params[4];
+    int64_t b0 = a0, b1 = a1, b2 = a2;
+    union { int64_t i; double d; } b3; b3.d = a3;   // f64 alpha bits
+    params[0] = &b0; params[1] = &b1; params[2] = &b2; params[3] = &b3;
+    return launch(f, gridX, gridY, gridZ, blockX, blockY, blockZ, 0, nullptr, params, nullptr);
+}
+// All-int 4-arg variant: last arg carries an Int (e.g. matmul's n), NOT f64 bits.
+extern "C" int vyb_cuda_launch4i(void* f, unsigned gridX, unsigned gridY, unsigned gridZ,
+                                 unsigned blockX, unsigned blockY, unsigned blockZ,
+                                 int64_t a0, int64_t a1, int64_t a2, int64_t a3) {
+    typedef int (*CuLaunchFn)(void*, unsigned, unsigned, unsigned, unsigned, unsigned,
+                              unsigned, unsigned, void*, void*, void*);
+    static CuLaunchFn launch = (CuLaunchFn)dlsym(RTLD_DEFAULT, "cuLaunchKernel");
+    if (!launch) return 1;
+    void* params[4];
+    int64_t b0 = a0, b1 = a1, b2 = a2, b3 = a3;    // Int bits
+    params[0] = &b0; params[1] = &b1; params[2] = &b2; params[3] = &b3;
+    return launch(f, gridX, gridY, gridZ, blockX, blockY, blockZ, 0, nullptr, params, nullptr);
+}
+
 // Function to execute Vyb code using LLVM JIT
 int run_vyb_code(const std::string& source, const std::string& fileName, bool generateLLVMIR) {
     VYB_CDBG << "Starting run_vyb_code for file: " << fileName << std::endl;
@@ -2069,6 +2107,14 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             runtimeSymbols[mangle("strlen")] = llvm::orc::ExecutorSymbolDef(strlenPtr, llvm::JITSymbolFlags::Exported);
             runtimeSymbols[mangle("strcpy")] = llvm::orc::ExecutorSymbolDef(strcpyPtr, llvm::JITSymbolFlags::Exported);
             runtimeSymbols[mangle("strdup")] = llvm::orc::ExecutorSymbolDef(strdupPtr, llvm::JITSymbolFlags::Exported);
+            // Issue #198 P4: compiler-provided CUDA launch helper (owns the
+            // cuLaunchKernel void** kernelParams packing). Requires libcuda dlopen'd
+            // (see the optional-C-lib hook above). Resolves as a bare symbol so a
+            // freedom/extern "C" declaration can call it.
+            runtimeSymbols[mangle("cuda_launch4")] = llvm::orc::ExecutorSymbolDef(
+                llvm::orc::ExecutorAddr::fromPtr(&vyb_cuda_launch4), llvm::JITSymbolFlags::Exported);
+            runtimeSymbols[mangle("cuda_launch4i")] = llvm::orc::ExecutorSymbolDef(
+                llvm::orc::ExecutorAddr::fromPtr(&vyb_cuda_launch4i), llvm::JITSymbolFlags::Exported);
 
             // Register numbered variants (LLVM auto-renames when same function declared multiple times
             // in the module; e.g. malloc.1, malloc.2, ... up to MAX_LIBC_SYMBOL_VARIANTS)

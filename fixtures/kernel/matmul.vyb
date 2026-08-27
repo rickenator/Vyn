@@ -1,0 +1,33 @@
+// Vyb CUDA tile matmul kernel (issue #198 P4) — C = A x B, all n x n doubles.
+//     vyb --kernel <this file> --ptx matmul.ptx
+//
+// Register-tiled: each thread computes a TILE x TILE block of C (TILE=4) to get
+// data reuse in registers — a genuine tile matmul, no shared memory needed. Grid
+// = (n/TILE, n/TILE), block = (TILEy, TILEy) 2-D; tids/blks map to row/col.
+// All params are Int (buffer addresses + n): the host packs kernelParams purely
+// from 64-bit values, and C/A/B/n need no type conversion at the FFI boundary.
+
+matmul(C<Int>, A<Int>, B<Int>, n<Int>) -> {
+    rowBase<Int> = (blk_y() * dim_y() + tid_y()) * 4
+    colBase<Int> = (blk_x() * dim_x() + tid_x()) * 4
+    r<Int> = 0
+    for (r in 0..3) {
+        rr<Int> = rowBase + r
+        if (rr < n) {
+            c<Int> = 0
+            for (c in 0..3) {
+                cc<Int> = colBase + c
+                if (cc < n) {
+                    acc<Float> = 0.0
+                    k<Int> = 0
+                    for (k in 0..n - 1) {
+                        av<Float> = ld_f64(A + (rr * n + k) * 8)
+                        bv<Float> = ld_f64(B + (k * n + cc) * 8)
+                        acc = acc + av * bv
+                    }
+                    st_f64(C + (rr * n + cc) * 8, acc)
+                }
+            }
+        }
+    }
+}

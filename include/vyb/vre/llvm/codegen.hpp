@@ -291,6 +291,11 @@ private:
     // Emit a Vec value for the builtin Vec constructor (`Vec()`, `Vec(n)`), sharing
     // the codegen between the bare `Vec(...)` and legacy `Vec::new(...)` forms.
     void emitVecConstructor(vyb::ast::CallExpression* node);
+    // Kernel-mode (issue #198 P4) device intrinsic lowering: thread indexing
+    // (tid_x/blk_x/dim_x/... -> NVPTX special-register reads) and device-global
+    // load/store (ld_f64/st_i32/... -> global memory access). Returns true when
+    // `node` was a kernel intrinsic and was fully lowered. Only valid in kernel mode.
+    bool emitKernelIntrinsic(vyb::ast::CallExpression* node);
     std::string mangleGenericTypeName(const std::string& baseName, const std::vector<vyb::ast::TypeNodePtr>& typeArgs); // Generate mangled name like Box_Int
     llvm::StructType* monomorphizeStruct(const std::string& baseName, const std::vector<vyb::ast::TypeNodePtr>& typeArgs); // Generate specialized struct
     llvm::StructType* monomorphizeEnum(const std::string& baseName, const std::vector<vyb::ast::TypeNodePtr>& typeArgs);   // Generate specialized tagged-union enum

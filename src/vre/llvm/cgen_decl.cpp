@@ -1709,6 +1709,16 @@ void LLVMCodegen::createFunctionForwardDeclaration(vyb::ast::FunctionDeclaration
     llvm::FunctionType* funcType = llvm::FunctionType::get(returnType, paramTypes, false /*isVarArg*/);
     llvm::Function* func = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, node->id->name, module.get());
 
+    // Kernel mode (#198 P4): a Void-returning top-level function is a launchable
+    // device KERNEL. NVPTX emits PTX `.entry` (not `.func`) for functions carrying
+    // the `nvvm.kernel` attribute AND the PTX_Kernel calling convention — that's
+    // what makes cuLaunchKernel able to run it. Value-returning functions stay
+    // `.visible .func` device helpers.
+    if (vyb::g_kernel_mode && returnType->isVoidTy() && !node->needsErrorReturn) {
+        func->addFnAttr("nvvm.kernel");
+        func->setCallingConv(llvm::CallingConv::PTX_Kernel);
+    }
+
     VYB_CDBG << "DEBUG: Successfully created forward declaration for function: " << node->id->name << std::endl;
 }
 

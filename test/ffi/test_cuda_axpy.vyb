@@ -1,0 +1,109 @@
+// @test: P4 axpy - Vyb-authored kernel launched on CUDA, verified vs CPU
+// @description: builds fixtures/kernel/axpy_buf.vyb via --kernel, loads the PTX,
+//   launches `axpy` (y=alpha*x+y) on the GPU, verifies all elements. SKIPs (ret 0)
+//   when no CUDA/GPU. Uses the new kernel-mode .entry + thread-index/ld-st device
+//   intrinsics (#198 P4).
+// @category: ffi, cuda, kernel
+// @expect: pass
+// @expect-return: 0
+
+# P4 axpy host driver — launches the Vyb-authored axpy kernel on the RTX 3090
+# and verifies y[i] = alpha*x[i] + y[i] against the CPU.
+import io::{open_read, read_all}
+
+extern "C" {
+    cuInit(flags<CUInt>)<CInt>
+    cuDeviceGetCount(count<loc<CInt>>)<CInt>
+    cuDeviceGet(device<loc<CInt>>, ordinal<CInt>)<CInt>
+    cuCtxCreate_v2(pctx<loc<loc<CVoid>>>, flags<CUInt>, dev<CInt>)<CInt>
+    cuModuleLoadData(hmod<loc<loc<CVoid>>>, image<CString>)<CInt>
+    cuModuleGetFunction(hfunc<loc<loc<CVoid>>>, hmod<loc<CVoid>>, name<CString>)<CInt>
+    cuMemAlloc_v2(dptr<loc<Int>>, bytesize<Int>)<CInt>
+    cuMemcpyHtoD_v2(dstDevice<Int>, srcHost<loc<CVoid>>, ByteCount<Int>)<CInt>
+    cuMemcpyDtoH_v2(dstHost<loc<CVoid>>, srcDevice<Int>, ByteCount<Int>)<CInt>
+    cuMemFree_v2(dptr<Int>)<CInt>
+    cuCtxSynchronize()<CInt>
+    # compiler-provided launcher that owns the void** kernelParams packing (#198 P4)
+    cuda_launch4(f<loc<CVoid>>, gridX<CUInt>, gridY<CUInt>, gridZ<CUInt>,
+                 blockX<CUInt>, blockY<CUInt>, blockZ<CUInt>,
+                 a0<Int>, a1<Int>, a2<Int>, a3<Float>)<CInt>
+}
+
+main()<Int> -> {
+    n<Int> = 8
+    alpha<Float> = 2.0
+    x<[Float; 8]> = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+    y<[Float; 8]> = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0]
+
+    freedom {
+        if (cuInit(0) != 0) { println("SKIP: no CUDA"); return 0 }
+        var<CInt> ndev = 0
+        if (cuDeviceGetCount(loc(ndev)) != 0 || ndev < 1) { println("SKIP: no CUDA device"); return 0 }
+        var<CInt> dev = 0
+        if (cuDeviceGet(loc(dev), 0) != 0) { return 14 }
+        ctx<loc<CVoid>> = from<loc<CVoid>>(0)
+        if (cuCtxCreate_v2(loc(ctx), 0, dev) != 0) { return 14 }
+    }
+
+    ptx<String> = ""
+    match (open_read("fixtures/cuda/axpy_buf.ptx")) {
+        f -> { match (read_all(f)) { s -> { ptx = s } ? -> { return 13 } } }
+        ? -> { return 13 }
+    }
+
+    freedom {
+        hmod<loc<CVoid>> = from<loc<CVoid>>(0)
+        lrc<CInt> = cuModuleLoadData(loc(hmod), ptx)
+        # CUDA driver quirk: the first cuModuleLoadData of a non-trivial kernel in
+        # a fresh process returns NO_BINARY_FOR_GPU (218) and caches it per-String;
+        # re-reading the PTX into a fresh String and reloading succeeds.
+        if (lrc != 0) {
+            ptx2<String> = ""
+            match (open_read("fixtures/cuda/axpy_buf.ptx")) {
+                f -> { match (read_all(f)) { s -> { ptx2 = s } ? -> { return 20 } } }
+                ? -> { return 20 }
+            }
+            hmod = from<loc<CVoid>>(0)
+            lrc = cuModuleLoadData(loc(hmod), ptx2)
+        }
+        if (lrc != 0) { return 9 }
+        hf<loc<CVoid>> = from<loc<CVoid>>(0)
+        if (cuModuleGetFunction(loc(hf), hmod, "axpy") != 0) { return 10 }
+
+        yD<Int> = 0
+        xD<Int> = 0
+        ra<CInt> = cuMemAlloc_v2(loc(yD), n * 8)
+        println("alloc yD rc="); println_int(ra); println(" yD="); println_int(yD)
+        ra = cuMemAlloc_v2(loc(xD), n * 8)
+        println("alloc xD rc="); println_int(ra); println(" xD="); println_int(xD)
+        if (ra != 0) { return 11 }
+
+        i<Int> = 0
+        for (i in 0..n - 1) {
+            s<Float> = x[i]
+            hx<CInt> = cuMemcpyHtoD_v2(xD + i * 8, loc(s), 8)
+            t<Float> = y[i]
+            hy<CInt> = cuMemcpyHtoD_v2(yD + i * 8, loc(t), 8)
+            if (i == 0) { println("x htod="); println_int(hx); println(" y htod="); println_int(hy) }
+            if (hx != 0 || hy != 0) { println("FAIL at i="); println_int(i); println(" hx="); println_int(hx); println(" hy="); println_int(hy); return 15 }
+        }
+
+        rc<CInt> = cuda_launch4(from<loc<CVoid>>(addr(hf)), 1, 1, 1, 8, 1, 1, yD, xD, n, alpha)
+        if (rc != 0) { println("launch rc "); println_int(rc); return 12 }
+        cuCtxSynchronize()
+
+        i = 0
+        for (i in 0..n - 1) {
+            r<Float> = 0.0
+            if (cuMemcpyDtoH_v2(loc(r), yD + i * 8, 8) != 0) { return 16 }
+            want<Float> = alpha * x[i] + y[i]
+            diff<Float> = r - want
+            if (diff < 0.0) { diff = 0.0 - diff }
+            if (diff > 0.000001) { return 1 }
+        }
+        cuMemFree_v2(xD)
+        cuMemFree_v2(yD)
+        println("AXPY OK")
+        return 0
+    }
+}

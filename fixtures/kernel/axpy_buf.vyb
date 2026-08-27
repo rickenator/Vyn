@@ -1,0 +1,18 @@
+// Vyb CUDA kernels (issue #198 P4) — Vyb-authored device compute, launched via
+// the CUDA driver-API freedom FFI. Build each with:
+//     vyb --kernel <this file> --ptx <out>.ptx
+// These are VOID top-level kernels => they lower to PTX `.entry` (launchable).
+// The host packs cuLaunchKernel's kernelParams array as pointers to 8-byte
+// buffers; every arg (Int buffer address, Int count, Float alpha) is 8 bytes, so
+// alpha passes directly as a kernel param — no device staging buffer needed.
+
+// y[i] = alpha * x[i] + y[i]  for i in [0, n)  — 1-D over the flattened buffer.
+// Params: y (out), x (in), n, alpha.
+axpy(y<Int>, x<Int>, n<Int>, alpha<Float>) -> {
+    gid<Int> = blk_x() * dim_x() + tid_x()
+    if (gid < n) {
+        yv<Float> = ld_f64(y + gid * 8)
+        xv<Float> = ld_f64(x + gid * 8)
+        st_f64(y + gid * 8, alpha * xv + yv)
+    }
+}
