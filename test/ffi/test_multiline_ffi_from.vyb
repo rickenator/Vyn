@@ -1,0 +1,23 @@
+// Regression for #200: a freedom-FFI call whose pointer-intrinsic argument
+// `from<loc<CVoid>>(expr)` appears on a CONTINUATION line must resolve `from`/`loc`/
+// `CVoid` (previously "Undefined identifier" — the from<Type> lookahead used
+// tokens_[pos_+1] which, on a continuation line, sat on the leading NEWLINE).
+// @test: multi-line freedom-FFI call with from<loc> arg on a continuation line (#200)
+// @description: from<> intrinsic on a continuation line resolves (was undefined identifier)
+// @category: ffi, parser
+// @expect: pass
+// @expect-return: 0
+
+extern "C" {
+    malloc(size<Int>)<loc<CVoid>>
+    free(memory<loc<CVoid>>)<Void>
+}
+
+main()<Int> -> {
+    freedom {
+        p<loc<CVoid>> = malloc(8)
+        free(
+            from<loc<CVoid>>(addr(p)))
+        return 0
+    }
+}

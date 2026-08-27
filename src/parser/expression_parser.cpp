@@ -642,8 +642,12 @@ regular_array_literal:
             if (current_id_token.lexeme == "from") {
                 // Potential from<Type>(expr)
                 // Lookahead: from < Type > ( expr )
-                // Check for '<' after 'from'
-                if (pos_ + 1 < tokens_.size() && tokens_[pos_ + 1].type == TokenType::LT) { // Changed LESS_THAN to LT
+                // Check for '<' after 'from'. `current_id_token` came from peek(),
+                // which skips leading COMMENT/NEWLINE — so when this is parsed on a
+                // continuation line pos_ can still sit on the NEWLINE before `from`,
+                // making tokens_[pos_+1] `from` rather than '<'. Use peekNext() (the
+                // next significant token after peek()) for a newline-robust lookahead.
+                if (peekNext().type == TokenType::LT) {
                     consume(); // Consume 'from'
                     SourceLocation from_loc = current_id_token.location;
 
