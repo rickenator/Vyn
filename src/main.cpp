@@ -1020,13 +1020,64 @@ int compile_vyb_to_object(const std::string& source, const std::string& fileName
     }
 }
 
+// issue #198 P2.2 — ptxas lookup & subprocess helpers for PTX validation =========
+// Locate a CUDA `ptxas` assembler: search PATH, then common install prefixes.
+// Returns "" when unavailable (validation is then skipped, not failed).
+static std::string find_ptxas() {
+    std::vector<std::string> candidates;
+    if (const char* pathEnv = getenv("PATH")) {
+        std::string p = pathEnv;
+        size_t start = 0;
+        while (true) {
+            size_t colon = p.find(':', start);
+            std::string dir = (colon == std::string::npos)
+                                  ? p.substr(start)
+                                  : p.substr(start, colon - start);
+            if (!dir.empty()) candidates.push_back(dir + "/ptxas");
+            if (colon == std::string::npos) break;
+            start = colon + 1;
+        }
+    }
+    static const char* prefixes[] = {
+        "/usr/local/cuda/bin/ptxas",
+        "/usr/local/cuda-12.8/bin/ptxas",
+        "/usr/local/cuda-12.6/bin/ptxas",
+        "/usr/local/cuda-12.5/bin/ptxas",
+        "/usr/local/cuda-12.4/bin/ptxas",
+        "/usr/local/cuda-12.3/bin/ptxas",
+        "/usr/local/cuda-12/bin/ptxas",
+        "/usr/bin/ptxas",
+    };
+    for (const char* c : prefixes) candidates.push_back(c);
+    for (const auto& c : candidates) {
+        if (access(c.c_str(), X_OK) == 0) return c;
+    }
+    return "";
+}
+
+// Run a command, capturing combined stdout+stderr into `out`; returns the process
+// exit status (-1 on spawn/status failure).
+static int run_process(const std::string& cmd, std::string& out) {
+    FILE* p = popen((cmd + " 2>&1").c_str(), "r");
+    if (!p) return -1;
+    char buf[4096];
+    size_t n;
+    out.clear();
+    while ((n = fread(buf, 1, sizeof(buf), p)) > 0) out.append(buf, n);
+    int rc = pclose(p);
+    if (rc == -1) return -1;
+    if (WIFEXITED(rc)) return WEXITSTATUS(rc);
+    return -1;
+}
+
 // issue #198 — compile a Vyb module as pure NVPTX device code and lower it to a
 // PTX artifact. Kernel mode requires g_kernel_mode to be set (the `--kernel` CLI
 // flag), which makes codegen emit the module with the nvptx64-nvidia-cuda target
 // triple and WITHOUT the host-runtime __vyb_* intrinsic externs. This function
 // then verifies the module is truly host-runtime-free and runs it through the
 // in-process NVPTX backend to produce `kernel.ptx`.
-int compile_vyb_kernel(const std::string& source, const std::string& fileName, int optLevel = 2) {
+int compile_vyb_kernel(const std::string& source, const std::string& fileName, int optLevel = 2,
+                       const std::string& ptxOutput = "") {
     std::cout << "Compiling " << fileName << " as NVPTX device code..." << std::endl;
 
     llvm::InitializeAllTargetInfos();
@@ -1107,7 +1158,13 @@ int compile_vyb_kernel(const std::string& source, const std::string& fileName, i
             throw std::runtime_error("NVPTX target not available (not linked into vyb): " + error);
         }
 
-        auto CPU = "sm_86";      // RTX 3090 (P0 feasibility probe)
+        // GPU arch: `--gpu sm_90`, else $VYB_KERNEL_GPU, else sm_86 (RTX 3090,
+        // the P0 feasibility-probe target). Used for both NVPTX lowering and the
+        // ptxas assembly check.
+        std::string gpu = "sm_86";
+        if (const char* g = getenv("VYB_KERNEL_GPU")) { if (*g) gpu = g; }
+
+        auto CPU = gpu;
         auto features = "";
         llvm::TargetOptions opt;
         opt.FloatABIType = llvm::FloatABI::Default;
@@ -1121,11 +1178,14 @@ int compile_vyb_kernel(const std::string& source, const std::string& fileName, i
         // Apply IR optimization passes before code generation.
         optimize_module(module, targetMachine, optLevel);
 
-        // Output path: <base>.ptx next to the input file.
-        std::string ptxFile = fileName;
-        size_t dot = ptxFile.find_last_of('.');
-        if (dot != std::string::npos) ptxFile = ptxFile.substr(0, dot);
-        ptxFile += ".ptx";
+        // Output path: explicit `--ptx <path>`, else <base>.ptx next to input.
+        std::string ptxFile = ptxOutput;
+        if (ptxFile.empty()) {
+            ptxFile = fileName;
+            size_t dot = ptxFile.find_last_of('.');
+            if (dot != std::string::npos) ptxFile = ptxFile.substr(0, dot);
+            ptxFile += ".ptx";
+        }
 
         {
             std::error_code EC;
@@ -1149,12 +1209,69 @@ int compile_vyb_kernel(const std::string& source, const std::string& fileName, i
                 throw std::runtime_error("NVPTXTargetMachine can't emit a file of this type");
             }
 
-            std::cout << "Emitting PTX (sm_86) with optimization -O" << optLevel << "..." << std::endl;
+            std::cout << "Emitting PTX (" << gpu << ") with optimization -O" << optLevel << "..." << std::endl;
             pass.run(*module);
             dest.flush();
         }
 
         std::cout << "Successfully emitted PTX to: " << ptxFile << std::endl;
+
+        // P2.4 — correctness gate: every emitted device function must survive into
+        // the PTX artifact (and there must be at least one). Catches silent drops
+        // (e.g. a kernel optimized away or mis-named) rather than shipping a .ptx
+        // that the host-side launch (P3/P4) would find missing.
+        {
+            std::string ptxText;
+            {
+                std::ifstream in(ptxFile);
+                if (in) {
+                    ptxText.assign(std::istreambuf_iterator<char>(in),
+                                   std::istreambuf_iterator<char>());
+                }
+            }
+            std::vector<std::string> bodied, missing;
+            for (llvm::Function& f : module->functions()) {
+                if (f.isDeclaration()) continue;
+                std::string n = f.getName().str();
+                if (n.rfind("llvm.", 0) == 0) continue;  // compiler-internal
+                bodied.push_back(n);
+                if (ptxText.find(n) == std::string::npos) missing.push_back(n);
+            }
+            if (bodied.empty())
+                throw std::runtime_error("Kernel module contains no device functions to emit");
+            for (const auto& m : missing)
+                std::cerr << "Kernel symbol missing from PTX: " << m << std::endl;
+            if (!missing.empty())
+                throw std::runtime_error("Emitted PTX is missing expected kernel symbols");
+            std::cout << "PTX contains all " << bodied.size() << " device function(s)" << std::endl;
+        }
+
+        // P2.2 — assembler-validate the emitted PTX with `ptxas`. Best-effort:
+        // absent ptxas, we warn and accept (the PTX is still produced); a ptxas
+        // that rejects the PTX is a hard failure (the artifact is invalid for the
+        // target GPU). This is the strongest possible P2 gate on a ptxas host.
+        {
+            std::string ptxasPath = find_ptxas();
+            if (ptxasPath.empty()) {
+                std::cout << "ptxas not found; PTX emitted but not assembler-verified" << std::endl;
+            } else {
+                std::string cubinPath = ptxFile;
+                size_t dot = cubinPath.find_last_of('.');
+                if (dot != std::string::npos) cubinPath = cubinPath.substr(0, dot);
+                cubinPath += ".cubin";
+                std::string cmd = "\"" + ptxasPath + "\" --gpu-name=" + gpu + " \"" +
+                                  ptxFile + "\" -o \"" + cubinPath + "\"";
+                std::string ptxasOut;
+                int rc = run_process(cmd, ptxasOut);
+                if (rc == 0) {
+                    std::cout << "PTX validated by ptxas (" << gpu << "): " << cubinPath << std::endl;
+                } else {
+                    std::cerr << "ptxas (" << gpu << ") rejected the emitted PTX (exit " << rc << "):\n"
+                              << ptxasOut << std::endl;
+                    throw std::runtime_error("Emitted PTX failed ptxas assembly");
+                }
+            }
+        }
 
         // Tear down in a deliberate order. `targetMachine` owns the NVPTX
         // SelectionDAG arenas, and `codegen` owns module + context; release them
@@ -3622,6 +3739,7 @@ int main(int argc, char* argv[]) {
     bool build_mode = false;
     bool kernel_mode = false;   // issue #198: --kernel  (NVPTX device code)
     std::string compile_output;
+    std::string kernel_output;  // issue #198 P2.1: --ptx <path> (kernel PTX output)
     std::string build_output;
     bool static_link = false;
     std::vector<std::string> link_libraries;
@@ -3670,6 +3788,12 @@ int main(int argc, char* argv[]) {
             // Kernel mode never JIT-executes — it emits kernel.ptx.
             kernel_mode = true;
             execute_jit = false;
+            continue;
+        } else if (arg == "--ptx") {
+            // issue #198 P2.1: explicit PTX output path for --kernel.
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                kernel_output = argv[++i];
+            }
             continue;
         } else if (arg == "--static") {
             static_link = true;
@@ -3862,7 +3986,7 @@ int main(int argc, char* argv[]) {
             // code and lower it to a PTX artifact. No JIT, no host runtime.
             if (kernel_mode) {
                 vyb::g_kernel_mode = true;
-                return compile_vyb_kernel(source, filename, optimization_level);
+                return compile_vyb_kernel(source, filename, optimization_level, kernel_output);
             }
 
             // Compile mode: emit object file
@@ -3961,6 +4085,7 @@ int main(int argc, char* argv[]) {
         std::cout << "  --emit-llvm           Generate LLVM IR to a .ll file" << std::endl;
         std::cout << "  --kernel              (issue #198) Lower the module as NVPTX device" << std::endl;
         std::cout << "                        code: no main, no host runtime; emit kernel.ptx" << std::endl;
+        std::cout << "  --ptx <path>          Write the --kernel PTX artifact to <path>" << std::endl;
         std::cout << "  --compile, -c [file]  Compile to object file (.o)" << std::endl;
         std::cout << "  --build, -b [file]    Compile and link to executable (NEW!)" << std::endl;
         std::cout << "  --link <lib-or-path>  Link a native build with -l<lib> or an explicit library/object path (repeatable)" << std::endl;

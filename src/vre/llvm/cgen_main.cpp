@@ -106,18 +106,27 @@ void LLVMCodegen::generate(vyb::ast::Module* astModule, const std::string& outpu
         return;
     }
 
-    // Initialize debug information
-    initializeDebugInfo(outputFilename);
+    if (vyb::g_kernel_mode) {
+        // issue #198: lower the module as NVPTX device code. Two things differ
+        // from host codegen:
+        //  (a) No DWARF debug info: it is not available on the GPU, and LLVM's
+        //      NVPTX backend emits debug sections whose `labels1 - labels2`
+        //      expressions require PTX ISA >= 7.5 while it still tags the module
+        //      `.version 7.1` — ptxas rejects that (observed on CUDA 12 ptxas).
+        //      `setDebugLocation`/`createDebugFunctionInfo` are null-guarded, so
+        //      skipping initializeDebugInfo is safe.
+        //  (b) The __vyb_* intrinsic externs are NOT declared — a kernel is pure
+        //      value/data-parallel code with no host runtime, and any __vyb_*
+        //      reference left in a kernel body is a bug that must surface as an
+        //      unresolved-symbol failure at PTX emission.
+    } else {
+        // Initialize debug information (host codegen only).
+        initializeDebugInfo(outputFilename);
+    }
 
     astModule->accept(*this);
 
     if (vyb::g_kernel_mode) {
-        // issue #198: lower the module as NVPTX device code. Set the target triple
-        // so the module carries the right target identity end-to-end (the NVPTX
-        // data layout is applied at lowering time). The __vyb_* intrinsic externs
-        // are NOT declared here — a kernel is pure value/data-parallel code with no
-        // host runtime, and any __vyb_* reference left in a kernel body is a bug that
-        // must surface as an unresolved-symbol failure at PTX emission.
         module->setTargetTriple("nvptx64-nvidia-cuda");
     } else {
         // Ensure all core intrinsic functions are declared in the module

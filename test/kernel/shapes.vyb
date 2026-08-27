@@ -1,0 +1,38 @@
+// Test: NVPTX kernel-shape coverage (issue #198 P2) — multi-kernel, scalar types,
+// control flow, recursion, nested loops. Each must lower to ptxas-valid PTX.
+// @test: NVPTX kernel shapes lower to ptxas-valid PTX
+// @description: --kernel with multiple kernels / scalar types / control flow / recursion (issue #198 P2)
+// @category: kernel
+// @expect: pass
+// @vyb-args: --kernel
+
+clamp(x<Float>, lo<Float>, hi<Float>)<Float> -> {
+    var<Float> v = x;
+    if (v < lo) {
+        v = lo;
+    } else if (v > hi) {
+        v = hi;
+    }
+    return v
+}
+
+fib(n<Int>)<Int> -> {
+    if (n <= 1) {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+positive_prod(a<Float>, b<Float>)<Bool> -> {
+    return a * b > 0.0
+}
+
+nested_loops(n<Int>)<Int> -> {
+    var<Int> acc = 0;
+    for (i in 0..n) {
+        for (j in 0..n) {
+            acc = acc + i * j;
+        }
+    }
+    return acc
+}
