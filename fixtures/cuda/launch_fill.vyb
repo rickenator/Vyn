@@ -1,0 +1,73 @@
+# CUDA launch example via the freedom FFI (issue #198 P3). On an NVIDIA host:
+#     build/vyb --module-path bindings fixtures/cuda/launch_fill.vyb
+# reads fixtures/cuda/fill_kernel.ptx, loads it, launches `fill` on device 0, copies
+# the result back and prints it (expect 42).
+#
+# KEY (issue #199): cuLaunchKernel's `kernelParams` is a `void*[]` whose element i
+# points to the buffer holding argument i's value. It is easy to pack it one level
+# short (passing &slot as the array base) — then the driver reads slot's content as a
+# HOST pointer and dereferences a device address, SIGSEGVing inside libcuda. The
+# correct pattern: a `void*` slot holds the arg VALUE; a second `void*` (`pp`) holds
+# &slot; kernelParams = loc(pp) (so *kernelParams == &slot).
+import io::{open_read, read_all}
+
+extern "C" {
+    cuInit(flags<CUInt>)<CInt>
+    cuDeviceGetCount(count<loc<CInt>>)<CInt>
+    cuDeviceGet(device<loc<CInt>>, ordinal<CInt>)<CInt>
+    cuCtxCreate_v2(pctx<loc<loc<CVoid>>>, flags<CUInt>, dev<CInt>)<CInt>
+    cuModuleLoadData(hmod<loc<loc<CVoid>>>, image<CString>)<CInt>
+    cuModuleGetFunction(hfunc<loc<loc<CVoid>>>, hmod<loc<CVoid>>, name<CString>)<CInt>
+    cuLaunchKernel(f<loc<CVoid>>, gridX<CUInt>, gridY<CUInt>, gridZ<CUInt>, blockX<CUInt>, blockY<CUInt>, blockZ<CUInt>, sharedMemBytes<CUInt>, hStream<loc<CVoid>>, kernelParams<loc<CVoid>>, extra<loc<CVoid>>)<CInt>
+    cuMemAlloc_v2(dptr<loc<Int>>, bytesize<Int>)<CInt>
+    cuMemcpyDtoH_v2(dstHost<loc<CVoid>>, srcDevice<Int>, ByteCount<Int>)<CInt>
+    cuMemFree_v2(dptr<Int>)<CInt>
+    cuCtxSynchronize()<CInt>
+}
+
+main()<Int> -> {
+    freedom {
+        if (cuInit(0) != 0) { return 7 }
+        var<CInt> ndev = 0
+        if (cuDeviceGetCount(loc(ndev)) != 0 || ndev < 1) { return 8 }
+        var<CInt> dev = 0
+        if (cuDeviceGet(loc(dev), 0) != 0) { return 14 }
+        ctx<loc<CVoid>> = from<loc<CVoid>>(0)
+        if (cuCtxCreate_v2(loc(ctx), 0, dev) != 0) { return 14 }
+    }
+
+    ptx<String> = ""
+    match (open_read("fixtures/cuda/fill_kernel.ptx")) {
+        f -> {
+            match (read_all(f)) {
+                s -> { ptx = s }
+                ? -> { return 13 }
+            }
+        }
+        ? -> { return 13 }
+    }
+
+    freedom {
+        hmod<loc<CVoid>> = from<loc<CVoid>>(0)
+        if (cuModuleLoadData(loc(hmod), ptx) != 0) { return 9 }
+        hf<loc<CVoid>> = from<loc<CVoid>>(0)
+        if (cuModuleGetFunction(loc(hf), hmod, "fill") != 0) { return 10 }
+        dptr<Int> = 0
+        if (cuMemAlloc_v2(loc(dptr), 4) != 0) { return 11 }
+
+        # --- corrected kernelParams packing for the one 8-byte arg (out_ptr) ---
+        slot<loc<CVoid>> = from<loc<CVoid>>(dptr)        # buffer holding arg0's VALUE
+        sel<loc<loc<CVoid>>> = loc(slot)                  # &slot
+        pp<loc<CVoid>> = from<loc<CVoid>>(addr(sel))      # pp holds &slot
+        rc<CInt> = cuLaunchKernel(from<loc<CVoid>>(addr(hf)), 1, 1, 1, 1, 1, 1, 0, from<loc<CVoid>>(0), loc(pp), from<loc<CVoid>>(0))
+        if (rc != 0) { return 12 }
+        cuCtxSynchronize()
+
+        h<CInt> = 0
+        if (cuMemcpyDtoH_v2(loc(h), dptr, 4) != 0) { return 16 }
+        println_int(h)
+        cuMemFree_v2(dptr)
+        if (h == 42) { return 0 }
+        return 1
+    }
+}
