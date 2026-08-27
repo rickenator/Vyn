@@ -402,9 +402,16 @@ static void json_fill_value(void* slot, const char* tn, const char** p) {
                 v->size++;
                 json_skip_ws(p);
                 if (**p == ',') { (*p)++; json_skip_ws(p); }
-                else if (**p == ']') { (*p)++; break; }
                 else break;
             }
+            // Consume the closing ']' in EVERY case, including an EMPTY array
+            // (`[]`). Previously an empty Vec skipped the loop body entirely and
+            // left ']' unconsumed, so the caller's next-field loop saw ']' instead
+            // of ',', hit `else break`, and silently dropped every following field
+            // (a following Vec<Struct> stayed empty and a trailing Bool kept its
+            // default) while all an earlier non-empty Vec consumed ']' correctly
+            // (#206).
+            if (**p == ']') (*p)++;
             v->data = data; v->cap = (int64_t)cap;
         }
     } else {

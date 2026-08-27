@@ -1,0 +1,83 @@
+// @test: #206 - empty Vec<String> field no longer breaks following-field JSON parse
+// @description: Deserializing a struct whose JSON has an EMPTY Vec<String> field
+//   (`missing_fields: []`) immediately before a Vec<Struct> and a trailing Bool used
+//   to silently drop those subsequent fields: the runtime's Vec parser consumed '['
+//   but, for an empty array, never consumed the closing ']', so the object loop saw
+//   ']' instead of ',' and bailed — a following Vec<Struct> deserialized to [] and a
+//   trailing Bool kept its default. Only empty Vecs were affected (a non-empty Vec
+//   consumed ']' inside its loop). Regression: the exact issue shape round-trips
+//   losslessly, plus non-empty and Int-element controls.
+// @category: json, serialization, structs, vec, nested, regression
+// @expect: pass
+// @expect-return: 0
+// @execute-jit: true
+
+import collections
+
+struct PatchValue {
+    name<String>,
+    version<String>,
+    source<String>,
+    command<String>
+}
+struct Change {
+    path<String>,
+    op<String>,
+    value<PatchValue>,
+    reason<String>
+}
+struct Outer {
+    kind<String>,
+    message<String>,
+    missing_fields<Vec<String>>,   // serialized EMPTY -> []
+    proposed_changes<Vec<Change>>, // <-- used to be silently dropped
+    requires_confirmation<Bool>    // <-- used to be reset to false
+}
+struct Counts {
+    tag<String>,
+    nums<Vec<String>>,
+    vals<Vec<Int>>,
+    ok<Bool>
+}
+
+main()<Int> -> {
+    # Exact #206 shape: empty Vec<String> followed by Vec<Struct> and a trailing Bool.
+    mf<Vec<String>> = Vec<String>()
+    v<Vec<Change>> = Vec<Change>()
+    v.push(Change { path = "pkgs", op = "add",
+                    value = PatchValue { name = "x", version = "1", source = "u", command = "" },
+                    reason = "r" })
+    o<Outer> = Outer { kind = "proposal", message = "m", missing_fields = mf,
+                       proposed_changes = v, requires_confirmation = true }
+    j<String> = o.to_string()
+    back<Outer> = Outer::from_string(j)
+    if (back.to_string() != j) { return 1 }
+    if (back.proposed_changes.len() != 1) { return 2 }
+    if (back.proposed_changes.get(0).path != "pkgs") { return 3 }
+    if (!back.requires_confirmation) { return 4 }
+
+    # Non-empty Vec<String> control (must still round-trip, both before and after fix).
+    mf2<Vec<String>> = Vec<String>()
+    mf2.push("a"); mf2.push("b")
+    v2<Vec<Change>> = Vec<Change>()
+    v2.push(Change { path = "p", op = "del",
+                     value = PatchValue { name = "y", version = "2", source = "u", command = "c" },
+                     reason = "rr" })
+    o2<Outer> = Outer { kind = "q", message = "mm", missing_fields = mf2,
+                        proposed_changes = v2, requires_confirmation = false }
+    j2<String> = o2.to_string()
+    back2<Outer> = Outer::from_string(j2)
+    if (back2.to_string() != j2) { return 5 }
+    if (back2.missing_fields.len() != 2) { return 6 }
+
+    # Empty Vec<String> followed by Vec<Int> (non-struct element) control.
+    c<Counts> = Counts { tag = "c", nums = Vec(), vals = Vec(), ok = true }
+    c.vals.push(10); c.vals.push(20)
+    j3<String> = c.to_string()
+    c2<Counts> = Counts::from_string(j3)
+    if (c2.to_string() != j3) { return 7 }
+    if (c2.vals.len() != 2 || c2.vals.get(1) != 20 || !c2.ok) { return 8 }
+
+    println("ok")
+    return 0
+}
