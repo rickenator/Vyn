@@ -908,6 +908,30 @@ VYB_WEAK int64_t __vyb_io_read_all_opt(int64_t fd, vyb_file_str* out) {
     return 1;
 }
 
+// Bounded, stateless offset read (io stdlib module, #207): read up to `maxlen`
+// bytes starting at absolute byte `off` of the open `fd` via glibc `pread` (no
+// lseek state, thread-safe). Mirrors __vyb_io_read_all_opt's lossless contract:
+// returns 1 and writes a present, registry-registered vyb_file_str to *out on
+// success (len = bytes actually read; fewer than maxlen at/past EOF, which the
+// caller detects by length), or 0 on failure (negative offset / bad fd) with
+// *out untouched so the Vyb `String?` is absent.
+VYB_WEAK int64_t __vyb_file_read_at(int64_t fd, int64_t off, int64_t maxlen, vyb_file_str* out) {
+    if (!out) return 0;
+    if (off < 0 || maxlen < 0) { vyb_file_err = EINVAL; return 0; }
+    char* buf = (char*)malloc((size_t)maxlen + 1);
+    if (!buf) { vyb_file_err = errno; return 0; }
+    ssize_t n = pread((int)fd, buf, (size_t)maxlen, (off_t)off);
+    if (n < 0) { vyb_file_err = errno; free(buf); return 0; }
+    buf[n] = '\0';
+    // Owned heap buffer: its first holder is the Vyb String built over it, so
+    // register it (refcount 1) and let the String's release free it.
+    __vyb_string_register(buf);
+    out->ptr = buf;
+    out->len = (int64_t)n;
+    vyb_file_err = 0;
+    return 1;
+}
+
 // ============================================================================
 // TERMINAL + STDIN (term stdlib module) - interactive console I/O.
 // ============================================================================

@@ -2162,7 +2162,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "tan" || name == "exp" || name == "log" || name == "log2" || name == "log10" ||
             name == "floor" || name == "ceil" || name == "round" || name == "min" || name == "max" ||
             name == "vyb_io_open" || name == "vyb_io_close" || name == "vyb_io_write" ||
-            name == "vyb_io_read_all" || name == "vyb_io_read_all_opt" || name == "vyb_io_error_code" ||
+            name == "vyb_io_read_all" || name == "vyb_io_read_all_opt" || name == "vyb_io_read_at" || name == "vyb_io_error_code" ||
             name == "vyb_io_error_message" ||
             name == "vyb_fs_mkdir" ||
             name == "vyb_crypto_sha256" ||
@@ -3177,6 +3177,18 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             // may legitimately be empty). This fixes read_all's "" sentinel, which
             // conflated an empty file with a failed read.
             if (name == "vyb_io_read_all_opt") {
+                auto* inner = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "String"));
+                auto* resTy = new ast::OptionalType(node->loc,
+                    std::unique_ptr<ast::TypeNode>(inner));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+            // Bounded/offset read: io_read_at returns a native `String?` -- absent
+            // on failure (bad fd / negative offset), present holding up to `n` bytes
+            // at `off` (a short read near/past EOF is a present shorter String).
+            if (name == "vyb_io_read_at") {
                 auto* inner = new ast::TypeName(node->loc,
                     std::make_unique<ast::Identifier>(node->loc, "String"));
                 auto* resTy = new ast::OptionalType(node->loc,

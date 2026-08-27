@@ -1,0 +1,75 @@
+// @test: io::read_at - bounded, stateless offset file read
+// @description: `io::read_at(f, off, n)` reads up to `n` bytes at absolute byte
+//   `off` of the open file via the runtime's stateless `pread`, returning a
+//   native `String?` (absent only on failure). It lets a loader pull just the
+//   metadata/tensor-index prefix of a multi-GB file instead of `read_all`-ing the
+//   whole thing (#207). Verifies: whole-file from 0, a bounded prefix, a
+//   mid-offset read, a near-EOF short read (len < n), that the file cursor is
+//   NOT moved (a following read_all still returns everything), a negative offset
+//   is the absent optional, and an oversized offset does not crash.
+// @category: io, stdlib, files, scalar, regression
+// @expect: pass
+// @expect-output: readat-ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import io
+
+main()<Int> -> {
+    path<String> = "/tmp/vyb_read_at_test.txt"
+    content<String> = "hello vyb"   # 9 bytes: h e l l o ' ' v y b
+
+    # Seed the file. read_at/pread targets an absolute offset of the fd's content,
+    # so we must write known bytes first.
+    match (open_write(path)) {
+        w -> {
+            n<Int> = write_str(w, content) else -1
+            if (n != 9) { close(w); return 1 }
+            close(w)
+        }
+        ? -> { return 2 }
+    }
+
+    match (open_read(path)) {
+        f -> {
+            # 1. Whole-file from offset 0.
+            full<String> = read_at(f, 0, 100) else ""
+            if (full != content) { close(f); return 3 }
+            # 2. Bounded prefix read.
+            head<String> = read_at(f, 0, 5) else ""
+            if (head != "hello") { close(f); return 4 }
+            # 3. Mid-offset read.
+            mid<String> = read_at(f, 6, 3) else ""
+            if (mid != "vyb") { close(f); return 5 }
+            # 4. Near-EOF short read: at offset 8 only 'b' remains; requesting 10
+            #    returns the 1 available byte without error.
+            short<String> = read_at(f, 8, 10) else "ERR"
+            if (short != "b") { close(f); return 6 }
+            # 5. read_at is stateless: a full read_all still returns everything.
+            all2<String> = read_all(f) else ""
+            if (all2 != content) { close(f); return 7 }
+            close(f)
+        }
+        ? -> { return 8 }
+    }
+
+    # 6. Negative offset -> the ABSENT optional (match), no crash.
+    match (open_read(path)) {
+        f2 -> {
+            negAbs<Bool> = false
+            match (read_at(f2, -1, 5)) {
+                s -> { negAbs = false }   # present -> unexpected for a negative offset
+                ? -> { negAbs = true }
+            }
+            if (!negAbs) { close(f2); return 9 }
+            # 7. Oversized offset (past EOF) -> must not crash; returns a present
+            #    short read (len 0) or absent, either way harmless.
+            over<String> = read_at(f2, 1000, 5) else "ABSENT"
+            close(f2)
+        }
+        ? -> { return 10 }
+    }
+
+    println("readat-ok")
+    return 0
+}

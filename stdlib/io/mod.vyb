@@ -125,6 +125,18 @@ read_all(f<File>)<String?> -> {
     return vyb_io_read_all_opt(f.fd)
 }
 
+# Read up to `n` bytes at absolute byte `off` of the open file, without moving
+# the file cursor (stateless `pread`, thread-safe). Returns `String?` -- absent
+# only if the read fails (bad/negative offset, closed fd, ...); present holding
+# the bytes actually read, which may be FEWER than `n` at (or past) EOF, so
+# callers detect truncation by length. Lets a loader pull just, say, the
+# metadata + tensor-index prefix of a multi-GB file without reading the whole
+# thing into memory (#207).
+share(all)
+read_at(f<File>, off<Int>, n<Int>)<String?> -> {
+    return vyb_io_read_at(f.fd, off, n)
+}
+
 # Numeric error code of the last file operation (0 = no error).
 share(all)
 error_code()<Int> -> {

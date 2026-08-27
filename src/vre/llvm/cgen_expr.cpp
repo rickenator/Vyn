@@ -5368,6 +5368,38 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "readall.h"), 1);
             m_currentLLVMValue = opt;
             return;
+        } else if (fname == "vyb_io_read_at") {
+            // Bounded/offset read returning a native `String?` -- absent on failure
+            // (bad fd / negative offset), present (possibly short) holding up to
+            // `maxlen` bytes at absolute byte `off`. Mirrors vyb_io_read_all_opt /
+            // vyb_net_recv_opt, with (fd, off, maxlen) integer arguments.
+            if (node->arguments.size() != 3) {
+                logError(node->loc, "vyb_io_read_at expects 3 arguments (fd, off, maxlen)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this); llvm::Value* fd = m_currentLLVMValue;
+            node->arguments[1]->accept(*this); llvm::Value* off = m_currentLLVMValue;
+            node->arguments[2]->accept(*this); llvm::Value* maxlen = m_currentLLVMValue;
+            if (!fd || !off || !maxlen) return;
+            auto toReadAtI64 = [&](llvm::Value* v) -> llvm::Value* {
+                if (v->getType()->isIntegerTy(64)) return v;
+                return builder->CreateSExt(v, int64Type, "readat.toi64");
+            };
+            llvm::StructType* strTy = llvm::StructType::get(*context, {int8PtrType, int64Type}, false);
+            llvm::StructType* optTy = llvm::StructType::get(*context, {strTy, llvm::Type::getInt1Ty(*context)}, false);
+            llvm::Value* slot = builder->CreateAlloca(strTy, nullptr, "readat.slot");
+            builder->CreateStore(llvm::Constant::getNullValue(strTy), slot, "readat.zero");
+            llvm::FunctionType* ft = llvm::FunctionType::get(
+                int64Type, {int64Type, int64Type, int64Type, llvm::PointerType::get(*context, 0)}, false);
+            llvm::Function* f = module->getFunction("__vyb_file_read_at");
+            if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_file_read_at", module.get());
+            llvm::Value* has = builder->CreateCall(f, {toReadAtI64(fd), toReadAtI64(off), toReadAtI64(maxlen), slot}, "readat.has");
+            llvm::Value* val = builder->CreateLoad(strTy, slot, "readat.val");
+            llvm::Value* opt = llvm::UndefValue::get(optTy);
+            opt = builder->CreateInsertValue(opt, val, 0, "readat.v");
+            opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "readat.h"), 1);
+            m_currentLLVMValue = opt;
+            return;
         } else if (fname == "vyb_net_recv_opt") {
             // Lossless stream read over a socket returning a native `String?`.
             // Mirrors vyb_io_read_all_opt, with (fd, maxlen) integer arguments.
