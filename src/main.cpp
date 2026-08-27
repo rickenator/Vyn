@@ -3414,6 +3414,45 @@ static int mod_fetch_github(const std::string& ownerRepoPath, const std::string&
             return 1;
         }
         std::cout << "signed INDEX verified for " << subpath << " (publisher key).\n";
+
+        // Fetch + hash-verify the relative-import sibling .vyb files listed in the
+        // signed INDEX, so a multi-file binding (mod.vyb + sibling FFI decls, e.g.
+        // bindings/cuda / bindings/sqlite) installs COMPLETE and fully pinned —
+        // the point of #198 treating CUDA as the real-world smuggle-conformance test.
+        // The verified INDEX signature attests to every sibling hash.
+        auto indexHexFor = [&](const std::string& pathKey) -> std::string {
+            size_t kp = idxBody.find("\"" + pathKey + "\"");
+            if (kp == std::string::npos) return "";
+            size_t colon = idxBody.find(':', kp);
+            size_t vq = colon != std::string::npos ? idxBody.find('"', colon + 1) : std::string::npos;
+            if (vq == std::string::npos || vq + 65 > idxBody.size()) return "";
+            return modHexLower(idxBody.substr(vq + 1, 64));
+        };
+        std::string prefix = modDir.empty() ? "" : modDir + "/";
+        size_t scan = 0;
+        while ((scan = idxBody.find("\"" + prefix, scan)) != std::string::npos) {
+            size_t ks = idxBody.find('"', scan);
+            size_t ke = idxBody.find('"', ks + 1);
+            if (ke == std::string::npos) break;
+            std::string key = idxBody.substr(ks + 1, ke - ks - 1);
+            scan = ke + 1;
+            if (key == subpath || key.size() < 5 || key.rfind(".vyb") != key.size() - 4) continue;
+            std::string outSib = proj + "/" + fs::path(key).filename().string();
+            if (mod_fetch_url(base + key, outSib, capath, exePath, tmpRoot) != 0) {
+                std::cerr << "Error: --require-signed: could not fetch sibling " << key << "\n";
+                return 1;
+            }
+            std::string sibBytes = modReadFile(outSib);
+            vyb_file_str sd = __vyb_sha256_hex(sibBytes.empty() ? "" : sibBytes.data(), (int64_t)sibBytes.size());
+            std::string sibHex = modHexLower(sd.len > 0 ? std::string(sd.ptr, (size_t)sd.len) : "");
+            std::string wantSib = indexHexFor(key);
+            if (wantSib.empty() || sibHex != wantSib) {
+                std::cerr << "Error: --require-signed: sibling " << key << " sha256 " << sibHex
+                          << " does not match the signed INDEX entry (" << wantSib << ")\n";
+                return 1;
+            }
+            std::cout << "signed sibling " << key << " verified + fetched.\n";
+        }
     }
 
     outDir = proj;

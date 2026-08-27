@@ -53,6 +53,17 @@ fi
 # 6. Re-install is idempotent (single dependency entry).
 [ "$(grep -c 'calc = { path' vyb.toml)" -eq 1 ] && ok "re-install idempotent" || bad "idempotent"
 
+# 7. Posted signed bindings verify against the pinned publisher key (issue #198:
+#    any committed INDEX.json + .sig must stay valid under the official key).
+for post in sqlite cuda; do
+  if out=$("$VYB" mod verify-signed "$ROOT/bindings/$post/INDEX.json" 2>&1); then
+    printf '%s' "$out" | grep -q "SIGNED VERIFY OK" && ok "$post signed INDEX verifies" \
+      || bad "$post verify-signed (unexpected output)"
+  else
+    bad "$post verify-signed (exit $?)"
+  fi
+done
+
 echo
 echo "REMOTE-IMPORT $([ $fail -eq 0 ] && echo PASS || echo FAIL) ($([ $fail -eq 0 ] && echo all "$pass" || echo "$fail of $((pass+fail)) failed"))"
 exit $([ $fail -eq 0 ] && echo 0 || echo 1)
