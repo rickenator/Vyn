@@ -1279,7 +1279,7 @@ void LLVMCodegen::visit(vyb::ast::TryStatement* node) {
     m_currentLLVMValue = nullptr; // Try statement itself doesn't produce a value
 }
 
-void LLVMCodegen::visit(vyb::ast::UnsafeStatement* node) {
+void LLVMCodegen::visit(vyb::ast::FreedomStatement* node) {
     // For LLVM codegen, an freedom block doesn't typically translate to specific LLVM instructions.
     // Its purpose is to bypass semantic checks in the Vyb language itself.
     // So, we just visit the inner block.

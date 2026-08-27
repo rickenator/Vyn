@@ -766,7 +766,7 @@ public:
     void visit(vyb::ast::PassStatement* node) override;
     void visit(vyb::ast::BreakStatement* node) override;
     void visit(vyb::ast::ContinueStatement* node) override;
-    void visit(vyb::ast::UnsafeStatement* node) override;
+    void visit(vyb::ast::FreedomStatement* node) override;
     void visit(vyb::ast::EmptyStatement* node) override;
     void visit(vyb::ast::ExternStatement* node) override;
     void visit(vyb::ast::YieldStatement* node) override;

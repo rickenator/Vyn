@@ -795,10 +795,10 @@ bool SemanticAnalyzer::isInLoop() {
     return false;
 }
 
-bool SemanticAnalyzer::isInUnsafeBlock() {
+bool SemanticAnalyzer::isInFreedomBlock() {
     SymbolTable* scope = currentScope;
     while (scope) {
-        if (scope->isUnsafeBlock) {
+        if (scope->isFreedomBlock) {
             return true;
         }
         scope = scope->getParent();
@@ -2428,7 +2428,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
     if (auto ident = dynamic_cast<ast::Identifier*>(node->callee.get())) {
         const std::string& name = ident->name;
 
-        if (externalFunctionNames.count(name) && !isInUnsafeBlock()) {
+        if (externalFunctionNames.count(name) && !isInFreedomBlock()) {
             addError("External function '" + name + "' can only be called inside a freedom block.", node);
         }
 
@@ -2438,7 +2438,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
         // with a `freedom` block. `exec_status` is a read-only probe and stays
         // ungated. Mirroring the `at` / `addr` / `from` checks, this is a
         // name-based gate applied at the call site.
-        if ((name == "exec_run" || name == "exec_output") && !isInUnsafeBlock()) {
+        if ((name == "exec_run" || name == "exec_output") && !isInFreedomBlock()) {
             addError("'" + name + "' can only be called inside a freedom block.", node);
         }
 
@@ -6457,7 +6457,7 @@ void SemanticAnalyzer::visit(ast::GenericInstantiationExpression* node) {
 }
 void SemanticAnalyzer::visit(ast::PointerDerefExpression* node) {
     // at() intrinsic only allowed inside an freedom block
-    if (!isInUnsafeBlock()) {
+    if (!isInFreedomBlock()) {
         addError("at() (pointer dereference) is only allowed inside an freedom block.", node);
         expressionTypes[node] = nullptr;
         return;
@@ -6511,7 +6511,7 @@ void SemanticAnalyzer::visit(ast::PointerDerefExpression* node) {
 }
 void SemanticAnalyzer::visit(ast::AddrOfExpression* node) {
     // addr() intrinsic only allowed inside an freedom block
-    if (!isInUnsafeBlock()) {
+    if (!isInFreedomBlock()) {
         addError("addr() is only allowed inside an freedom block.", node);
         expressionTypes[node] = nullptr;
         return;
@@ -6546,7 +6546,7 @@ void SemanticAnalyzer::visit(ast::AddrOfExpression* node) {
 }
 void SemanticAnalyzer::visit(ast::FromIntToLocExpression* node) {
     // from<T>() intrinsic only allowed inside an freedom block
-    if (!isInUnsafeBlock()) {
+    if (!isInFreedomBlock()) {
         addError("from<Type>(expr) is only allowed inside an freedom block.", node);
         expressionTypes[node] = nullptr;
         return;
@@ -6601,7 +6601,7 @@ void SemanticAnalyzer::visit(ast::FromIntToLocExpression* node) {
 }
 void SemanticAnalyzer::visit(ast::LocationExpression* node) {
     // Check if we're in an freedom block
-    if (!isInUnsafeBlock()) {
+    if (!isInFreedomBlock()) {
         addError("loc() (location-of) is only allowed inside an freedom block.", node);
         expressionTypes[node] = nullptr;
         return;
@@ -6837,10 +6837,10 @@ void SemanticAnalyzer::visit(ast::TryStatement* node) {
         node->finallyBlock->accept(*this);
     }
 }
-void SemanticAnalyzer::visit(ast::UnsafeStatement* node) {
+void SemanticAnalyzer::visit(ast::FreedomStatement* node) {
     // Enter a new scope for the freedom block
     enterScope();
-    currentScope->isUnsafeBlock = true;
+    currentScope->isFreedomBlock = true;
     node->block->accept(*this);
     exitScope();
 }

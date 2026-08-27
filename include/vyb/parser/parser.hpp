@@ -197,7 +197,7 @@ namespace vyb { // Changed Vyb to vyb
         vyb::ast::StmtPtr parse_match();
         vyb::ast::StmtPtr parse_defer();
         vyb::ast::StmtPtr parse_await();
-        std::unique_ptr<vyb::ast::UnsafeStatement> parse_unsafe(); // Added declaration
+        std::unique_ptr<vyb::ast::FreedomStatement> parse_freedom(); // Added declaration
     private:
         bool is_statement_start(vyb::TokenType type) const; // Added declaration
         std::unique_ptr<vyb::ast::IfStatement> parse_if();

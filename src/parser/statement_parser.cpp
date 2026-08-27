@@ -146,7 +146,7 @@ vyb::ast::StmtPtr StatementParser::parse() {
         case vyb::TokenType::KEYWORD_TRY:
             return parse_try();
         case vyb::TokenType::KEYWORD_FREEDOM:
-            return parse_unsafe();
+            return parse_freedom();
         case vyb::TokenType::KEYWORD_DEFER:
             return parse_defer();
         case vyb::TokenType::KEYWORD_AWAIT:
@@ -1814,10 +1814,10 @@ std::unique_ptr<vyb::ast::ContinueStatement> StatementParser::parse_continue() {
 }
 
 // Parses an freedom block: 'freedom { ... }'
-std::unique_ptr<vyb::ast::UnsafeStatement> StatementParser::parse_unsafe() {
+std::unique_ptr<vyb::ast::FreedomStatement> StatementParser::parse_freedom() {
     SourceLocation loc = expect(vyb::TokenType::KEYWORD_FREEDOM, "Expected 'freedom'").location;
     auto blockStmt = parse_block(); // parse_block consumes '{' and '}'
-    return std::make_unique<vyb::ast::UnsafeStatement>(loc, std::move(blockStmt));
+    return std::make_unique<vyb::ast::FreedomStatement>(loc, std::move(blockStmt));
 }
 
 // --- Error Handling Statement Parsers ---

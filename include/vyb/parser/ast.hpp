@@ -79,7 +79,7 @@ class PassStatement;
 class BreakStatement;
 class ContinueStatement;
 class TryStatement;
-class UnsafeStatement;
+class FreedomStatement;
 class EmptyStatement;
 class ExternStatement; // Added
 class ThrowStatement; // Added
@@ -239,7 +239,7 @@ enum class NodeType {
     BREAK_STATEMENT,
     CONTINUE_STATEMENT,
     TRY_STATEMENT,
-    UNSAFE_STATEMENT,
+    FREEDOM_STATEMENT,
     EMPTY_STATEMENT,
     EXTERN_STATEMENT, // Added
     THROW_STATEMENT, // Added
@@ -348,7 +348,7 @@ public:
     virtual void visit(BreakStatement* node) = 0;
     virtual void visit(ContinueStatement* node) = 0;
     virtual void visit(TryStatement* node) = 0;
-    virtual void visit(UnsafeStatement* node) = 0;
+    virtual void visit(FreedomStatement* node) = 0;
     virtual void visit(EmptyStatement* node) = 0;
     virtual void visit(ExternStatement* node) = 0;
     virtual void visit(ThrowStatement* node) = 0;
@@ -925,17 +925,17 @@ public:
     void accept(Visitor& visitor) override;
 };
 
-// Remove inline toString() for ObjectLiteral, NilLiteral, ListComprehension, ConstructionExpression, ArrayInitializationExpression, GenericInstantiationExpression, IfExpression, UnsafeStatement
+// Remove inline toString() for ObjectLiteral, NilLiteral, ListComprehension, ConstructionExpression, ArrayInitializationExpression, GenericInstantiationExpression, IfExpression, FreedomStatement
 
-// New UnsafeStatement AST node
-class UnsafeStatement : public Statement {
+// New FreedomStatement AST node
+class FreedomStatement : public Statement {
 public:
     std::unique_ptr<BlockStatement> block;
 
-    UnsafeStatement(SourceLocation loc, std::unique_ptr<BlockStatement> blockStmt)
+    FreedomStatement(SourceLocation loc, std::unique_ptr<BlockStatement> blockStmt)
         : Statement(loc), block(std::move(blockStmt)) {}
 
-    NodeType getType() const override { return NodeType::UNSAFE_STATEMENT; }
+    NodeType getType() const override { return NodeType::FREEDOM_STATEMENT; }
     std::string toString() const override;
     void accept(Visitor& visitor) override { visitor.visit(this); }
 };

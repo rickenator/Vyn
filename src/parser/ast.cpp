@@ -816,11 +816,11 @@ void IfExpression::accept(Visitor& visitor) {
     visitor.visit(this);
 }
 
-// --- UnsafeStatement ---
-// ast.hpp: UnsafeStatement(SourceLocation loc, std::unique_ptr<BlockStatement> blockStmt)
+// --- FreedomStatement ---
+// ast.hpp: FreedomStatement(SourceLocation loc, std::unique_ptr<BlockStatement> blockStmt)
 // Member in hpp: block
 // toString() is already declared in hpp.
-std::string UnsafeStatement::toString() const {
+std::string FreedomStatement::toString() const {
     return "freedom " + (block ? block->toString() : "{}");
 }
 

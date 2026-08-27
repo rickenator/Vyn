@@ -43,7 +43,7 @@ class YieldStatement;
 class YieldReturnStatement;
 class AssertStatement;
 class EmptyStatement;
-class UnsafeStatement;
+class FreedomStatement;
 
 // Missing forward declarations for expressions
 class Identifier;
@@ -161,7 +161,7 @@ private:
 class SymbolTable {
 public:
     SymbolTable(SymbolTable* parent = nullptr, const ModuleScopeGate* gate = nullptr)
-        : parent(parent), scopeGate(gate), isUnsafeBlock(false), isLoop(false) {}
+        : parent(parent), scopeGate(gate), isFreedomBlock(false), isLoop(false) {}
     void add(const SymbolInfo& sym) { table[sym.name] = sym; }
     SymbolInfo* lookup(const std::string& name) {
         auto it = table.find(name);
@@ -180,7 +180,7 @@ public:
     }
     SymbolInfo* lookupDirect(const std::string& name); // Added
     SymbolTable* getParent() { return parent; }
-    bool isUnsafeBlock;
+    bool isFreedomBlock;
     bool isLoop;
     const ModuleScopeGate* scopeGate;
 
@@ -376,7 +376,7 @@ public:
 
     // Helper methods
     bool isInLoop();
-    bool isInUnsafeBlock();
+    bool isInFreedomBlock();
     bool isIntegerType(ast::TypeNode* type);
     bool isRawLocationType(ast::TypeNode* type); // Added to support location type checking
     bool isReservedWord(const std::string& name);
@@ -406,7 +406,7 @@ public:
     void visit(ast::BreakStatement* node) override;
     void visit(ast::ContinueStatement* node) override;
     void visit(ast::TryStatement* node) override;
-    void visit(ast::UnsafeStatement* node) override;
+    void visit(ast::FreedomStatement* node) override;
     void visit(ast::EmptyStatement* node) override;
     void visit(ast::AssertStatement* node) override;
     void visit(ast::MatchStatement* node) override;

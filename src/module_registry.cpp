@@ -203,7 +203,7 @@ public:
         if (node->catchBlock) node->catchBlock->accept(*this);
         if (node->finallyBlock) node->finallyBlock->accept(*this);
     }
-    void visit(ast::UnsafeStatement* node) override { if (node && node->block) node->block->accept(*this); }
+    void visit(ast::FreedomStatement* node) override { if (node && node->block) node->block->accept(*this); }
     void visit(ast::EmptyStatement*) override {}
     void visit(ast::ExternStatement* node) override {
         if (!node) return;
@@ -689,8 +689,8 @@ public:
     void visit(ast::TryStatement* node) override {
         result_ = std::make_unique<ast::TryStatement>(node->loc, cloneBlock(node->tryBlock.get()), node->catchIdent, cloneBlock(node->catchBlock.get()), cloneBlock(node->finallyBlock.get()));
     }
-    void visit(ast::UnsafeStatement* node) override {
-        result_ = std::make_unique<ast::UnsafeStatement>(node->loc, cloneBlock(node->block.get()));
+    void visit(ast::FreedomStatement* node) override {
+        result_ = std::make_unique<ast::FreedomStatement>(node->loc, cloneBlock(node->block.get()));
     }
     void visit(ast::EmptyStatement* node) override {
         result_ = std::make_unique<ast::EmptyStatement>(node->loc);
@@ -949,7 +949,7 @@ static void rewriteNamespaceRawStmt(ast::Statement* stmt, const ModuleNSMap& loc
         if (n->tryBlock) rewriteBlockBody(n->tryBlock->body, localNS);
         if (n->catchBlock) rewriteBlockBody(n->catchBlock->body, localNS);
         if (n->finallyBlock) rewriteBlockBody(n->finallyBlock->body, localNS);
-    } else if (auto* n = dynamic_cast<ast::UnsafeStatement*>(stmt)) {
+    } else if (auto* n = dynamic_cast<ast::FreedomStatement*>(stmt)) {
         if (n->block) rewriteBlockBody(n->block->body, localNS);
     } else if (auto* n = dynamic_cast<ast::ThrowStatement*>(stmt)) {
         rewriteNamespaceExpr(n->expr, localNS);
@@ -1237,7 +1237,7 @@ static void mangleBareRawStmt(ast::Statement* stmt, const NSSymbolMap& symbolToM
         if (n->tryBlock) mangleBareBlock(n->tryBlock->body, symbolToMangled);
         if (n->catchBlock) mangleBareBlock(n->catchBlock->body, symbolToMangled);
         if (n->finallyBlock) mangleBareBlock(n->finallyBlock->body, symbolToMangled);
-    } else if (auto* n = dynamic_cast<ast::UnsafeStatement*>(stmt)) {
+    } else if (auto* n = dynamic_cast<ast::FreedomStatement*>(stmt)) {
         if (n->block) mangleBareBlock(n->block->body, symbolToMangled);
     } else if (auto* n = dynamic_cast<ast::ThrowStatement*>(stmt)) {
         MANGLE_MEMBER(n->expr);
