@@ -30,14 +30,28 @@ extern bool g_kernel_mode;
 
 // Kernel-mode device intrinsic -> Vyb return type name ("" if not intrinsic).
 // These are device-only: thread indexing (tid/blk/dim read NVPTX special
-// registers) and device-global load/store. Available ONLY under g_kernel_mode.
+// registers), device-global load/store, fp16/bf16 + GGUF q4_0 dequant, shared
+// memory, atomics, and a block barrier. Available ONLY under g_kernel_mode.
 static const char* kernelIntrinsicReturnType(const std::string& name) {
-    if (name == "tid_x" || name == "tid_y" || name == "blk_x" || name == "blk_y" ||
-        name == "dim_x" || name == "dim_y" || name == "ld_i64") return "Int";
-    if (name == "ld_f64" || name == "ld_f32") return "Float";
-    if (name == "ld_i32") return "CInt";
-    if (name == "st_f64" || name == "st_f32" || name == "st_i64" || name == "st_i32")
-        return "Void";
+    if (name == "tid_x" || name == "tid_y" || name == "tid_z" ||
+        name == "blk_x" || name == "blk_y" || name == "blk_z" ||
+        name == "dim_x" || name == "dim_y" || name == "dim_z" ||
+        name == "grid_x" || name == "grid_y" ||
+        name == "lane_id" || name == "warp_size" ||
+        name == "ld_i64") return "Int";
+    if (name == "ld_f64" || name == "ld_f32" || name == "ld_f16" ||
+        name == "ld_bf16" || name == "deq_q4_0" ||
+        name == "ld_shared_f64" || name == "atomic_add_f64") return "Float";
+    if (name == "ld_i32" || name == "atomic_add_i32") return "CInt";
+    if (name == "ld_i8") return "Int8";
+    if (name == "ld_u8") return "UInt8";
+    if (name == "ld_i16") return "Int16";
+    if (name == "ld_u16") return "UInt16";
+    if (name == "st_f64" || name == "st_f32" || name == "st_i64" ||
+        name == "st_i32" || name == "st_i8" || name == "st_u8" ||
+        name == "st_i16" || name == "st_u16" || name == "st_f16" ||
+        name == "st_bf16" || name == "st_shared_f64" ||
+        name == "kernel_barrier") return "Void";
     return nullptr;
 }
 
@@ -855,6 +869,17 @@ bool SemanticAnalyzer::isIntegerType(ast::TypeNode* type) {
     // Add any other type checks that could represent integer types
     // For example, if there are typedef'ed types or alias types
 
+    return false;
+}
+
+bool SemanticAnalyzer::isFloatType(ast::TypeNode* type) {
+    if (!type) return false;
+    if (auto tn = dynamic_cast<ast::TypeName*>(type)) {
+        if (!tn->identifier) return false;
+        const std::string& name = tn->identifier->name;
+        return name == "Float" || name == "Float64" || name == "Float32" ||
+               name == "f32" || name == "f64" || name == "float32" || name == "float64";
+    }
     return false;
 }
 
@@ -10610,6 +10635,17 @@ void SemanticAnalyzer::visit(ast::AsExpression* node) {
     // reinterpretation at equal width. Examples: `b as Int64`, `b as UInt32`.
     // Codegen applies the sign-preserving extension based on the source type.
     if (isIntegerType(operandType) && isIntegerType(targetType)) {
+        return;
+    }
+
+    // Numeric Int <-> Float casts (#202) and Float<->Float32 width casts.
+    // Codegen lowers int->float with SIToFP/UIToFP, float->int with
+    // FPToSI/FPToUI, and float-width with FPExt/FPTrunc, driven by the operand
+    // and target sign/width. (This unblocks the Vyb-native transformer / Qwen3-
+    // 4B config model: RoPE positions, attention scaling, softmax, dequant.)
+    if ((isIntegerType(operandType) && isFloatType(targetType)) ||
+        (isFloatType(operandType) && isIntegerType(targetType)) ||
+        (isFloatType(operandType) && isFloatType(targetType))) {
         return;
     }
 

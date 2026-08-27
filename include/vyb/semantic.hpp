@@ -378,6 +378,7 @@ public:
     bool isInLoop();
     bool isInFreedomBlock();
     bool isIntegerType(ast::TypeNode* type);
+    bool isFloatType(ast::TypeNode* type);
     bool isRawLocationType(ast::TypeNode* type); // Added to support location type checking
     bool isReservedWord(const std::string& name);
     bool isLValue(ast::Expression* expr);

@@ -1,0 +1,51 @@
+// @test: kernel-mode device intrinsics compile (issue #203)
+// @description: exercises the widened #203 device intrinsics — geometry
+//   (tid/blk/dim z + grid + lane + warp), fp16/bf16 ld/st, GGUF q4_0 dequant,
+//   shared-memory f64 staging, global atomics, and a block barrier. Compiles in
+//   kernel mode to PTX that ptxas (sm_86) accepts. (A GPU-launched value check
+//   lives in test/ffi/test_cuda_p203.vyb.)
+// @category: kernel, cuda, types
+// @expect: pass
+// @vyb-args: --kernel
+
+// Exercises every new #203 intrinsic; results are not read back here (the
+// harness validates that kernel-mode emissions are host-runtime-free and
+// ptxas-valid), but the kernel must use them so they are actually emitted.
+probe(out<Int>, buf<Int>, n<Int>) -> {
+    gid<Int> = blk_x() * dim_x() + tid_x()
+    z<Int> = tid_z() + blk_z() + dim_z() + grid_x() + grid_y() + lane_id() + warp_size()
+    kernel_barrier()
+
+    if (gid < n) {
+        # fp16 / bf16 round-trip
+        v<Float> = ld_f16(buf + gid * 2)
+        st_f64(out + gid * 8, v)
+        w<Float> = ld_bf16(buf + gid * 2)
+        st_bf16(buf + gid * 2, w)
+
+        # narrower loads / stores
+        b<Int8> = ld_i8(buf + gid * 2)
+        u<UInt8> = ld_u8(buf + gid * 2)
+        s<Int16> = ld_i16(buf + gid * 2)
+        t<UInt16> = ld_u16(buf + gid * 2)
+        st_i8(buf + gid * 2, b)
+        st_u8(buf + gid * 2, u)
+        st_i16(buf + gid * 2, s)
+        st_u16(buf + gid * 2, t)
+
+        # q4_0 dequant
+        block<Int> = gid / 32
+        bi<Int> = gid % 32
+        qv<Float> = deq_q4_0(buf + block * 18, bi)
+        st_f64(out + gid * 8, qv)
+
+        # shared f64 staging + atomic accumulation
+        st_shared_f64(gid, qv)
+        kernel_barrier()
+        sc<Float> = ld_shared_f64(gid)
+        st_f64(out + gid * 8, sc)
+        atomic_add_f64(out, 1.0)
+        atomic_add_i32(buf, 1 as CInt)
+        z_dummy<Int> = z
+    }
+}

@@ -1,0 +1,118 @@
+// @test: GPU value check of #203 device intrinsics (deq_q4_0 / fp16 / bf16)
+// @description: launches a Vyb kernel (fixtures/kernel/p203_verify.vyb built via
+//   --kernel) that dequants a known GGUF q4_0 block and loads fp16/bf16 weights
+//   on the GPU; verifies the exact values vs CPU. SKIPs (ret 0) when no CUDA/GPU.
+// @category: ffi, cuda, kernel
+// @expect: pass
+// @expect-return: 0
+
+# P4/#203 runtime verify: deq_q4_0 + fp16/bf16 correct on the RTX 3090.
+import io::{open_read, read_all}
+
+extern "C" {
+    cuInit(flags<CUInt>)<CInt>
+    cuDeviceGetCount(count<loc<CInt>>)<CInt>
+    cuDeviceGet(device<loc<CInt>>, ordinal<CInt>)<CInt>
+    cuCtxCreate_v2(pctx<loc<loc<CVoid>>>, flags<CUInt>, dev<CInt>)<CInt>
+    cuModuleLoadData(hmod<loc<loc<CVoid>>>, image<CString>)<CInt>
+    cuModuleGetFunction(hfunc<loc<loc<CVoid>>>, hmod<loc<CVoid>>, name<CString>)<CInt>
+    cuMemAlloc_v2(dptr<loc<Int>>, bytesize<Int>)<CInt>
+    cuMemcpyHtoD_v2(dstDevice<Int>, srcHost<loc<CVoid>>, ByteCount<Int>)<CInt>
+    cuMemcpyDtoH_v2(dstHost<loc<CVoid>>, srcDevice<Int>, ByteCount<Int>)<CInt>
+    cuMemFree_v2(dptr<Int>)<CInt>
+    cuCtxSynchronize()<CInt>
+    cuda_launch4i(f<loc<CVoid>>, gridX<CUInt>, gridY<CUInt>, gridZ<CUInt>,
+                  blockX<CUInt>, blockY<CUInt>, blockZ<CUInt>,
+                  a0<Int>, a1<Int>, a2<Int>, a3<Int>)<CInt>
+}
+
+main()<Int> -> {
+    # expected values (CPU contract)
+    # q4_0 block: fp16 scale 1.0 (0x3C00), weight nibbles: elem0=0, elem1=8, elem2=15
+    #   deq = (nibble-8)*d  =>  -8.0, 0.0, 7.0
+    ex0<Float> = -8.0
+    ex1<Float> = 0.0
+    ex2<Float> = 7.0
+
+    freedom {
+        if (cuInit(0) != 0) { println("SKIP: no CUDA"); return 0 }
+        var<CInt> ndev = 0
+        if (cuDeviceGetCount(loc(ndev)) != 0 || ndev < 1) { println("SKIP: no CUDA device"); return 0 }
+        var<CInt> dev = 0
+        if (cuDeviceGet(loc(dev), 0) != 0) { return 14 }
+        ctx<loc<CVoid>> = from<loc<CVoid>>(0)
+        if (cuCtxCreate_v2(loc(ctx), 0, dev) != 0) { return 14 }
+    }
+
+    ptx<String> = ""
+    match (open_read("fixtures/cuda/p203_verify.ptx")) {
+        f -> { match (read_all(f)) { s -> { ptx = s } ? -> { return 13 } } }
+        ? -> { return 13 }
+    }
+
+    freedom {
+        hmod<loc<CVoid>> = from<loc<CVoid>>(0)
+        lrc<CInt> = cuModuleLoadData(loc(hmod), ptx)
+        if (lrc != 0) {
+            ptx2<String> = ""
+            match (open_read("fixtures/cuda/p203_verify.ptx")) { f -> { match (read_all(f)) { s -> { ptx2 = s } ? -> { return 20 } } } ? -> { return 20 } }
+            hmod = from<loc<CVoid>>(0)
+            lrc = cuModuleLoadData(loc(hmod), ptx2)
+        }
+        if (lrc != 0) { return 9 }
+        hf<loc<CVoid>> = from<loc<CVoid>>(0)
+        if (cuModuleGetFunction(loc(hf), hmod, "verify") != 0) { return 10 }
+
+        outD<Int> = 0
+        qD<Int> = 0
+        fD<Int> = 0
+        bD<Int> = 0
+        if (cuMemAlloc_v2(loc(outD), 40) != 0) { return 11 }
+        if (cuMemAlloc_v2(loc(qD), 16) != 0) { return 11 }
+        if (cuMemAlloc_v2(loc(fD), 2) != 0) { return 11 }
+        if (cuMemAlloc_v2(loc(bD), 2) != 0) { return 11 }
+
+        # q4_0 block: scale fp16 1.0 = 0x3C00 (LE bytes 00 3C) then weight bytes.
+        s16<UInt16> = 0x3C00 as UInt16
+        if (cuMemcpyHtoD_v2(qD, loc(s16), 2) != 0) { return 15 }
+        wb<UInt8> = 0x80 as UInt8       # nibble0=0, nibble1=8
+        if (cuMemcpyHtoD_v2(qD + 2, loc(wb), 1) != 0) { return 15 }
+        wb = 0x0F as UInt8              # nibble2=15 (low), nibble3=0
+        if (cuMemcpyHtoD_v2(qD + 3, loc(wb), 1) != 0) { return 15 }
+
+        # fp16 1.5 = 0x3E00 ; bf16 1.5 = 0x3FC0
+        f16v<UInt16> = 0x3E00 as UInt16
+        if (cuMemcpyHtoD_v2(fD, loc(f16v), 2) != 0) { return 15 }
+        bf16v<UInt16> = 0x3FC0 as UInt16
+        if (cuMemcpyHtoD_v2(bD, loc(bf16v), 2) != 0) { return 15 }
+
+        rc<CInt> = cuda_launch4i(from<loc<CVoid>>(addr(hf)), 1, 1, 1, 1, 1, 1, outD, qD, fD, bD)
+        if (rc != 0) { println("launch rc "); println_int(rc); return 12 }
+        cuCtxSynchronize()
+
+        g0<Float> = 0.0
+        g1<Float> = 0.0
+        g2<Float> = 0.0
+        g3<Float> = 0.0
+        g4<Float> = 0.0
+        if (cuMemcpyDtoH_v2(loc(g0), outD + 0, 8) != 0) { return 16 }
+        if (cuMemcpyDtoH_v2(loc(g1), outD + 8, 8) != 0) { return 16 }
+        if (cuMemcpyDtoH_v2(loc(g2), outD + 16, 8) != 0) { return 16 }
+        if (cuMemcpyDtoH_v2(loc(g3), outD + 24, 8) != 0) { return 16 }
+        if (cuMemcpyDtoH_v2(loc(g4), outD + 32, 8) != 0) { return 16 }
+
+        println("deq0="); println(g0.to_string())
+        println(" deq1="); println(g1.to_string())
+        println(" deq2="); println(g2.to_string())
+        println(" fp16="); println(g3.to_string())
+        println(" bf16="); println(g4.to_string())
+
+        if (g0 != ex0 || g1 != ex1 || g2 != ex2) { return 1 }
+        if (g3 != 1.5 || g4 != 1.5) { return 1 }
+
+        cuMemFree_v2(outD); cuMemFree_v2(qD); cuMemFree_v2(fD); cuMemFree_v2(bD)
+        println("P203 VERIFY OK")
+        return 0
+    }
+}
+

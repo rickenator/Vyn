@@ -1,0 +1,8 @@
+// #203 runtime verification: deq_q4_0 + fp16/bf16 loads, on device.
+verify(out<Int>, q4buf<Int>, f16buf<Int>, bf16buf<Int>) -> {
+    st_f64(out + 0, deq_q4_0(q4buf, 0))
+    st_f64(out + 8, deq_q4_0(q4buf, 1))
+    st_f64(out + 16, deq_q4_0(q4buf, 2))
+    st_f64(out + 24, ld_f16(f16buf))
+    st_f64(out + 32, ld_bf16(bf16buf))
+}

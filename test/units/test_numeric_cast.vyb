@@ -1,0 +1,48 @@
+// @test: numeric Int<->Float cast (issue #202)
+// @description: `as` now crosses the integer and float families: Int->Float,
+//   Float->Int, and Float32<->Float width. Exercises widening, rounding, width
+//   promotion and Float32 narrowing needed by the Vyb-native transformer.
+// @category: language, types, cast
+// @expect: pass
+// @expect-return: 0
+
+main()<Int> -> {
+    // i as Float then back: the round-trip through Float is lossless for small ints.
+    fv<Float> = 7 as Float
+    println(fv.to_string())
+    iv<Int> = fv as Int
+    if (iv != 7) { println("int->float->int failed"); return 1 }
+
+    // 64-bit int -> Float32 keeps ~7 significant digits; value is representable.
+    v32<Float32> = 100000 as Float32
+    w<Float> = v32 as Float
+    println(w.to_string())
+    if (w != 100000.0) { println("int->f32->f64 failed"); return 1 }
+
+    // Float32 -> Float widens losslessly.
+    av<Float32> = 2.5 as Float32
+    bv<Float> = av as Float
+    println(bv.to_string())
+    if (bv != 2.5) { println("f32->f64 widen failed"); return 1 }
+
+    // Float -> Float32 narrows; widening back approximates to f32 precision.
+    big<Float> = 123.456
+    nv<Float32> = big as Float32
+    back<Float> = nv as Float
+    println(back.to_string())
+
+    // Unsigned int -> Float uses UIToFP (a UInt with the high bit set must not
+    // sign-extend to a negative float).
+    u<UInt64> = (1 as UInt64) << 63
+    uf<Float> = u as Float
+    println(uf.to_string())
+    if (uf < 0.0) { println("unsigned->float failed (sign-extended)"); return 1 }
+
+    // Float -> Int truncates toward zero.
+    t<Int> = 42.7 as Int
+    println_int(t)
+    if (t != 42) { println("float->int trunc failed"); return 1 }
+
+    println("CAST OK")
+    return 0
+}
