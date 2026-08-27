@@ -1,0 +1,136 @@
+# cuda — posted FFI binding (issue #198 P3). Host-side CUDA launch surface over the
+# CUDA driver API (libcuda), imported via the smuggle channel like any posted module.
+#
+# The launch shim is pure freedom FFI. Opaque driver handles (CUcontext/CUmodule/
+# CUfunction) and device addresses cross the Vyb surface as plain Int; ALL raw-pointer
+# work (`loc`/`from`/`addr`, `loc<CVoid>`) stays inside these freedom blocks, where the
+# FFI pointer intrinsics are in scope (enabled only in modules that declare FFI pointer
+# functions — an importer does NOT inherit them, so no pointer types leak out). Mirrors
+# how bindings/sqlite keeps pointers internal. Requires libcuda exposed RTLD_GLOBAL by
+# the compiler's dlopen hook.
+#
+# Lossless: opaque handles never escape as pointer ownership — they are integer values
+# the caller threads back into later calls.
+import cuda_binding::{cuInit, cuDriverGetVersion, cuDeviceGetCount, cuDeviceGet,
+                      cuDevicePrimaryCtxRetain, cuCtxSetCurrent, cuModuleLoadData,
+                      cuModuleGetFunction, cuLaunchKernel, cuMemAlloc, cuMemcpyHtoD,
+                      cuMemcpyDtoH, cuMemFree, cuCtxSynchronize}
+
+# Initialize the CUDA driver. 0 on success, else the CUresult.
+share(all)
+cuda_init()<CInt> -> {
+    freedom {
+        return cuInit(0)
+    }
+}
+
+# CUDA driver version (e.g. 13000 = 13.0.0), or -1 if the call failed.
+share(all)
+cuda_driver_version()<CInt> -> {
+    freedom {
+        var<CInt> v = 0
+        if (cuDriverGetVersion(loc(v)) != 0) { return -1 }
+        return v
+    }
+}
+
+# Number of CUDA-capable devices (>=0), or -1 on failure.
+share(all)
+cuda_device_count()<CInt> -> {
+    freedom {
+        var<CInt> n = 0
+        if (cuDeviceGetCount(loc(n)) != 0) { return -1 }
+        return n
+    }
+}
+
+# CUdevice (small int) for a 0-based ordinal, or -1 on failure.
+share(all)
+cuda_device(ordinal<CInt>)<CInt> -> {
+    freedom {
+        var<CInt> dev = 0
+        if (cuDeviceGet(loc(dev), ordinal) != 0) { return -1 }
+        return dev
+    }
+}
+
+# Retain+set the primary context for a device (ctx-less driver API). 0 on success.
+share(all)
+cuda_ctx_retain(dev<CInt>)<CInt> -> {
+    freedom {
+        ctx<loc<CVoid>> = from<loc<CVoid>>(0)
+        if (cuDevicePrimaryCtxRetain(loc(ctx), dev) != 0) { return 1 }
+        return cuCtxSetCurrent(ctx)
+    }
+}
+
+# Load a CUmodule from PTX text. Returns an opaque module handle as Int (0 = fail).
+share(all)
+cuda_module_load(ptx<String>)<Int> -> {
+    freedom {
+        hmod<loc<CVoid>> = from<loc<CVoid>>(0)
+        if (cuModuleLoadData(loc(hmod), ptx) != 0) { return 0 }
+        return addr(hmod)
+    }
+}
+
+# Get a CUfunction handle (as Int) from a loaded module by name. 0 = failure.
+share(all)
+cuda_module_func(hmod<Int>, name<String>)<Int> -> {
+    freedom {
+        hfunc<loc<CVoid>> = from<loc<CVoid>>(0)
+        if (cuModuleGetFunction(loc(hfunc), from<loc<CVoid>>(hmod), name) != 0) { return 0 }
+        return addr(hfunc)
+    }
+}
+
+# Allocate `bytes` of device memory. Returns the CUdeviceptr (0 = failure).
+share(all)
+cuda_mem_alloc(bytes<Int>)<Int> -> {
+    freedom {
+        dptr<Int> = 0
+        if (cuMemAlloc(loc(dptr), bytes) != 0) { return 0 }
+        return dptr
+    }
+}
+
+# Copy host int32 -> device (4 bytes). 0 on success.
+share(all)
+cuda_write_i32(dst<Int>, value<CInt>)<CInt> -> {
+    freedom {
+        h<CInt> = value
+        return cuMemcpyHtoD(dst, loc(h), 4)
+    }
+}
+
+# Copy device -> host int32 (4 bytes). Returns the value, or -1 on failure.
+share(all)
+cuda_read_i32(src<Int>)<CInt> -> {
+    freedom {
+        h<CInt> = 0
+        if (cuMemcpyDtoH(loc(h), src, 4) != 0) { return -1 }
+        return h
+    }
+}
+
+# Free device memory. 0 on success.
+share(all)
+cuda_mem_free(devptr<Int>)<CInt> -> {
+    freedom {
+        return cuMemFree(devptr)
+    }
+}
+
+# (Launch — cuLaunchKernel via the freedom FFI — is NOT included here yet. It is the
+# one piece that crossed two real Vyb FFI walls this session — pointer-typed bodies
+# don't import cleanly, and the 11-arg cuLaunchKernel FFI call segfaults the host JIT
+# at the call site. Tracked in .hermes/plans/...issue198-nvptx-cuda.md P3; belongs in
+# P3.4 once the compiler FFI is fixed or a tiny cuda_launch_shim.c fallback lands.)
+
+# Block until the device finishes queued work on the current context. 0 on success.
+share(all)
+cuda_sync()<CInt> -> {
+    freedom {
+        return cuCtxSynchronize()
+    }
+}

@@ -1,0 +1,49 @@
+# cuda_binding — posted FFI binding (issue #198 P3). CUDA driver API surface over
+# libcuda (dlopen'd RTLD_GLOBAL by the compiler), using the from<loc<T>>(0) opaque
+# out-param idiom. Hand-written curated subset (the full cuda.h is ~thousands of
+# decls). Handles are opaque pointers modeled as loc<CVoid>; CUdevice is a small
+# int. All 64-bit scalars (device addresses, byte counts) are modeled as Vyb Int
+# (signed i64 == unsigned 8-byte at the ABI) so the wrapper never needs to convert.
+# NOTE: FFI declarations must be single-line.
+
+share(all)
+cuInit(flags<CUInt>)<CInt>
+
+share(all)
+cuDriverGetVersion(version<loc<CInt>>)<CInt>
+
+share(all)
+cuDeviceGetCount(count<loc<CInt>>)<CInt>
+
+share(all)
+cuDeviceGet(device<loc<CInt>>, ordinal<CInt>)<CInt>
+
+share(all)
+cuDevicePrimaryCtxRetain(pctx<loc<loc<CVoid>>>, dev<CInt>)<CInt>
+
+share(all)
+cuCtxSetCurrent(ctx<loc<CVoid>>)<CInt>
+
+share(all)
+cuModuleLoadData(hmod<loc<loc<CVoid>>>, image<CString>)<CInt>
+
+share(all)
+cuModuleGetFunction(hfunc<loc<loc<CVoid>>>, hmod<loc<CVoid>>, name<CString>)<CInt>
+
+share(all)
+cuLaunchKernel(f<loc<CVoid>>, gridX<CUInt>, gridY<CUInt>, gridZ<CUInt>, blockX<CUInt>, blockY<CUInt>, blockZ<CUInt>, sharedMemBytes<CUInt>, hStream<loc<CVoid>>, kernelParams<loc<CVoid>>, extra<loc<CVoid>>)<CInt>
+
+share(all)
+cuMemAlloc(dptr<loc<Int>>, bytesize<Int>)<CInt>
+
+share(all)
+cuMemcpyHtoD(dstDevice<Int>, srcHost<loc<CVoid>>, ByteCount<Int>)<CInt>
+
+share(all)
+cuMemcpyDtoH(dstHost<loc<CVoid>>, srcDevice<Int>, ByteCount<Int>)<CInt>
+
+share(all)
+cuMemFree(dptr<Int>)<CInt>
+
+share(all)
+cuCtxSynchronize()<CInt>

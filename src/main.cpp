@@ -1973,11 +1973,13 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
         }
 
         // Optional C libraries for FFI bindings (#174 / SDK Phase 3): expose
-        // sqlite3 (and libgit2 when present) symbols to the ORC JIT's process
-        // symbol generator so `freedom` blocks in posted bindings under bindings/
-        // can call them. Best-effort: a missing lib leaves those symbols simply
-        // unresolvable (the binding errors only if actually used).
-        for (const char* lib : {"libsqlite3.so", "libsqlite3.so.0", "libgit2.so", "libgit2.so.28", "libgit2.so.1.8"}) {
+        // sqlite3, libgit2, and the CUDA driver API (libcuda) when present to the
+        // ORC JIT's process symbol generator so `freedom` blocks in posted bindings
+        // under bindings/ can call them. Best-effort: a missing lib leaves those
+        // symbols simply unresolvable (the binding errors only if actually used).
+        for (const char* lib : {"libsqlite3.so", "libsqlite3.so.0",
+                                "libgit2.so", "libgit2.so.28", "libgit2.so.1.8",
+                                "libcuda.so", "libcuda.so.1"}) {
             if (void* h = dlopen(lib, RTLD_NOW | RTLD_GLOBAL)) {
                 VYB_CDBG << "FFI binding symbols loaded from " << lib << std::endl;
             }
