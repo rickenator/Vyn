@@ -34,16 +34,16 @@ share(all)
 cuLaunchKernel(f<loc<CVoid>>, gridX<CUInt>, gridY<CUInt>, gridZ<CUInt>, blockX<CUInt>, blockY<CUInt>, blockZ<CUInt>, sharedMemBytes<CUInt>, hStream<loc<CVoid>>, kernelParams<loc<CVoid>>, extra<loc<CVoid>>)<CInt>
 
 share(all)
-cuMemAlloc(dptr<loc<Int>>, bytesize<Int>)<CInt>
+cuMemAlloc_v2(dptr<loc<Int>>, bytesize<Int>)<CInt>
 
 share(all)
-cuMemcpyHtoD(dstDevice<Int>, srcHost<loc<CVoid>>, ByteCount<Int>)<CInt>
+cuMemcpyHtoD_v2(dstDevice<Int>, srcHost<loc<CVoid>>, ByteCount<Int>)<CInt>
 
 share(all)
-cuMemcpyDtoH(dstHost<loc<CVoid>>, srcDevice<Int>, ByteCount<Int>)<CInt>
+cuMemcpyDtoH_v2(dstHost<loc<CVoid>>, srcDevice<Int>, ByteCount<Int>)<CInt>
 
 share(all)
-cuMemFree(dptr<Int>)<CInt>
+cuMemFree_v2(dptr<Int>)<CInt>
 
 share(all)
 cuCtxSynchronize()<CInt>

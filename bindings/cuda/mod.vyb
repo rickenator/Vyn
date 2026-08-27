@@ -13,8 +13,8 @@
 # the caller threads back into later calls.
 import cuda_binding::{cuInit, cuDriverGetVersion, cuDeviceGetCount, cuDeviceGet,
                       cuDevicePrimaryCtxRetain, cuCtxSetCurrent, cuModuleLoadData,
-                      cuModuleGetFunction, cuLaunchKernel, cuMemAlloc, cuMemcpyHtoD,
-                      cuMemcpyDtoH, cuMemFree, cuCtxSynchronize}
+                      cuModuleGetFunction, cuLaunchKernel, cuMemAlloc_v2, cuMemcpyHtoD_v2,
+                      cuMemcpyDtoH_v2, cuMemFree_v2, cuCtxSynchronize}
 
 # Initialize the CUDA driver. 0 on success, else the CUresult.
 share(all)
@@ -89,7 +89,7 @@ share(all)
 cuda_mem_alloc(bytes<Int>)<Int> -> {
     freedom {
         dptr<Int> = 0
-        if (cuMemAlloc(loc(dptr), bytes) != 0) { return 0 }
+        if (cuMemAlloc_v2(loc(dptr), bytes) != 0) { return 0 }
         return dptr
     }
 }
@@ -99,7 +99,7 @@ share(all)
 cuda_write_i32(dst<Int>, value<CInt>)<CInt> -> {
     freedom {
         h<CInt> = value
-        return cuMemcpyHtoD(dst, loc(h), 4)
+        return cuMemcpyHtoD_v2(dst, loc(h), 4)
     }
 }
 
@@ -108,7 +108,7 @@ share(all)
 cuda_read_i32(src<Int>)<CInt> -> {
     freedom {
         h<CInt> = 0
-        if (cuMemcpyDtoH(loc(h), src, 4) != 0) { return -1 }
+        if (cuMemcpyDtoH_v2(loc(h), src, 4) != 0) { return -1 }
         return h
     }
 }
@@ -117,15 +117,36 @@ cuda_read_i32(src<Int>)<CInt> -> {
 share(all)
 cuda_mem_free(devptr<Int>)<CInt> -> {
     freedom {
-        return cuMemFree(devptr)
+        return cuMemFree_v2(devptr)
     }
 }
 
-# (Launch — cuLaunchKernel via the freedom FFI — is NOT included here yet. It is the
-# one piece that crossed two real Vyb FFI walls this session — pointer-typed bodies
-# don't import cleanly, and the 11-arg cuLaunchKernel FFI call segfaults the host JIT
-# at the call site. Tracked in .hermes/plans/...issue198-nvptx-cuda.md P3; belongs in
-# P3.4 once the compiler FFI is fixed or a tiny cuda_launch_shim.c fallback lands.)
+# Launch a kernel taking a SINGLE 8-byte scalar argument (e.g. a device pointer).
+# Composable: callers get a device buffer via cuda_mem_alloc, pass its address here,
+# then read back via cuda_read_i32. grid/block are (gridX,gridY,gridZ) x
+# (blockX,blockY,blockZ) as CInt dims. Returns the CUresult (0 = enqueued OK).
+#
+# kernelParams packing (issue #199): cuLaunchKernel's kernelParams is a `void*[]`
+# whose element i POINTS to the buffer holding arg i's value. An 8-byte arg needs a
+# `slot` holding the VALUE, a `sel` = &slot, and `pp` = &sel such that
+# *kernelParams == &slot. Packing it one level short makes the driver host-deref a
+# device address -> SIGSEGV inside libcuda.
+share(all)
+cuda_launch(hfunc<Int>, gridX<CInt>, gridY<CInt>, gridZ<CInt>,
+            blockX<CInt>, blockY<CInt>, blockZ<CInt>, a0<Int>)<CInt> -> {
+    freedom {
+        slot<loc<CVoid>> = from<loc<CVoid>>(a0)
+        sel<loc<loc<CVoid>>> = loc(slot)
+        pp<loc<CVoid>> = from<loc<CVoid>>(addr(sel))
+        return cuLaunchKernel(from<loc<CVoid>>(hfunc), gridX, gridY, gridZ,
+                              blockX, blockY, blockZ, 0,
+                              from<loc<CVoid>>(0), loc(pp), from<loc<CVoid>>(0))
+    }
+}
+
+# Launch — cuLaunchKernel via the freedom FFI, importable as cuda_launch above.
+# (The 11-arg FFI wall from #199 was a packing bug, not a compiler bug; #200, the
+# multi-line from/loc/CVoid scope loss, is fixed in 1001b4f.)
 
 # Block until the device finishes queued work on the current context. 0 on success.
 share(all)

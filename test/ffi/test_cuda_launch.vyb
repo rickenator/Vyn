@@ -1,0 +1,52 @@
+// @test: cuda posted binding end-to-end launch (issue #198 P3)
+// @description: import bindings/cuda, init the CUDA driver, load fill_kernel.ptx,
+//   alloc device mem, launch `fill` via the cuda_launch wrapper, read back and
+//   verify 42. Hardware-dependent: SKIPs (returns 0) when no CUDA driver/GPU.
+// @category: ffi, bindings, cuda, kernel
+// @expect: pass
+// @vyb-args: --module-path bindings
+// @expect-return: 0
+
+import io::{open_read, read_all}
+import cuda::{cuda_init, cuda_device_count, cuda_device, cuda_ctx_retain,
+              cuda_module_load, cuda_module_func, cuda_mem_alloc, cuda_launch,
+              cuda_read_i32, cuda_mem_free, cuda_sync}
+
+main()<Int> -> {
+    // No CUDA driver / no GPU => skip gracefully (runs on any host).
+    if (cuda_init() != 0) { println("SKIP: no CUDA driver"); return 0 }
+    var<CInt> ndev = cuda_device_count()
+    if (ndev < 1) { println("SKIP: no CUDA device"); return 0 }
+
+    var<CInt> dev = cuda_device(0)
+    if (dev < 0) { return 9 }
+    if (cuda_ctx_retain(dev) != 0) { return 10 }
+
+    ptx<String> = ""
+    match (open_read("fixtures/cuda/fill_kernel.ptx")) {
+        f -> {
+            match (read_all(f)) {
+                s -> { ptx = s }
+                ? -> { return 13 }
+            }
+        }
+        ? -> { return 13 }
+    }
+
+    var<Int> hm = cuda_module_load(ptx)
+    if (hm == 0) { return 14 }
+    var<Int> hf = cuda_module_func(hm, "fill")
+    if (hf == 0) { return 15 }
+
+    var<Int> dptr = cuda_mem_alloc(4)
+    if (dptr == 0) { return 16 }
+
+    if (cuda_launch(hf, 1, 1, 1, 1, 1, 1, dptr) != 0) { return 17 }
+    cuda_sync()
+
+    var<CInt> h = cuda_read_i32(dptr)
+    cuda_mem_free(dptr)
+    println_int(h)
+    if (h == 42) { return 0 }
+    return 1
+}
