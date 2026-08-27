@@ -1,0 +1,36 @@
+// @test: fixed-array element write (issue #201)
+// @description: `a[i] = v` (constant and loop index) now codegens a valid GEP
+//   (index visited as an R-value) instead of feeding a pointer into the GEP and
+//   crashing module verification. Verifies the stores land and read back.
+// @category: language, types, arrays
+// @expect: pass
+// @expect-return: 0
+
+main()<Int> -> {
+    // Constant index write.
+    f<[Float; 4]> = [0.0, 0.0, 0.0, 0.0]
+    f[0] = 1.5
+    f[3] = 2.5
+    if (f[0] != 1.5) { println("f[0] write failed"); return 1 }
+    if (f[3] != 2.5) { println("f[3] write failed"); return 1 }
+
+    // Loop-index write + read-back.
+    g<[Float; 4]> = [10.0, 20.0, 30.0, 40.0]
+    i<Int> = 0
+    for (i in 0..3) {
+        g[i] = g[i] + 1.0
+    }
+    j<Int> = 0
+    for (j in 0..3) {
+        want<Float> = 11.0 + 10.0 * (j as Float)
+        if (g[j] != want) { println("loop write failed at "); println_int(j); return 1 }
+    }
+
+    // Integer array element write (i64).
+    h<[Int; 3]> = [0, 0, 0]
+    h[1] = 42
+    if (h[1] != 42) { println("int array write failed"); return 1 }
+
+    println("ARRAY WRITE OK")
+    return 0
+}

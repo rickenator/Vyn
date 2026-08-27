@@ -7739,7 +7739,15 @@ void LLVMCodegen::visit(vyb::ast::ArrayElementExpression *node) {
         arrayPtr = m_currentLLVMValue;
     }
 
+    // The index is always an R-value (never the assignment target): visit it with
+    // the LHS flag cleared so a plain identifier index yields its VALUE, not its
+    // alloca. Without this, `a[i]=v` fed the index's alloca pointer straight into
+    // the GEP as an index -> `getelementptr [N x T], ptr, i32 0, ptr %i` -> module
+    // verification failed (issue #201).
+    bool saveIndexLHS = m_isLHSOfAssignment;
+    m_isLHSOfAssignment = false;
     node->index->accept(*this);
+    m_isLHSOfAssignment = saveIndexLHS;
     llvm::Value *indexVal = m_currentLLVMValue;
 
     if (!arrayPtr || !indexVal) {
@@ -7798,6 +7806,12 @@ void LLVMCodegen::visit(vyb::ast::ArrayElementExpression *node) {
         elementAddress = builder->CreateGEP(elementType, arrayPtr, indexVal, "arrayelemaddr_rval");
     }
 
+    // Return the element address when this is an assignment target (LHS), so the
+    // caller stores RHS through it; otherwise load the element value (read).
+    if (m_isLHSOfAssignment) {
+        m_currentLLVMValue = elementAddress;
+        return;
+    }
     m_currentLLVMValue = builder->CreateLoad(elementType, elementAddress, "arrayelemload");
 }
 
