@@ -575,6 +575,8 @@ namespace vyb {
     bool g_suppress_all_parser_debug_output = false;
     // Codegen debug output: off by default; enable with --debug-codegen
     bool g_debug_codegen = false;
+    // Kernel mode (issue #198): off by default; enable with --kernel.
+    bool g_kernel_mode = false;
 }
 
 // Concrete implementation of SemanticAnalyzer
@@ -1014,6 +1016,160 @@ int compile_vyb_to_object(const std::string& source, const std::string& fileName
 
     } catch (const std::exception& e) {
         std::cerr << "Error compiling to object file: " << e.what() << std::endl;
+        return 1;
+    }
+}
+
+// issue #198 — compile a Vyb module as pure NVPTX device code and lower it to a
+// PTX artifact. Kernel mode requires g_kernel_mode to be set (the `--kernel` CLI
+// flag), which makes codegen emit the module with the nvptx64-nvidia-cuda target
+// triple and WITHOUT the host-runtime __vyb_* intrinsic externs. This function
+// then verifies the module is truly host-runtime-free and runs it through the
+// in-process NVPTX backend to produce `kernel.ptx`.
+int compile_vyb_kernel(const std::string& source, const std::string& fileName, int optLevel = 2) {
+    std::cout << "Compiling " << fileName << " as NVPTX device code..." << std::endl;
+
+    llvm::InitializeAllTargetInfos();
+    llvm::InitializeAllTargets();
+    llvm::InitializeAllTargetMCs();
+    llvm::InitializeAllAsmParsers();
+    llvm::InitializeAllAsmPrinters();
+
+    try {
+        vyb::Driver driver;
+
+        std::cout << "Parsing source and resolving imports..." << std::endl;
+        auto parsed = parse_vyb_module(source, fileName);
+        std::cout << "AST created successfully" << std::endl;
+
+        std::cout << "Running semantic analysis..." << std::endl;
+        vyb::SemanticAnalyzer semanticAnalyzer(driver);
+        driver.setSemanticAnalyzer(&semanticAnalyzer);
+        semanticAnalyzer.setModuleScoping(parsed.ownerByName, parsed.effectiveScope);
+        semanticAnalyzer.analyze(parsed.ast.get());
+
+        const auto& semanticErrors = semanticAnalyzer.getErrors();
+        if (!semanticErrors.empty()) {
+            std::cerr << "\nSemantic Errors:" << std::endl;
+            for (const auto& error : semanticErrors) {
+                std::cerr << "  " << error << std::endl;
+            }
+            throw std::runtime_error("Semantic analysis failed with " +
+                std::to_string(semanticErrors.size()) + " error(s)");
+        }
+        std::cout << "Semantic analysis completed" << std::endl;
+
+        std::cout << "Generating NVPTX-targeted LLVM IR..." << std::endl;
+        vyb::LLVMCodegen codegen(driver);
+        codegen.generate(parsed.ast.get(), fileName + ".ll");
+        std::cout << "LLVM IR generation completed" << std::endl;
+
+        llvm::Module* module = codegen.getModule();
+        if (module->getTargetTriple() != "nvptx64-nvidia-cuda") {
+            throw std::runtime_error("Kernel mode did not apply the NVPTX target triple");
+        }
+
+        // Acceptance gate (P1.3): a device module must contain NO reference to the
+        // host runtime. Any __vyb_* symbol declared-only (no body) means the kernel
+        // called into host machinery (strings, heap, registry, chans, ...) that does
+        // not exist on the GPU. Surface it cleanly instead of letting NVPTX choke.
+        std::vector<std::string> hostRefs;
+        for (llvm::Function& f : module->functions()) {
+            if (f.getName().starts_with("__vyb_") && f.isDeclaration()) {
+                hostRefs.push_back(f.getName().str());
+            }
+        }
+        if (!hostRefs.empty()) {
+            std::cerr << "Kernel module references host-runtime symbols (forbidden on device):" << std::endl;
+            for (const auto& s : hostRefs) {
+                std::cerr << "  " << s << std::endl;
+            }
+            throw std::runtime_error("Kernel must be pure device code with no __vyb_* references");
+        }
+        std::cout << "Kernel module is host-runtime-free (no __vyb_* refs)" << std::endl;
+
+        // Verify the module at the LLVM level.
+        std::cout << "Verifying module..." << std::endl;
+        std::string verifyErrors;
+        llvm::raw_string_ostream verifyStream(verifyErrors);
+        if (llvm::verifyModule(*module, &verifyStream)) {
+            verifyStream.flush();
+            std::cerr << "Module verification failed:\n" << verifyErrors << std::endl;
+            throw std::runtime_error("Module verification failed: " + verifyErrors);
+        }
+        std::cout << "Module verified successfully" << std::endl;
+
+        // Build the in-process NVPTX target machine and emit PTX.
+        std::string triple = "nvptx64-nvidia-cuda";
+        std::string error;
+        auto target = llvm::TargetRegistry::lookupTarget(triple, error);
+        if (!target) {
+            throw std::runtime_error("NVPTX target not available (not linked into vyb): " + error);
+        }
+
+        auto CPU = "sm_86";      // RTX 3090 (P0 feasibility probe)
+        auto features = "";
+        llvm::TargetOptions opt;
+        opt.FloatABIType = llvm::FloatABI::Default;
+        auto relocModel = std::optional<llvm::Reloc::Model>();
+        auto targetMachine = target->createTargetMachine(triple, CPU, features,
+                                                         opt, relocModel);
+
+        module->setDataLayout(targetMachine->createDataLayout());
+        module->setTargetTriple(triple);
+
+        // Apply IR optimization passes before code generation.
+        optimize_module(module, targetMachine, optLevel);
+
+        // Output path: <base>.ptx next to the input file.
+        std::string ptxFile = fileName;
+        size_t dot = ptxFile.find_last_of('.');
+        if (dot != std::string::npos) ptxFile = ptxFile.substr(0, dot);
+        ptxFile += ".ptx";
+
+        {
+            std::error_code EC;
+            llvm::raw_fd_ostream dest(ptxFile, EC, llvm::sys::fs::OF_None);
+            if (EC) {
+                throw std::runtime_error("Could not open PTX output file: " + EC.message());
+            }
+
+            llvm::CodeGenOptLevel cgOptLevel;
+            switch (optLevel) {
+                case 0: cgOptLevel = llvm::CodeGenOptLevel::None; break;
+                case 1: cgOptLevel = llvm::CodeGenOptLevel::Less; break;
+                case 3: cgOptLevel = llvm::CodeGenOptLevel::Aggressive; break;
+                default: cgOptLevel = llvm::CodeGenOptLevel::Default; break;
+            }
+
+            llvm::legacy::PassManager pass;  // scoped: destroyed before teardown
+            auto fileType = llvm::CodeGenFileType::AssemblyFile;  // NVPTX assembly == PTX
+            targetMachine->setOptLevel(cgOptLevel);
+            if (targetMachine->addPassesToEmitFile(pass, dest, nullptr, fileType)) {
+                throw std::runtime_error("NVPTXTargetMachine can't emit a file of this type");
+            }
+
+            std::cout << "Emitting PTX (sm_86) with optimization -O" << optLevel << "..." << std::endl;
+            pass.run(*module);
+            dest.flush();
+        }
+
+        std::cout << "Successfully emitted PTX to: " << ptxFile << std::endl;
+
+        // Tear down in a deliberate order. `targetMachine` owns the NVPTX
+        // SelectionDAG arenas, and `codegen` owns module + context; release them
+        // while their dependencies are still alive, then shut down LLVM's global
+        // state so an LSAN run sees a clean heap at process exit instead of
+        // flagging the NVPTX backend's process-lifetime allocations.
+        delete targetMachine;
+        codegen.releaseModule();   // frees the module (safe DIBuilder teardown)
+        codegen.releaseContext();  // frees the context after the module
+        llvm::llvm_shutdown();
+
+        return 0;
+
+    } catch (const std::exception& e) {
+        std::cerr << "Error compiling kernel: " << e.what() << std::endl;
         return 1;
     }
 }
@@ -3464,6 +3620,7 @@ int main(int argc, char* argv[]) {
     bool emit_llvm_ir = false;
     bool compile_mode = false;
     bool build_mode = false;
+    bool kernel_mode = false;   // issue #198: --kernel  (NVPTX device code)
     std::string compile_output;
     std::string build_output;
     bool static_link = false;
@@ -3507,6 +3664,12 @@ int main(int argc, char* argv[]) {
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 build_output = argv[++i];
             }
+            continue;
+        } else if (arg == "--kernel") {
+            // issue #198: lower the input module as pure NVPTX device code.
+            // Kernel mode never JIT-executes — it emits kernel.ptx.
+            kernel_mode = true;
+            execute_jit = false;
             continue;
         } else if (arg == "--static") {
             static_link = true;
@@ -3695,6 +3858,13 @@ int main(int argc, char* argv[]) {
                 return 0;
             }
 
+            // Kernel mode (issue #198): compile the module as pure NVPTX device
+            // code and lower it to a PTX artifact. No JIT, no host runtime.
+            if (kernel_mode) {
+                vyb::g_kernel_mode = true;
+                return compile_vyb_kernel(source, filename, optimization_level);
+            }
+
             // Compile mode: emit object file
             if (compile_mode) {
                 std::string objFile = compile_output;
@@ -3789,6 +3959,8 @@ int main(int argc, char* argv[]) {
         std::cout << "  --parse-only          Stop after parsing (validates syntax only)" << std::endl;
         std::cout << "  --semantic-only       Stop after semantic analysis" << std::endl;
         std::cout << "  --emit-llvm           Generate LLVM IR to a .ll file" << std::endl;
+        std::cout << "  --kernel              (issue #198) Lower the module as NVPTX device" << std::endl;
+        std::cout << "                        code: no main, no host runtime; emit kernel.ptx" << std::endl;
         std::cout << "  --compile, -c [file]  Compile to object file (.o)" << std::endl;
         std::cout << "  --build, -b [file]    Compile and link to executable (NEW!)" << std::endl;
         std::cout << "  --link <lib-or-path>  Link a native build with -l<lib> or an explicit library/object path (repeatable)" << std::endl;

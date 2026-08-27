@@ -10,6 +10,9 @@ build-noqt/
 *.backup
 # Generated LLVM IR files
 *.ll
+# Generated NVPTX/PTX artifacts (issue #198 kernel lowering)
+*.ptx
+*.cubin
 _codeql_build_dir/
 
 # Python tooling

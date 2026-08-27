@@ -1,0 +1,22 @@
+// Vyb NVPTX kernel sample (issue #198) — pure device code.
+//
+// Build (no host runtime, no `main`; lowers through the in-process NVPTX backend):
+//     vyb --kernel axpy.vyb
+//
+// Produces `axpy.ptx` (nvptx64-nvidia-cuda, default sm_86). The functions here are
+// value/data-parallel kernels with zero __vyb_* host references — the string
+// registry, heap allocator and call-stack runtime do not exist on the GPU.
+
+// Single-element axpy: y = alpha * x + y  (the P4 acceptance kernel, scalar form).
+axpy(alpha<Float>, x<Float>, y<Float>)<Float> -> {
+    return alpha * x + y
+}
+
+// A tile-style reduction over a fixed range (no heap, no Vec).
+sum_squares(n<Int>)<Int> -> {
+    var<Int> acc = 0;
+    for (i in 0..n) {
+        acc = acc + i * i;
+    }
+    return acc
+}

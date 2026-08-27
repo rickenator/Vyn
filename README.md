@@ -220,6 +220,11 @@ Supports 20+ architectures out of the box:
 - ✅ **Optimization Levels**: -O0 through -O3 with LLVM optimizations
 - ✅ **Cross-Compilation**: 20+ target architectures
 - ✅ **Debug Information**: Full DWARF debug metadata
+- 🚧 **NVPTX Kernel Mode** (#198): `--kernel` lowers a `main`-less, host-runtime-free
+  Vyb module as pure device code through the in-process NVPTX backend to PTX
+  (`nvptx64-nvidia-cuda`, default `sm_86`). Kernels are value/data-parallel Vyb
+  functions with no `__vyb_*` host references; a host launch shim + BLAS-composable
+  tensors are the follow-on milestone. See `test/kernel/axpy_kernel.vyb`.
 
 **See:** `doc/MODULE_FFI_BINARY_ROADMAP.md` for the compilation pipeline
 

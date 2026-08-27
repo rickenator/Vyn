@@ -111,9 +111,19 @@ void LLVMCodegen::generate(vyb::ast::Module* astModule, const std::string& outpu
 
     astModule->accept(*this);
 
-    // Ensure all core intrinsic functions are declared in the module
-    // This prevents JIT runtime errors when functions are not found
-    ensureCoreIntrinsicFunctions();
+    if (vyb::g_kernel_mode) {
+        // issue #198: lower the module as NVPTX device code. Set the target triple
+        // so the module carries the right target identity end-to-end (the NVPTX
+        // data layout is applied at lowering time). The __vyb_* intrinsic externs
+        // are NOT declared here — a kernel is pure value/data-parallel code with no
+        // host runtime, and any __vyb_* reference left in a kernel body is a bug that
+        // must surface as an unresolved-symbol failure at PTX emission.
+        module->setTargetTriple("nvptx64-nvidia-cuda");
+    } else {
+        // Ensure all core intrinsic functions are declared in the module
+        // This prevents JIT runtime errors when functions are not found
+        ensureCoreIntrinsicFunctions();
+    }
 
     // Finalize debug information before verification
     finalizeDebugInfo();
@@ -245,9 +255,14 @@ void LLVMCodegen::visit(vyb::ast::Module* node) {
     }
 
     // FOURTH PASS: Register all type metadata for runtime JSON serialization
+    // In kernel mode (#198) this runtime registry doesn't exist — device modules
+    // are pure data-parallel kernels with no host runtime. Skipping it also keeps
+    // __vyb_* reference-count/registry symbols out of the NVPTX module.
     VYB_CDBG << "DEBUG: Fourth pass - registering type metadata" << std::endl;
-    registerTypeMetadata();
-    registerTypeNames();
+    if (!vyb::g_kernel_mode) {
+        registerTypeMetadata();
+        registerTypeNames();
+    }
 
     m_currentVybModule = previousModule;
     m_currentLLVMValue = nullptr;

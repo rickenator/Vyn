@@ -14,6 +14,11 @@
 namespace vyb {
 namespace fs = std::filesystem;
 
+// Kernel mode (issue #198) flag — defined in src/main.cpp. When true, module
+// resolution treats the root as a pure device module and skips the stdlib
+// core::aspects auto-import (it would drag host __vyb_* symbols into NVPTX code).
+extern bool g_kernel_mode;
+
 namespace {
 
 // Collects every identifier name reachable from an AST subtree. Used to build the
@@ -2352,6 +2357,15 @@ ModuleRegistry::SourceMetadata ModuleRegistry::preprocessModuleSource(const std:
                 cleaned << '\n';
                 continue;
             }
+        }
+
+        // Kernel mode (issue #198): device modules must be self-contained pure
+        // value/data-parallel code. The stdlib core::aspects auto-import (which
+        // pre-wires host-sided Display/hash binds for the scalar types) would pull
+        // host-runtime __vyb_* symbols into the NVPTX module, so `--kernel` implies
+        // `no_core()` unless the module explicitly imports what it needs.
+        if (vyb::g_kernel_mode) {
+            metadata.coreAutoImport = false;
         }
 
         if (working.empty()) {

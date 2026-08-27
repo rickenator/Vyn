@@ -1,0 +1,23 @@
+// Test: NVPTX kernel lowering (issue #198) — a pure device kernel module.
+// A Vyb kernel is a module compiled with `--kernel`: no `main`, no host runtime,
+// no string registry / heap — only value and data-parallel kernels. This module
+// must lower to clean IR that the NVPTX backend accepts, with no __vyb_* refs.
+// @test: NVPTX kernel lowering — pure device code lowers to PTX
+// @description: --kernel lowers a main-less, host-runtime-free module to PTX (issue #198)
+// @category: kernel
+// @expect: pass
+// @vyb-args: --kernel
+
+// Single-thread axpy: y = alpha * x + y  (the P4 acceptance kernel, scalar form).
+axpy(alpha<Float>, x<Float>, y<Float>)<Float> -> {
+    return alpha * x + y
+}
+
+// Data-parallel reduction over a fixed-size range (no heap, no Vec).
+sum_squares(n<Int>)<Int> -> {
+    var<Int> acc = 0;
+    for (i in 0..n) {
+        acc = acc + i * i;
+    }
+    return acc
+}

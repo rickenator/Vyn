@@ -111,6 +111,10 @@ llvm_map_components_to_libnames(LLVM_LIBS
   AllTargetsDescs
   AllTargetsCodeGens
   AllTargetsAsmParsers
+  # NVPTX backend (issue #198): in-process lowering of Vyb kernel modules to PTX
+  NVPTXInfo
+  NVPTXDesc
+  NVPTXCodeGen
 )
 message(STATUS "LLVM libraries: ${LLVM_LIBS}")
 

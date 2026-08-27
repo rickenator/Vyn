@@ -1,0 +1,16 @@
+// Test: kernel must be host-runtime-free — a kernel that uses host runtime is rejected.
+// Device modules cannot reference String/heap/registry machinery; `--kernel` must
+// fail with a clear diagnostic instead of emitting broken NVPTX code.
+// @test: kernel rejects host-runtime symbols
+// @description: --kernel rejects modules that pull in __vyb_* host runtime (issue #198)
+// @category: kernel
+// @expect: fail
+// @expect-error: Kernel module references host-runtime symbols
+// @vyb-args: --kernel
+
+// A String value forces the host string registry into the module, which is
+// forbidden on the GPU. Without core::auto-import a bare String type still
+// resolves, and using one emits __vyb_string_retain/__vyb_string_free.
+make_greeting(name<String>)<String> -> {
+    return name
+}

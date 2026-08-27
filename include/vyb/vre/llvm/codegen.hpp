@@ -41,6 +41,11 @@ namespace vyb {
 // Enable with --debug-codegen CLI flag.
 extern bool g_debug_codegen;
 
+// Global flag: true when compiling under `--kernel` (issue #198). In kernel mode a
+// module is lowered as pure device code for NVIDIA GPUs: no `main`, no host-runtime
+// calls, no __vyb_* intrinsic externs. The codegen subsets what it emits accordingly.
+extern bool g_kernel_mode;
+
 // Convenience macro: use VYB_CDBG in place of std::cerr for DEBUG-level codegen output.
 // The entire chained << expression is skipped when g_debug_codegen is false.
 #define VYB_CDBG if (vyb::g_debug_codegen) std::cerr
