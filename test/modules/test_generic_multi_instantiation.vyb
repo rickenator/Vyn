@@ -1,0 +1,54 @@
+// @test: #205 - shared generic-template body survives multiple distinct instantiations
+// @description: A generic struct constructor whose body chains to another constructor
+//   (e.g. `HashMap<K,V>()` -> `HashMap<K,V>(0)` -> `HashMap<K,V>(cap, false)`) shares
+//   one AST body across every distinct instantiation. Instantiating the SAME struct with
+//   TWO different type pairs in one program used to corrupt that shared node: the first
+//   instantiation destructively moved the chained-construction's argument list (`(0)`),
+//   so the second instantiation matched arity 0, routed back to the 0-arg ctor, and
+//   recurred until the native stack overflowed (SIGSEGV, exit 139) at compile time.
+//   Regression: both maps must construct AND round-trip correctly in one program.
+// @category: modules, generics, struct, constructor, collections, regression
+// @expect: pass
+// @expect-output: ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import collections
+
+main()<Int> -> {
+    # Two DISTINCT instantiations of the same generic struct, sharing the ctor
+    # template bodies (the #205 trigger). A String-keyed map and an Int-keyed map.
+    m0<HashMap<String, Int>> = HashMap<String, Int>()
+    m1<HashMap<Int, String>> = HashMap<Int, String>()
+
+    m0.put("alpha", 1)
+    m0.put("beta", 2)
+    if ((m0.get("alpha") else -1) != 1 || (m0.get("beta") else -1) != 2) {
+        return 1
+    }
+    if (m0.size() != 2 || m0.contains_key("gamma")) {
+        return 2
+    }
+
+    m1.put(10, "ten")
+    m1.put(20, "twenty")
+    if ((m1.get(10) else "?") != "ten" || (m1.get(20) else "?") != "twenty") {
+        return 3
+    }
+    if (m1.size() != 2 || !m1.contains_key(20) || m1.contains_key(30)) {
+        return 4
+    }
+
+    # Exercise the capacity-chained constructors too, so the (0-arg -> cap -> cap,fixed)
+    # chain re-visits the shared `(0)` / `(cap, false)` construction nodes as well.
+    m2<HashMap<String, Int>> = HashMap<String, Int>(8)
+    m3<HashMap<Int, String>> = HashMap<Int, String>(8, true)
+    m2.put("x", 100)
+    m3.put(7, "seven")
+    if ((m2.get("x") else -1) != 100 || (m3.get(7) else "?") != "seven") {
+        return 5
+    }
+
+    println("ok")
+    return 0
+}

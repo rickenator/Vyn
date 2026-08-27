@@ -8665,8 +8665,18 @@ void LLVMCodegen::visit(ast::ConstructionExpression* node) {
                 VYB_CDBG << "DEBUG: ConstructionExpression is a generic function call: " << fnName << std::endl;
                 auto calleeId = std::make_unique<ast::Identifier>(tname->identifier->loc, fnName);
                 auto callExpr = std::make_unique<ast::CallExpression>(node->loc, std::move(calleeId), std::move(node->arguments));
-                callExpr->explicitTypeArgs = std::move(tname->genericArgs);
+                // Copy (not move) the explicit generic args. `node->constructedType`
+                // belongs to a shared generic-template body that is codegen'd once per
+                // distinct instantiation; a destructive move leaves `genericArgs` empty
+                // so a later instantiation miscompiles (falls out of this dispatch) (#205).
+                for (const auto& g : tname->genericArgs) {
+                    callExpr->explicitTypeArgs.push_back(g->clone());
+                }
                 this->visit(static_cast<ast::CallExpression*>(callExpr.get()));
+                // Restore the moved-out argument list so the shared template body can be
+                // re-visited safely; otherwise a drained node re-routes the next
+                // instantiation to the wrong arity (see the struct-ctor branch below) (#205).
+                node->arguments = std::move(callExpr->arguments);
                 return;
             }
         }
@@ -8692,6 +8702,14 @@ void LLVMCodegen::visit(ast::ConstructionExpression* node) {
                             callExpr->explicitTypeArgs = applyTypeSubstitutions(tname->genericArgs);
                         }
                         this->visit(static_cast<ast::CallExpression*>(callExpr.get()));
+                        // Restore the moved-out argument list. The constructed-type node
+                        // is part of a shared generic-template body (a struct ctor chains
+                        // to another ctor via `HashMap<K,V>(0)`) that is codegen'd once per
+                        // distinct instantiation. Without this restore, the first
+                        // instantiation drains `node->arguments` to empty, so the NEXT
+                        // instantiation's arity match hits `entry.first == 0` -> routes to
+                        // the 0-arg ctor -> infinite mono recursion -> stack overflow (#205).
+                        node->arguments = std::move(callExpr->arguments);
                         return;
                     }
                 }
