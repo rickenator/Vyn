@@ -364,6 +364,7 @@ per-symbol signatures live in the auto-generated pages under <code>docs/refman/<
 <li><strong>Concurrency</strong>: <code>async</code>/<code>await</code> and <code>Future&lt;T&gt;</code>.</li>
 <li><strong>Native Compilation</strong>: Full JIT (LLVM ORC), AOT (object files), and executable generation pipeline.</li>
 </ul>
+<p><strong>Parameter passing is explicit.</strong> A plain <code>x&lt;T&gt;</code> parameter is a <em>value copy</em> — the callee works on its own copy and the caller's variable is untouched (a <code>Vec</code> or an owning struct is deep-copied; a <code>String</code> shares its buffer; an <code>our&lt;T&gt;</code> bumps its refcount). To read or mutate <em>in place without copying</em>, take a <code>their&lt;T&gt;</code> borrow, supplied as <code>borrow(x)</code> (mutable) or <code>view(x)</code> (read-only <code>their&lt;T const&gt;</code>). Ownership is separate from reference-passing: <code>my&lt;T&gt;</code> is unique ownership (a named <code>my</code> passed to a <code>my</code> parameter <em>moves</em> — use-after-move is rejected), and <code>our&lt;T&gt;</code> is shared, ref-counted ownership; neither is another spelling of <code>ref</code>. The full, tested rules are in the “Parameter passing” section of the Programmer’s Guide.</p>
 <h2 id="quick-start">Quick Start<a aria-label="Link to Quick Start" class="heading-anchor" href="#quick-start">#</a></h2>
 <pre><code class="language-bash"># Clone and build
 git clone https://github.com/rickenator/Vyb.git
