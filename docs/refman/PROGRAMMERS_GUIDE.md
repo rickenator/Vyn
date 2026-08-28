@@ -383,6 +383,80 @@ work<fn() -> Int> = || -> 42
 This is the parameter type used by `thread_spawn`, `task_spawn`,
 `async_spawn`, and the collection higher-order methods.
 
+### 3.4.1 Parameter passing: value, borrow, and ownership
+
+Passing an argument is not one thing: the semantics depend entirely on the
+declared parameter type. Three distinct ideas — **value copy**, **borrow**,
+and **ownership** — are easy to blur, and Vyb makes each explicit.
+
+**Value parameters (`x<T>`), the default.** The argument is *copied* into the
+callee's parameter; the callee works on its own copy and the caller's variable
+is unaffected. Copying a value copies *it*; it does not recursively duplicate
+everything the value references. What that means in practice:
+
+- A plain scalar or a `Vec<T>` parameter is copied; `Vec` elements are
+  **deep-copied**, so the callee owns independent buffers (passing a large `Vec`
+  by value therefore copies it on every call — a real cost; prefer a `their`
+  borrow when you only read/mutate a collection).
+- A struct with owned fields (e.g. one that holds a `Vec`) is **deep-copied** on
+  entry, so the callee and caller each own independent data.
+- A `String` parameter shares its backing buffer (refcounted at the binding
+  level) rather than duplicating the text.
+- An `our<T>` parameter takes a shared strong reference (+1 refcount) rather than
+  copying the payload.
+- An `fn`/closure parameter retains the closure environment.
+
+**Borrowed-reference parameters (`their<T>`).** A `their<T>` parameter does *not*
+copy: it is a non-owning reference to the caller's value. `borrow(x)` supplies a
+mutable `their<T>`; writes through it are visible to the caller. `view(x)` supplies
+a `their<T const>` reference for reading. Borrows are scoped to the caller's
+lifetime and must not escape it (a borrow-escape is rejected). (Note: the `const`
+qualifier expresses read-only *intent*; const write-through on field assignment is
+not yet hard-enforced by the compiler.)
+
+```vyb
+struct Counter { count<Int> }
+
+# Value: `c` is a copy — bump() does NOT change the caller's counter.
+bump(c<Counter>)<Int> -> { c.count = c.count + 1; return c.count }
+
+# Borrow: `c` aliases the caller's counter — add() DOES change it.
+add(c<their<Counter>>, n<Int>)<Int> -> { c.count = c.count + n; return c.count }
+
+# Read-only view: `c` is a non-owning read-only reference.
+peek(c<their<Counter const>>)<Int> -> { return c.count }
+
+main()<Int> -> {
+    a<Counter> = Counter { count = 5 }
+    bump(a)             # a.count stays 5   (value copy)
+    add(borrow(a), 3)   # a.count becomes 8  (mutable borrow, visible)
+    n<Int> = peek(view(a))  # 8              (read-only view)
+    println_int(a.count)    # 8
+    return 0
+}
+```
+
+Three things are easy to conflate and are different:
+- **Mutating the referenced object** — a `their`-borrow write such as
+  `c.count = …`.
+- **Reassigning the callee's local handle** — giving the parameter `c` itself a
+  new binding inside the callee (a local rebind; it does not touch the caller).
+- **Replacing the caller's variable** — not something a borrow can do; that
+  requires ownership and a `my` hand-off.
+
+**Ownership parameters (`my<T>` / `our<T>`)** answer *who owns and frees* a
+value, not *how it is passed*; neither is a synonym for a reference. `my<T>` is
+unique ownership. Passing a **named** `my` owner into a `my` parameter **moves**
+it: ownership transfers, the callee cleans it up exactly once, and the caller's
+variable is left unusable (use-after-move is rejected). A fresh `my(...)` built
+inline as an argument is reclaimed after the call. `our<T>` is shared,
+ref-counted ownership: an `our` parameter takes a strong reference and the
+payload is freed when the last reference drops.
+
+**In short:** plain `x<T>` = your own copy; `their<T>` + `borrow` = read/mutate in
+place with no copy; `their<T const>` + `view` = read-only; `my<T>` = unique-owner
+hand-off (a move); `our<T>` = shared state.
+
 ### 3.5 Closures and lambdas
 
 A lambda is `|| -> expr` (zero args) or `|x| -> expr`:

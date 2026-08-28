@@ -1,0 +1,37 @@
+// @test: parameter passing — value copy vs borrow vs ownership (guide §3.4.1)
+// @description: Locks in the documented "value vs borrow vs ownership" contract:
+//   a plain `Counter` parameter is a value copy (callee mutation does not touch the
+//   caller); a `their<Counter>` param from `borrow(x)` is a mutable reference whose
+//   writes ARE visible to the caller; a `their<Counter const>` param from `view(x)`
+//   is read-only intent; a named `my` owner passed to a `my` param moves
+//   (use-after-move is rejected — exercised by move_function_consume.vyb). See
+//   docs/refman/PROGRAMMERS_GUIDE.md §3.4.1.
+// @category: ownership, borrow, value, parameters, docs
+// @expect: pass
+// @expect-return: 0
+
+struct Counter { count<Int> }
+
+# value param: copy
+bump(c<Counter>)<Int> -> { c.count = c.count + 1; return c.count }
+# mutable borrow param
+add(c<their<Counter>>, n<Int>)<Int> -> { c.count = c.count + n; return c.count }
+# read-only view param (intended immutable)
+peek(c<their<Counter const>>)<Int> -> { return c.count }
+
+main()<Int> -> {
+    # 1) Value: callee mutation must NOT affect the caller's variable.
+    plain<Counter> = Counter { count = 10 }
+    rv<Int> = bump(plain)
+    if (rv != 11) { return 1 }
+    if (plain.count != 10) { return 2 }   # still 10 -> value copy
+
+    # 2) Mutable borrow: writes through the borrow ARE visible to the caller.
+    ctr<Counter> = Counter { count = 1 }
+    add(borrow(ctr), 5)
+    if (ctr.count != 6) { return 3 }      # 1 + 5 = 6, visible
+
+    # 3) Read-only view still reads the value.
+    if (peek(view(ctr)) != 6) { return 4 }
+    return 0
+}

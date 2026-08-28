@@ -59,6 +59,8 @@ Vyb is a statically typed, compiled systems language targeting native code via L
 * **Concurrency**: `async`/`await` and `Future<T>`.
 * **Native Compilation**: Full JIT (LLVM ORC), AOT (object files), and executable generation pipeline.
 
+**Parameter passing is explicit.** A plain `x<T>` parameter is a *value copy* — the callee works on its own copy and the caller's variable is untouched (a `Vec` or an owning struct is deep-copied; a `String` shares its buffer; an `our<T>` bumps its refcount). To read or mutate *in place without copying*, take a `their<T>` borrow, supplied as `borrow(x)` (mutable) or `view(x)` (read-only `their<T const>`). Ownership is separate from reference-passing: `my<T>` is unique ownership (a named `my` passed to a `my` parameter *moves* — use-after-move is rejected), and `our<T>` is shared, ref-counted ownership; neither is another spelling of `ref`. The full, tested rules are in the “Parameter passing” section of the Programmer’s Guide.
+
 ## Quick Start
 
 ```bash
