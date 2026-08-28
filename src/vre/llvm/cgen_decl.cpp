@@ -1171,8 +1171,20 @@ void LLVMCodegen::visit(vyb::ast::StructDeclaration* node) {
         return; // Don't generate LLVM type yet
     }
 
-    // Non-generic struct: generate LLVM type immediately
-    llvm::StructType* structType = llvm::StructType::create(*context, nameStr);
+    // Non-generic struct: generate LLVM type immediately. Reuse the opaque type
+    // pre-declared by visit(Module) (for struct forward references / circular
+    // references, #211) so a field that references another struct keeps the SAME
+    // LLVM StructType that the other struct's body is later set on; otherwise
+    // predeclared-vs-new pointers diverge and the referenced struct stays opaque
+    // forever. Create fresh only when no pre-declared entry exists.
+    llvm::StructType* structType = nullptr;
+    auto itPre = userTypeMap.find(nameStr);
+    if (itPre != userTypeMap.end() && itPre->second.llvmType &&
+        llvm::isa<llvm::StructType>(itPre->second.llvmType)) {
+        structType = llvm::cast<llvm::StructType>(itPre->second.llvmType);
+    } else {
+        structType = llvm::StructType::create(*context, nameStr);
+    }
 
     UserTypeInfo typeInfo;
     typeInfo.llvmType = structType;
@@ -1214,8 +1226,12 @@ void LLVMCodegen::visit(vyb::ast::StructDeclaration* node) {
     // resolve concrete field types for scope-exit reclaim / deep-copy.
     genericStructTemplates[nameStr] = node;
 
-    // Generate type metadata for JSON serialization
-    generateTypeMetadata(nameStr, node);
+    // NOTE: generateTypeMetadata(nameStr, node) is intentionally NOT called here.
+    // It runs its isSized() recursive-struct guard, which misfires on a field
+    // whose type is still an unbodied opaque struct (a forward reference that is
+    // only filled later in the struct pass). visit(Module) calls
+    // generateTypeMetadata for every struct AFTER all struct bodies are set so
+    // forward/circular references are fully sized (#211).
 
     registerStructConstructors(node);
     m_currentLLVMValue = nullptr; // structType is an llvm::Type*, not llvm::Value*

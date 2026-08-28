@@ -621,6 +621,11 @@ private:
     // (#211). Cleared and rebuilt per module visit.
     std::unordered_set<std::string> forwardDeclaredFunctions_;
 
+    // Top-level struct / enum / type-alias names pre-registered by visit(Module)
+    // (+ their duplicate definitions already reported) so a type can be
+    // referenced before its declaration and mutually-referential types resolve.
+    std::unordered_set<std::string> forwardDeclaredTypes_;
+
     struct BorrowState {
         int mutableBorrows = 0;
         int immutableBorrows = 0;

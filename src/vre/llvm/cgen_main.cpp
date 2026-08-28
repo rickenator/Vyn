@@ -215,6 +215,29 @@ void LLVMCodegen::visit(vyb::ast::Module* node) {
         }
     }
 
+    // FIRST-OPAQUE PASS: pre-declare an opaque LLVM type for every top-level
+    // non-generic struct BEFORE any struct body is processed, so a struct field
+    // can reference another struct declared later in the file (struct forward
+    // references, #211) and mutually-referential structs resolve. This mirrors
+    // the semantic type-name pre-registration; visit(StructDeclaration) reuses
+    // the opaque type below and fills its body. Generic structs are skipped
+    // (they are templates monomorphized on concrete instantiation).
+    VYB_CDBG << "DEBUG: First-opaque pass - pre-declaring struct LLVM types" << std::endl;
+    for (size_t i = 0; i < node->body.size(); ++i) {
+        const auto& stmt = node->body[i];
+        auto* sd = dynamic_cast<vyb::ast::StructDeclaration*>(stmt.get());
+        if (!sd || !sd->name) continue;
+        if (!sd->genericParams.empty()) continue;
+        const std::string& ns = sd->name->name;
+        if (userTypeMap.find(ns) != userTypeMap.end()) continue;
+        llvm::StructType* opaque = llvm::StructType::create(*context, ns);
+        UserTypeInfo ti;
+        ti.llvmType = opaque;
+        ti.isStruct = true;
+        ti.isReprC = sd->reprC;
+        userTypeMap[ns] = ti;
+    }
+
     // FIRST PASS: Process all struct declarations to establish type information
     VYB_CDBG << "DEBUG: First pass - processing struct declarations" << std::endl;
     for (size_t i = 0; i < node->body.size(); ++i) {
@@ -223,6 +246,20 @@ void LLVMCodegen::visit(vyb::ast::Module* node) {
             VYB_CDBG << "DEBUG: Processing struct declaration statement " << i << std::endl;
             stmt->accept(*this);
         }
+    }
+
+    // Type metadata for every top-level struct is generated AFTER all struct
+    // bodies are set: generateTypeMetadata's isSized() recursive-struct guard
+    // misfires on a field that is still an unbodied opaque type (a struct
+    // forward reference / mutual reference, #211). Done here so every referenced
+    // struct is fully sized. (Visit(StructDeclaration) no longer calls it.)
+    VYB_CDBG << "DEBUG: Post-struct metadata pass" << std::endl;
+    for (size_t i = 0; i < node->body.size(); ++i) {
+        const auto& stmt = node->body[i];
+        auto* sd = dynamic_cast<vyb::ast::StructDeclaration*>(stmt.get());
+        if (!sd || !sd->name) continue;
+        if (!sd->genericParams.empty()) continue;
+        generateTypeMetadata(sd->name->name, sd);
     }
 
 

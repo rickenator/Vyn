@@ -384,7 +384,7 @@ This is the parameter type used by `thread_spawn`, `task_spawn`,
 `async_spawn`, and the collection higher-order methods.
 
 **Forward references.** Within a module, name resolution is independent of
-implementation order: a function may call another function — or itself —
+implementation order. A function may call another function — or itself —
 declared later in the same file, and pairs of mutually-recursive functions
 resolve regardless of which is written first. The compiler pre-registers every
 top-level function before analyzing any body, so `helper()` is callable from
@@ -394,6 +394,23 @@ top-level function before analyzing any body, so `helper()` is callable from
 main()<Int> -> { return helper() }   # helper is declared below — fine
 helper()<Int> -> { return 42 }
 ```
+
+The same separation applies to **types**: a struct, enum, or type alias may be
+referenced before its declaration in the same module — in another struct's
+fields, a function parameter or return type, a construction, or a member
+access — and mutually-referential structs resolve in either order. Type
+declarations are analyzed before function bodies, and every top-level type's
+*name* is pre-registered so `struct A { b<B> }` works whether `B` precedes or
+follows it:
+
+```vyb
+make()<B> -> { return B { x = 5 } }   # B declared below — fine
+main()<Int> -> { return make().x }
+struct B { x<Int> }
+```
+
+(The LLVM codegen likewise pre-declares an opaque type per top-level struct and
+fills bodies afterward, so struct-to-struct forward references lower cleanly.)
 
 The same applies inside a shared module: a `share(all)` function may call a
 sibling `share(all)` helper declared later in the same module file (the helper

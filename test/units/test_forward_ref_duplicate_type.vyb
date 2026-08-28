@@ -1,0 +1,11 @@
+// @test: forward type references - duplicate still rejected (#211)
+// @description: relaxing type definition-order (forward references) must not
+//   relax duplicate detection; a second struct with the same name in the same
+//   scope remains a compile error ("Redefinition of struct ...").
+// @category: language
+// @expect: fail
+
+main()<Int> -> { return 0 }
+
+struct Dup { x<Int> }
+struct Dup { y<Int> }

@@ -1257,7 +1257,78 @@ void SemanticAnalyzer::visit(ast::Module* node) {
         }
     }
 
-    // Visit all declarations (this detects explicit fail statements). Top-level
+    // Forward-type-name pre-pass (#211): register every top-level struct,
+    // non-constant enum, and type-alias NAME as a Type symbol in the module
+    // scope before any declaration body is analyzed, so a type can be
+    // referenced before its declaration and mutually-referential types resolve.
+    // Mirrors the LLVM codegen type-ordering pass and the function pre-pass
+    // above. Struct/alias duplicate definitions are reported here once (their
+    // visitors would false-positive on every single pre-registered definition);
+    // enums keep their prior overwrite-tolerant behavior.
+    forwardDeclaredTypes_.clear();
+    for (auto& item : node->body) {
+        if (auto* sd = dynamic_cast<ast::StructDeclaration*>(item.get())) {
+            if (!sd->name) continue;
+            if (!forwardDeclaredTypes_.insert(sd->name->name).second) {
+                addError("Redefinition of struct \"" + sd->name->name + "\" in the same scope.", sd->name.get());
+                continue;
+            }
+            currentScope->add(SymbolInfo{SymbolInfo::Kind::Type, sd->name->name, false,
+                ast::OwnershipKind::MY,
+                retainType(new ast::TypeName(sd->name->loc, std::make_unique<ast::Identifier>(sd->name->loc, sd->name->name)))});
+        } else if (auto* ed = dynamic_cast<ast::EnumDeclaration*>(item.get())) {
+            if (!ed->name) continue;
+            // Constant enums (every variant carries `= value`) register no Type
+            // symbol (their visitor returns early) — they are namespace /
+            // Int-constant sources, not types. Skip them to mirror that.
+            bool anyValue = false;
+            for (auto& v : ed->variants) if (v && v->hasValue) { anyValue = true; break; }
+            if (anyValue) continue;
+            if (!forwardDeclaredTypes_.insert(ed->name->name).second) continue; // overwrite-tolerant like the enum visitor
+            currentScope->add(SymbolInfo{SymbolInfo::Kind::Type, ed->name->name, false,
+                ast::OwnershipKind::MY,
+                retainType(new ast::TypeName(ed->name->loc, std::make_unique<ast::Identifier>(ed->name->loc, ed->name->name)))});
+        } else if (auto* ta = dynamic_cast<ast::TypeAliasDeclaration*>(item.get())) {
+            if (!ta->name) continue;
+            if (!forwardDeclaredTypes_.insert(ta->name->name).second) {
+                addError("Redefinition of type alias \"" + ta->name->name + "\" in the same scope.", ta->name.get());
+                continue;
+            }
+            currentScope->add(SymbolInfo{SymbolInfo::Kind::Type, ta->name->name, false,
+                ast::OwnershipKind::MY,
+                retainType(new ast::TypeName(ta->name->loc, std::make_unique<ast::Identifier>(ta->name->loc, ta->name->name)))});
+        }
+    }
+
+    // Visit all top-level TYPE declarations (struct/enum/alias) first so their
+    // records (fields, variants, type params, constants) are available to every
+    // function body, signature, and top-level statement regardless of
+    // declaration order (#211). Mirrors codegen, which emits type decls before
+    // functions.
+    {
+        auto visitOwned = [&](auto& item2) {
+            std::string owner = defaultOwner_;
+            if (std::string name = topLevelDeclarationName(item2); !name.empty()) {
+                auto ownerIt = scopeGate_.ownerByName.find(name);
+                if (ownerIt != scopeGate_.ownerByName.end()) owner = ownerIt->second;
+            }
+            ownerStack_.push_back(scopeGate_.currentOwner);
+            scopeGate_.currentOwner = owner;
+            item2->accept(*this);
+            scopeGate_.currentOwner = ownerStack_.back();
+            ownerStack_.pop_back();
+        };
+        for (auto& item2 : node->body) {
+            if (!item2) continue;
+            if (dynamic_cast<ast::StructDeclaration*>(item2.get()) ||
+                dynamic_cast<ast::EnumDeclaration*>(item2.get()) ||
+                dynamic_cast<ast::TypeAliasDeclaration*>(item2.get())) {
+                visitOwned(item2);
+            }
+        }
+    }
+
+    // Visit all remaining declarations (this detects explicit fail statements). Top-level
     // non-function code resolves against the owning module's scope so a global
     // initializer/expression in the entry file cannot name another module's
     // private dependency; function declarations manage their own owner.
@@ -1266,6 +1337,11 @@ void SemanticAnalyzer::visit(ast::Module* node) {
         if (dynamic_cast<ast::FunctionDeclaration*>(item.get())) {
             item->accept(*this);
             continue;
+        }
+        if (dynamic_cast<ast::StructDeclaration*>(item.get()) ||
+            dynamic_cast<ast::EnumDeclaration*>(item.get()) ||
+            dynamic_cast<ast::TypeAliasDeclaration*>(item.get())) {
+            continue;  // already visited in the type pass above
         }
         std::string owner = defaultOwner_;
         if (std::string name = topLevelDeclarationName(item); !name.empty()) {
@@ -1896,8 +1972,8 @@ void SemanticAnalyzer::visit(ast::TypeAliasDeclaration* node) {
     if (node->name && isReservedWord(node->name->name)) {
         addError("Identifier \\\"" + node->name->name + "\\\" is a reserved word and cannot be used as a type alias name.", node->name.get());
     }
-    if (node->name && currentScope->lookupDirect(node->name->name)) {
-        addError("Redefinition of type alias \\\"" + node->name->name + "\\\" in the same scope.", node->name.get());
+    if (node->name && !forwardDeclaredTypes_.count(node->name->name) && currentScope->lookupDirect(node->name->name)) {
+        addError("Redefinition of type alias \"" + node->name->name + "\" in the same scope.", node->name.get());
     }
 
     if (node->typeNode) {
@@ -7385,7 +7461,7 @@ void SemanticAnalyzer::visit(ast::StructDeclaration* node) {
         addError("Identifier \"" + structName + "\" is a reserved word and cannot be used as a struct name.", node->name.get());
     }
 
-    if (currentScope->lookupDirect(structName)) {
+    if (!forwardDeclaredTypes_.count(structName) && currentScope->lookupDirect(structName)) {
         addError("Redefinition of struct \"" + structName + "\" in the same scope.", node->name.get());
         return;
     }

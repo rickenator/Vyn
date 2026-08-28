@@ -1,0 +1,46 @@
+// @test: forward type references (#211)
+// @description: structs, enums, and type aliases may be referenced before their
+//   declaration in the same module — in another struct's fields, a function
+//   signature/return, or a top-level statement — and mutually-referential
+//   structs resolve regardless of order. Covers field types, construction,
+//   member access, fn-return types, enum types, and type aliases.
+// @category: language
+// @expect: pass
+// @expect-return: 0
+
+main()<Int> -> {
+    // Struct field whose type is a later-declared struct.
+    a<A> = A { b = B { x = 3 } }
+    if (a.b.x != 3) { println("struct-field fwd fail"); return 1 }
+
+    // Function return + construction + member access on a later-declared struct.
+    if (make().x != 5) { println("fn-return fwd fail"); return 1 }
+
+    // Mutually-referential structs (P holds Q, Q declared later).
+    p<P> = P { q = Q { v = 7 } }
+    if (p.q.v != 7) { println("mutual struct fail"); return 1 }
+
+    // Forward-declared enum used as a parameter type.
+    if (tag(Color::RED) != 0) { println("enum fwd fail"); return 1 }
+
+    // Forward-declared type alias used as a type, plus a function returning it.
+    y<MyInt> = identity(39)
+    if (y != 39) { println("alias fwd fail"); return 1 }
+
+    println("FORWARD TYPES OK")
+    return 0
+}
+
+struct A { b<B> }
+struct B { x<Int> }
+
+make()<B> -> { return B { x = 5 } }
+
+struct P { q<Q> }
+struct Q { v<Int> }
+
+tag(e<Color>)<Int> -> { return e.tag }
+enum Color { RED, GREEN }
+
+identity(v<MyInt>)<MyInt> -> { return v }
+type<Int> MyInt;
