@@ -1,5 +1,5 @@
 {
-  "git_rev": "c60b91039abb4fef6bd3d5d42e0deaffeb5508c3",
+  "git_rev": "96b7b703fe1be267899de5c00200b0d91b379c65",
   "modules": [
     "agents",
     "archive",
@@ -7,8 +7,10 @@
     "channels",
     "collections",
     "core",
+    "crypto",
     "curses",
     "env",
+    "fs",
     "http",
     "https",
     "io",
@@ -23,6 +25,7 @@
     "threads",
     "time",
     "tls",
+    "url",
     "utf8"
   ],
   "nodes": {
@@ -86,6 +89,15 @@
         "fan_out": 0
       },
       {
+        "name": "crypto",
+        "files": [
+          "stdlib/crypto/mod.vyb"
+        ],
+        "exported": 1,
+        "fan_in": 0,
+        "fan_out": 0
+      },
+      {
         "name": "curses",
         "files": [
           "stdlib/curses/mod.vyb"
@@ -100,6 +112,15 @@
           "stdlib/env/mod.vyb"
         ],
         "exported": 3,
+        "fan_in": 0,
+        "fan_out": 0
+      },
+      {
+        "name": "fs",
+        "files": [
+          "stdlib/fs/mod.vyb"
+        ],
+        "exported": 1,
         "fan_in": 0,
         "fan_out": 0
       },
@@ -126,7 +147,7 @@
         "files": [
           "stdlib/io/mod.vyb"
         ],
-        "exported": 14,
+        "exported": 15,
         "fan_in": 0,
         "fan_out": 0
       },
@@ -227,6 +248,15 @@
         ],
         "exported": 20,
         "fan_in": 1,
+        "fan_out": 0
+      },
+      {
+        "name": "url",
+        "files": [
+          "stdlib/url/mod.vyb"
+        ],
+        "exported": 4,
+        "fan_in": 0,
         "fan_out": 0
       },
       {
@@ -432,6 +462,13 @@
         ]
       },
       {
+        "path": "stdlib/crypto/mod.vyb",
+        "module": "crypto",
+        "symbols": [
+          "sha256"
+        ]
+      },
+      {
         "path": "stdlib/curses/mod.vyb",
         "module": "curses",
         "symbols": [
@@ -473,6 +510,13 @@
           "env_get",
           "env_set",
           "env_unset"
+        ]
+      },
+      {
+        "path": "stdlib/fs/mod.vyb",
+        "module": "fs",
+        "symbols": [
+          "mkdir"
         ]
       },
       {
@@ -549,6 +593,7 @@
           "close",
           "write_str",
           "read_all",
+          "read_at",
           "error_code",
           "error_message",
           "io_error",
@@ -874,6 +919,16 @@
           "tls_error_code",
           "tls_error_message",
           "tls_error"
+        ]
+      },
+      {
+        "path": "stdlib/url/mod.vyb",
+        "module": "url",
+        "symbols": [
+          "UrlSplit",
+          "default_port",
+          "str_to_int",
+          "url_split"
         ]
       },
       {
@@ -2068,6 +2123,15 @@
         "fan_in": 0
       },
       {
+        "name": "sha256",
+        "module": "crypto",
+        "file": "stdlib/crypto/mod.vyb",
+        "kind": "fn",
+        "signature": "sha256(data<String>)<String> ->",
+        "summary": "",
+        "fan_in": 0
+      },
+      {
         "name": "CursColor",
         "module": "curses",
         "file": "stdlib/curses/mod.vyb",
@@ -2353,6 +2417,15 @@
         "kind": "fn",
         "signature": "env_unset(name<String>)<Bool?> ->",
         "summary": "Remove `name` from the process environment. Returns `Bool?` -- present on",
+        "fan_in": 0
+      },
+      {
+        "name": "mkdir",
+        "module": "fs",
+        "file": "stdlib/fs/mod.vyb",
+        "kind": "fn",
+        "signature": "mkdir(path<String>)<Bool?> ->",
+        "summary": "Recursively create `path` (all missing parent components), idempotent when a",
         "fan_in": 0
       },
       {
@@ -2902,6 +2975,15 @@
         "kind": "fn",
         "signature": "read_all(f<File>)<String?> ->",
         "summary": "Read the whole file into a `String?` -- present holding the full content",
+        "fan_in": 0
+      },
+      {
+        "name": "read_at",
+        "module": "io",
+        "file": "stdlib/io/mod.vyb",
+        "kind": "fn",
+        "signature": "read_at(f<File>, off<Int>, n<Int>)<String?> ->",
+        "summary": "Read up to `n` bytes at absolute byte `off` of the open file, without moving",
         "fan_in": 0
       },
       {
@@ -5218,6 +5300,42 @@
         "fan_in": 1
       },
       {
+        "name": "UrlSplit",
+        "module": "url",
+        "file": "stdlib/url/mod.vyb",
+        "kind": "struct",
+        "signature": "struct UrlSplit {",
+        "summary": "The four components of a parsed absolute URL, with `port` always resolved to",
+        "fan_in": 0
+      },
+      {
+        "name": "default_port",
+        "module": "url",
+        "file": "stdlib/url/mod.vyb",
+        "kind": "fn",
+        "signature": "default_port(scheme<String>)<Int> ->",
+        "summary": "The conventional default port for a scheme name, classified with a",
+        "fan_in": 0
+      },
+      {
+        "name": "str_to_int",
+        "module": "url",
+        "file": "stdlib/url/mod.vyb",
+        "kind": "fn",
+        "signature": "str_to_int(s<String>)<Int> ->",
+        "summary": "Parse a base-10 integer out of a decimal digit string (zero on no digits).",
+        "fan_in": 0
+      },
+      {
+        "name": "url_split",
+        "module": "url",
+        "file": "stdlib/url/mod.vyb",
+        "kind": "fn",
+        "signature": "url_split(raw<String>)<UrlSplit> ->",
+        "summary": "Split a raw absolute URL string into its components, resolving the default",
+        "fan_in": 0
+      },
+      {
         "name": "utf8_at",
         "module": "utf8",
         "file": "stdlib/utf8/mod.vyb",
@@ -6200,6 +6318,20 @@
       "from_symbol": "tls_error",
       "to_module": "tls",
       "to_symbol": "tls_error_message"
+    },
+    {
+      "type": "call",
+      "from_module": "url",
+      "from_symbol": "url_split",
+      "to_module": "url",
+      "to_symbol": "default_port"
+    },
+    {
+      "type": "call",
+      "from_module": "url",
+      "from_symbol": "url_split",
+      "to_module": "url",
+      "to_symbol": "str_to_int"
     },
     {
       "type": "implement",
@@ -7795,6 +7927,12 @@
     },
     {
       "type": "runtimeRef",
+      "from_module": "crypto",
+      "from_symbol": "sha256",
+      "to_symbol": "vyb_crypto_sha256"
+    },
+    {
+      "type": "runtimeRef",
       "from_module": "curses",
       "from_symbol": "curses_addstr",
       "to_symbol": "vyb_curses_addstr"
@@ -7975,6 +8113,12 @@
     },
     {
       "type": "runtimeRef",
+      "from_module": "fs",
+      "from_symbol": "mkdir",
+      "to_symbol": "vyb_fs_mkdir"
+    },
+    {
+      "type": "runtimeRef",
       "from_module": "io",
       "from_symbol": "close",
       "to_symbol": "vyb_io_close"
@@ -8002,6 +8146,12 @@
       "from_module": "io",
       "from_symbol": "read_all",
       "to_symbol": "vyb_io_read_all_opt"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "io",
+      "from_symbol": "read_at",
+      "to_symbol": "vyb_io_read_at"
     },
     {
       "type": "runtimeRef",
@@ -9707,6 +9857,13 @@
     {
       "type": "usesType",
       "from_module": "io",
+      "from_symbol": "read_at",
+      "to_module": "io",
+      "to_symbol": "File"
+    },
+    {
+      "type": "usesType",
+      "from_module": "io",
       "from_symbol": "write_str",
       "to_module": "io",
       "to_symbol": "File"
@@ -9927,6 +10084,13 @@
       "from_symbol": "tls_write",
       "to_module": "tls",
       "to_symbol": "TlsStream"
+    },
+    {
+      "type": "usesType",
+      "from_module": "url",
+      "from_symbol": "url_split",
+      "to_module": "url",
+      "to_symbol": "UrlSplit"
     }
   ]
 }

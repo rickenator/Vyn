@@ -2169,6 +2169,68 @@ handles GNU `L` and `K` long-name records.
 `test/modules/test_archive.vyb` covers the complete path by decoding an embedded
 gzip payload and walking the resulting tar archive.
 
+### 4.24 `crypto` — hash primitives
+
+Module page: [`crypto.md`](crypto.md). Collision-safe hashing crossing the
+runtime's `__vyb_sha256_hex` helper (no C bridge to author). Used by VybOS for
+content addressing in place of its collision-unsafe FNV-1a `content_hash`
+stand-in.
+
+```vyb
+sha256(data<String>)<String>   # SHA-256 (FIPS 180-4) digest as lowercase hex
+```
+
+```vyb
+import crypto::{sha256}
+println(sha256(""))   # e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+```
+
+### 4.25 `fs` — filesystem primitives
+
+Module page: [`fs.md`](fs.md). Path/fs operations over the runtime's `__vyb_*`
+helpers; the Vyb surface stays allocation/pointer-free like `io`. Today it is
+the nested-store unblocker VybOS needs — create a directory tree so a store can
+use a nested layout and write per-derivation metadata next to realised outputs
+(replacing host `freedom { exec } mkdir -p` staging hacks).
+
+```vyb
+mkdir(path<String>)<Bool?>   # recursive + idempotent; absent on failure
+```
+
+```vyb
+import fs::{mkdir}
+match (mkdir("/store/a/b/c")) {
+    ok -> { println("created") }
+    ?  -> { println("mkdir failed: " + error_message()) }
+}
+```
+
+### 4.26 `url` — URL parsing in pure Vyb
+
+Module page: [`url.md`](url.md). Splits an absolute URL into
+(scheme, host, port, path), resolving the scheme's conventional default port
+when the URL omits one, so a caller can pick the http vs https client from the
+scheme and pass port/path straight through. This is the stdlib promotion of the
+behavior-verified VybOS `modules/url.vyb` parser, kept behavior-identical.
+
+```vyb
+struct UrlSplit { scheme<String>, host<String>, port<Int>, path<String> }
+url_split(raw<String>)<UrlSplit>
+default_port(scheme<String>)<Int>
+str_to_int(s<String>)<Int>
+```
+
+```vyb
+import url::{url_split, default_port, UrlSplit}
+u<UrlSplit> = url_split("https://codeload.github.com:8443/vim/vim/tar.gz")
+# u.scheme == "https", u.host == "codeload.github.com", u.port == 8443,
+# u.path  == "/vim/vim/tar.gz"
+```
+
+Note: IPv6 bracket hosts (`[::1]:8080`) and URL fragments are not specially
+handled (a host containing `:` splits at the first colon; a fragment is
+captured as part of the path).
+
 ---
 
 ## 5. Concurrency and async model
@@ -2367,8 +2429,12 @@ regenerates byte-identical output.
 | External commands | [`process`](process.md) | — |
 | Regex | [`regex`](regex.md) | — |
 | archive | [`archive`](archive.md) | — |
+| crypto | [`crypto`](crypto.md) | — |
+| fs | [`fs`](fs.md) | — |
+| url | [`url`](url.md) | — |
 | Runtime intrinsics | [`runtime`](runtime.md) | — |
 <!-- refman:api-index end -->
+
 
 
 
