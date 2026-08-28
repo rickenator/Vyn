@@ -1,0 +1,49 @@
+// @test: #209 - cuModuleLoadData of a Vyb-read PTX never fails over N loads
+// @description: The String->CString FFI coercion previously handed cuModuleLoadData
+//   the raw (non-NUL-terminated) buffer of a Vyb `String` read via io::read_all;
+//   the driver's strlen-based PTX read over-read past the buffer and intermittently
+//   returned CUDA_ERROR_INVALID_PTX (218) on perfectly valid PTX. With the FFI now
+//   passing a NUL-terminated copy, loading a valid PTX in a tight 25-iteration loop
+//   (fresh read_all each time) must never fail. Hardware-dependent: SKIPs when no
+//   CUDA driver/GPU.
+// @category: ffi, bindings, cuda, kernel, regression
+// @expect: pass
+// @expect-return: 0
+// @vyb-args: --module-path bindings
+
+import io::{open_read, read_all}
+import cuda::{cuda_init, cuda_device_count, cuda_device, cuda_ctx_retain,
+              cuda_module_load}
+
+main()<Int> -> {
+    // No CUDA driver / no GPU => skip gracefully (runs on any host).
+    if (cuda_init() != 0) { println("SKIP: no CUDA driver"); return 0 }
+    var<CInt> ndev = cuda_device_count()
+    if (ndev < 1) { println("SKIP: no CUDA device"); return 0 }
+
+    var<CInt> dev = cuda_device(0)
+    if (dev < 0) { return 9 }
+    if (cuda_ctx_retain(dev) != 0) { return 10 }
+
+    # Match the issue's repro shape: fresh read_all + cuModuleLoadData per try.
+    iterations<Int> = 25
+    i<Int> = 0
+    while (i < iterations) {
+        ptx<String> = ""
+        match (open_read("fixtures/cuda/fill_kernel.ptx")) {
+            f -> {
+                match (read_all(f)) {
+                    s -> { ptx = s }
+                    ? -> { return 13 }
+                }
+            }
+            ? -> { return 13 }
+        }
+        var<Int> hm = cuda_module_load(ptx)
+        if (hm == 0) { return 20 + i }   // a load failed -> regression
+        i = i + 1
+    }
+
+    println("ok")
+    return 0
+}

@@ -1,0 +1,59 @@
+// @test: #209 - Vyb String passed to a C string param is NUL-terminated
+// @description: A Vyb String is `{ptr, len}` with no guaranteed terminator. When
+//   it is passed to a C `char*` (CString) FFI parameter, codegen hands the callee
+//   a NUL-terminated COPY, so a strlen-based C reader never over-reads past the
+//   buffer (the intermittent cuModuleLoadData CUDA_ERROR_INVALID_PTX class, #209).
+//   Reads a NUL-free file (so the String buffer genuinely has no terminator),
+//   passes it to libc strlen, and asserts strlen == len(). The same bytes loaded
+//   through the copy must give the exact length.
+// @category: ffi, interop, strings, regression
+// @expect: pass
+// @expect-output: cstr-ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import io
+
+extern "C" {
+    strlen(s<CString>)<Int>
+}
+
+main()<Int> -> {
+    # A NUL-free payload: read_all yields a String whose buffer is exactly these
+    # bytes (no trailing terminator). A strlen-based C reader over-reads this
+    # buffer unless the FFI coercion NUL-terminates a copy (#209).
+    path<String> = "/tmp/vyb_cstr_nul_test.txt"
+    body<String> = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz"
+    payload<String> = ""
+    i<Int> = 0
+    while (i < 4) {
+        payload = payload + body
+        i = i + 1
+    }
+
+    match (open_write(path)) {
+        w -> {
+            n<Int> = write_str(w, payload) else -1
+            if (n != payload.len()) { close(w); return 1 }
+            close(w)
+        }
+        ? -> { return 2 }
+    }
+
+    match (open_read(path)) {
+        f -> {
+            s<String> = read_all(f) else ""
+            close(f)
+
+            freedom {
+                n<Int> = strlen(s)
+                if (n != s.len()) { return 3 }
+                if (s.len() == 0 || n == 0) { return 4 }
+            }
+        }
+        ? -> { return 5 }
+    }
+
+    println("cstr-ok")
+    return 0
+}

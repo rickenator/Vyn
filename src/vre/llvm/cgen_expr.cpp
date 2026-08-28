@@ -6718,6 +6718,12 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
     // ...),...) leaked the temp Huff's count/symbol Vec buffers).
     struct StructTempReclaim { llvm::Value* ptr; const vyb::ast::TypeNode* ast; llvm::StructType* ll; };
     std::vector<StructTempReclaim> pendingStructTempReclaims;
+    // Raw NUL-terminated heap copies made to satisfy a C string param (#209). A
+    // Vyb String is `{ptr, len}` with no guaranteed terminator; a strlen-based
+    // callee (cuModuleLoadData reading PTX text, etc.) would over-read past the
+    // buffer, intermittently corrupting the image. Freed with `free` right after
+    // the call (the callee only borrows the pointer during the call).
+    std::vector<llvm::Value*> pendingCArgFrees;
     auto emitTemporaryReleases = [&]() {
         for (auto& pr : pendingTemporaryReleases) {
             if (pr.kind == 1) releaseOurControlBlock(pr.cb, "temparg.our", pr.pointeeAst, pr.pointeeLlvm);
@@ -6748,6 +6754,9 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         for (llvm::Value* sd : pendingStringTempFrees) {
             builder->CreateCall(getOrCreateVybStringFreeFunction(), {sd});
         }
+        for (llvm::Value* cdata : pendingCArgFrees) {
+            builder->CreateCall(getOrCreateFreeFunction(), {cdata});
+        }
         for (auto& sr : pendingStructTempReclaims) {
             if (sr.ptr && sr.ast && sr.ll) {
                 std::set<std::string> visited;
@@ -6755,6 +6764,33 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             }
         }
     };
+    // Build a heap NUL-terminated copy of a Vyb String `{ptr, len}` so a
+    // strlen-based C callee (e.g. cuModuleLoadData reading PTX text) never
+    // over-reads past the buffer into adjacent memory (#209). Registered into
+    // pendingCArgFrees so the copy is freed with `free` right after the call
+    // (the callee only borrows the pointer during the call).
+    auto buildNulTermCStr = [&](llvm::Value* strStruct) -> llvm::Value* {
+        llvm::Value* dataPtr = builder->CreateExtractValue(strStruct, 0, "cstr.data");
+        llvm::Value* dataLen = builder->CreateExtractValue(strStruct, 1, "cstr.len");
+        llvm::Value* allocSize = builder->CreateAdd(dataLen,
+            llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context), 1), "cstr.alloc");
+        llvm::FunctionType* mallocType = llvm::FunctionType::get(
+            llvm::PointerType::get(*context, 0), {llvm::Type::getInt64Ty(*context)}, false);
+        llvm::Function* mallocFunc = module->getFunction("malloc");
+        if (!mallocFunc) mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", module.get());
+        llvm::Value* newData = builder->CreateCall(mallocFunc, {allocSize}, "cstr.new");
+        llvm::FunctionType* memcpyType = llvm::FunctionType::get(
+            llvm::PointerType::get(*context, 0),
+            {llvm::PointerType::get(*context, 0), llvm::PointerType::get(*context, 0), llvm::Type::getInt64Ty(*context)}, false);
+        llvm::Function* memcpyFunc = module->getFunction("memcpy");
+        if (!memcpyFunc) memcpyFunc = llvm::Function::Create(memcpyType, llvm::Function::ExternalLinkage, "memcpy", module.get());
+        builder->CreateCall(memcpyFunc, {newData, dataPtr, dataLen});
+        llvm::Value* nullPos = builder->CreateGEP(llvm::Type::getInt8Ty(*context), newData, dataLen, "cstr.nul");
+        builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt8Ty(*context), 0), nullPos);
+        pendingCArgFrees.push_back(newData);
+        return newData;
+    };
+
     for (size_t i = 0; i < node->arguments.size(); ++i) {
         node->arguments[i]->accept(*this);
         llvm::Value* argValue = m_currentLLVMValue;
@@ -6780,10 +6816,18 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             llvm::Type* expectedArgType = calleeFunc->getFunctionType()->getParamType(i);
             if (argValue->getType() != expectedArgType) {
                 if (expectedArgType->isPointerTy()) {
-                    if (auto* stringStructType = llvm::dyn_cast<llvm::StructType>(argValue->getType())) {
-                        if (stringStructType->getNumElements() == 2 &&
-                            stringStructType->getElementType(0)->isPointerTy() &&
-                            stringStructType->getElementType(1)->isIntegerTy()) {
+                    auto* stringStructType = llvm::dyn_cast<llvm::StructType>(argValue->getType());
+                    if (stringStructType && stringStructType->getNumElements() == 2 &&
+                        stringStructType->getElementType(0)->isPointerTy() &&
+                        stringStructType->getElementType(1)->isIntegerTy()) {
+                        // A Vyb String `{ptr,len}` passed to a C string param.
+                        // If the param is `char*` (a C string the C side reads
+                        // with strlen), hand the callee a NUL-terminated COPY so
+                        // it never over-reads past the (non-NUL-terminated)
+                        // buffer -- e.g. cuModuleLoadData reading PTX text #209.
+                        if (expectedArgType == int8PtrType) {
+                            argValue = buildNulTermCStr(argValue);
+                        } else {
                             argValue = builder->CreateExtractValue(argValue, {0}, "cstrarg");
                         }
                     }
