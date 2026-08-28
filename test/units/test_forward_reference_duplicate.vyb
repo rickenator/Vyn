@@ -1,0 +1,11 @@
+// @test: forward references - duplicate definition still rejected (#211)
+// @description: relaxing definition-before-use must NOT relax duplicate
+//   detection; two function declarations with the same name in the same scope
+//   remain a compile error ("Redefinition of function ...").
+// @category: language
+// @expect: fail
+
+main()<Int> -> { return 0 }
+
+f()<Int> -> { return 1 }
+f()<Int> -> { return 2 }

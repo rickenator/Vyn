@@ -615,6 +615,12 @@ private:
     std::unordered_map<std::string, ast::FunctionDeclaration*> functionRegistry;
     std::unordered_set<std::string> externalFunctionNames;
 
+    // Top-level function names pre-registered by visit(Module) so a call site can
+    // reference a function declared later in the same file (forward references)
+    // and mutually-recursive functions resolve regardless of declaration order
+    // (#211). Cleared and rebuilt per module visit.
+    std::unordered_set<std::string> forwardDeclaredFunctions_;
+
     struct BorrowState {
         int mutableBorrows = 0;
         int immutableBorrows = 0;

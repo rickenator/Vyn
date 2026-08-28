@@ -1235,6 +1235,28 @@ void SemanticAnalyzer::visit(ast::Module* node) {
         }
     }
 
+    // Forward-reference pre-pass (#211): register every top-level function in
+    // the module's global scope BEFORE any function body is analyzed, so a call
+    // site can reference a function declared later in the same file and pairs
+    // of mutually-recursive functions resolve regardless of declaration order.
+    // This mirrors the LLVM codegen forward-declaration pass
+    // (LLVMCodegen::visit(Module)) and separates name resolution from
+    // implementation order. A genuine duplicate (two function declarations with
+    // the same name in this scope) is reported here, once.
+    forwardDeclaredFunctions_.clear();
+    for (auto& item : node->body) {
+        if (auto* funcDecl = dynamic_cast<ast::FunctionDeclaration*>(item.get())) {
+            if (!funcDecl->id) continue;
+            const std::string& fname = funcDecl->id->name;
+            if (!forwardDeclaredFunctions_.insert(fname).second) {
+                addError("Redefinition of function \"" + fname + "\" in the same scope.", funcDecl->id.get());
+                continue;
+            }
+            currentScope->add(SymbolInfo{SymbolInfo::Kind::Function, fname,
+                                         false, ast::OwnershipKind::MY, nullptr});
+        }
+    }
+
     // Visit all declarations (this detects explicit fail statements). Top-level
     // non-function code resolves against the owning module's scope so a global
     // initializer/expression in the entry file cannot name another module's
@@ -1404,13 +1426,19 @@ void SemanticAnalyzer::visit(ast::FunctionDeclaration* node) {
     // Skip adding to scope if this is a method in an aspect or bind
     // These are stored in the trait registry, not the global symbol table
     if (!processingTraitOrBindMethod) {
-        if (currentScope->lookupDirect(node->id->name)) {
-            addError("Redefinition of function \\\"" + node->id->name + "\\\" in the same scope.", node->id.get());
-        }
+        // Top-level functions were pre-registered by visit(Module) for forward
+        // references (#211); re-adding them here would double-register and the
+        // duplicate check below would false-positive on every single definition.
+        // Genuine duplicates are detected and reported by that pre-pass.
+        if (!forwardDeclaredFunctions_.count(node->id->name)) {
+            if (currentScope->lookupDirect(node->id->name)) {
+                addError("Redefinition of function \\\"\" + node->id->name + \"\\\" in the same scope.", node->id.get());
+            }
 
-        auto funcSymbol = new SymbolInfo{SymbolInfo::Kind::Function, node->id->name, false, ast::OwnershipKind::MY, nullptr};
-        currentScope->add(SymbolInfo{funcSymbol->kind, funcSymbol->name, funcSymbol->isConst, funcSymbol->ownershipKind, funcSymbol->type});
-        delete funcSymbol;
+            auto funcSymbol = new SymbolInfo{SymbolInfo::Kind::Function, node->id->name, false, ast::OwnershipKind::MY, nullptr};
+            currentScope->add(SymbolInfo{funcSymbol->kind, funcSymbol->name, funcSymbol->isConst, funcSymbol->ownershipKind, funcSymbol->type});
+            delete funcSymbol;
+        }
     }
 
     // Track current function for error handling validation

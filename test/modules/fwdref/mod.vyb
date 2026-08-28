@@ -1,0 +1,14 @@
+// @test: forward-reference module fixture (#211)
+// @description: helper module with out-of-order shared functions — shared
+//   compute(x) calls sibling shared double_it(x), which is declared LATER in
+//   the same module file. Consumed (parsed + spliced) by
+//   test_forward_ref_module.vyb.
+// @category: modules
+// @expect: pass
+// @parse-only: true
+
+share(all)
+compute(x<Int>)<Int> -> { return double_it(x) + 1 }
+
+share(all)
+double_it(x<Int>)<Int> -> { return x * 2 }

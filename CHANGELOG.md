@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Forward references (within a module, #211)** — name resolution is now
+  independent of implementation order: a function can call another function —
+  or itself — declared later in the same file, and mutually-recursive functions
+  resolve regardless of which is written first. `visit(Module)` pre-registers
+  every top-level function in the module scope before any body is analyzed
+  (mirroring the existing LLVM codegen forward-declaration pass); duplicate
+  definitions are still rejected. Applies inside shared modules too (the helper
+  must still be shared + imported, per the module contract). Tests:
+  `test/units/test_forward_references.vyb`, `test/units/test_forward_reference_duplicate.vyb`,
+  `test/modules/test_forward_ref_module.vyb` + `test/modules/fwdref/mod.vyb`.
 - **`BTreeMap<K, V>` is now a true node-based map** — an index-arena B-tree
   (minimum degree t=2) with O(log n) inserts. All nodes share one `Vec<BTreeNode<K,V>>`
   and children are `Int` arena indices, so inserts never reallocate peers and never

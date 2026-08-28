@@ -383,6 +383,23 @@ work<fn() -> Int> = || -> 42
 This is the parameter type used by `thread_spawn`, `task_spawn`,
 `async_spawn`, and the collection higher-order methods.
 
+**Forward references.** Within a module, name resolution is independent of
+implementation order: a function may call another function — or itself —
+declared later in the same file, and pairs of mutually-recursive functions
+resolve regardless of which is written first. The compiler pre-registers every
+top-level function before analyzing any body, so `helper()` is callable from
+`main()` whether `helper` appears above or below it in the source:
+
+```vyb
+main()<Int> -> { return helper() }   # helper is declared below — fine
+helper()<Int> -> { return 42 }
+```
+
+The same applies inside a shared module: a `share(all)` function may call a
+sibling `share(all)` helper declared later in the same module file (the helper
+must still be shared and imported by consumers, per the module contract). See
+[§3.19](#319-modules-and-imports).
+
 ### 3.4.1 Parameter passing: value, borrow, and ownership
 
 Passing an argument is not one thing: the semantics depend entirely on the

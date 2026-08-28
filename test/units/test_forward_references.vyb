@@ -1,0 +1,33 @@
+// @test: forward function references (#211)
+// @description: a call site can reference a function declared later in the
+//   same file (forward references), and pairs of mutually-recursive functions
+//   resolve regardless of declaration order. This separates name resolution
+//   from implementation order.
+// @category: language
+// @expect: pass
+// @expect-return: 0
+
+main()<Int> -> {
+    // Forward call: helper() is declared below main().
+    a<Int> = helper()
+    if (a != 42) { println("forward call failed"); return 1 }
+
+    // Mutual recursion across two functions, each calling one declared later
+    // in the file.
+    if (is_even(4) != 1) { println("is_even(4) != 1"); return 1 }
+    if (is_odd(4) != 0) { println("is_odd(4) != 0"); return 1 }
+    if (is_even(7) != 0) { println("is_even(7) != 0"); return 1 }
+
+    // Self-recursion where the recursive function is declared after its caller.
+    if (fact(5) != 120) { println("fact(5) != 120"); return 1 }
+
+    println("FORWARD OK")
+    return 0
+}
+
+helper()<Int> -> { return 42 }
+
+is_even(n<Int>)<Int> -> { if (n == 0) { return 1 }; return is_odd(n - 1) }
+is_odd(n<Int>)<Int> -> { if (n == 0) { return 0 }; return is_even(n - 1) }
+
+fact(n<Int>)<Int> -> { if (n <= 1) { return 1 }; return n * fact(n - 1) }

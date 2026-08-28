@@ -1,0 +1,15 @@
+// @test: forward references across a module splice (#211)
+// @description: a shared function may call a sibling shared helper declared
+//   later in the same module file. Definition order no longer matters once
+//   both are imported, so helper-before-caller reordering is not required.
+// @category: modules
+// @expect: pass
+// @expect-output: 43
+// @vyb-args: --module-path test/modules
+
+import fwdref::{compute, double_it}
+
+main()<Int> -> {
+    println_int(compute(21))
+    return 0
+}
