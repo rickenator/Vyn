@@ -268,7 +268,7 @@ per-symbol signatures live in the auto-generated pages under <code>docs/refman/<
 </blockquote>
 <hr/>
 <h2 id="1-introduction">1. Introduction<a aria-label="Link to 1. Introduction" class="heading-anchor" href="#1-introduction">#</a></h2>
-<p>Welcome to the Vyb programming language version 0.7.3. This overview walks you through what Vyb is and the thinking behind it. Vyb is a systems language built on a simple conviction: you should not have to choose between safety and power. Strong type safety and explicit ownership give your code discipline and predictability, while low-level escape hatches keep raw, machine-near control within reach when you need it. Code runs as fast native executables or through a JIT, so performance stays predictable from first prototype to final program. The syntax is readable and name-first, the abstractions are zero-cost, and the language aims to stay out of your way as your ambitions grow. The rest of this guide shows how those ideas take shape through feature summaries and examples.</p>
+<p>Welcome to the Vyb programming language version 0.7.4. This overview walks you through what Vyb is and the thinking behind it. Vyb is a systems language built on a simple conviction: you should not have to choose between safety and power. Strong type safety and explicit ownership give your code discipline and predictability, while low-level escape hatches keep raw, machine-near control within reach when you need it. Code runs as fast native executables or through a JIT, so performance stays predictable from first prototype to final program. The syntax is readable and name-first, the abstractions are zero-cost, and the language aims to stay out of your way as your ambitions grow. The rest of this guide shows how those ideas take shape through feature summaries and examples.</p>
 <h3 id="11-purpose-audience">1.1 Purpose &amp; Audience<a aria-label="Link to 1.1 Purpose &amp; Audience" class="heading-anchor" href="#11-purpose-audience">#</a></h3>
 <p>This guide is intended for systems programmers, language designers, and developers who want:</p>
 <ul>
@@ -583,7 +583,7 @@ utils = { git = "https://github.com/user/utils" }  # External, smuggled
 </code></pre>
 <p>This unique <code>import</code>/<code>smuggle</code> distinction makes Vyb's module system both secure and flexible, clearly marking the trust level of your dependencies. See <a href="https://github.com/rickenator/Vyb/blob/main/doc/FEATURE_STATUS.md" rel="noopener noreferrer" target="_blank">doc/FEATURE_STATUS.md</a> for implementation status.</p>
 <h2 id="in-this-release">In This Release<a aria-label="Link to In This Release" class="heading-anchor" href="#in-this-release">#</a></h2>
-<p>Vyb <strong>v0.7.3</strong> (freedom-1.0 series) is a mature systems programming language with <strong>native executable generation</strong> and a broad core feature set.</p>
+<p>Vyb <strong>v0.7.4</strong> (freedom-1.0 series) is a mature systems programming language with <strong>native executable generation</strong> and a broad core feature set.</p>
 <h3 id="recent-milestones">✅ <strong>Recent Milestones</strong><a aria-label="Link to ✅ Recent Milestones" class="heading-anchor" href="#recent-milestones">#</a></h3>
 <p>These features were completed in the current release cycle and are fully tested:</p>
 <ul>
@@ -3310,7 +3310,7 @@ python3 test_harness.py --directory test/units --timeout 30
 </ul>
 <h4><strong>Test Statistics</strong></h4>
 <ul>
-<li><strong>Total Tests</strong>: 1077 <code>.vyb</code> tests (full suite, all passing as of v0.7.3)</li>
+<li><strong>Total Tests</strong>: 1077 <code>.vyb</code> tests (full suite, all passing as of v0.7.4)</li>
 <li><strong>Coverage Areas</strong>: Language features, control flow, error handling, type system, math, strings, introspection</li>
 <li><strong>Test Types</strong>: Feature tests (with <code>@expect: pass</code>), future-feature docs (with <code>@expect: fail</code>), parser tests</li>
 <li><strong>Success Rate</strong>: 100% (1077/1077) on the current suite</li>

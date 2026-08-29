@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(VybParser VERSION 0.7.3)
+project(VybParser VERSION 0.7.4)
 
 # Build profile (#160): Debug is the DEFAULT when the caller selects no build type,
 # but a caller-set -DCMAKE_BUILD_TYPE=Release / RelWithDebInfo is respected (never

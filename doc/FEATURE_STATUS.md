@@ -1,4 +1,4 @@
-# Vyb Feature Status (v0.7.3)
+# Vyb Feature Status (v0.7.4)
 
 This document tracks the implementation status of Vyb language features.
 
@@ -158,4 +158,4 @@ Legend: ✅ Implemented | 🚧 Partial / Stubbed | 📋 Planned
 
 **Runtime behavior (SIGPIPE):** the runtime installs `SIGPIPE = SIG_IGN` process-wide (a constructor in `runtime/vyb_runtime.c`) so a TLS `send` after a peer RST returns `EPIPE` instead of killing the process. This is global: any program that links the runtime gets the non-default `SIGPIPE` behavior, so a write to a closed pipe/peer reports an error rather than raising `SIGPIPE`. Applications that need the default `SIGPIPE` kill-semantics can re-install the handler at startup (`signal(SIGPIPE, SIG_DFL)`).
 
-*Last updated: v0.7.3 (2026-08-20)*
+*Last updated: v0.7.4 (2026-08-28)*

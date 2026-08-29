@@ -48,9 +48,9 @@ Every produced `vyb` binary embeds its build configuration. It is reported by
 `--version` (or `--build-info`):
 
     $ build-release/vyb --version
-    Vyb 0.7.3 (build=Release, sanitize=none)
+    Vyb 0.7.4 (build=Release, sanitize=none)
     $ build-asan/vyb --version
-    Vyb 0.7.3 (build=Debug, sanitize=address,undefined)
+    Vyb 0.7.4 (build=Debug, sanitize=address,undefined)
 
 So diagnostics and reported versions always identify the exact configuration the
 binary was built with. The identity comes from CMake-provided macros
