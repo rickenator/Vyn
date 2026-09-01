@@ -228,14 +228,14 @@ Emits:
 Use `bare()` to emit *only the raw field values* of a struct as a JSON array — removing all type and field metadata. Useful for returning unnamed tuples.
 
 ```vyb
-p<Person> = Person(id=123, name="Rick", salary=88000.0)
+p<Person> = Person(id=123, name="Example", salary=88000.0)
 return bare(p)
 ```
 
 Emits:
 
 ```json
-[123, "Rick", 88000.0]
+[123, "Example", 88000.0]
 ```
 
 **Constraints:**

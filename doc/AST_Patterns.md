@@ -1,4 +1,4 @@
-<!-- filepath: /home/rick/Projects/Vyb/doc/AST_Patterns.md -->
+<!-- filepath: doc/AST_Patterns.md -->
 # Vyb AST: Pattern Nodes
 
 This document details AST nodes used for pattern matching in Vyb, as defined in `include/vyb/parser/ast.hpp`. Pattern matching allows for destructuring and control flow based on the shape of data.
