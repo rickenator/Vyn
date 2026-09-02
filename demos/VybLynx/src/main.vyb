@@ -226,9 +226,13 @@ struct HttpResourceProvider {}
 bind ResourceProvider -> HttpResourceProvider {
     scheme(self)<String> -> { return "http" }
     fetch(self, u<Url>)<HttpResponse> -> {
-        match (http_get_full(u.host, u.port, u.path)) {
-            r -> { return r }
-            ? -> { return bad_http() }
+        # http_get_full returns a PRESENT HttpResponse; failure is carried in
+        # the `error<String?>` field (absent = success). Match on it rather
+        # than treating the response itself as an optional.
+        r<HttpResponse> = http_get_full(u.host, u.port, u.path)
+        match (r.error) {
+            ? -> { return r }
+            e -> { return bad_http() }
         }
     }
 }
@@ -238,9 +242,11 @@ bind ResourceProvider -> HttpsResourceProvider {
     scheme(self)<String> -> { return "https" }
     fetch(self, u<Url>)<HttpResponse> -> {
         # Verified TLS with the system trust store and hostname/SNI check.
-        match (https_get_full_verified(u.host, u.port, u.path, "")) {
-            r -> { return r }
-            ? -> { return bad_http() }
+        # Present HttpResponse again: inspect the `error` optional for failure.
+        r<HttpResponse> = https_get_full_verified(u.host, u.port, u.path, "")
+        match (r.error) {
+            ? -> { return r }
+            e -> { return bad_http() }
         }
     }
 }
@@ -339,14 +345,17 @@ download_fetch(urlStr<String>, hops<Int>)<HttpResponse> -> {
     if (u.scheme == "local") { return local_doc(urlStr) }
     resp<HttpResponse> = bad_http()
     if (u.scheme == "https") {
-        match (https_get_full_verified(u.host, u.port, u.path, "")) {
-            r -> { resp = r }
-            ? -> { }
+        # Present HttpResponse: success when `error` is absent.
+        r2<HttpResponse> = https_get_full_verified(u.host, u.port, u.path, "")
+        match (r2.error) {
+            ? -> { resp = r2 }
+            e -> { }
         }
     } else {
-        match (http_get_full(u.host, u.port, u.path)) {
-            r -> { resp = r }
-            ? -> { }
+        r2b<HttpResponse> = http_get_full(u.host, u.port, u.path)
+        match (r2b.error) {
+            ? -> { resp = r2b }
+            e -> { }
         }
     }
     if (resp.status == 301 || resp.status == 302 || resp.status == 303 ||
