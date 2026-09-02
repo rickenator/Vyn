@@ -1689,6 +1689,14 @@ imported with <code>import collections</code>. <code>Vec&lt;T&gt;</code> itself 
 higher-order helpers there — <code>map</code> / <code>filter</code> / <code>reduce</code>, <code>sorted</code> /
 <code>reversed</code> / <code>find</code>, <code>min</code> / <code>max</code>, and <code>sort_in_place</code> — taking non-capturing
 lambdas (<code>fn</code>) where a mapping function is needed.</p>
+<p><strong>File I/O</strong> in <code>stdlib/io</code> pairs text and raw bytes: text
+<code>read_all</code>/<code>write_str</code> (<code>String</code>), and binary
+<code>read_bytes</code>/<code>read_bytes_at</code> returning an owning
+<code>Vec&lt;UInt8&gt;</code>, with <code>write_bytes</code>/<code>write_at</code> taking a
+<code>Vec&lt;UInt8&gt;</code> byte buffer — NULs and high-bit bytes persist verbatim (no
+NUL-termination), plus stateless <code>pread</code>/<code>pwrite</code> offset variants
+(<code>read_at</code>/<code>write_at</code>). A Vyb program can persist and reload GPU/native
+buffers byte-for-byte with no Python.</p>
 <p><strong>Ownership Types</strong>: <code>my&lt;T&gt;</code> (unique), <code>our&lt;T&gt;</code> (shared), <code>their&lt;T&gt;</code> (borrowed), <code>mild&lt;T&gt;</code> (mild reference), <code>loc&lt;T&gt;</code> (freedom raw pointer)</p>
 <p><strong>Type Aliasing</strong>: All numeric types support multiple naming conventions:</p>
 <ul>

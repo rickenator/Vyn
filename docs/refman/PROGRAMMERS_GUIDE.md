@@ -966,9 +966,11 @@ Fallible openers (e.g. `stdlib/io`'s `open_read`) return a native optional
 `fd == -1` to test — a `File` is only ever constructed valid, so failure flows
 from taking the `?` seriously rather than comparing descriptors. Unwrap with
 `else` for a local default, or `match` the absent arm to escalate.
-The operations on the opened value follow the same shape: `read_all` returns
-`String?`, `write_str` returns `Int?` (bytes written), and `close` returns
-`Bool?` -- absence *is* the failed call, never a `-1` to compare.
+The operations on the opened value follow the same shape: text `read_all`/
+`read_at` return `String?`, binary `read_bytes`/`read_bytes_at` return
+`Vec<UInt8>?`, `write_str`/`write_bytes`/`write_at` return `Int?` (bytes
+written), and `close` returns `Bool?` -- absence *is* the failed call, never
+a `-1` to compare.
 
 ```vyb
 import io::{open_read, read_all, close, io_error, IoError}
@@ -1061,7 +1063,7 @@ programmer-facing failure surface to native optionals:
 
 | Module | Shapes |
 |--------|--------|
-| `io` | `open*` -> `File?`; `read_all` -> `String?`; `write_str` -> `Int?`; `close` -> `Bool?` |
+| `io` | text `open*` -> `File?`; `read_all`/`read_at` -> `String?`; `write_str` -> `Int?`; binary `read_bytes`/`read_bytes_at` -> `Vec<UInt8>?`, `write_bytes`/`write_at` -> `Int?`; `close` -> `Bool?` |
 | `term`, `env` | enabling/`set` ops -> `Bool?`; stderr writers -> `Int?`; ANSI emitters `term_clear`/`term_move_cursor`/`term_hide_cursor`/`term_show_cursor` -> `Bool?` |
 | `network` (incl. oracle output) | acquisition -> `TcpStream?`/`TcpListener?`/`UdpSocket?`; `socket_*` (`Int?`/`Bool?`/`Int?`-bytes); recv surfaces `udp_recv_from`/`recv_from`/`async_tcp_read`/`async_udp_recv_from` and wrapper `TcpStreamOps::read` -> `String?`; last-peer probes `udp_last_peer_ip`/`udp_last_peer_port` -> `String?`/`Int?` |
 | `tls`, `https` | `tls_stream`/`tls_client_context` -> `TlsStream?`/`TlsContext?`; `https_get_full*` -> a **present** `HttpResponse` whose `error<String?>` carries the lossless failure reason (`status -1` on failure); body wrappers `https_get`/`https_get_verified` -> `String?`; diagnostics `https_selfhost`/`https_selfhost_verified` -> `Bool?` |
@@ -1405,10 +1407,24 @@ open(path<String>, flags<Int>)<File?>           # flags from FileFlag
 open_read(path<String>)<File?>                  # convenience: read
 open_write(path<String>)<File?>                 # create/truncate, write
 open_append(path<String>)<File?>                # append/create
-read_all(f<File>)<String?>                      # whole file; absent on failure
-write_str(f<File>, s<String>)<Int?>             # bytes written, absent on failure
+read_all(f<File>)<String?>                      # whole file as text; absent on failure
+read_at(f<File>, off<Int>, n<Int>)<String?>     # bounded text read at absolute offset
+read_bytes(f<File>)<Vec<UInt8>?>                # whole file as raw bytes (binary-safe)
+read_bytes_at(f<File>, off<Int>, n<Int>)<Vec<UInt8>?>   # bounded raw-byte read at offset
+write_str(f<File>, s<String>)<Int?>             # text; bytes written, absent on failure
+write_bytes(f<File>, data<Vec<UInt8>>)<Int?>    # raw binary bytes written
+write_at(f<File>, off<Int>, data<Vec<UInt8>>)<Int?>     # raw bytes at absolute offset
 close(f<File>)<Bool?>                            # present on success
 ```
+
+Raw binary I/O uses a `Vec<UInt8>` byte buffer — **not** `String`, so text is never
+confused with bytes (#213). `write_bytes`/`write_at` persist the buffer verbatim
+(NULs and high-bit bytes included, no NUL-termination); `read_bytes`/
+`read_bytes_at` hand the bytes back as an owning `Vec<UInt8>` (freed when dropped).
+A `Vec<UInt8>` packs 1 byte per element when values are pushed as `UInt8`
+(`push(255 as UInt8)`); pushing an `Int` literal stores an 8-byte element.
+`read_at`/`write_at` are stateless `pread`/`pwrite` at an absolute byte offset —
+thread-safe, no seek dance, and the write-side way to punch a tensor in place.
 
 `enum FileFlag` constant members (`READ`, `WRITE`, `RDWR`, `CREATE`, `TRUNC`,
 `APPEND`) combine with `|`. `io_status_message()` is the import-surface probe.
