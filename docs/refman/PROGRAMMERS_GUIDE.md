@@ -369,9 +369,21 @@ add(a<Int>, b<Int>)<Int> -> { return a + b }
 mul(a<Int>, b: Int)<Int> -> { return a * b }   # or `b<Int>`
 ```
 
-Return type is always bracketed: `name(params)<Ret> -> { … }`. An early
-`return value` exits; a bare `-> { … }` may rely on trailing expressions in
-expression contexts.
+Return type is bracketed for a function that returns a value: `name(params)<Ret> -> { … }`.
+**If a callable omits its return signature, its return type is `Void`** — Vyb never
+infers a value return type from the body (#212). This is the canonical, preferred
+spelling for side-effecting functions and methods:
+
+```vyb
+log_it(msg<String>) -> { println(msg) }     # implicit Void procedure
+increment(c<their<Counter>>) -> { c.count = c.count + 1 }
+```
+
+A bare `return` (no value) and normal fallthrough are both legal in an implicit-Void
+callable; `return <value>` is an error (`return 42` from a Void function is rejected,
+never silently inferred). The explicit `<Void>` spelling still works but is redundant,
+and an empty `<>` return signature is invalid — omit it. `Void` remains a real type in
+genuine type-level contexts like `Future<Void>` and `fn() -> Void`.
 
 **`fn` types.** A function/closure type is written `fn(Args…) -> Ret`:
 

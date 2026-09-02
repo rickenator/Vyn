@@ -601,6 +601,12 @@ std::unique_ptr<vyb::ast::FunctionDeclaration> DeclarationParser::parse_function
     // Parse return type: name(params)<ReturnType>
     ast::TypeNodePtr return_type_node = nullptr;
     if (this->match(vyb::TokenType::LT)) { // <
+        // An EMPTY return signature '<>' is invalid; it communicates nothing
+        // that omitting the signature does not express more clearly (#212).
+        if (this->peek().type == vyb::TokenType::GT) {
+            throw std::runtime_error("empty return signature '<>' is invalid; omit the return signature for an implicit Void function at " +
+                                     location_to_string(this->current_location()));
+        }
         // Parse comma-separated return types for multi-value returns
         std::vector<ast::TypeNodePtr> return_types;
 

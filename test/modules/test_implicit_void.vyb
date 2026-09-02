@@ -1,0 +1,58 @@
+// @test: implicit Void return signature (omitted -> Void, #212)
+// @description: A function/method that omits its return signature is an
+//   implicit `Void` procedure -- the canonical spelling for side-effecting
+//   functions. Covers: empty body, normal fallthrough, bare early `return`,
+//   a generic Void function, and async omission (Future<Void>). `return <value>`
+//   stays an error (see test_void_fn_return_value_rejected). `<>` stays invalid
+//   (see test_empty_return_sig_rejected).
+// @category: language, syntax, regression
+// @expect: pass
+// @expect-output: ivoid-ok
+// @expect-return: 0
+
+empty_body() -> {
+}
+
+side_effect(x<Int>) -> {
+    println(x)
+}
+
+bare_return(done<Bool>) -> {
+    if (done) { return }
+    println("should-not-print")
+}
+
+generic_void<T>(x<T>) -> {
+    println("generic")
+}
+
+async fire_async() -> {
+    println("async-fire")
+}
+
+struct Widget {
+    n<Int>
+}
+
+# Aspect declaration + matching bind: both omit the return signature (implicit Void).
+aspect WidgetOps {
+    hello(self) -> { }
+}
+
+bind WidgetOps -> Widget {
+    hello(self) -> {
+        println("hello")
+    }
+}
+
+main()<Int> -> {
+    empty_body()
+    bare_return(true)
+    side_effect(1)
+    generic_void(7)
+    await fire_async()
+    w<Widget> = Widget { n = 0 }
+    w.hello()
+    println("ivoid-ok")
+    return 0
+}

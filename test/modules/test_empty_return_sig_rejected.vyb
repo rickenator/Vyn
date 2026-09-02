@@ -1,0 +1,15 @@
+// @test: reject empty '<>' return signature (#212)
+// @description: An empty return signature '<>' is invalid -- it communicates
+//   nothing that omitting the signature does not express more clearly. The
+//   suggested canonical spelling is to omit the return signature entirely.
+// @category: language, syntax, negative, regression
+// @expect: fail
+// @expect-error: empty return signature
+
+bad()<> -> {
+}
+
+main()<Int> -> {
+    bad()
+    return 0
+}

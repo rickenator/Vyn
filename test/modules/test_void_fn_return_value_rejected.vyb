@@ -1,0 +1,16 @@
+// @test: reject returning a value from an implicit-Void function (#212)
+// @description: Omission means Void; it never requests inference. `return 42`
+//   from a function whose return signature is omitted must be diagnosed as a
+//   Void violation (not silently infer Int).
+// @category: language, syntax, negative, regression
+// @expect: fail
+// @expect-error: cannot return a value from Void function
+
+bad() -> {
+    return 42
+}
+
+main()<Int> -> {
+    bad()
+    return 0
+}

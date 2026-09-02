@@ -6871,6 +6871,28 @@ void SemanticAnalyzer::visit(ast::WhileStatement* node) {
 void SemanticAnalyzer::visit(ast::ReturnStatement* node) {
     // Visit the return value if it exists
     if (node->argument) {
+        // #212: returning a value from a Void-typed function is an error.
+        // An omitted return signature means Void; it never requests inference.
+        // This shares the diagnostic across the implicit and explicit `<Void>`
+        // spellings, so omission cannot silently infer a value type.
+        if (currentFunction && currentFunction->returnTypeNode) {
+            ast::TypeNode* retTy = currentFunction->returnTypeNode->type
+                ? currentFunction->returnTypeNode->type.get()
+                : currentFunction->returnTypeNode.get();
+            bool isVoidFn = false;
+            if (ast::TypeName* tn = dynamic_cast<ast::TypeName*>(retTy)) {
+                if (tn->identifier && (tn->identifier->name == "Void" || tn->identifier->name == "void"))
+                    isVoidFn = true;
+            }
+            if (isVoidFn && !(currentFunction->id && currentFunction->id->name == "main")) {
+                // `main` is the program entry and is exempt: a `main()` with an
+                // omitted signature may still `return` its program result, which
+                // is auto-serialized by codegen (a pervasive test/harness idiom).
+                addError("cannot return a value from Void function '" +
+                         (currentFunction->id ? currentFunction->id->name : "<anon>") + "'", node);
+                return;
+            }
+        }
         // Bare Option constructor injection for `return Some(x)` / `return None`
         // inside a function whose return type is `Option<T>`.
         if (currentFunction && currentFunction->returnTypeNode) {
