@@ -28,14 +28,14 @@ mixed_params(a<Int>, Float b, const<String> c, const Bool d)<Float> -> {
 }
 
 // Function with complex type parameters
-complex_types(my<[Int]> numbers, const their<String const> text)<Void> -> {
+complex_types(my<[Int]> numbers, const their<String const> text) -> {
     for i in 0..numbers.len() {
         println(text + numbers[i].to_string())
     }
 }
 
 // Test local variable declarations
-test_local_vars()<Void> -> {
+test_local_vars() -> {
     // Standard syntax
     a<Int> = 10
     const<String> b = "standard"
@@ -69,7 +69,7 @@ test_local_vars()<Void> -> {
 }
 
 // Test function calls with different parameter styles
-test_function_calls()<Void> -> {
+test_function_calls() -> {
     // Call with standard syntax
     const<Int> result1 = standard_params(5, const<String>("10"))
     println("Standard params result: " + result1.to_string())

@@ -1,6 +1,6 @@
 // Test all String method functionality
 
-test_substring() <Void> -> {
+test_substring() -> {
     msg<String> = String::from_bytes("Hello World", 11)
 
     // Test basic substring
@@ -19,7 +19,7 @@ test_substring() <Void> -> {
     println_int(sub3.len())
 }
 
-test_char_at() <Void> -> {
+test_char_at() -> {
     msg<String> = String::from_bytes("Hello", 5)
 
     // Test first character (should be 'H' = 72)
@@ -38,7 +38,7 @@ test_char_at() <Void> -> {
     println_int(ch3)
 }
 
-test_starts_with() <Void> -> {
+test_starts_with() -> {
     msg<String> = String::from_bytes("Hello World", 11)
     prefix1<String> = String::from_bytes("Hello", 5)
     prefix2<String> = String::from_bytes("World", 5)
@@ -54,7 +54,7 @@ test_starts_with() <Void> -> {
     println_int(result2)
 }
 
-test_ends_with() <Void> -> {
+test_ends_with() -> {
     msg<String> = String::from_bytes("Hello World", 11)
     suffix1<String> = String::from_bytes("World", 5)
     suffix2<String> = String::from_bytes("Hello", 5)
@@ -70,7 +70,7 @@ test_ends_with() <Void> -> {
     println_int(result2)
 }
 
-test_contains() <Void> -> {
+test_contains() -> {
     msg<String> = String::from_bytes("Hello World", 11)
     sub1<String> = String::from_bytes("lo Wo", 5)
     sub2<String> = String::from_bytes("xyz", 3)
@@ -86,7 +86,7 @@ test_contains() <Void> -> {
     println_int(result2)
 }
 
-test_to_upper() <Void> -> {
+test_to_upper() -> {
     msg<String> = String::from_bytes("Hello World", 11)
 
     upper<String> = msg.to_upper()
@@ -99,7 +99,7 @@ test_to_upper() <Void> -> {
     println_int(ch)
 }
 
-test_to_lower() <Void> -> {
+test_to_lower() -> {
     msg<String> = String::from_bytes("Hello World", 11)
 
     lower<String> = msg.to_lower()

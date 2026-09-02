@@ -9,7 +9,7 @@ struct Person {
 }
 
 bind Greet -> Person {
-    greet(self)<Void> -> {
+    greet(self) -> {
         print("hello ")
         println(self.name)
     }

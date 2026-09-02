@@ -2,7 +2,7 @@
 // Tests bind Trait -> Type with actual method implementations
 
 aspect Printable {
-    print(self<Self>)<Void> -> { }
+    print(self<Self>) -> { }
     describe(self<Self>)<String> -> { }
 }
 
@@ -12,7 +12,7 @@ struct Point {
 }
 
 bind Printable -> Point {
-    print(self<Point>)<Void> -> {
+    print(self<Point>) -> {
         println("Point(" + self.x.to_string() + ", " + self.y.to_string() + ")")
     }
 

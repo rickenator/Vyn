@@ -10,7 +10,7 @@ create_future_vec()<Future<Vec<String>>> -> {
     return null;
 }
 
-main()<Void> -> {
+main() -> {
     println("Future type syntax parsing test completed");
     return;
 }

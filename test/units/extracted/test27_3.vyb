@@ -7,4 +7,4 @@
 // @expect-error: n/a
 // @expect-return: n/a
 
-test()<Void> -> { [x * x for x in 0..10]; x.y; }
+test() -> { [x * x for x in 0..10]; x.y; }

@@ -4,7 +4,7 @@ struct Counter {
     count<Int>
 }
 
-increment(c<their<Counter>>)<Void> -> {
+increment(c<their<Counter>>) -> {
     c.count = c.count + 1
 }
 

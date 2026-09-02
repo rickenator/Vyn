@@ -6,7 +6,7 @@
 // @semantic-only: true
 
 aspect Display {
-    show(self)<Void> -> { }
+    show(self) -> { }
 }
 
 struct Plain {

@@ -16,12 +16,12 @@ struct GenericBox<T> {
 }
 
 bind<T<Display, Clone>> Display -> GenericBox<T> {
-    show(self)<Void> -> {
+    show(self) -> {
         return
     }
 }
 
-validFunction<T<Display>>(item<T>)<Void> -> {
+validFunction<T<Display>>(item<T>) -> {
     item.show()
     return
 }

@@ -11,7 +11,7 @@
 //   }
 //
 //   bind Drop -> File {
-//       drop(self<Self>)<Void> -> {
+//       drop(self<Self>) -> {
 //           println("File closed")
 //       }
 //   }

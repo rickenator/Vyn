@@ -8,7 +8,7 @@ struct SimpleTree {
     has_node<Bool>
 }
 
-add_node(tree<their<SimpleTree>>, val<Int>)<Void> -> {
+add_node(tree<their<SimpleTree>>, val<Int>) -> {
     if (!tree.has_node) {
         tree.node = my(SimpleNode { value = val })
         tree.has_node = true

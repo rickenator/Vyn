@@ -27,7 +27,7 @@ async background_task()<Future<Void>> -> {
 }
 
 // Regular function that creates and waits for async tasks
-test_async_operations()<Void> -> {
+test_async_operations() -> {
     println("=== Async Operations Test ===");
 
     // Test basic async function call
@@ -45,7 +45,7 @@ test_async_operations()<Void> -> {
     println("All async operations initiated");
 }
 
-main()<Void> -> {
+main() -> {
     println("Starting async/await comprehensive test");
 
     test_async_operations();

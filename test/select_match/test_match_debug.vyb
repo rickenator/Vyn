@@ -1,27 +1,27 @@
 // Test to see which case executes
 
-test_one()<Void> -> {
+test_one() -> {
     x<Int const> = 1
     match (x) {
         1 -> println("matched 1")
     }
 }
 
-test_two()<Void> -> {
+test_two() -> {
     x<Int const> = 2
     match (x) {
         2 -> println("matched 2")
     }
 }
 
-test_three()<Void> -> {
+test_three() -> {
     x<Int const> = 3
     match (x) {
         3 -> println("matched 3")
     }
 }
 
-main()<Void> -> {
+main() -> {
     println("Test 1:")
     test_one()
     println("Test 2:")

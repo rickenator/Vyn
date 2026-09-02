@@ -86,38 +86,38 @@ aspect BrowserOps {
 share(all)
 bind BrowserOps -> Browser {
     # Navigate to the URL currently in the address bar (normalized).
-    go(self<Browser>)<Void> -> {
+    go(self<Browser>) -> {
         qt_web_load(self.web, normalize_url(qt_edit_text(self.urlBar)))
     }
 
     # Go back in history.
-    back(self<Browser>)<Void> -> {
+    back(self<Browser>) -> {
         qt_web_back(self.web)
     }
 
     # Go forward in history.
-    forward(self<Browser>)<Void> -> {
+    forward(self<Browser>) -> {
         qt_web_forward(self.web)
     }
 
     # Reload the current page.
-    reload(self<Browser>)<Void> -> {
+    reload(self<Browser>) -> {
         qt_web_reload(self.web)
     }
 
     # Zoom the rendered page in/out (Ctrl+/Ctrl- in the window). The bridge
     # clamps the zoom factor, so no bounds math here.
-    zoom_in(self<Browser>)<Void> -> {
+    zoom_in(self<Browser>) -> {
         qt_web_zoom_in(self.web)
     }
-    zoom_out(self<Browser>)<Void> -> {
+    zoom_out(self<Browser>) -> {
         qt_web_zoom_out(self.web)
     }
 
     # Sync the address bar and window title to the rendered page (called on
     # loadFinished). The title is only pushed when non-empty so a blank page
     # doesn't clobber the "VybWeb" default.
-    sync_title(self<Browser>)<Void> -> {
+    sync_title(self<Browser>) -> {
         qt_edit_set_text(self.urlBar, qt_web_url(self.web))
         title<String> = qt_web_title(self.web)
         if (title != "") {
@@ -126,7 +126,7 @@ bind BrowserOps -> Browser {
     }
 
     # Tear down the GUI (terminal — do not use Qt handles afterwards).
-    quit(self<Browser>)<Void> -> {
+    quit(self<Browser>) -> {
         qt_quit()
     }
 }
@@ -140,7 +140,7 @@ bind BrowserOps -> Browser {
 # zoomIn/zoomOut events carrying the web handle. This replaces the old nested
 # if/else ladder with a declarative pattern match — the RFE select idiom.
 share(all)
-handle_event(b<Browser>, h<Int>, k<Int>)<Void> -> {
+handle_event(b<Browser>, h<Int>, k<Int>) -> {
     hQuit<Int>   = b.btnQuit
     hBack<Int>   = b.btnBack
     hFwd<Int>    = b.btnFwd

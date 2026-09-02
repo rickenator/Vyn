@@ -18,7 +18,7 @@ create_simple_tree()<SimpleTree> -> {
     }
 }
 
-insert_value(tree<their<SimpleTree>>, key<Int>, value<String>)<Void> -> {
+insert_value(tree<their<SimpleTree>>, key<Int>, value<String>) -> {
     tree.has_root = true
     tree.size = tree.size + 1
 }

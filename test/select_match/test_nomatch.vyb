@@ -1,10 +1,10 @@
 // Test without match
 
-test()<Void> -> {
+test() -> {
     println("Hello from test")
 }
 
-main()<Void> -> {
+main() -> {
     println("Hello from main")
     test()
     println("Done")

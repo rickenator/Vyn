@@ -4,7 +4,7 @@ struct TestStruct {
     value<Int>
 }
 
-test_method_call(obj<TestStruct>)<Void> -> {
+test_method_call(obj<TestStruct>) -> {
     // This should work - direct method call
     println("Testing direct method call:")
     obj.value.to_string()

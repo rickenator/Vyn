@@ -16,7 +16,7 @@ boom()<Int> -> {
     fail FdError { path = "x" }
 }
 
-handle()<Void> -> {
+handle() -> {
     {
         boom()
     } trap (e<FdError>) -> {

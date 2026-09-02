@@ -41,7 +41,7 @@ aspect Assoc {
 }
 
 bind<K<Hashable>, V> Assoc -> Map<K, V> {
-    put(self<their<Map<K, V>>>, key<K>, val<V>)<Void> -> {
+    put(self<their<Map<K, V>>>, key<K>, val<V>) -> {
         self.keys.push(key)
         self.vals.push(val)
         return

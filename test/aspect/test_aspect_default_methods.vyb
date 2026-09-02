@@ -2,7 +2,7 @@
 // Tests optional methods with default implementations
 
 aspect Greet {
-    hello(self<Self>)<Void> -> {
+    hello(self<Self>) -> {
         println("Hello from default!");
     }
 
@@ -19,18 +19,18 @@ struct Robot {
 
 // Person uses default hello, implements goodbye
 bind Greet -> Person {
-    goodbye(self<Self>)<Void> -> {
+    goodbye(self<Self>) -> {
         println("Person says goodbye");
     }
 }
 
 // Robot overrides hello, implements goodbye
 bind Greet -> Robot {
-    hello(self<Self>)<Void> -> {
+    hello(self<Self>) -> {
         println("Robot says hello");
     }
 
-    goodbye(self<Self>)<Void> -> {
+    goodbye(self<Self>) -> {
         println("Robot says goodbye");
     }
 }

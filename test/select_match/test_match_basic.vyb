@@ -1,6 +1,6 @@
 // Test basic match statement functionality
 
-test_int_match()<Void> -> {
+test_int_match() -> {
     x<Int const> = 42
 
     match (x) {
@@ -11,7 +11,7 @@ test_int_match()<Void> -> {
     }
 }
 
-test_enum_like()<Void> -> {
+test_enum_like() -> {
     status<Int const> = 1
 
     match (status) {
@@ -22,7 +22,7 @@ test_enum_like()<Void> -> {
     }
 }
 
-main()<Void> -> {
+main() -> {
     println("Testing match statement:")
     test_int_match()
     test_enum_like()

@@ -14,7 +14,7 @@ struct Person {
 }
 
 bind Greet -> Person {
-    greet(other<Person>)<Void> -> {
+    greet(other<Person>) -> {
         return
     }
 }

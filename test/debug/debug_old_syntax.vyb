@@ -1,6 +1,6 @@
 # Test with old syntax - now compiles successfully
 y<String> = "hello";
 
-main()<Void> -> {
+main() -> {
     return;
 }

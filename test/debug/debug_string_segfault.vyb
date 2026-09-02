@@ -1,6 +1,6 @@
 # Test file with just string - no segfault
 y<String> = "hello";
 
-main()<Void> -> {
+main() -> {
     return;
 }

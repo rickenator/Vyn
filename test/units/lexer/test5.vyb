@@ -4,5 +4,5 @@
 // @expect: fail
 // @expect-error: Tabs not allowed at line 8, column 1
 
-example()<Void> ->
+example() ->
 	const<Int> x = 10

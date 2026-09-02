@@ -93,7 +93,7 @@ test_loc_at_pointers()<Int> -> {
 }
 
 // Test 6: borrow() with function parameters
-modify_through_borrow(borrowed<their<TestData>>)<Void> -> {
+modify_through_borrow(borrowed<their<TestData>>) -> {
     borrowed.value = borrowed.value * 2
     println("Modified value in function: " + borrowed.value.to_string())
 }

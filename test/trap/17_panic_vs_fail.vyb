@@ -2,7 +2,7 @@
 # Tests the distinction between recoverable fail and unrecoverable panic
 // @expect: fail
 
-check_invariant(value<Int>)<Void> -> {
+check_invariant(value<Int>) -> {
     # Panic for "should never happen" conditions
     if (value < 0) {
         panic("INVARIANT VIOLATED: Value cannot be negative: " + value.to_string())

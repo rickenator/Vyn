@@ -71,7 +71,7 @@ cmp_lt<T<Comparable>>(a<T>, b<T>)<Bool> -> { … }
 the allocator and compiler move and free values deterministically:
 
 ```vyb
-increment(c<their<Counter>>)<Void> -> { c.count = c.count + 1 }
+increment(c<their<Counter>>) -> { c.count = c.count + 1 }
 shadow<mild<Counter>> = soft(shared_data)
 ```
 
@@ -835,7 +835,7 @@ Relevant syntax and helpers:
 
 ```vyb
 counter<Counter> = Counter { count = 0 }
-increment(c<their<Counter>>)<Void> -> { c.count = c.count + 1 }
+increment(c<their<Counter>>) -> { c.count = c.count + 1 }
 increment(borrow(counter))          # pass a borrowed reference
 
 shared_data<our<Counter>> = our(Counter { count = 1 })

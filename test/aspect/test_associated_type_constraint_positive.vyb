@@ -5,7 +5,7 @@
 // @expect-return: 0
 
 aspect Display {
-    show(self)<Void> -> { }
+    show(self) -> { }
 }
 
 struct Point {
@@ -13,7 +13,7 @@ struct Point {
 }
 
 bind Display -> Point {
-    show(self)<Void> -> { return }
+    show(self) -> { return }
 }
 
 aspect Iterator {

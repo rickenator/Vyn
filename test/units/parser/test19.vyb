@@ -7,4 +7,4 @@
 // @expect-error: n/a
 // @expect-return: n/a
 
-template T { class C { f(x: their<T>)<Void> -> { } } }
+template T { class C { f(x: their<T>) -> { } } }

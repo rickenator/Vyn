@@ -14,7 +14,7 @@ struct Point {
     y<Int>
 }
 
-testFunc<T<Point>>(item<T>)<Void> -> {
+testFunc<T<Point>>(item<T>) -> {
     return
 }
 

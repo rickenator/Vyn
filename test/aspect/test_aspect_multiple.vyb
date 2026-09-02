@@ -20,14 +20,14 @@ struct Point {
 
 // Implement Display for Point
 bind Display -> Point {
-    show(self<Self>)<Void> -> {
+    show(self<Self>) -> {
         println("Point(x, y)");
     }
 }
 
 // Implement Debug for Point
 bind Debug -> Point {
-    debug(self<Self>)<Void> -> {
+    debug(self<Self>) -> {
         println("Point { x: ..., y: ... }");
     }
 }

@@ -51,7 +51,7 @@ test_relaxed_local_variables()<Int> -> {
 }
 
 // Helper functions for the test
-function_with_args(Int x, const String s)<Void> -> {
+function_with_args(Int x, const String s) -> {
     println(s + ": " + x);  // Auto-serialization handles conversion
 }
 

@@ -7,6 +7,6 @@
 // @expect-error: n/a
 // @expect-return: n/a
 
-example()<Void> -> {
+example() -> {
     const<Int> x = 10
 }

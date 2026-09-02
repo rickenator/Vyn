@@ -11,7 +11,7 @@ debug_init()<DebugTree> -> {
     }
 }
 
-debug_modify(tree<their<DebugTree>>)<Void> -> {
+debug_modify(tree<their<DebugTree>>) -> {
     tree.size = 7
     tree.has_root = true
 }

@@ -1,6 +1,6 @@
 // Test select with blocks and pass
 
-test_blocks_with_pass()<Void> -> {
+test_blocks_with_pass() -> {
     n<Int const> = 3;
     result<Int> = select(n) -> {
         1 -> {
@@ -23,7 +23,7 @@ test_blocks_with_pass()<Void> -> {
     println(result);
 }
 
-main()<Void> -> {
+main() -> {
     println("Test starting");
     test_blocks_with_pass();
     println("Test done");

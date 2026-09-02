@@ -10,7 +10,7 @@ struct Box<T> {
 }
 
 bind<T> Display -> Box<T> {
-    show(self<Self>)<Void> -> {
+    show(self<Self>) -> {
         println("Box contains a value");
     }
 }

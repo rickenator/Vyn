@@ -542,7 +542,7 @@ async process_data()<Future<String>> -> {
 
 #### Usage Example
 ```vyb
-main()<Void> -> {
+main() -> {
     // Call async functions; each returns a Future<T>
     future1<Future<Int>> = compute_value()
     future2<Future<String>> = process_data()
@@ -735,7 +735,7 @@ drive the generic call sites for the stdlib collections and `Iterator` protocol:
 nums<BTreeMap<Int, String>> = BTreeMap<Int, String>()
 
 // Unqualified bounded-type-parameter dispatch resolves through the bound.
-show_all<T<Display>>(item<T>)<Void> -> {
+show_all<T<Display>>(item<T>) -> {
     println(item.display())   // resolves via the bound Display aspect
 }
 ```
@@ -776,7 +776,7 @@ show_all<T<Display>>(item<T>)<Void> -> {
 | `Bool` | Boolean | 1-bit | `true` or `false` | `flag<Bool> = true` |
 | `String` | UTF-8 string | Variable | Heap-allocated fat pointer `{ ptr, len }` | `name<String> = "Alice"` |
 | `Bytes` | Raw binary data | Variable | Fat pointer for byte sequences `{ ptr, len }` | Future byte literals |
-| `Void` | No value | 0-bit | Used for functions that don't return | `print()<Void> -> { ... }` |
+| `Void` | No value | 0-bit | Used for functions that don't return | `print() -> { ... }` |
 
 #### Collection Types
 
@@ -1003,7 +1003,7 @@ get_grade_description(score<Int>)<String> -> {
 }
 
 // Generic function using aspect bounds
-print_student_status<T<Gradeable>>(student<T>)<Void> -> {
+print_student_status<T<Gradeable>>(student<T>) -> {
     grade<String> = student.letter_grade()
     passing<Bool> = student.is_passing()
     println("Grade: " + grade)
@@ -2688,7 +2688,7 @@ Vyb/
 
 **Hello World:**
 ```vyb
-main()<Void> -> {
+main() -> {
     println("Hello, Vyb!")
 }
 ```

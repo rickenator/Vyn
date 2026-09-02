@@ -13,11 +13,11 @@
 
 import collections
 
-sort_ref(v<their<Vec<Int>>>)<Void> -> { v.sort_in_place() }
+sort_ref(v<their<Vec<Int>>>) -> { v.sort_in_place() }
 retain_ref(v<their<Vec<Int>>>, f<fn(Int) -> Bool>)<Int> -> { return v.retain(f) }
-map_ref(v<their<Vec<Int>>>, f<fn(Int) -> Int>)<Void> -> { v.map_in_place(f) }
-rev_ref(v<their<Vec<Int>>>)<Void> -> { v.reverse_in_place() }
-strsort(v<their<Vec<String>>>)<Void> -> { v.sort_in_place() }
+map_ref(v<their<Vec<Int>>>, f<fn(Int) -> Int>) -> { v.map_in_place(f) }
+rev_ref(v<their<Vec<Int>>>) -> { v.reverse_in_place() }
+strsort(v<their<Vec<String>>>) -> { v.sort_in_place() }
 lenref(v<their<Vec<Int>>>)<Int> -> { return v.len() }
 
 main()<Int> -> {

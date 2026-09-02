@@ -5,7 +5,7 @@
 // @expect-error: Receiver parameter "self" is only valid as the first parameter of an aspect or bind method.
 // @semantic-only: true
 
-helper(self)<Void> -> {
+helper(self) -> {
     return
 }
 

@@ -1,6 +1,6 @@
 // Simple select test
 
-test_naked()<Void> -> {
+test_naked() -> {
     x<Int const> = 42;
     result<Int> = select(x) -> {
         1 -> 10,
@@ -10,7 +10,7 @@ test_naked()<Void> -> {
     println(result);
 }
 
-main()<Void> -> {
+main() -> {
     println("Starting test");
     test_naked();
     println("Done");

@@ -13,7 +13,7 @@ test_vec_operations()<Int> -> {
     return 42;
 }
 
-test_basic_types()<Void> -> {
+test_basic_types() -> {
     // Test Int32 types (skip Float32 for now due to casting issues)
     i32<Int32> = 42;
 

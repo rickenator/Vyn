@@ -1,7 +1,7 @@
 // @expect: fail
 // Test Future<T> type parsing and semantic analysis
 
-test_future_types()<Void> -> {
+test_future_types() -> {
     future_int<Future<Int>> = null;
     future_string<Future<String>> = null;
 
@@ -11,7 +11,7 @@ test_future_types()<Void> -> {
     println("Future type test completed");
 }
 
-main()<Void> -> {
+main() -> {
     test_future_types();
     return;
 }

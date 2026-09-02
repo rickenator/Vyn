@@ -13,7 +13,7 @@ struct Person {
 }
 
 bind Greet -> Person {
-    greet(self<Self>)<Void> -> {
+    greet(self<Self>) -> {
         print("Greeter: ")
         println("hello")
     }

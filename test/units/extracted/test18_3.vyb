@@ -8,4 +8,4 @@
 // @expect-return: n/a
 
 x<my<T>>;
-test()<Void> -> { if (a < b.c) { } }
+test() -> { if (a < b.c) { } }

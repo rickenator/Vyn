@@ -8,7 +8,7 @@
 // @expect-return: n/a
 
 class Foo {
-    op_add(other: Foo)<Void> -> { // Changed operator+ to op_add for diagnosis
+    op_add(other: Foo) -> { // Changed operator+ to op_add for diagnosis
         const<Int> x = 1 // Placeholder body;
     }
 }

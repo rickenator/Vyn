@@ -11,7 +11,7 @@ class Foo {
     fn operator+(other: Foo) {
         const<Int> x = 10
     }
-    bar()<Void> -> {
+    bar() -> {
         const<Int> y = 2 // Placeholder body
     }
 }

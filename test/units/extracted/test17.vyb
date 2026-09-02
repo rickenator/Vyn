@@ -7,6 +7,6 @@
 // @expect-error: n/a
 // @expect-return: n/a
 
-test()<Void> -> {
+test() -> {
     if (x.y) {}
 }

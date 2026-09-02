@@ -24,7 +24,7 @@ closed_port()<Int> -> {
 }
 
 # Escalate an absent stream into the fail/trap framework via net_error.
-connect_to(ip<String>, port<Int>)<Void> -> {
+connect_to(ip<String>, port<Int>) -> {
     match (tcp_connect(ip, port)) {
         s -> {
             s.close()

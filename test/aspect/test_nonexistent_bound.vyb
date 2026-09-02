@@ -9,7 +9,7 @@ aspect Display {
     show(self)<Void>
 }
 
-testFunc<T<Printable>>(item<T>)<Void> -> {
+testFunc<T<Printable>>(item<T>) -> {
     return
 }
 

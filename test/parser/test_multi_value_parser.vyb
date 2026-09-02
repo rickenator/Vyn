@@ -2,7 +2,7 @@
 // @description: Tests the parser's ability to handle multi-value function return syntax
 // @category: syntax, function, parser
 // @expect: pass
-// Note: Changed to @expect:fail because this test uses `main()<Void> -> Int` syntax (mixing
+// Note: Changed to @expect:fail because this test uses `main() -> Int` syntax (mixing
 // unified return-type `<>` with old-style `-> Type` suffix), which the current parser rejects.
 // @parse-only: true
 
@@ -17,7 +17,7 @@ get_multiple_values()<Int, Float, Bool> -> {
 }
 
 // Function call that captures multi-value return
-test_multi_return()<Void> -> {
+test_multi_return() -> {
     x<Int>;
     y<String>;
     x, y = get_values();

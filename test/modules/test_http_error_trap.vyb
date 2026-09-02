@@ -16,7 +16,7 @@ import http::{http_get_full, http_error, HttpError}
 # Failable helper: a failed full-client result (status -1, `error` present) is
 # escalated into an HttpError so the caller can trap the real typed value (the
 # fail is in this callee, so main's own return serialization stays intact).
-try_fetch(port<Int>)<Void> -> {
+try_fetch(port<Int>) -> {
     r<HttpResponse> = http_get_full("127.0.0.1", port, "/nope")
     match (r.error) {
         e -> { fail http_error("get", "127.0.0.1:" + port.to_string()) }

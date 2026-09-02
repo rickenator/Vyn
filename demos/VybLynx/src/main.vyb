@@ -464,7 +464,7 @@ commit_fetch(st<their<BrowserState>>)<Bool> -> {
 # startup, and the module `color_ok` flag records whether pairs are usable.
 color_ok<Int> = 1
 
-init_colors()<Void> -> {
+init_colors() -> {
     if (curses_has_color() == 0) {
         color_ok = 0
         return
@@ -566,7 +566,7 @@ body_rows(r<Int>)<Int> -> {
     return b
 }
 
-draw_hborder(row<Int>, c<Int>, left<String>, hor<String>, right<String>)<Void> -> {
+draw_hborder(row<Int>, c<Int>, left<String>, hor<String>, right<String>) -> {
     a<Int> = bar_attr()
     if (a != 0) { curses_attr_on(a) }
     bl<Int> = 0
@@ -577,7 +577,7 @@ draw_hborder(row<Int>, c<Int>, left<String>, hor<String>, right<String>)<Void> -
     if (a != 0) { curses_attr_off(a) }
 }
 
-draw_border(r<Int>, c<Int>)<Void> -> {
+draw_border(r<Int>, c<Int>) -> {
     draw_hborder(0, c, "┌", "─", "┐")
     l<Int> = 1
     while (l < r - 1) {
@@ -591,7 +591,7 @@ draw_border(r<Int>, c<Int>)<Void> -> {
     draw_hborder(r - 1, c, "└", "─", "┘")
 }
 
-draw_header(p<their<Page>>, c<Int>)<Void> -> {
+draw_header(p<their<Page>>, c<Int>) -> {
     title<String> = p.title
     if (title == "") { title = p.url }
     a<Int> = title_attr()
@@ -603,7 +603,7 @@ draw_header(p<their<Page>>, c<Int>)<Void> -> {
 
 # Draw one body line, colouring `[n]` anchors (link color) and the focused
 # anchor (focus color). Non-anchor runs draw plain.
-draw_line(row<Int>, col<Int>, line<String>, maxw<Int>, focus<Int>, navCount<Int>)<Void> -> {
+draw_line(row<Int>, col<Int>, line<String>, maxw<Int>, focus<Int>, navCount<Int>) -> {
     ms<Vec<Mark>> = markers(line)
     if (ms.len() == 0) {
         put(row, col, line, maxw)
@@ -637,7 +637,7 @@ draw_line(row<Int>, col<Int>, line<String>, maxw<Int>, focus<Int>, navCount<Int>
     }
 }
 
-draw_body(p<their<Page>>, top<Int>, r<Int>, c<Int>, focus<Int>)<Void> -> {
+draw_body(p<their<Page>>, top<Int>, r<Int>, c<Int>, focus<Int>) -> {
     bodyRows<Int> = body_rows(r)
     l<Int> = 0
     i<Int> = top
@@ -648,7 +648,7 @@ draw_body(p<their<Page>>, top<Int>, r<Int>, c<Int>, focus<Int>)<Void> -> {
     }
 }
 
-draw_status(p<their<Page>>, top<Int>, status<String>, loading<Bool>, r<Int>, c<Int>, focus<Int>)<Void> -> {
+draw_status(p<their<Page>>, top<Int>, status<String>, loading<Bool>, r<Int>, c<Int>, focus<Int>) -> {
     statusRow<Int> = r - 2
     if (addr_active == 1) {
         field<String> = "url> " + addr_text
@@ -683,7 +683,7 @@ draw_status(p<their<Page>>, top<Int>, status<String>, loading<Bool>, r<Int>, c<I
     if (a != 0) { curses_attr_off(a) }
 }
 
-draw_help(r<Int>, c<Int>)<Void> -> {
+draw_help(r<Int>, c<Int>) -> {
     lines<Vec<String>> = Vec()
     lines.push("vyblynx " + version_id() + " - curses terminal browser")
     lines.push("")
@@ -711,7 +711,7 @@ draw_help(r<Int>, c<Int>)<Void> -> {
 }
 
 redraw(p<their<Page>>, top<Int>, status<String>, loading<Bool>, help<Bool>,
-       r<Int>, c<Int>, focus<Int>)<Void> -> {
+       r<Int>, c<Int>, focus<Int>) -> {
     clear_screen()
     draw_border(r, c)
     draw_header(p, c)
@@ -784,7 +784,7 @@ cmd_of(k<Int>)<Cmd> -> {
 # sets the module flag so the loop routes keys to the editor and draw_status
 # renders the field at the bottom row. No part of this suspends the screen -
 # the box stays up the whole time.
-enter_address_mode()<Void> -> {
+enter_address_mode() -> {
     addr_text = ""
     addr_active = 1
     curses_show_cursor()
@@ -792,7 +792,7 @@ enter_address_mode()<Void> -> {
 
 # Park the edit caret just past the typed address (used after every redraw so
 # the cursor never jumps back to the screen corner).
-place_addr_caret(r<Int>, c<Int>)<Void> -> {
+place_addr_caret(r<Int>, c<Int>) -> {
     statusRow<Int> = r - 2
     caret<Int> = 5 + addr_text.len()
     if (caret >= c - 2) { caret = c - 2 }
@@ -822,7 +822,7 @@ async startup_probe(ms<Int>)<Future<Int>> -> {
 # module scratch; the UI loop's commit_fetch polls that task each tick and
 # commits the result. `gen` is bumped per navigation so a superseded fetch can
 # never clobber the newest one.
-load_url(st<their<BrowserState>>, target<String>)<Void> -> {
+load_url(st<their<BrowserState>>, target<String>) -> {
     st.url = target
     st.status = "Loading " + target
     if (st.task != 0) {
@@ -870,7 +870,7 @@ load_url(st<their<BrowserState>>, target<String>)<Void> -> {
     }
 }
 
-scroll_page(st<their<BrowserState>>, r<Int>, forward<Bool>)<Void> -> {
+scroll_page(st<their<BrowserState>>, r<Int>, forward<Bool>) -> {
     bodyRows<Int> = body_rows(r)
     if (bodyRows < 3) { bodyRows = 3 }
     # The scroll direction is itself a `select` over the Bool we parsed out as a
@@ -960,7 +960,7 @@ download_path(urlStr<String>)<String> -> {
     return safe_file_part(hostPart + "-" + seg)
 }
 
-start_download(urlStr<String>)<Void> -> {
+start_download(urlStr<String>) -> {
     do<Int> = agent_start_string(|message<String?>| -> {
         match (message) {
             s -> {

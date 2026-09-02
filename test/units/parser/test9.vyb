@@ -7,7 +7,7 @@
 // @expect-error: n/a
 // @expect-return: n/a
 
-example()<Void> ->
+example() ->
     try
         const<Int> x = 1;
     catch e

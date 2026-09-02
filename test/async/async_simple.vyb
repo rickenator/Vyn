@@ -20,7 +20,7 @@ async simple_async_void()<Future<Void>> -> {
 }
 
 // Regular function that creates async tasks
-test_simple_async()<Void> -> {
+test_simple_async() -> {
     println("=== Simple Async Test ===");
 
     // Test basic async function calls
@@ -36,7 +36,7 @@ test_simple_async()<Void> -> {
     println("All async functions called successfully");
 }
 
-main()<Void> -> {
+main() -> {
     println("Starting simple async test");
 
     test_simple_async();

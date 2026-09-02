@@ -8,7 +8,7 @@
 // @expect-return: n/a
 
 
-main()<Void> -> -> Int {
+main() -> -> Int {
     x<Int> = 42;
     return x;
 }

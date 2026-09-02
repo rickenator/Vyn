@@ -3,7 +3,7 @@ struct TestStruct {
     value<Int>
 }
 
-modify_struct(s<their<TestStruct>>)<Void> -> {
+modify_struct(s<their<TestStruct>>) -> {
     s.value = 42
 }
 

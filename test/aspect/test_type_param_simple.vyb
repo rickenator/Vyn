@@ -1,7 +1,7 @@
 # Test type parameter usage in method bodies
 
 aspect Display {
-    show(self<Self>)<Void> -> { }
+    show(self<Self>) -> { }
 }
 
 struct Box<T> {
@@ -10,7 +10,7 @@ struct Box<T> {
 
 # Generic bind where methods can use T
 bind<T> Display -> Box<T> {
-    show(self<Box<T>>)<Void> -> {
+    show(self<Box<T>>) -> {
         # T should be recognized as a valid type parameter here
         # For now, just return without using T
         return

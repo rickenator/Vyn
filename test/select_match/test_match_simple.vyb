@@ -1,6 +1,6 @@
 // Simple match test
 
-test_match()<Void> -> {
+test_match() -> {
     x<Int const> = 2
 
     match (x) {
@@ -10,6 +10,6 @@ test_match()<Void> -> {
     }
 }
 
-main()<Void> -> {
+main() -> {
     test_match()
 }

@@ -20,7 +20,7 @@ import tls::{tls_client_context_verified, tls_server_context, tls_stream,
 
 # Bring up one verified client handshake against `host`. A verification/handshake
 # failure arrives as an absent `connect()` and is escalated into a TlsError.
-connect_verified(host<String>, port<Int>, cert<String>)<Void> -> {
+connect_verified(host<String>, port<Int>, cert<String>) -> {
     match (tls_client_context_verified(cert)) {
         vctx -> {
             cfd<Int> = socket_open(Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP) else -1

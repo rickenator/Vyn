@@ -5,7 +5,7 @@
 // @expect-return: 7
 
 aspect Getter {
-    get(self)<Void> -> { }
+    get(self) -> { }
 }
 
 struct Boxer<T> {

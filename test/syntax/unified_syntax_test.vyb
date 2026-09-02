@@ -15,7 +15,7 @@ greet(name<String>)<String> -> {
 }
 
 # Test main function
-main()<Void> -> {
+main() -> {
     result<Int> = add(x, 10);
     message<String> = greet("World");
     return;

@@ -8,4 +8,4 @@
 // @expect-return: n/a
 
 import foo
-bar()<Void> ->
+bar() ->

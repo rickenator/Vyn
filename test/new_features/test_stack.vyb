@@ -13,7 +13,7 @@ stack_new()<Stack> -> {
     return Stack { items = Vec(), size = 0 }
 }
 
-stack_push(s<their<Stack>>, val<Int>)<Void> -> {
+stack_push(s<their<Stack>>, val<Int>) -> {
     s.items.push(val)
     s.size = s.size + 1
 }

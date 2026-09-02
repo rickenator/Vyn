@@ -1,7 +1,7 @@
 // Test: Function call consumes MY-owned argument
 // @expect: fail
 // @expect-error: Use after move
-consume_val(x<my<Int>>)<Void> -> {
+consume_val(x<my<Int>>) -> {
     println(x)
 }
 

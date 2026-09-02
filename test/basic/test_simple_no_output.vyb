@@ -1,5 +1,5 @@
 // Super simple test
 
-main()<Void> -> {
+main() -> {
     x<Int const> = 42
 }

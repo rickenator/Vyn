@@ -21,7 +21,7 @@ aspect BA {
     store(self<their<Box>>, s<String>)<Void>
 }
 bind BA -> Box {
-    store(self<their<Box>>, s<String>)<Void> -> { self.v.push(s); return }
+    store(self<their<Box>>, s<String>) -> { self.v.push(s); return }
 }
 
 main()<Int> -> {

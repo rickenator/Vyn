@@ -1,7 +1,7 @@
 // @expect: fail
 // Test select expressions - naked values auto-return, blocks use pass
 
-test_naked_values()<Void> -> {
+test_naked_values() -> {
     // Basic select with naked values - auto returns
     x<Int const> = 42;
     result<Str> = select(x) -> {
@@ -22,7 +22,7 @@ test_naked_values()<Void> -> {
     println(result2);
 }
 
-test_blocks_with_pass()<Void> -> {
+test_blocks_with_pass() -> {
     // Select with block expressions using pass keyword
     n<Int const> = 3;
     result<Str> = select(n) -> {
@@ -46,7 +46,7 @@ test_blocks_with_pass()<Void> -> {
     println(result);
 }
 
-test_mixed_naked_and_blocks()<Void> -> {
+test_mixed_naked_and_blocks() -> {
     // Mix naked values and blocks in same select
     x<Int const> = 42;
     answer<Str> = select(x) -> {
@@ -63,7 +63,7 @@ test_mixed_naked_and_blocks()<Void> -> {
     println(answer);
 }
 
-test_computation_blocks()<Void> -> {
+test_computation_blocks() -> {
     // Blocks with computation before pass
     n<Int const> = 5;
     doubled<Int> = select(n) -> {
@@ -80,7 +80,7 @@ test_computation_blocks()<Void> -> {
     println(doubled);
 }
 
-test_select_for_side_effects()<Void> -> {
+test_select_for_side_effects() -> {
     // Select without assignment - side effects only
     x<Int const> = 2;
     select(x) -> {
@@ -93,7 +93,7 @@ test_select_for_side_effects()<Void> -> {
     };
 }
 
-test_wildcard()<Void> -> {
+test_wildcard() -> {
     // Wildcard should catch anything
     z<Int const> = 999;
     caught<Str> = select(z) -> {
@@ -106,7 +106,7 @@ test_wildcard()<Void> -> {
     println(caught);
 }
 
-main()<Void> -> {
+main() -> {
     println("=== Testing Select Expressions ===");
 
     println("\n--- Naked Values ---");

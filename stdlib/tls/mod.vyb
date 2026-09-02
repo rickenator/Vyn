@@ -82,12 +82,12 @@ struct TlsError {
 # Behavior contracts giving each type its ergonomic method surface.
 share(all)
 aspect TlsContextOps {
-    dispose(self<Self>)<Void> -> { }
+    dispose(self<Self>) -> { }
 }
 
 share(all)
 bind TlsContextOps -> TlsContext {
-    dispose(self<Self>)<Void> -> {
+    dispose(self<Self>) -> {
         vyb_tls_ctx_free(self.ctx)
     }
 }
@@ -158,7 +158,7 @@ tls_server_context(cert_pem<String>, key_pem<String>)<TlsContext?> -> {
 
 # Release an SSL_CTX returned by tls_client_context / tls_server_context.
 share(all)
-tls_free_context(ctx<TlsContext>)<Void> -> {
+tls_free_context(ctx<TlsContext>) -> {
     vyb_tls_ctx_free(ctx.ctx)
 }
 

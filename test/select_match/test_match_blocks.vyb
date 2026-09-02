@@ -31,7 +31,7 @@ test_match_with_blocks(x<Int const>)<Int> -> {
     }
 }
 
-test_match_simple(x<Int const>)<Void> -> {
+test_match_simple(x<Int const>) -> {
     println("Testing value:")
     println(x)
 
@@ -43,7 +43,7 @@ test_match_simple(x<Int const>)<Void> -> {
     }
 }
 
-test_match_mixed(x<Int const>)<Void> -> {
+test_match_mixed(x<Int const>) -> {
     match (x) {
         0 -> println("zero"),
         1 -> {

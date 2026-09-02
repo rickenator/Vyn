@@ -1,6 +1,6 @@
 # Test file with just integer to isolate segfault
 x<Int> = 42;
 
-main()<Void> -> {
+main() -> {
     return;
 }

@@ -22,7 +22,7 @@ struct Box<T> {
 }
 
 bind Display -> Point {
-    show(self)<Void> -> {
+    show(self) -> {
         return
     }
 }
@@ -35,7 +35,7 @@ bind Clone -> Point {
 }
 
 bind<T<Display>> Display -> Box<T> {
-    show(self)<Void> -> {
+    show(self) -> {
         self.value.show()
         return
     }
@@ -49,12 +49,12 @@ bind<T<Display, Clone>> Clone -> Box<T> {
     }
 }
 
-printItem<T<Display>>(item<T>)<Void> -> {
+printItem<T<Display>>(item<T>) -> {
     item.show()
     return
 }
 
-useDisplayAndClone<T<Display, Clone>>(item<T>)<Void> -> {
+useDisplayAndClone<T<Display, Clone>>(item<T>) -> {
     item.show()
     item.clone()
     return

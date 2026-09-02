@@ -3,7 +3,7 @@
 // @expect-return: 42
 
 aspect Printable {
-    print(self<Self>)<Void> -> { }
+    print(self<Self>) -> { }
     to_string(self<Self>)<String> -> { }
 }
 

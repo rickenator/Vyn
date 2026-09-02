@@ -964,7 +964,7 @@ aspect VecOps {
     min(self<Vec<T>>)<T> -> { }
     max(self<Vec<T>>)<T> -> { }
     sorted(self<Vec<T>>)<Vec<T>> -> { }
-    sort_in_place(self<their<Vec<T>>>)<Void> -> { }
+    sort_in_place(self<their<Vec<T>>>) -> { }
 }
 
 share(all)
@@ -1038,7 +1038,7 @@ bind<T<Comparable, Equatable>> VecOps -> Vec<T> {
     # In-place stable(ish) ascending selection sort via the Comparable-bound
     # `cmp_lt` helper. Mutates the receiver's own backing store and borrows it
     # by-ref, so no temporary copy is made.
-    sort_in_place(self<their<Vec<T>>>)<Void> -> {
+    sort_in_place(self<their<Vec<T>>>) -> {
         n<Int> = self.len()
         i<Int> = 0
         while (i < n) {
@@ -1082,9 +1082,9 @@ aspect VecHigherOps {
     map(self<Vec<T>>, f<fn(T) -> T>)<Vec<T>> -> { }
     filter(self<Vec<T>>, f<fn(T) -> Bool>)<Vec<T>> -> { }
     reduce(self<Vec<T>>, init<T>, f<fn(T, T) -> T>)<T> -> { }
-    map_in_place(self<their<Vec<T>>>, f<fn(T) -> T>)<Void> -> { }
+    map_in_place(self<their<Vec<T>>>, f<fn(T) -> T>) -> { }
     retain(self<their<Vec<T>>>, f<fn(T) -> Bool>)<Int> -> { }
-    reverse_in_place(self<their<Vec<T>>>)<Void> -> { }
+    reverse_in_place(self<their<Vec<T>>>) -> { }
     iter(self<their<Vec<T>>>)<VecIter<T>> -> { }
 }
 
@@ -1119,7 +1119,7 @@ bind<T> VecHigherOps -> Vec<T> {
         }
         return acc
     }
-    map_in_place(self<their<Vec<T>>>, f<fn(T) -> T>)<Void> -> {
+    map_in_place(self<their<Vec<T>>>, f<fn(T) -> T>) -> {
         i<Int> = 0
         while (i < self.len()) {
             self.set(i, f(self.get(i)))
@@ -1141,7 +1141,7 @@ bind<T> VecHigherOps -> Vec<T> {
         }
         return j
     }
-    reverse_in_place(self<their<Vec<T>>>)<Void> -> {
+    reverse_in_place(self<their<Vec<T>>>) -> {
         i<Int> = 0
         j<Int> = self.len() - 1
         while (i < j) {
