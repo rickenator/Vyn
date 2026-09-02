@@ -6884,10 +6884,17 @@ void SemanticAnalyzer::visit(ast::ReturnStatement* node) {
                 if (tn->identifier && (tn->identifier->name == "Void" || tn->identifier->name == "void"))
                     isVoidFn = true;
             }
-            if (isVoidFn && !(currentFunction->id && currentFunction->id->name == "main")) {
+            if (isVoidFn && lambdaStack.empty() &&
+                    !(currentFunction->id && currentFunction->id->name == "main")) {
                 // `main` is the program entry and is exempt: a `main()` with an
                 // omitted signature may still `return` its program result, which
                 // is auto-serialized by codegen (a pervasive test/harness idiom).
+                //
+                // A non-empty `lambdaStack` means this `return` belongs to a
+                // nested closure (its own return type), not the enclosing Void
+                // function — e.g. `async_spawn(|| -> { ...; return 0 })` inside a
+                // Void procedure. Don't misattribute the closure's return to the
+                // surrounding function.
                 addError("cannot return a value from Void function '" +
                          (currentFunction->id ? currentFunction->id->name : "<anon>") + "'", node);
                 return;

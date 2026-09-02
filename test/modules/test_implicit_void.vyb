@@ -30,6 +30,16 @@ async fire_async() -> {
     println("async-fire")
 }
 
+# A Void function containing a value-returning nested closure: the closure's
+# `return 42` belongs to the lambda, not the enclosing Void function (#212).
+void_with_lambda() -> {
+    fx<fn() -> Int> = || -> {
+        return 42
+    }
+    n<Int> = fx()
+    println(n)
+}
+
 struct Widget {
     n<Int>
 }
@@ -51,6 +61,7 @@ main()<Int> -> {
     side_effect(1)
     generic_void(7)
     await fire_async()
+    void_with_lambda()
     w<Widget> = Widget { n = 0 }
     w.hello()
     println("ivoid-ok")
