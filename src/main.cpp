@@ -103,12 +103,16 @@ extern "C" {
 
     // File I/O runtime helpers (io stdlib module)
     struct vyb_file_str { char* ptr; int64_t len; };
+    struct vyb_vec_bytes { char* ptr; int64_t size; int64_t cap; };
     int64_t __vyb_file_open(const char* path, int64_t flags);
     int64_t __vyb_file_close(int64_t fd);
     int64_t __vyb_file_write(int64_t fd, const char* data, int64_t len);
     vyb_file_str __vyb_file_read_all(int64_t fd);
     int64_t __vyb_io_read_all_opt(int64_t fd, vyb_file_str* out);
     int64_t __vyb_file_read_at(int64_t fd, int64_t off, int64_t maxlen, vyb_file_str* out);
+    int64_t __vyb_file_write_at(int64_t fd, int64_t off, const char* data, int64_t len);
+    int64_t __vyb_io_read_bytes_all(int64_t fd, vyb_vec_bytes* out);
+    int64_t __vyb_io_read_bytes_at(int64_t fd, int64_t off, int64_t maxlen, vyb_vec_bytes* out);
     int64_t __vyb_file_error_code(void);
     const char* __vyb_file_error_message(void);
 
@@ -2308,6 +2312,12 @@ int run_vyb_code(const std::string& source, const std::string& fileName, bool ge
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_io_read_all_opt), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_file_read_at")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_file_read_at), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_file_write_at")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_file_write_at), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_io_read_bytes_all")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_io_read_bytes_all), llvm::JITSymbolFlags::Exported);
+        runtimeSymbols[mangle("__vyb_io_read_bytes_at")] = llvm::orc::ExecutorSymbolDef(
+            llvm::orc::ExecutorAddr::fromPtr(&__vyb_io_read_bytes_at), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_file_error_code")] = llvm::orc::ExecutorSymbolDef(
             llvm::orc::ExecutorAddr::fromPtr(&__vyb_file_error_code), llvm::JITSymbolFlags::Exported);
         runtimeSymbols[mangle("__vyb_file_error_message")] = llvm::orc::ExecutorSymbolDef(

@@ -701,6 +701,12 @@ void* __vyb_complex_from_json(const char* json_str, const char* type_name) {
 
 typedef struct { char* ptr; int64_t len; } vyb_file_str;
 
+// A raw byte buffer in Vyb's `Vec<UInt8>` layout: { data ptr, size, cap }.
+// Used for the io stdlib binary read surface (#213) returning `Vec<UInt8>?`.
+// Unlike vyb_file_str, the buffer is a plain malloc'd block NOT registered with
+// the string registry: the Vec that owns it frees it with free() on reclaim.
+typedef struct { char* ptr; int64_t size; int64_t cap; } vyb_vec_bytes;
+
 // #147: last-error / peer diagnostic state is THREAD-LOCAL so that concurrent
 // workers each observe their own operation results. This policy covers the file
 // slot (vyb_file_err), the network slot (vyb_net_err), the UDP peer slot
@@ -762,6 +768,27 @@ VYB_WEAK int64_t __vyb_file_write(int64_t fd, const char* data, int64_t len) {
     int64_t left = len;
     while (left > 0) {
         ssize_t n = vyb_raw_write((int)fd, p, (size_t)left);
+        if (n > 0) { p += n; left -= n; }
+        else if (n == 0) break;
+        else { vyb_file_err = errno; return -1; }
+    }
+    vyb_file_err = 0;
+    return len - left;
+}
+
+// Stateless offset write (io stdlib module, #213): write `len` bytes from
+// `data` to `fd` starting at absolute byte `off` via glibc `pwrite` (no lseek
+// state, thread-safe). The write-side counterpart of `__vyb_file_read_at`
+// (`pread`): lets a program write a slice of a buffer at an absolute offset
+// without a seek/append dance. Retries partial writes like `__vyb_file_write`.
+// Returns the total bytes written, or -1 on error (with errno captured; a
+// negative offset is EINVAL).
+VYB_WEAK int64_t __vyb_file_write_at(int64_t fd, int64_t off, const char* data, int64_t len) {
+    if (off < 0) { vyb_file_err = EINVAL; return -1; }
+    const char* p = data;
+    int64_t left = len;
+    while (left > 0) {
+        ssize_t n = pwrite((int)fd, p, (size_t)left, (off_t)(off + (len - left)));
         if (n > 0) { p += n; left -= n; }
         else if (n == 0) break;
         else { vyb_file_err = errno; return -1; }
@@ -928,6 +955,62 @@ VYB_WEAK int64_t __vyb_file_read_at(int64_t fd, int64_t off, int64_t maxlen, vyb
     __vyb_string_register(buf);
     out->ptr = buf;
     out->len = (int64_t)n;
+    vyb_file_err = 0;
+    return 1;
+}
+
+// Whole-file binary read returning a `Vec<UInt8>` layout (#213): reads the
+// entire open `fd` into a plain malloc'd block and writes { ptr, size=len,
+// cap=len } to *out. Returns 1 on success (even for an empty file, size 0),
+// 0 on failure, with *out untouched so the Vyb `Vec<UInt8>?` is absent.
+// The buffer is deliberately NOT registered with the string registry: it is an
+// owned Vec's data buffer, freed with free() when the Vec is reclaimed.
+VYB_WEAK int64_t __vyb_io_read_bytes_all(int64_t fd, vyb_vec_bytes* out) {
+    if (!out) return 0;
+    size_t cap = 4096, len = 0;
+    char* buf = (char*)malloc(cap);
+    if (!buf) { vyb_file_err = errno; return 0; }
+    for (;;) {
+        if (len == cap) {
+            cap *= 2;
+            char* nb = (char*)realloc(buf, cap);
+            if (!nb) { vyb_file_err = errno; free(buf); return 0; }
+            buf = nb;
+        }
+        ssize_t n = vyb_raw_read((int)fd, buf + len, cap - len);
+        if (n > 0) {
+            len += (size_t)n;
+        } else if (n == 0) {
+            break;
+        } else {
+            vyb_file_err = errno;
+            free(buf);
+            return 0;
+        }
+    }
+    out->ptr = buf;
+    out->size = (int64_t)len;
+    out->cap = (int64_t)len;
+    vyb_file_err = 0;
+    return 1;
+}
+
+// Bounded, stateless offset binary read returning a `Vec<UInt8>` layout (#213):
+// the write-side sibling of `__vyb_file_read_at` but producing a owning-Vec
+// buffer. Reads up to `maxlen` bytes at absolute `off` (`pread`), writes
+// { ptr, size, cap } to *out. Returns 1 on success (size may be < maxlen
+// near/past EOF), 0 on failure (negative offset / bad fd) with *out untouched.
+// The buffer is a plain malloc'd block freed by Vec reclaim, NOT registry-owned.
+VYB_WEAK int64_t __vyb_io_read_bytes_at(int64_t fd, int64_t off, int64_t maxlen, vyb_vec_bytes* out) {
+    if (!out) return 0;
+    if (off < 0 || maxlen < 0) { vyb_file_err = EINVAL; return 0; }
+    char* buf = (char*)malloc((size_t)maxlen + 1);
+    if (!buf) { vyb_file_err = errno; return 0; }
+    ssize_t n = pread((int)fd, buf, (size_t)maxlen, (off_t)off);
+    if (n < 0) { vyb_file_err = errno; free(buf); return 0; }
+    out->ptr = buf;
+    out->size = (int64_t)n;
+    out->cap = (int64_t)n;
     vyb_file_err = 0;
     return 1;
 }

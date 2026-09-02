@@ -1,0 +1,107 @@
+// @test: io binary read/write - write_bytes/write_at + read_bytes/read_bytes_at
+// @description: #213 raw-binary byte-buffer io surface. `Vec<UInt8>` (NOT String)
+//   is the byte carrier. write_bytes writes raw bytes verbatim (NULs + high-bit
+//   included, no NUL-termination), write_at does a stateless pwrite at an absolute
+//   offset, read_bytes returns the whole file as a Vec<UInt8>?, and read_bytes_at
+//   reads a bounded offset slice. Verifies a lossless byte round-trip and that a
+//   negative offset yields the absent optional.
+// @category: io, stdlib, files, binary, regression
+// @expect: pass
+// @expect-output: iobinary-ok
+// @expect-return: 0
+// @env: VYB_STDLIB=stdlib
+
+import io
+
+main()<Int> -> {
+    path<String> = "/tmp/vyb_io_binary.bin"
+
+    # A raw byte buffer: includes a NUL and a high-bit byte. Push UInt8-typed
+    # values so the Vec packs 1 byte per element (an Int literal would store an
+    # 8-byte element).
+    bytes<Vec<UInt8>> = Vec()
+    bytes.push(0 as UInt8)      # NUL
+    bytes.push(255 as UInt8)    # high bit
+    bytes.push(1 as UInt8)
+    bytes.push(7 as UInt8)
+    bytes.push(66 as UInt8)     # 'B'
+
+    # 1. write_bytes persists the whole buffer raw (exact byte count).
+    match (open_write(path)) {
+        w -> {
+            n<Int> = write_bytes(w, bytes) else -1
+            if (n != 5) { close(w); return 1 }
+            close(w)
+        }
+        ? -> { return 2 }
+    }
+
+    # 2. read_bytes loads the whole file back into a byte buffer, free of NUL/text
+    #    assumptions.
+    match (open_read(path)) {
+        f -> {
+            present<Bool> = false
+            match (read_bytes(f)) {
+                rb -> {
+                    present = true
+                    if (rb.len() != 5) { close(f); return 3 }
+                    if ((rb.get(0) as Int) != 0) { close(f); return 4 }
+                    if ((rb.get(1) as Int) != 255) { close(f); return 5 }
+                    if ((rb.get(2) as Int) != 1) { close(f); return 6 }
+                    if ((rb.get(3) as Int) != 7) { close(f); return 7 }
+                    if ((rb.get(4) as Int) != 66) { close(f); return 8 }
+                }
+                ? -> { close(f); return 9 }
+            }
+
+            # 3. read_bytes_at reads a bounded slice at an absolute offset.
+            match (read_bytes_at(f, 1, 3)) {
+                at -> {
+                    if (at.len() != 3) { close(f); return 10 }
+                    if ((at.get(0) as Int) != 255) { close(f); return 11 }
+                }
+                ? -> { close(f); return 12 }
+            }
+
+            # 4. Negative offset -> absent optional (no crash).
+            negAbs<Bool> = false
+            match (read_bytes_at(f, -1, 3)) {
+                x -> { negAbs = false }
+                ? -> { negAbs = true }
+            }
+            if (!negAbs) { close(f); return 13 }
+
+            close(f)
+        }
+        ? -> { return 14 }
+    }
+
+    # 5. write_at punches bytes at an absolute offset (stateless pwrite): the file
+    #    becomes 2 zero-bytes then the 5 payload bytes.
+    match (open_write(path)) {
+        w2 -> {
+            n2<Int> = write_at(w2, 2, bytes) else -1
+            if (n2 != 5) { close(w2); return 15 }
+            close(w2)
+        }
+        ? -> { return 16 }
+    }
+    match (open_read(path)) {
+        f2 -> {
+            match (read_bytes(f2)) {
+                all -> {
+                    if (all.len() != 7) { close(f2); return 17 }
+                    if ((all.get(0) as Int) != 0) { close(f2); return 18 }
+                    if ((all.get(1) as Int) != 0) { close(f2); return 19 }
+                    if ((all.get(2) as Int) != 0) { close(f2); return 20 }
+                }
+                ? -> { close(f2); return 21 }
+            }
+            close(f2)
+        }
+        ? -> { return 22 }
+    }
+
+    println("iobinary-ok")
+    return 0
+}

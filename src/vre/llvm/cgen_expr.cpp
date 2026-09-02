@@ -3101,6 +3101,8 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
         if (fname == "vyb_io_open") rtName = "__vyb_file_open";
         else if (fname == "vyb_io_close") rtName = "__vyb_file_close";
         else if (fname == "vyb_io_write") rtName = "__vyb_file_write";
+        else if (fname == "vyb_io_write_bytes") rtName = "__vyb_file_write";
+        else if (fname == "vyb_io_write_at") rtName = "__vyb_file_write_at";
         else if (fname == "vyb_io_read_all") rtName = "__vyb_file_read_all";
         else if (fname == "vyb_io_error_code") rtName = "__vyb_file_error_code";
         else if (fname == "vyb_io_error_message") rtName = "__vyb_file_error_message";
@@ -3174,6 +3176,43 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
                 llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int8PtrType, int64Type}, false);
                 m_currentLLVMValue = builder->CreateCall(
                     getFileFn(ft), {toI64(fd), dataPtr, dataLen}, "file.written");
+                return;
+            } else if (fname == "vyb_io_write_bytes") {
+                if (node->arguments.size() != 2) {
+                    logError(node->loc, "__vyb_file_write expects 2 arguments (fd, data<Vec<UInt8>>)");
+                    m_currentLLVMValue = nullptr; return;
+                }
+                node->arguments[0]->accept(*this); llvm::Value* fd = m_currentLLVMValue;
+                node->arguments[1]->accept(*this); llvm::Value* data = m_currentLLVMValue;
+                if (!fd || !data) { m_currentLLVMValue = nullptr; return; }
+                // `data` is a Vec<UInt8> = { ptr, size, cap }; write the
+                // `size` live bytes raw (no NUL-termination needed for binary).
+                llvm::Value* dataPtr = toStrPtr(data);
+                llvm::Value* dataLen = llvm::ConstantInt::get(int64Type, 0);
+                if (data->getType()->isStructTy())
+                    dataLen = builder->CreateExtractValue(data, 1, "vec.datasize");
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(
+                    getFileFn(ft), {toI64(fd), dataPtr, dataLen}, "file.written_bytes");
+                return;
+            } else if (fname == "vyb_io_write_at") {
+                if (node->arguments.size() != 3) {
+                    logError(node->loc, "__vyb_file_write_at expects 3 arguments (fd, off, data<Vec<UInt8>>)");
+                    m_currentLLVMValue = nullptr; return;
+                }
+                node->arguments[0]->accept(*this); llvm::Value* fd = m_currentLLVMValue;
+                node->arguments[1]->accept(*this); llvm::Value* off = m_currentLLVMValue;
+                node->arguments[2]->accept(*this); llvm::Value* data = m_currentLLVMValue;
+                if (!fd || !off || !data) { m_currentLLVMValue = nullptr; return; }
+                // `data` is a Vec<UInt8> = { ptr, size, cap }; write `size`
+                // live bytes at absolute `off` (stateless pwrite).
+                llvm::Value* dataPtr = toStrPtr(data);
+                llvm::Value* dataLen = llvm::ConstantInt::get(int64Type, 0);
+                if (data->getType()->isStructTy())
+                    dataLen = builder->CreateExtractValue(data, 1, "vec.datasize");
+                llvm::FunctionType* ft = llvm::FunctionType::get(int64Type, {int64Type, int64Type, int8PtrType, int64Type}, false);
+                m_currentLLVMValue = builder->CreateCall(
+                    getFileFn(ft), {toI64(fd), toI64(off), dataPtr, dataLen}, "file.written_at");
                 return;
             } else if (fname == "vyb_io_read_all") {
                 if (node->arguments.size() != 1) {
@@ -5398,6 +5437,68 @@ void LLVMCodegen::visit(vyb::ast::CallExpression *node) {
             llvm::Value* opt = llvm::UndefValue::get(optTy);
             opt = builder->CreateInsertValue(opt, val, 0, "readat.v");
             opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "readat.h"), 1);
+            m_currentLLVMValue = opt;
+            return;
+        } else if (fname == "vyb_io_read_bytes_opt") {
+            // Whole-file BINARY read returning a native `Vec<UInt8>?`
+            // (`{ Vec<UInt8>, has }`); absent only when the read failed. The
+            // byte-buffer counterpart of read_all (String? carries text, not raw
+            // bytes) (#213).
+            if (node->arguments.size() != 1) {
+                logError(node->loc, "vyb_io_read_bytes_opt expects 1 argument (fd)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this);
+            llvm::Value* fd = m_currentLLVMValue;
+            if (!fd) return;
+            llvm::Value* fdi64 = fd;
+            if (!fdi64->getType()->isIntegerTy(64)) fdi64 = builder->CreateSExt(fdi64, int64Type, "readbytes.toi64");
+            // Vec<UInt8> = { ptr, size, cap }
+            llvm::StructType* vecByteTy = llvm::StructType::get(*context, {int8PtrType, int64Type, int64Type}, false);
+            llvm::StructType* optTy = llvm::StructType::get(*context, {vecByteTy, llvm::Type::getInt1Ty(*context)}, false);
+            llvm::Value* slot = builder->CreateAlloca(vecByteTy, nullptr, "readbytes.slot");
+            builder->CreateStore(llvm::Constant::getNullValue(vecByteTy), slot, "readbytes.zero");
+            llvm::FunctionType* ft = llvm::FunctionType::get(
+                int64Type, {int64Type, llvm::PointerType::get(*context, 0)}, false);
+            llvm::Function* f = module->getFunction("__vyb_io_read_bytes_all");
+            if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_io_read_bytes_all", module.get());
+            llvm::Value* has = builder->CreateCall(f, {fdi64, slot}, "readbytes.has");
+            llvm::Value* val = builder->CreateLoad(vecByteTy, slot, "readbytes.val");
+            llvm::Value* opt = llvm::UndefValue::get(optTy);
+            opt = builder->CreateInsertValue(opt, val, 0, "readbytes.v");
+            opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "readbytes.h"), 1);
+            m_currentLLVMValue = opt;
+            return;
+        } else if (fname == "vyb_io_read_bytes_at_opt") {
+            // Bounded/offset BINARY read returning a native `Vec<UInt8>?` --
+            // the byte-buffer counterpart of read_at (#213). Absent on failure
+            // (bad fd / negative offset), present (possibly short) holding up to
+            // `maxlen` raw bytes at absolute byte `off`.
+            if (node->arguments.size() != 3) {
+                logError(node->loc, "vyb_io_read_bytes_at_opt expects 3 arguments (fd, off, maxlen)");
+                m_currentLLVMValue = nullptr; return;
+            }
+            node->arguments[0]->accept(*this); llvm::Value* fd = m_currentLLVMValue;
+            node->arguments[1]->accept(*this); llvm::Value* off = m_currentLLVMValue;
+            node->arguments[2]->accept(*this); llvm::Value* maxlen = m_currentLLVMValue;
+            if (!fd || !off || !maxlen) return;
+            auto toRBI64 = [&](llvm::Value* v) -> llvm::Value* {
+                if (v->getType()->isIntegerTy(64)) return v;
+                return builder->CreateSExt(v, int64Type, "readbytes.toi64");
+            };
+            llvm::StructType* vecByteTy = llvm::StructType::get(*context, {int8PtrType, int64Type, int64Type}, false);
+            llvm::StructType* optTy = llvm::StructType::get(*context, {vecByteTy, llvm::Type::getInt1Ty(*context)}, false);
+            llvm::Value* slot = builder->CreateAlloca(vecByteTy, nullptr, "readbytes.slot");
+            builder->CreateStore(llvm::Constant::getNullValue(vecByteTy), slot, "readbytes.zero");
+            llvm::FunctionType* ft = llvm::FunctionType::get(
+                int64Type, {int64Type, int64Type, int64Type, llvm::PointerType::get(*context, 0)}, false);
+            llvm::Function* f = module->getFunction("__vyb_io_read_bytes_at");
+            if (!f) f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__vyb_io_read_bytes_at", module.get());
+            llvm::Value* has = builder->CreateCall(f, {toRBI64(fd), toRBI64(off), toRBI64(maxlen), slot}, "readbytes.has");
+            llvm::Value* val = builder->CreateLoad(vecByteTy, slot, "readbytes.val");
+            llvm::Value* opt = llvm::UndefValue::get(optTy);
+            opt = builder->CreateInsertValue(opt, val, 0, "readbytes.v");
+            opt = builder->CreateInsertValue(opt, builder->CreateTrunc(has, llvm::Type::getInt1Ty(*context), "readbytes.h"), 1);
             m_currentLLVMValue = opt;
             return;
         } else if (fname == "vyb_net_recv_opt") {

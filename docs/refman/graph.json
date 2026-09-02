@@ -1,5 +1,5 @@
 {
-  "git_rev": "96b7b703fe1be267899de5c00200b0d91b379c65",
+  "git_rev": "4a1ca771b5a93d1588b9e6d609377b16e747acb3",
   "modules": [
     "agents",
     "archive",
@@ -147,7 +147,7 @@
         "files": [
           "stdlib/io/mod.vyb"
         ],
-        "exported": 15,
+        "exported": 19,
         "fan_in": 0,
         "fan_out": 0
       },
@@ -592,6 +592,10 @@
           "open_append",
           "close",
           "write_str",
+          "write_bytes",
+          "write_at",
+          "read_bytes",
+          "read_bytes_at",
           "read_all",
           "read_at",
           "error_code",
@@ -2984,6 +2988,42 @@
         "kind": "fn",
         "signature": "read_at(f<File>, off<Int>, n<Int>)<String?> ->",
         "summary": "Read up to `n` bytes at absolute byte `off` of the open file, without moving",
+        "fan_in": 0
+      },
+      {
+        "name": "read_bytes",
+        "module": "io",
+        "file": "stdlib/io/mod.vyb",
+        "kind": "fn",
+        "signature": "read_bytes(f<File>)<Vec<UInt8>?> ->",
+        "summary": "Read the whole file into a `Vec<UInt8>?` -- the byte-buffer (NOT String)",
+        "fan_in": 0
+      },
+      {
+        "name": "read_bytes_at",
+        "module": "io",
+        "file": "stdlib/io/mod.vyb",
+        "kind": "fn",
+        "signature": "read_bytes_at(f<File>, off<Int>, n<Int>)<Vec<UInt8>?> ->",
+        "summary": "Read up to `n` bytes at absolute byte `off` of the open file into a",
+        "fan_in": 0
+      },
+      {
+        "name": "write_at",
+        "module": "io",
+        "file": "stdlib/io/mod.vyb",
+        "kind": "fn",
+        "signature": "write_at(f<File>, off<Int>, data<Vec<UInt8>>)<Int?> ->",
+        "summary": "Write the raw bytes of `data` (`Vec<UInt8>`) to the file at absolute byte",
+        "fan_in": 0
+      },
+      {
+        "name": "write_bytes",
+        "module": "io",
+        "file": "stdlib/io/mod.vyb",
+        "kind": "fn",
+        "signature": "write_bytes(f<File>, data<Vec<UInt8>>)<Int?> ->",
+        "summary": "Write the raw bytes of `data` to the file. This is the explicit binary-write",
         "fan_in": 0
       },
       {
@@ -7578,6 +7618,41 @@
     },
     {
       "type": "proseRef",
+      "from_module": "io",
+      "from_symbol": "read_bytes",
+      "to_module": "io",
+      "to_symbol": "read_all"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "io",
+      "from_symbol": "read_bytes_at",
+      "to_module": "io",
+      "to_symbol": "read_at"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "io",
+      "from_symbol": "write_at",
+      "to_module": "io",
+      "to_symbol": "read_at"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "io",
+      "from_symbol": "write_bytes",
+      "to_module": "io",
+      "to_symbol": "read_all"
+    },
+    {
+      "type": "proseRef",
+      "from_module": "io",
+      "from_symbol": "write_bytes",
+      "to_module": "io",
+      "to_symbol": "read_at"
+    },
+    {
+      "type": "proseRef",
       "from_module": "network",
       "from_symbol": "NetError",
       "to_module": "network",
@@ -8152,6 +8227,30 @@
       "from_module": "io",
       "from_symbol": "read_at",
       "to_symbol": "vyb_io_read_at"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "io",
+      "from_symbol": "read_bytes",
+      "to_symbol": "vyb_io_read_bytes_opt"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "io",
+      "from_symbol": "read_bytes_at",
+      "to_symbol": "vyb_io_read_bytes_at_opt"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "io",
+      "from_symbol": "write_at",
+      "to_symbol": "vyb_io_write_at"
+    },
+    {
+      "type": "runtimeRef",
+      "from_module": "io",
+      "from_symbol": "write_bytes",
+      "to_symbol": "vyb_io_write_bytes"
     },
     {
       "type": "runtimeRef",
@@ -9858,6 +9957,34 @@
       "type": "usesType",
       "from_module": "io",
       "from_symbol": "read_at",
+      "to_module": "io",
+      "to_symbol": "File"
+    },
+    {
+      "type": "usesType",
+      "from_module": "io",
+      "from_symbol": "read_bytes",
+      "to_module": "io",
+      "to_symbol": "File"
+    },
+    {
+      "type": "usesType",
+      "from_module": "io",
+      "from_symbol": "read_bytes_at",
+      "to_module": "io",
+      "to_symbol": "File"
+    },
+    {
+      "type": "usesType",
+      "from_module": "io",
+      "from_symbol": "write_at",
+      "to_module": "io",
+      "to_symbol": "File"
+    },
+    {
+      "type": "usesType",
+      "from_module": "io",
+      "from_symbol": "write_bytes",
       "to_module": "io",
       "to_symbol": "File"
     },

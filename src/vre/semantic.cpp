@@ -2265,8 +2265,8 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
             name == "abs" || name == "sqrt" || name == "pow" || name == "sin" || name == "cos" ||
             name == "tan" || name == "exp" || name == "log" || name == "log2" || name == "log10" ||
             name == "floor" || name == "ceil" || name == "round" || name == "min" || name == "max" ||
-            name == "vyb_io_open" || name == "vyb_io_close" || name == "vyb_io_write" ||
-            name == "vyb_io_read_all" || name == "vyb_io_read_all_opt" || name == "vyb_io_read_at" || name == "vyb_io_error_code" ||
+            name == "vyb_io_open" || name == "vyb_io_close" || name == "vyb_io_write" || name == "vyb_io_write_bytes" ||
+            name == "vyb_io_read_all" || name == "vyb_io_read_all_opt" || name == "vyb_io_read_at" || name == "vyb_io_write_at" || name == "vyb_io_read_bytes_opt" || name == "vyb_io_read_bytes_at_opt" || name == "vyb_io_error_code" ||
             name == "vyb_io_error_message" ||
             name == "vyb_fs_mkdir" ||
             name == "vyb_crypto_sha256" ||
@@ -2892,7 +2892,7 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
         // fd/byte/bool helpers return Int, the content/message helpers return String.
         {
             static const std::set<std::string> fileIntFuncs = {
-                "vyb_io_open", "vyb_io_close", "vyb_io_write",
+                "vyb_io_open", "vyb_io_close", "vyb_io_write", "vyb_io_write_bytes", "vyb_io_write_at",
                 "vyb_io_error_code", "vyb_fs_mkdir"
             };
             static const std::set<std::string> fileStrFuncs = {
@@ -3297,6 +3297,21 @@ void SemanticAnalyzer::visit(ast::CallExpression* node) {
                     std::make_unique<ast::Identifier>(node->loc, "String"));
                 auto* resTy = new ast::OptionalType(node->loc,
                     std::unique_ptr<ast::TypeNode>(inner));
+                expressionTypes[node] = retainType(resTy);
+                node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
+                return;
+            }
+            // Binary reads: io_read_bytes_opt / io_read_bytes_at_opt return a
+            // native `Vec<UInt8>?` -- the byte-buffer (not String) counterpart of
+            // read_all/read_at (#213). Absent on failure, present holding raw
+            // bytes otherwise.
+            if (name == "vyb_io_read_bytes_opt" || name == "vyb_io_read_bytes_at_opt") {
+                auto* u8 = new ast::TypeName(node->loc,
+                    std::make_unique<ast::Identifier>(node->loc, "UInt8"));
+                auto* vec = new ast::VecType(node->loc,
+                    std::unique_ptr<ast::TypeNode>(u8));
+                auto* resTy = new ast::OptionalType(node->loc,
+                    std::unique_ptr<ast::TypeNode>(vec));
                 expressionTypes[node] = retainType(resTy);
                 node->type = std::shared_ptr<ast::TypeNode>(resTy->clone());
                 return;

@@ -117,6 +117,55 @@ write_str(f<File>, s<String>)<Int?> -> {
     return Int?(n)
 }
 
+# Write the raw bytes of `data` to the file. This is the explicit binary-write
+# surface: `data` is a `Vec<UInt8>` byte buffer (NOT a String -- Strings are
+# text, not a bearer of raw binary), and the full `data.len()` bytes are
+# written verbatim -- including `\x00` and high-bit content -- with no
+# NUL-termination or text assumptions. Returns `Int?` -- present holding the
+# exact byte count written, absent on failure. The write-side counterpart to
+# `read_all`/`read_at` for persisting GPU/native buffers byte-for-byte without
+# Python (#213).
+share(all)
+write_bytes(f<File>, data<Vec<UInt8>>)<Int?> -> {
+    n<Int> = vyb_io_write_bytes(f.fd, data)
+    if (n < 0) { return Int?() }
+    return Int?(n)
+}
+
+# Write the raw bytes of `data` (`Vec<UInt8>`) to the file at absolute byte
+# `off`, without moving the file cursor (stateless `pwrite`, thread-safe) --
+# the write-side counterpart of `read_at` (#207). Returns `Int?` -- present
+# holding the exact byte count written, absent on failure (bad fd, negative
+# offset, ...). Lets a program write a buffer slice at an absolute offset
+# without a seek/append dance, and punch a trained tensor in place at its known
+# slot (#213).
+share(all)
+write_at(f<File>, off<Int>, data<Vec<UInt8>>)<Int?> -> {
+    n<Int> = vyb_io_write_at(f.fd, off, data)
+    if (n < 0) { return Int?() }
+    return Int?(n)
+}
+
+# Read the whole file into a `Vec<UInt8>?` -- the byte-buffer (NOT String)
+# counterpart of `read_all`, for raw binary content. Present holding the full
+# file's bytes when the read succeeds, absent when it fails. The returned Vec
+# owns its buffer and frees it when dropped, so raw binary (incl. NULs / high-bit
+# bytes) round-trips without ever passing through a String (#213).
+share(all)
+read_bytes(f<File>)<Vec<UInt8>?> -> {
+    return vyb_io_read_bytes_opt(f.fd)
+}
+
+# Read up to `n` bytes at absolute byte `off` of the open file into a
+# `Vec<UInt8>?` -- the byte-buffer counterpart of `read_at` (stateless `pread`,
+# thread-safe). Absent only if the read fails (bad/negative offset, closed fd, ...);
+# present holding the bytes actually read, which may be FEWER than `n` at (or
+# past) EOF. The returned Vec owns its buffer and frees it when dropped (#213).
+share(all)
+read_bytes_at(f<File>, off<Int>, n<Int>)<Vec<UInt8>?> -> {
+    return vyb_io_read_bytes_at_opt(f.fd, off, n)
+}
+
 # Read the whole file into a `String?` -- present holding the full content
 # (which may legitimately be empty) when the read succeeds, absent when it
 # fails.
