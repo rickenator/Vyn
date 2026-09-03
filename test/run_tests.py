@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Optional, List
 import time
 import json
+import ctypes
 import shlex
 
 
@@ -62,6 +63,7 @@ class TestCase:
     parse_only: bool = False
     semantic_only: bool = False
     skip_asan: bool = False  # When True, skipped when VYB_ASAN=1 (ASan can't instrument this test, e.g. ucontext fibers)
+    skip_missing_lib: str = ""  # When set, test is skipped unless this shared lib is dlopen-able (with @env applied)
     execute_jit: bool = False  # When True, run with JIT execution regardless of global flag
     vyb_args: List[str] = field(default_factory=list)
     env: dict = field(default_factory=dict)
@@ -120,6 +122,10 @@ def parse_directives(file_path):
         # does not prevent matching.
         if skip_asan_match and skip_asan_match.group(1).strip().split()[0].lower() in ('true', 'yes', '1'):
             test.skip_asan = True
+
+        skip_lib_match = re.search(r'// @skip-if-missing-lib:\s*(\S+)', content, re.MULTILINE)
+        if skip_lib_match:
+            test.skip_missing_lib = skip_lib_match.group(1).strip()
 
         jit_match = re.search(r'// @execute-jit:\s*(.*?)$', content, re.MULTILINE)
         if jit_match and jit_match.group(1).strip().lower() in ('true', 'yes', '1'):
@@ -335,6 +341,26 @@ Examples:
     if args.verbose:
         print(f"Found {len(test_files)} test files in {test_dir}")
 
+    def _lib_available(libname, extra_env):
+        """True if `libname` can be dlopen'd with `extra_env` applied (e.g. the
+        test's own @env LD_LIBRARY_PATH). Used by @skip-if-missing-lib to skip an
+        FFI-binding test when its C library isn't installed on this machine/CI."""
+        code = ("import ctypes, sys\n"
+                "try:\n"
+                "    ctypes.CDLL(sys.argv[1])\n"
+                "    sys.exit(0)\n"
+                "except Exception:\n"
+                "    sys.exit(1)\n")
+        env = os.environ.copy()
+        env.update(extra_env or {})
+        try:
+            r = subprocess.run([sys.executable, "-c", code, libname],
+                               env=env, capture_output=True)
+            return r.returncode == 0
+        except Exception:
+            return False
+
+
     # Run each test and collect results
     for file in test_files:
         test = parse_directives(file)
@@ -350,6 +376,13 @@ Examples:
         if test.skip_asan and os.environ.get("VYB_ASAN") == "1":
             if args.verbose:
                 print(f"SKIP (asan): {test.filename}")
+            continue
+
+        # Skip FFI-binding tests whose C library is absent (@skip-if-missing-lib).
+        # Not run, so not counted as pass or fail.
+        if test.skip_missing_lib and not _lib_available(test.skip_missing_lib, test.env):
+            if args.verbose:
+                print(f"SKIP (missing lib {test.skip_missing_lib}): {test.filename}")
             continue
 
         test_result = run_test(test, vyb_executable,

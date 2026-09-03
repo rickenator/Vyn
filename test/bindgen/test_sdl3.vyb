@@ -1,0 +1,19 @@
+// @test: sdl3 posted binding (#174)
+// @description: SDL3 init/window/renderer/draw pipeline via the freedom FFI,
+//   run headless (offscreen video + software renderer). Skipped (not failed)
+//   when libSDL3 is not discoverable on the current machine/CI.
+// @category: ffi, bindings, sdl3
+// @expect: pass
+// @vyb-args: --module-path bindings
+// @expect-return: 0
+// @env: SDL_VIDEODRIVER=offscreen;SDL_RENDER_DRIVER=software;LD_LIBRARY_PATH=/home/rick/sdl3local/lib
+// @skip-if-missing-lib: libSDL3.so
+
+import sdl3::{sdl_clear}
+
+main()<Int> -> {
+    match (sdl_clear(64, 48, 10, 20, 30)) {
+        ok -> { return 0 }
+        ? -> { return 1 }
+    }
+}

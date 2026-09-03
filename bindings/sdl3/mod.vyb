@@ -1,0 +1,51 @@
+# sdl3 — posted FFI binding (#174 / SDK Phase 3).
+#
+# Vyb-friendly lossless wrapper over a curated SDL3 subset. `sdl_clear` is a
+# one-shot unit: it initialises the video subsystem, opens a hidden WxH
+# window, attaches a (software) renderer, fills the back buffer with a colour,
+# presents it, then tears everything down cleanly. It exercises the whole
+# SDL3 window -> renderer -> draw pipeline and returns present (true) only if
+# every step succeeds.
+#
+# All raw FFI (loc/from) stays inside lexical `freedom { }` — nothing
+# privileged leaks to callers; the public surface is a single ordinary
+# `Bool?` result.
+#
+# Requires libSDL3 discoverable by the compiler's dlopen hook (the same way
+# libsqlite3 / libgit2 are). Headless-safe: run with SDL_VIDEODRIVER=dummy and
+# SDL_RENDER_DRIVER=software (the wrapper explicitly picks the "software"
+# renderer so it needs no GPU/window).
+import sdl3_binding::{SDL_Init, SDL_Quit, SDL_CreateWindow, SDL_DestroyWindow,
+                      SDL_CreateRenderer, SDL_DestroyRenderer,
+                      SDL_SetRenderDrawColor, SDL_RenderClear, SDL_RenderPresent}
+
+# Initialise video, render one hidden frame of size (w x h) filled with the
+# RGB colour (r, g, b), tear down. Present (true) on success, absent on any
+# failure along the pipeline. SDL3 flag literals are hardcoded from the
+# headers (SDL_INIT_VIDEO = 0x20u, SDL_WINDOW_HIDDEN = 0x08u).
+share(all)
+sdl_clear(w<Int>, h<Int>, r<Int>, g<Int>, b<Int>)<Bool?> -> {
+    freedom {
+        # SDL_Init / SetRenderDrawColor / RenderClear / RenderPresent return
+        # bool (1 = success) in SDL3.
+        if (SDL_Init(32 as CUInt) != 1) { return Bool?() }
+        win<loc<CVoid>> = SDL_CreateWindow("vyb", w as CInt, h as CInt, 8 as CUInt)
+        if (win == from<loc<CVoid>>(0)) {
+            SDL_Quit()
+            return Bool?()
+        }
+        ren<loc<CVoid>> = SDL_CreateRenderer(win, "software")
+        if (ren == from<loc<CVoid>>(0)) {
+            SDL_DestroyWindow(win)
+            SDL_Quit()
+            return Bool?()
+        }
+        SDL_SetRenderDrawColor(ren, r as CUChar, g as CUChar, b as CUChar, 255 as CUChar)
+        SDL_RenderClear(ren)
+        SDL_RenderPresent(ren)
+        SDL_DestroyRenderer(ren)
+        SDL_DestroyWindow(win)
+        SDL_Quit()
+        return Bool?(true)
+    }
+}
