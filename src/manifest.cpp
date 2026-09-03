@@ -125,19 +125,24 @@ std::vector<Table> parse_toml(const std::string& text, std::string* error) {
             if (error) *error = "could not parse key = value at line " + std::to_string(lineno);
             return {};
         }
-        // #164: reject unsupported TOML value forms with a precise location instead
-        // of silently mis-parsing them. The vyb manifest format deliberately does
-        // NOT adopt full TOML: only bare/quoted strings, integers, and inline
-        // tables { k = v, ... } are value forms.
+        // #164: reject unsupported TOML value forms with a precise location except
+        // for the #204 `[mod] boundary` / `capabilities` keys, which accept a
+        // simple string array `[ "a", "b" ]`. Everywhere else only bare/quoted
+        // strings, integers, and inline tables { k = v, ... } are allowed.
         if (!value.empty() && value[0] == '[') {
-            if (error)
-                *error = "unsupported TOML array value for key '" + key + "' at line "
-                         + std::to_string(lineno)
-                         + ": the vyb manifest format supports only bare/quoted "
-                           "strings, integers, and inline tables { k = v, ... }; full "
-                           "TOML arrays are not supported (#164); see "
-                           "doc/MANIFEST.md";
-            return {};
+            bool isModArrayKey =
+                (key == "boundary" || key == "capabilities") &&
+                currentSection() && currentSection()->section == "mod";
+            if (!isModArrayKey) {
+                if (error)
+                    *error = "unsupported TOML array value for key '" + key + "' at line "
+                             + std::to_string(lineno)
+                             + ": the vyb manifest format supports only bare/quoted "
+                               "strings, integers, and inline tables { k = v, ... }; full "
+                               "TOML arrays are not supported (#164); see "
+                               "doc/MANIFEST.md";
+                return {};
+            }
         }
         Table* cur = currentSection();
         if (!cur) {
@@ -155,6 +160,29 @@ const std::string* value_in(const std::vector<std::pair<std::string, std::string
     for (const auto& kv : keys)
         if (kv.first == key) return &kv.second;
     return nullptr;
+}
+
+// Parse a simple string array `[ "a", "b" ]` (or a bare string `"a"`) into its
+// unquoted elements. Used by the #204 `[mod] boundary` / `capabilities` keys.
+std::vector<std::string> parse_string_array(const std::string& raw) {
+    std::vector<std::string> out;
+    std::string body = trim(raw);
+    if (body.size() >= 2 && body.front() == '[' && body.back() == ']')
+        body = body.substr(1, body.size() - 2);
+    std::vector<std::string> parts;
+    std::string cur;
+    bool inQ = false;
+    for (char c : body) {
+        if (c == '"') inQ = !inQ;
+        if (c == ',' && !inQ) { parts.push_back(cur); cur.clear(); }
+        else cur.push_back(c);
+    }
+    parts.push_back(cur);
+    for (const auto& part : parts) {
+        std::string v = unquote(trim(part));
+        if (!v.empty()) out.push_back(v);
+    }
+    return out;
 }
 
 } // namespace
@@ -205,6 +233,16 @@ std::optional<Manifest> load_manifest(const std::filesystem::path& rootDir,
             if (const std::string* v = value_in(t.keys, "name")) b.name = unquote(*v);
             if (const std::string* v = value_in(t.keys, "path")) b.path = unquote(*v);
             m.bins.push_back(std::move(b));
+        } else if (t.section == "mod") {
+            // #204: package-level `freedom` boundary + declared capabilities.
+            // boundary = ["freedom"]            -> privileged, smuggle-only
+            // capabilities = ["ffi", "nvptx"]   -> advisory capability set
+            if (const std::string* v = value_in(t.keys, "boundary")) {
+                for (const auto& b : parse_string_array(*v))
+                    if (b == "freedom") m.mod.freedomBoundary = true;
+            }
+            if (const std::string* v = value_in(t.keys, "capabilities"))
+                m.mod.capabilities = parse_string_array(*v);
         }
         // Unknown tables are ignored (forward compatibility).
     }

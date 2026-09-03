@@ -1657,6 +1657,22 @@ std::string ModuleRegistry::resolveModule(const std::string& source,
 
                 if (!options_.skipImportResolution) {
                 ResolvedImportPath importPath = resolveImportPath(importDecl, currentPath);
+                // #204: a PRIVILEGED package (declared [mod] boundary=["freedom"]
+                // in its vyb.toml, surfaced by `vyb build` as a privileged dep
+                // name) may only be consumed through `smuggle`, never ordinary
+                // `import`. This does NOT make the caller a freedom context — it
+                // only requires the explicit smuggle trust decision.
+                if (!options_.privilegedModules.empty() &&
+                    importDecl->kind != ast::ImportKind::Smuggle &&
+                    std::find(options_.privilegedModules.begin(),
+                              options_.privilegedModules.end(),
+                              importDecl->source->value) != options_.privilegedModules.end()) {
+                    throw std::runtime_error(
+                        "Package '" + importDecl->source->value +
+                        "' is privileged (freedom): consume it through smuggle, "
+                        "e.g. `smuggle " + importDecl->source->value +
+                        " as <alias>`, not `import` (#204)");
+                }
                 std::string importedSource = readSourceFile(importPath.resolvedPath);
                 std::string importedKey;
                 try {

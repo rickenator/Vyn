@@ -35,6 +35,11 @@ struct ModuleRegistryOptions {
     std::vector<std::filesystem::path> cliModulePaths;
     std::filesystem::path executablePath;
     bool skipImportResolution = false;
+    // #204: dependency/import names that require a package-level `freedom`
+    // boundary (declared `[mod] boundary=["freedom"]` in the dep's vyb.toml and
+    // surfaced by `vyb build`). Such a module may only be consumed through
+    // `smuggle`, never ordinary `import`. Empty = nothing is privileged.
+    std::vector<std::string> privilegedModules;
 };
 
 class ModuleRegistry {

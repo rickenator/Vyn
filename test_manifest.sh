@@ -67,6 +67,34 @@ else
     bad "CLI help/version smoke"
 fi
 
+# --- 6. #204: package-level freedom boundary (privileged dep requires smuggle) ---
+mkdir -p "$WORK/gpulib"
+printf '[package]\nname = "gpu"\nversion = "0.1.0"\n\n[mod]\nboundary = ["freedom"]\ncapabilities = ["ffi", "cuda-driver"]\n' > "$WORK/gpulib/vyb.toml"
+printf 'share(all)\ngpu_value()<Int> -> { return 42 }\n' > "$WORK/gpulib/gpu.vyb"
+( cd "$WORK" && "$VYB" new privapp >/dev/null 2>&1 )
+printf '\n[dependencies]\ngpu = { path = "../gpulib" }\n' >> "$WORK/privapp/vyb.toml"
+# consumer that IMPORTS the privileged package -> must fail with the smuggle remedy
+printf 'import gpu::{gpu_value}\nmain()<Int> -> { println(gpu_value()); return 0 }\n' > "$WORK/privapp/src/main.vyb"
+impout="$(cd "$WORK/privapp" && "$VYB" build 2>&1)"
+if [ $? -ne 0 ] && grep -q "is privileged (freedom): consume it through smuggle" <<<"$impout"; then
+    ok "#204 import of privileged package rejected with smuggle remedy"
+else
+    bad "#204 import rejection (output: $impout)"
+fi
+# consumer that SMUGGLES the privileged package -> builds and the exe prints 42
+printf 'smuggle gpu::{gpu_value}\nmain()<Int> -> { println(gpu_value()); return 0 }\n' > "$WORK/privapp/src/main.vyb"
+exe="$WORK/privapp/target/privapp"
+if smout="$(cd "$WORK/privapp" && "$VYB" build 2>&1)" && [ -x "$exe" ]; then
+    got="$( "$exe" )"
+    if grep -q "42" <<<"$got"; then
+        ok "#204 smuggle of privileged package builds and runs (got '$got')"
+    else
+        bad "#204 smuggle exe output (got '$got')"
+    fi
+else
+    bad "#204 smuggle build (output: $smout)"
+fi
+
 echo
 if [ "$fail" -eq 0 ]; then
     echo "Manifest conformance passed: $pass / $((pass+fail))"

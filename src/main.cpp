@@ -764,6 +764,8 @@ struct ModuleParseOptions {
     std::vector<fs::path> cliModulePaths;
     fs::path executablePath;
     bool skipImportResolution = false;
+    // #204: dependency/import names declared privileged ([mod] boundary=["freedom"]).
+    std::vector<std::string> privilegedModules;
 };
 
 ModuleParseOptions g_module_parse_options;
@@ -783,6 +785,7 @@ ParsedModule parse_vyb_module(const std::string& source, const std::string& file
     options.cliModulePaths = g_module_parse_options.cliModulePaths;
     options.executablePath = g_module_parse_options.executablePath;
     options.skipImportResolution = g_module_parse_options.skipImportResolution;
+    options.privilegedModules = g_module_parse_options.privilegedModules;
     vyb::ModuleRegistry registry(std::move(options));
     ParsedModule parsed;
     parsed.ast = registry.resolveRoot(source, fileName);
@@ -1707,6 +1710,20 @@ int run_build_command(int argc, char** argv, const std::string& exeArg) {
                       << std::endl;
             return 1;
         }
+    }
+
+    // #204: surface each path dependency that declares a package-level `freedom`
+    // boundary in its own vyb.toml as PRIVILEGED, so the resolver rejects an
+    // ordinary `import` of it and requires explicit `smuggle`.
+    g_module_parse_options.privilegedModules.clear();
+    for (const auto& d : manifest->dependencies) {
+        if (d.source != "path") continue;
+        fs::path dp = d.path.empty() ? fs::path(d.name) : fs::path(d.path);
+        if (dp.is_relative()) dp = root / dp;
+        std::string derr;
+        auto dm = vyb::load_manifest(dp, &derr);
+        if (dm && dm->mod.freedomBoundary)
+            g_module_parse_options.privilegedModules.push_back(d.name);
     }
 
     g_module_parse_options.cliModulePaths = project_module_paths(*manifest);

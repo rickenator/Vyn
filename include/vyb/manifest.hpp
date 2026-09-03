@@ -24,6 +24,14 @@ struct ManifestBin {
     std::string path = "src/main.vyb";
 };
 
+// #204: package-level `freedom` boundary + declared capabilities. A package
+// whose `[mod] boundary` includes "freedom" is PRIVILEGED: it must be consumed
+// through `smuggle`, never ordinary `import`. Empty/absent = ordinary package.
+struct ManifestMod {
+    bool freedomBoundary = false;              // [mod] boundary contains "freedom"
+    std::vector<std::string> capabilities;     // e.g. ffi, cuda-driver, nvptx
+};
+
 // A parsed vyb.toml project manifest.
 struct Manifest {
     std::string name = "unnamed";
@@ -32,6 +40,7 @@ struct Manifest {
     std::vector<ManifestDependency> dependencies;
     std::filesystem::path rootDir;           // directory containing vyb.toml
     bool hasExplicitBins = false;            // false => use the src/main.vyb default
+    ManifestMod mod;                         // #204 [mod] boundary/capabilities
 };
 
 // Parse <rootDir>/vyb.toml. Returns std::nullopt (with a message in *error)

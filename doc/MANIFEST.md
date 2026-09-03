@@ -25,7 +25,15 @@ and the compatibility policy.
   <name> = { git = "https://…" }        # parsed, but REJECTED (#165)
   <name> = { version = "x.y.z" }        # parsed, but REJECTED (#165)
   <name> = "x.y.z"                      # shorthand → version → REJECTED (#165)
+
+[mod]                     # #204: package-level boundary/capabilities (optional)
+  boundary    = ["freedom"]             # privileged: smuggle-only (or "freedom")
+  capabilities = ["ffi", "cuda-driver"] # advisory capability list
 ```
+
+`[mod] boundary` accepts a simple string array; when it contains `freedom`, the
+package is **privileged** and must be consumed via `smuggle`, never ordinary
+`import` (#204). `capabilities` is advisory metadata for remote trust prompts.
 
 Unknown tables and unknown keys in any table are **ignored** (forward
 compatibility): they never fail the build.
@@ -37,6 +45,8 @@ A `key = value` line may use exactly these value shapes:
 - bare or double-quoted **strings** (`mylib`, `"mylib"`),
 - **integers** (`0`, `42`) — parsed but only used where numeric,
 - **inline tables** `{ k = v, k2 = v2 , ... }` — flat, one level, comma-separated.
+- **string arrays** `["a", "b"]` — accepted ONLY for the `[mod]` `boundary` /
+  `capabilities` keys (#204); rejected everywhere else (see below).
 
 ## Rejected constructs (precise diagnostics)
 
