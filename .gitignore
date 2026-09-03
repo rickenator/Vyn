@@ -24,3 +24,6 @@ __pycache__/
 .settings/
 .vscode/
 demos/VybLynx/target-asan/
+
+# Hermes agent state (not project code)
+.hermes/
