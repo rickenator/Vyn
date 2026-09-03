@@ -20,8 +20,15 @@ fi
 
 # Directory this file lives in (resolves symlinks).
 _ENV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
-# The packaged layout places env.sh at the SDK root, with bin/ and stdlib/ as siblings.
-_SDK_ROOT="$(cd "$_ENV_DIR/.." >/dev/null 2>&1 && pwd -P)"
+# Two supported layouts, both with `bin/` and `stdlib/` sharing a common root:
+#   * packaged SDK  : env.sh sits AT the SDK root (vyb-sdk-<v>/env.sh) -> root = _ENV_DIR
+#   * source tree   : env.sh lives in sdk/, one level below the repo root  -> root = parent
+# Prefer the directory that actually holds bin/ + stdlib.
+if [[ -d "$_ENV_DIR/bin" && -d "$_ENV_DIR/stdlib" ]]; then
+    _SDK_ROOT="$_ENV_DIR"
+else
+    _SDK_ROOT="$(cd "$_ENV_DIR/.." >/dev/null 2>&1 && pwd -P)"
+fi
 
 # Prepend bin to PATH (avoid duplicates).
 case ":$PATH:" in

@@ -1,6 +1,7 @@
 build
 build-asan/
 build-noqt/
+build-release/
 .git
 .snapshots
 .cproject
