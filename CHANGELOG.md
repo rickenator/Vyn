@@ -197,6 +197,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Package-level `freedom` boundary for remote `smuggle` (#204, P0)** —
+  `smuggle`d remote modules (the `vyb mod install github:...` channel) now
+  respect a package-level trust/capability boundary: the smuggled package's
+  capability set gates which privileged integration it can perform, so remote
+  packages stay ergonomic to consume without leaking `freedom` semantics
+  (commit `2842f70`).
+- **SDL3 posted FFI binding + headless JIT test (#174, `77d0d76`)** — a curated
+  SDL3 3.4.x FFI binding posted as a repo-file module under `bindings/`,
+  exercised headlessly (no display) via the JIT; doubles as the smuggle-channel
+  conformance fixture.
+- **SDK transportable dev-environment packages (#175, `f22bb33`)** — tag-driven
+  GitHub Actions release builds a per-OS tarball (bin `vyb` Release, stdlib,
+  bindgen, refman, bundled C native libs for optional bindings) + `env.sh`
+  resolver; static C libs load dynamically; per-install `@sha256:HEX` pin;
+  first-class `vyb mod install` smuggle channel as the remote-import proof.
+
+### Fixed
+- **`env.sh` SDK root resolution in the packaged layout (#175, `f22bb33`)** —
+  the SDK's `env.sh` now resolves the SDK root correctly in the installed
+  (packaged) layout, not just the source tree.
+
+### Added
 - **`tls` stdlib module** — TLS over OpenSSL (`import tls`). Client/server
   `SSL_CTX` from in-memory PEM (no file-path coupling), an `SSL` session bound
   to an already-connected fd, handshake (`tls_connect`/`tls_accept`), encrypted

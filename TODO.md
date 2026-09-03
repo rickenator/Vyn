@@ -25,45 +25,50 @@ regression test plus documentation that describes the resulting behavior.
 
 ### P0 — Correctness and safety
 
-- [ ] **Make `Vec` access safe and document one contract** — `Vec::get` and
+- [x] **Make `Vec` access safe and document one contract** — `Vec::get` and
   `Vec::set` currently calculate an element address without a bounds check.
-  Decide whether reads/writes return `T?`/a status, trap, or return a documented
-  default; implement that rule for every receiver path and add JIT + native
-  regression tests for negative, equal-to-length, and empty-vector indexes.
-- [ ] **Make file, network, TLS, and UDP diagnostic state concurrency-safe** —
-  last-error values and the last UDP peer must be thread-local or carried in
-  operation results, rather than process-global state that concurrent threads
-  and async workers can overwrite.
-- [ ] **Make agent `Int` payloads lossless** — agent behavior loops currently
-  use the sentinel-based channel receive path, so a legitimate `-1` message is
-  indistinguishable from a closed mailbox. Use the existing presence-reporting
-  receive primitive and add a regression test that delivers `-1` before normal
-  shutdown.
-- [ ] **Prove the advertised ownership boundary** — state precisely which
-  borrow/lifetime guarantees are lexical today, then add negative tests for
-  borrow escape, aliasing, mutation while borrowed, closure capture, and
-  cross-thread handoff. Do not describe the model as a general lifetime solver
-  until those cases are enforced.
-- [ ] **Add required CI execution coverage** — GitHub Actions must build Vyb
-  and run the canonical suite in JIT, object/AOT, and native-link modes. Add an
-  ASan job or scheduled memory-safety job; the existing refman-only check is
-  not release validation.
+  Landed (#146): reads/writes return the documented `T?`/status contract for
+  every receiver path; JIT + native regression tests cover negative,
+  equal-to-length, and empty-vector indexes.
+- [x] **Make file, network, TLS, and UDP diagnostic state concurrency-safe** —
+  last-error values and the last UDP peer are now thread-local / carried in
+  operation results, not process-global state (#147; #144/#143 migrated the
+  remaining sentinels to `String?`/`Bool?`).
+- [x] **Make agent `Int` payloads lossless** — agent behavior loops use the
+  presence-reporting receive primitive; a delivered `-1` is no longer
+  indistinguishable from a closed mailbox (#148; #187 fixed the typed
+  `chan<T>.recv()` path). Regression tests deliver `-1` before shutdown.
+- [x] **Prove the advertised ownership boundary** — #149 shipped the stated
+  lexical borrow/lifetime guarantees plus negative tests for borrow escape,
+  aliasing, mutation while borrowed, closure capture, and cross-thread
+  handoff; the docs now describe the model as lexical, not a general lifetime
+  solver.
+- [x] **Add required CI execution coverage** — GitHub Actions builds Vyb and
+  runs the canonical suite in JIT mode, AOT/native-link coverage
+  (`test_compilation.sh`), and a scheduled + main-push ASan job
+  (`VYB_ASAN=1`, `detect_leaks=1`), uploading release evidence artifacts
+  (#150/#158/#160). `ctest` registers the suite for reproducible runs.
 
 ### P1 — Toolchain and maintenance hardening
 
-- [ ] **Remove shell-string execution from native build paths** — replace
-  concatenated `system()` compile/probe commands with argument-vector process
-  execution and robust path handling.
-- [ ] **Reconcile the documentation hierarchy** — make the Programmer's Guide
-  and generated refman authoritative; update or archive stale design/review
-  documents and remove contradictory claims (including obsolete async-stub and
-  `Result` placeholder text).
-- [ ] **Reduce compiler coupling and source debris** — split the large semantic,
-  expression-codegen, and driver units along subsystem boundaries; classify or
-  remove obsolete `.bak`/`.backup` sources and inactive codegen files.
-- [ ] **Finish the developer workflow** — complete remote dependency handling,
-  `--version` and subcommand help, an integrated test command, formatter, LSP,
-  and REPL in that order after the safety gate above.
+- [x] **Remove shell-string execution from native build paths** — the native
+  build path now uses argument-vector process execution instead of
+  concatenated `system()` compile/probe commands, with robust path handling
+  (#151).
+- [x] **Reconcile the documentation hierarchy** — the Programmer's Guide and
+  generated refman are authoritative (refman `--check` runs in CI); stale
+  design/review documents were updated or archived, and the obsolete
+  async-stub and `Result` placeholder text was removed (#152; #163 removed
+  the placeholder, #183 added the archive refman digest).
+- [x] **Reduce compiler coupling and source debris** — the semantic,
+  expression-codegen, and driver units were split along subsystem boundaries
+  and obsolete `.bak`/`.backup` sources and inactive codegen files were
+  classified or removed (#153).
+- [x] **Finish the developer workflow** — #154 landed the safety-first slice
+  (integrated `vyb test`, `--version`/subcommand help, `vyb build`/`new`/
+  `mod` subcommands; remote git/version deps are clearly scoped and rejected
+  at manifest validation per #165). Formatter, LSP, and REPL remain the
+  post-safety follow-on (tracked below).
 
 ### Audit finding coverage (2026-08-22)
 
@@ -395,7 +400,14 @@ See `doc/bundles_and_sharing.md` and `doc/MODULE_FFI_BINARY_ROADMAP.md`.
     - [x] `http` — Pure-Vyb HTTP/1.1 server + client (`import http`): `http_listen`/`http_local_port`/`http_accept`, head reading + `http_request_path` parsing, `http_send_all`/`http_close`, well-formed `http_response(status, body)`, and the `http_get`/`http_request` client wrappers — all layered directly on the `__vyb_net_*` socket intrinsics (no new FFI). `String::index_of` added as a `StringOps` core helper to parse request/response heads. Single-threaded blocking sockets mean a server only answers a kernel-queued connect in-process (interleaved send/recv); a living peer is needed to exercise the `http_get` round-trip (`test/modules/test_http_parse.vyb`, `test/modules/test_http_server.vyb`)
     - [x] `core::iter` — the `Iterator` aspect protocol (`type Item` + `next(self<their<Self>>)<Self::Item?>`, explicitly imported via `import core::iter` — kept out of the auto-imported `core::aspects` so the ~6 associated-type tests that define their own local `Iterator` don't clash). Consumable via explicit `.next()` / `match` loops (`test/modules/test_iterator_protocol.vyb`) and via `for (item in <iter-expr>)` for any non-identifier iterable expression (`test/modules/test_for_iter.vyb`); the desugar is parse-time (type-blind) and keys off a non-identifier iterable so the existing Vec index-based identifier path and range path are untouched.
   - [x] Auto-import of `core::*` (opt-out with directive) — the core contracts module (`core::aspects`, with its pre-wired primitive binds) is auto-imported into every non-stdlib module unless it already imports the contracts, locally redefines them, or opts out with a `no_core()` directive. This makes `x.display()`, `a.equals(b)`, `a.compare(b)`, and `a.clone()` available on built-in scalars with no import. The transitional prelude helpers (`OptionInt`, `prelude_ok`) remain explicit-import-only.
-- [ ] **Known defect: imported module ASTs are single-consumer** — the splice loop in `ModuleRegistry::resolveModule` moves a dependency's declaration statements (`resolvedBody.push_back(std::move(importedStmt))`) into the *first* importer's body, so an already-imported module has no declarations left to splice for a later importer (`importedRecord.emitted` then skips re-splicing). Consequences: (a) two *subset* imports of the same module in one file drop the second subset (https previously failed with `Undefined identifier: http_status_code` because it did `import http::{HttpResponse}` then `import http::{helpers}`); (b) a shared dependency consumed by one importer is unavailable to another (`socket_close` regressed when http imported network after https already consumed it). Workaround in `stdlib/https`: combine all of a module's subset imports into one `import m::{a, b, …}` (does not need the second subset or the shared-network path). Long-term fix: deep-clone AST statements per importer (no `clone()` on `Stmt`/declarations yet) or emit each dependency module once and resolve cross-module references without moving its body; then drop the `emitted` skip so subset imports splice independently and shared deps reach every consumer.
+- [x] **Module AST single-consumer splice defect (fixed #171)** — the splice
+  loop in `ModuleRegistry::resolveModule` moved a dependency's declaration
+  statements into the *first* importer's body, so a second subset import or a
+  shared transitive dependency dropped (`https` previously failed with
+  `Undefined identifier: http_status_code`; `socket_close` regressed when http
+  imported network after https already consumed it). Fixed per the #171
+  resolution; both subset imports and shared dependencies now reach every
+  consumer (covered by the manifest/remote-import CTest registrations).
 
 ### 2. FFI — C Interop (DONE)
 - [x] **`extern` function modifier** — Individual extern function declarations compile to LLVM `ExternalLinkage` via `ExternStatement` codegen; syntax: `extern funcName(params)<ReturnType>`
@@ -739,7 +751,17 @@ with `pass` for multi-statement case bodies. Needs polishing:
 - [x] **`vyb build`** — Build multi-file projects from manifest (reuses the module registry + native compile/link pipeline; local `{ path = ... }` dependencies resolve to module search paths)
 - [x] **`vyb new`** — Scaffold a new Vyb project (`vyb.toml` + `src/main.vyb`)
 - [x] **Lock file** — `vyb.lock` written for resolved local path dependencies
-- [ ] **Remote dependency resolution** — version/git dependency fetching + registry-gated lock pins (path deps are resolved today)
+- [x] **Remote dependency handling (scoped #165)** — git/version dependency
+  declarations are rejected at manifest validation with a clear, actionable
+  diagnostic; local path deps resolve today and are locked in `vyb.lock`. The
+  first-class remote *module* channel is `vyb mod install
+  github:owner/repo/path` (fetch + sha256 pin + `vyb.lock` record;
+  `--require-signed` for posted signatures), which serves as the smuggle
+  channel and remote-import conformance path.
+- [ ] **Version/git dependency resolution in `vyb build`** — resolving
+  version/git sources declared in `vyb.toml` `[dependencies]` (registry-gated
+  lock pins, offline/cache behavior) — staged follow-on beyond the smuggle
+  channel.
 - [ ] **Package registry** — Central registry for published packages
 
 ### Language Server Protocol (LSP)
