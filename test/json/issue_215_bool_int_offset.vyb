@@ -1,0 +1,63 @@
+// @test: to_string() Int field after non-leading Bool (#215)
+// @description: Regression test for issue #215 — the baked type metadata used
+//   LLVM's default DataLayout (i64 4-aligned) instead of the host SystemV
+//   layout (i64 8-aligned), so an Int field following a non-leading Bool was
+//   read at the wrong offset and to_string() emitted 2^32-scaled garbage.
+//   Covers the full #215 probe matrix: every layout with an Int after a Bool
+//   at a non-leading index, validated by to_string() -> from_string()
+//   round-trips (corruption fails the field equality checks).
+// @category: json, serialization, regression
+// @expect: pass
+// @expect-output: "port": 22
+// @expect-return: 0
+// @execute-jit: true
+
+import collections
+
+share(all)
+struct BM { name<String>, enabled<Bool>, port<Int>, args<Vec<String>> }
+share(all)
+struct W  { system<String>, hostname<String>, bm<Vec<BM>> }
+share(all)
+struct IBI { a<Int>, b<Bool>, c<Int> }
+share(all)
+struct SBI { a<String>, b<Bool>, c<Int> }
+share(all)
+struct BSI { a<Bool>, b<String>, c<Int> }
+
+main()<Int> -> {
+    // Original #215 repro shape: { String, Bool, Int, Vec<String> } in a Vec.
+    bm<Vec<BM>> = Vec()
+    bm.push(BM { name = "sshd", enabled = true, port = 22, args = Vec() })
+    w<W> = W { system = "x", hostname = "h", bm = bm }
+    js<String> = w.to_string()
+    println(js)
+    // In-memory read is the source of truth.
+    if (bm.get(0).port != 22) { return 10 }
+    w2<W> = W::from_string(js)
+    if (w2.to_string() != js) { return 11 }
+    if (w2.bm.get(0).port != 22) { return 12 }
+    if (w2.bm.get(0).enabled != true) { return 13 }
+    if (w2.bm.get(0).name != "sshd") { return 14 }
+
+    // Probe-matrix shapes (each once corrupted a following Int).
+    ibi<IBI> = IBI { a = 22, b = true, c = 7 }
+    ibiJ<String> = ibi.to_string()
+    ibi2<IBI> = IBI::from_string(ibiJ)
+    if (ibi2.to_string() != ibiJ) { return 20 }
+    if (ibi2.a != 22 || ibi2.c != 7 || ibi2.b != true) { return 21 }
+
+    sbi<SBI> = SBI { a = "s", b = true, c = 99 }
+    sbiJ<String> = sbi.to_string()
+    sbi2<SBI> = SBI::from_string(sbiJ)
+    if (sbi2.to_string() != sbiJ) { return 30 }
+    if (sbi2.c != 99) { return 31 }
+
+    bsi<BSI> = BSI { a = true, b = "s", c = 42 }
+    bsiJ<String> = bsi.to_string()
+    bsi2<BSI> = BSI::from_string(bsiJ)
+    if (bsi2.to_string() != bsiJ) { return 40 }
+    if (bsi2.c != 42) { return 41 }
+
+    return 0
+}

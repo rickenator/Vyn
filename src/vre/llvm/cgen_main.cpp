@@ -22,8 +22,12 @@
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/raw_ostream.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Host.h"
 
 // Standard C++ Headers
 #include <iostream> // For logError, std::cerr
@@ -104,6 +108,44 @@ void LLVMCodegen::generate(vyb::ast::Module* astModule, const std::string& outpu
     if (!astModule) {
         logError(SourceLocation(), "Cannot generate code: AST module is null.");
         return;
+    }
+
+    // issue #215: install the host DataLayout BEFORE any codegen runs. Without
+    // a `target datalayout` on the module, every DataLayout query here (the
+    // field offset/size walk in generateTypeMetadata, type sizes in
+    // cgen_vec / cgen_expr / cgen_monomorph, ...) falls back to LLVM's
+    // *default* layout, which 4-byte-aligns i64 — while the SystemV x86-64
+    // layout the JIT/compile backend actually uses 8-byte-aligns it. The
+    // baked type metadata then disagrees with the real struct layout: an Int
+    // field following a non-leading Bool gets a 4-aligned offset in the
+    // metadata but is stored at its 8-aligned offset, so to_string() reads
+    // stray neighboring bytes (port = 22 * 2^32 + garbage). main() re-sets
+    // the same triple/DataLayout when it builds the TargetMachine, so this
+    // only matters here, where the layout is consulted. Kernel mode keeps
+    // its NVPTX layout (set by the --kernel path after codegen; its metadata
+    // registry is never registered on device).
+    if (!vyb::g_kernel_mode) {
+        // Idempotent: the execute/compile paths already initialize the native
+        // target, but paths that only generate IR (--emit-llvm, #215 repro)
+        // may not have — lookupTarget needs the registry populated.
+        llvm::InitializeNativeTarget();
+        const std::string hostTriple = llvm::sys::getDefaultTargetTriple();
+        std::string targetErr;
+        const llvm::Target* hostTarget =
+            llvm::TargetRegistry::lookupTarget(hostTriple, targetErr);
+        if (hostTarget) {
+            llvm::TargetOptions tmOpt;
+            std::optional<llvm::Reloc::Model> relocModel(llvm::Reloc::PIC_);
+            std::unique_ptr<llvm::TargetMachine> hostTM(
+                hostTarget->createTargetMachine(hostTriple, "generic", "",
+                                                tmOpt, relocModel));
+            module->setTargetTriple(hostTriple);
+            module->setDataLayout(hostTM->createDataLayout());
+        } else {
+            std::cerr << "warning: could not resolve host target for "
+                         "DataLayout (" << targetErr
+                      << "); type metadata offsets may be misaligned\n";
+        }
     }
 
     if (vyb::g_kernel_mode) {
